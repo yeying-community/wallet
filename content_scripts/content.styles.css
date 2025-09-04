@@ -1,0 +1,5 @@
+/* 例子：改变网页字体颜色 */
+body {
+  font-family: Arial, sans-serif;
+  color: #333;
+}

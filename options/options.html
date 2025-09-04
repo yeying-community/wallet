@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extension Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <h1>扩展设置</h1>
+
+    <!-- Example: Default Network Selection -->
+    <div class="setting-item">
+      <label for="network">选择默认网络：</label>
+      <select id="network">
+        <option value="ethereum">Ethereum</option>
+        <option value="bsc">Binance Smart Chain</option>
+        <option value="polygon">Polygon</option>
+      </select>
+    </div>
+
+    <!-- Example: Theme Selection -->
+    <div class="setting-item">
+      <label for="theme">选择主题：</label>
+      <select id="theme">
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </div>
+
+    <button id="saveButton">保存设置</button>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
