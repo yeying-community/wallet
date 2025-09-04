@@ -1,0 +1,57 @@
+<!-- popup.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>yeyingMask - Wallet Management</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Account Info Section -->
+    <div class="account-info">
+      <div class="account-header">
+        <div class="account-icon"></div>
+        <div class="account-details">
+          <span class="account-name" id="accountName">Account 1</span>
+          <span class="account-address" id="accountAddress">0x8c41a...1EeD3</span>
+        </div>
+        <div id="hamburgerMenu" class="hamburger-menu">&#9776;</div>
+      </div>
+      <div class="account-balance">
+        <span class="balance-amount" id="balanceAmount">$1000.00 USD</span>
+        <span class="balance-eth" id="balanceETH">10 ETH</span>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="actions">
+      <button id="depositButton" class="action-button">入金</button>
+      <button id="swapButton" class="action-button">兑换</button>
+      <button id="sendButton" class="action-button">发送</button>
+      <button id="receiveButton" class="action-button">收款</button>
+    </div>
+
+    <!-- Network Info Section -->
+    <div class="network-info">
+      <div class="network-header">启用的网络</div>
+      <select id="networkDropdownButton" class="network-dropdown">
+        <option>Ethereum - Mainnet</option>
+        <option>Binance Smart Chain</option>
+        <option>Polygon</option>
+      </select>
+    </div>
+
+    <!-- Sidebar Menu -->
+    <div id="sidebar" class="sidebar">
+      <div class="sidebar-item" id="accountDetails">账户详情</div>
+      <div class="sidebar-item" id="viewExplorer">在Explorer上查看</div>
+      <div class="sidebar-item" id="getHelp">获取帮助</div>
+      <div class="sidebar-item" id="settings">设置</div>
+      <div class="sidebar-item" id="logout">退出登录</div>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
