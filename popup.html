@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>夜莺钱包</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- 欢迎页面 -->
+    <div id="welcomePage" class="page">
+      <h2>简易钱包</h2>
+      <button id="createWalletBtn" class="btn btn-primary">新建钱包</button>
+      <button id="importWalletBtn" class="btn btn-secondary">导入钱包</button>
+    </div>
+
+    <!-- 加密码设置页面 -->
+    <div id="setPasswordPage" class="page hidden">
+      <h2>夜莺钱包</h2>
+      <p class="info-text">请设置一个密码来保护您的钱包</p>
+      <div class="form-group">
+        <label>密码:</label>
+        <input type="password" id="newPassword" placeholder="至少8位字符">
+      </div>
+      <div class="form-group">
+        <label>确认密码:</label>
+        <input type="password" id="confirmPassword" placeholder="再次输入密码">
+      </div>
+      <button id="setPasswordBtn" class="btn btn-primary">确认</button>
+      <button id="cancelPasswordBtn" class="btn btn-secondary">取消</button>
+      <div id="passwordStatus" class="status"></div>
+    </div>
+
+    <!-- 添加解锁页面 -->
+    <div id="unlockPage" class="page hidden">
+      <h2>解锁钱包</h2>
+      <p class="info-text">会话已过期，请输入密码解锁</p>
+      <div class="form-group">
+        <label>密码:</label>
+        <input type="password" id="unlockPassword" placeholder="输入密码">
+      </div>
+      <button id="unlockBtn" class="btn btn-primary">解锁</button>
+      <button id="resetWalletBtn" class="btn btn-secondary">重置钱包</button>
+      <div id="unlockStatus" class="status"></div>
+    </div>
+
+    <!-- 导入钱包页面 -->
+    <div id="importPage" class="page hidden">
+      <h2>导入钱包</h2>
+      <textarea id="privateKeyInput" placeholder="输入私钥（64位十六进制）" rows="3"></textarea>
+      <button id="importBtn" class="btn btn-primary">导入</button>
+      <button id="backToWelcomeBtn" class="btn btn-secondary">返回</button>
+    </div>
+
+    <!-- 主钱包页面 -->
+    <div id="walletPage" class="page hidden">
+      <div class="header">
+        <div class="wallet-info">
+          <div id="walletAvatar" class="wallet-avatar"></div>
+          <div class="wallet-details">
+            <div class="wallet-label">我的钱包</div>
+            <div id="walletAddress" class="wallet-address-header">0x0000...0000</div>
+          </div>
+        </div>
+        <button id="logoutBtn" class="btn-icon" title="登出">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="balance-section">
+        <h3>余额</h3>
+        <div class="balance">
+          <span id="balance">0.0000</span> <span class="currency">ETH</span>
+        </div>
+        <button id="refreshBalanceBtn" class="btn btn-small">刷新</button>
+      </div>
+      <div class="network-selector">
+        <label>网络:</label>
+        <select id="networkSelect">
+          <option value="https://devnet.ppaix.com">PAIX 测试网<option>
+        </select>
+        <input type="text" id="customRpcInput" class="hidden" placeholder="输入自定义 RPC URL">
+      </div>
+      <div class="tabs">
+        <button id="sendTab" class="tab active">转账</button>
+        <button id="receiveTab" class="tab">接收</button>
+        <button id="settingsTab" class="tab">设置</button>
+      </div>
+
+      <!-- 转账标签页 -->
+      <div id="sendContent" class="tab-content">
+        <div class="form-group">
+          <label>接收地址:</label>
+          <input type="text" id="recipientAddress" placeholder="0x...">
+        </div>
+        <div class="form-group">
+          <label>金额 (ETH):</label>
+          <input type="number" id="amount" placeholder="0.0" step="0.0001">
+        </div>
+        <button id="sendBtn" class="btn btn-primary">发送</button>
+        <div id="sendStatus" class="status"></div>
+      </div>
+
+      <!-- 接收标签页 -->
+      <div id="receiveContent" class="tab-content hidden">
+        <p>扫描或分享您的地址以接收资金:</p>
+        <div class="qr-container">
+          <div id="qrcode"></div>
+        </div>
+        <div class="address-container">
+          <span id="receiveAddress" class="address"></span>
+          <button id="copyReceiveAddressBtn" class="btn-icon">📋</button>
+        </div>
+      </div>
+
+      <!-- 设置标签页 -->
+      <div id="settingsContent" class="tab-content hidden">
+        <h3>导出私钥</h3>
+        <p class="warning">⚠️ 请勿与任何人分享您的私钥！</p>
+        <button id="showPrivateKeyBtn" class="btn btn-secondary">显示私钥</button>
+        <div id="privateKeyDisplay" class="private-key hidden"></div>
+        <button id="copyPrivateKeyBtn" class="btn btn-small hidden">复制私钥</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 全局悬浮提示 -->
+  <div id="globalToast" class="toast hidden"></div>
+
+  <!-- 第三方库 -->
+  <script src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <script src="https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js"></script>
+  
+  <!-- 应用模块 - 按依赖顺序加载 -->
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/network.js"></script>
+  <script src="js/wallet.js"></script>
+  <script src="js/transaction.js"></script>
+  <script src="js/popup.js"></script>
+</body>
+</html>
+
