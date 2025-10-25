@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YeYing Wallet Test DApp</title>
+  <style>
+    /* 样式保持不变 */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    h1 {
+      color: white;
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      margin: 5px;
+      transition: all 0.3s;
+    }
+    button:hover {
+      background: #45a049;
+      transform: translateY(-2px);
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .info {
+      background: white;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 8px;
+    }
+    .result {
+      background: #e8f5e9;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 8px;
+      word-break: break-all;
+      white-space: pre-wrap;
+    }
+    .error {
+      background: #ffebee;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 8px;
+      color: #c62828;
+    }
+    .warning {
+      background: #fff3e0;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 8px;
+      color: #e65100;
+    }
+    .section {
+      margin: 30px auto;
+      padding: 20px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      background: white;
+      max-width: 800px;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 8px;
+      margin: 5px 0;
+      box-sizing: border-box;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧪 YeYing Wallet Test DApp</h1>
+
+  <!-- 钱包检测 -->
+  <div class="section">
+    <h2>钱包检测</h2>
+    <div id="walletDetection" class="info">
+      <p>正在检测钱包...</p>
+    </div>
+  </div>
+
+  <!-- 连接状态 -->
+  <div class="section">
+    <h2>连接状态</h2>
+    <div class="info">
+      <p><strong>连接状态:</strong> <span id="connectionStatus">未连接</span></p>
+      <p><strong>账户地址:</strong> <span id="accountAddress">-</span></p>
+      <p><strong>链 ID:</strong> <span id="chainId">-</span></p>
+      <p><strong>余额:</strong> <span id="balance">-</span></p>
+    </div>
+    <button onclick="connectWallet()">连接钱包</button>
+    <button onclick="getAccounts()">获取账户</button>
+    <button onclick="getChainId()">获取链 ID</button>
+    <button onclick="getBalance()">获取余额</button>
+  </div>
+
+  <!-- 发送交易 -->
+  <div class="section">
+    <h2>发送交易</h2>
+    <div>
+      <label>接收地址:</label>
+      <input type="text" id="txTo" placeholder="0x..." value="0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb">
+    </div>
+    <div>
+      <label>金额 (ETH):</label>
+      <input type="text" id="txValue" placeholder="0.001" value="0.001">
+    </div>
+    <div>
+      <label>数据 (可选):</label>
+      <input type="text" id="txData" placeholder="0x...">
+    </div>
+    <button onclick="sendTransaction()">发送交易</button>
+  </div>
+  <!-- 签名消息 -->
+  <div class="section">
+    <h2>签名消息</h2>
+    <div>
+      <label>消息内容:</label>
+      <textarea id="signMessage" rows="3" placeholder="输入要签名的消息">Hello, YeYing Wallet!</textarea>
+    </div>
+    <button onclick="signMessage()">签名消息</button>
+  </div>
+
+  <!-- 结果显示 -->
+  <div class="section">
+    <h2>操作结果</h2>
+    <div id="result"></div>
+  </div>
+
+  <script>
+    let currentAccount = null;
+    let walletReady = false;
+
+    // 等待钱包注入
+    function waitForWallet() {
+      return new Promise((resolve, reject) => {
+        if (typeof window.ethereum !== 'undefined') {
+          resolve(window.ethereum);
+          return;
+        }
+
+        let attempts = 0;
+        const maxAttempts = 50; // 5秒
+        
+        const interval = setInterval(() => {
+          attempts++;
+
+          if (typeof window.ethereum !== 'undefined') {
+            clearInterval(interval);
+            resolve(window.ethereum);
+          } else if (attempts >= maxAttempts) {
+            clearInterval(interval);
+            reject(new Error('未检测到钱包'));
+          }
+        }, 100);
+      });
+    }
+
+    // 页面加载时检测钱包
+    window.addEventListener('load', async () => {
+      const detectionEl = document.getElementById('walletDetection');
+      
+      try {
+        detectionEl.innerHTML = '<p>⏳ 正在检测钱包...</p>';
+        
+        const ethereum = await waitForWallet();
+        
+        walletReady = true;
+        
+        // 显示检测结果
+        let walletInfo = '<p>✅ 检测到以太坊钱包</p>';
+
+        if (ethereum.isYeYingWallet) {
+          walletInfo += '<p>🎉 <strong>YeYing Wallet</strong> 已就绪！</p>';
+        } else if (ethereum.isMetaMask) {
+          walletInfo += '<p class="warning">⚠️ 检测到 MetaMask，建议禁用后使用 YeYing Wallet</p>';
+        } else {
+          walletInfo += '<p>ℹ️ 检测到其他钱包</p>';
+        }
+        
+        detectionEl.innerHTML = walletInfo;
+        detectionEl.className = 'result';
+
+        // 监听账户变化
+        ethereum.on('accountsChanged', (accounts) => {
+          console.log('账户变化:', accounts);
+          if (accounts.length === 0) {
+            currentAccount = null;
+            updateConnectionStatus('已断开');
+          } else {
+            currentAccount = accounts[0];
+            updateConnectionStatus('已连接');
+            getBalance();
+          }
+        });
+
+        // 监听链变化
+        ethereum.on('chainChanged', (chainId) => {
+          console.log('链变化:', chainId);
+          document.getElementById('chainId').textContent = chainId;
+          getBalance();
+        });
+        
+        // 监听断开连接
+        ethereum.on('disconnect', () => {
+          console.log('钱包断开连接');
+          currentAccount = null;
+          updateConnectionStatus('已断开');
+        });
+
+      } catch (error) {
+        console.error('钱包检测失败:', error);
+        detectionEl.innerHTML = `
+          <p>❌ 未检测到钱包</p>
+          <p class="error">请确保：</p>
+          <ul>
+            <li>已安装 YeYing Wallet 扩展</li>
+            <li>已启用扩展</li>
+            <li>已在扩展设置中允许访问文件 URL（如果使用 file:// 协议）</li>
+            <li>刷新页面后重试</li>
+          </ul>
+        `;
+        detectionEl.className = 'error';
+      }
+    });
+
+    // 更新连接状态
+    function updateConnectionStatus(status) {
+      document.getElementById('connectionStatus').textContent = status;
+      if (currentAccount) {
+        document.getElementById('accountAddress').textContent = currentAccount;
+      } else {
+        document.getElementById('accountAddress').textContent = '-';
+        document.getElementById('balance').textContent = '-';
+      }
+    }
+
+    // 显示结果
+    function showResult(message, isError = false) {
+      const resultEl = document.getElementById('result');
+      resultEl.className = isError ? 'error' : 'result';
+      resultEl.textContent = typeof message === 'object' ? JSON.stringify(message, null, 2) : message;
+      console.log(isError ? '错误:' : '结果:', message);
+    }
+
+    // 连接钱包
+    async function connectWallet() {
+      if (!walletReady) {
+        showResult('钱包未就绪，请等待检测完成', true);
+        return;
+      }
+      
+      try {
+        showResult('正在连接钱包...');
+        
+        const accounts = await window.ethereum.request({
+          method: 'eth_requestAccounts'
+        });
+
+        if (accounts.length > 0) {
+          currentAccount = accounts[0];
+          updateConnectionStatus('已连接');
+          showResult(`连接成功！\n账户: ${currentAccount}`);
+          
+          // 自动获取链 ID 和余额
+          await getChainId();
+          await getBalance();
+        } else {
+          showResult('未获取到账户', true);
+        }
+      } catch (error) {
+        console.error('连接失败:', error);
+        showResult('连接失败: ' + error.message, true);
+      }
+    }
+
+    // 获取账户
+    async function getAccounts() {
+      if (!walletReady) {
+        showResult('钱包未就绪', true);
+        return;
+      }
+
+      try {
+        const accounts = await window.ethereum.request({
+          method: 'eth_accounts'
+        });
+        
+        if (accounts.length > 0) {
+          currentAccount = accounts[0];
+          updateConnectionStatus('已连接');
+          showResult(`账户列表:\n${accounts.join('\n')}`);
+        } else {
+          showResult('未连接账户，请先连接钱包', true);
+        }
+      } catch (error) {
+        console.error('获取账户失败:', error);
+        showResult('获取账户失败: ' + error.message, true);
+      }
+    }
+
+    // 获取链 ID
+    async function getChainId() {
+      if (!walletReady) {
+        showResult('钱包未就绪', true);
+        return;
+      }
+      try {
+        const chainId = await window.ethereum.request({
+          method: 'eth_chainId'
+        });
+        
+        document.getElementById('chainId').textContent = chainId;
+        
+        const chainNames = {
+          '0x1': 'Ethereum Mainnet',
+          '0xaa36a7': 'Sepolia Testnet',
+          '0x5': 'Goerli Testnet',
+          '0x1538': 'YeYing Network',
+        };
+
+        const chainName = chainNames[chainId] || '未知网络';
+        showResult(`链 ID: ${chainId}\n网络: ${chainName}`);
+      } catch (error) {
+        console.error('获取链 ID 失败:', error);
+        showResult('获取链 ID 失败: ' + error.message, true);
+      }
+    }
+
+    // 获取余额
+    async function getBalance() {
+      if (!walletReady) {
+        showResult('钱包未就绪', true);
+        return;
+      }
+      
+      if (!currentAccount) {
+        showResult('请先连接钱包', true);
+        return;
+      }
+
+      try {
+        const balance = await window.ethereum.request({
+          method: 'eth_getBalance',
+          params: [currentAccount, 'latest']
+        });
+        
+        // 转换为 ETH
+        const ethBalance = parseInt(balance, 16) / 1e18;
+        document.getElementById('balance').textContent = ethBalance.toFixed(6) + ' ETH';
+        
+        showResult(`余额: ${ethBalance.toFixed(6)} ETH\n原始值: ${balance}`);
+      } catch (error) {
+        console.error('获取余额失败:', error);
+        showResult('获取余额失败: ' + error.message, true);
+      }
+    }
+
+    // 发送交易
+    async function sendTransaction() {
+      if (!walletReady) {
+        showResult('钱包未就绪', true);
+        return;
+      }
+
+      if (!currentAccount) {
+        showResult('请先连接钱包', true);
+        return;
+      }
+      
+      const to = document.getElementById('txTo').value;
+      const value = document.getElementById('txValue').value;
+      const data = document.getElementById('txData').value;
+      
+      if (!to) {
+        showResult('请输入接收地址', true);
+        return;
+      }
+
+      if (!value || parseFloat(value) <= 0) {
+        showResult('请输入有效的金额', true);
+        return;
+      }
+
+      try {
+        showResult('正在发送交易...');
+        
+        // 转换金额为 Wei
+        const valueInWei = '0x' + (parseFloat(value) * 1e18).toString(16);
+        
+        const txParams = {
+          from: currentAccount,
+          to: to,
+          value: valueInWei
+        };
+        
+        if (data) {
+          txParams.data = data;
+        }
+        
+        const txHash = await window.ethereum.request({
+          method: 'eth_sendTransaction',
+          params: [txParams]
+        });
+        
+        showResult(`交易已发送！\n交易哈希: ${txHash}\n\n请在钱包中查看交易状态`);
+        
+        // 更新余额
+        setTimeout(() => getBalance(), 2000);
+      } catch (error) {
+        console.error('发送交易失败:', error);
+        showResult('发送交易失败: ' + error.message, true);
+      }
+    }
+
+    // 签名消息
+    async function signMessage() {
+      if (!walletReady) {
+        showResult('钱包未就绪', true);
+        return;
+      }
+      
+      if (!currentAccount) {
+        showResult('请先连接钱包', true);
+        return;
+      }
+      
+      const message = document.getElementById('signMessage').value;
+      
+      if (!message) {
+        showResult('请输入要签名的消息', true);
+        return;
+      }
+      
+      try {
+        showResult('正在签名...');
+        
+        const signature = await window.ethereum.request({
+          method: 'personal_sign',
+          params: [message, currentAccount]
+        });
+
+        showResult(`签名成功！\n\n消息: ${message}\n\n签名: ${signature}`);
+      } catch (error) {
+        console.error('签名失败:', error);
+        showResult('签名失败: ' + error.message, true);
+      }
+    }
+
+    // 添加键盘快捷键
+    document.addEventListener('keydown', (e) => {
+      // Ctrl/Cmd + Enter 连接钱包
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        connectWallet();
+      }
+    });
+  </script>
+</body>
+</html>
+

@@ -156,5 +156,58 @@ const Storage = {
   async hasWallet() {
     const result = await chrome.storage.local.get(this.WALLET_KEY);
     return !!result[this.WALLET_KEY];
+  },
+
+  // 🔥 保存授权信息
+  async saveAuthorization(origin, address) {
+    const result = await chrome.storage.local.get('authorizedOrigins');
+    const authorizedOrigins = result.authorizedOrigins || {};
+
+    authorizedOrigins[origin] = {
+      address: address,
+      timestamp: Date.now()
+    };
+    
+    await chrome.storage.local.set({ authorizedOrigins });
+  },
+
+  // 🔥 检查是否已授权
+  async isAuthorized(origin) {
+    const result = await chrome.storage.local.get('authorizedOrigins');
+    const authorizedOrigins = result.authorizedOrigins || {};
+    return !!authorizedOrigins[origin];
+  },
+
+  // 🔥 获取授权地址
+  async getAuthorizedAddress(origin) {
+    const result = await chrome.storage.local.get('authorizedOrigins');
+    const authorizedOrigins = result.authorizedOrigins || {};
+    return authorizedOrigins[origin]?.address || null;
+  },
+
+  // 🔥 撤销授权
+  async revokeAuthorization(origin) {
+    const result = await chrome.storage.local.get('authorizedOrigins');
+    const authorizedOrigins = result.authorizedOrigins || {};
+    
+    if (authorizedOrigins[origin]) {
+      delete authorizedOrigins[origin];
+      await chrome.storage.local.set({ authorizedOrigins });
+      return true;
+    }
+    
+    return false;
+  },
+
+  // 🔥 获取所有授权
+  async getAllAuthorizations() {
+    const result = await chrome.storage.local.get('authorizedOrigins');
+    return result.authorizedOrigins || {};
+  },
+
+  // 🔥 清除所有授权
+  async clearAllAuthorizations() {
+    await chrome.storage.local.remove('authorizedOrigins');
   }
 };
+

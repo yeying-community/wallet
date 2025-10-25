@@ -6,6 +6,8 @@ const UI = {
     wallet: document.getElementById('walletPage'),
     setPassword: document.getElementById('setPasswordPage'),
     unlock: document.getElementById('unlockPage'),
+    settings: document.getElementById('settingsPage'),
+    history: document.getElementById('historyPage'),
   },
 
   // 显示页面
@@ -126,5 +128,25 @@ const UI = {
     } else {
       customInput.classList.add('hidden');
     }
-  }
+  },
+
+  // 🔥 显示解锁原因
+  showUnlockReason(origin) {
+    const unlockPage = document.getElementById('unlockPage');
+
+    // 检查是否已有提示
+    let reasonEl = unlockPage.querySelector('.unlock-reason');
+
+    if (!reasonEl && origin) {
+      reasonEl = document.createElement('div');
+      reasonEl.className = 'unlock-reason';
+      reasonEl.innerHTML = `
+        <p><strong>${origin}</strong></p>
+        <p>请求连接您的钱包</p>
+      `;
+      // 插入到密码输入框之前
+      const form = unlockPage.querySelector('.unlock-form');
+      form.insertBefore(reasonEl, form.firstChild);
+    }
+  },
 };

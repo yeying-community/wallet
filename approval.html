@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>授权请求</title>
+  <link rel="stylesheet" href="css/popup.css">
+  <style>
+    .approval-container {
+      padding: 20px;
+      max-width: 360px;
+      margin: 0 auto;
+    }
+    
+    .site-info {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    .site-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: #667eea;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 24px;
+      margin: 0 auto 10px;
+    }
+
+    .site-url {
+      text-align: center;
+      font-weight: 600;
+      color: #333;
+      word-break: break-all;
+    }
+    
+    .permission-list {
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+    
+    .permission-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .permission-item:last-child {
+      border-bottom: none;
+    }
+    
+    .permission-icon {
+      font-size: 20px;
+    }
+    
+    .transaction-details {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .detail-row:last-child {
+      border-bottom: none;
+    }
+    
+    .detail-label {
+      color: #666;
+      font-size: 13px;
+    }
+    
+    .detail-value {
+      color: #333;
+      font-weight: 600;
+      font-size: 13px;
+      text-align: right;
+      word-break: break-all;
+      max-width: 60%;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    
+    .button-group button {
+      flex: 1;
+    }
+
+    .warning-box {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 8px;
+      padding: 12px;
+      margin: 15px 0;
+      font-size: 13px;
+      color: #856404;
+    }
+    
+    .message-content {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+      word-break: break-all;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="approval-container">
+    <!-- 连接请求 -->
+    <div id="connectRequest" class="hidden">
+      <h2>连接请求</h2>
+      <div class="site-info">
+        <div class="site-icon">🌐</div>
+        <div class="site-url" id="connectOrigin"></div>
+      </div>
+      
+      <div class="permission-list">
+        <h3>此网站请求以下权限：</h3>
+        <div class="permission-item">
+          <span class="permission-icon">👁️</span>
+          <span>查看您的账户地址</span>
+        </div>
+        <div class="permission-item">
+          <span class="permission-icon">💰</span>
+          <span>查看账户余额</span>
+        </div>
+        <div class="permission-item">
+         <span class="permission-icon">📝</span>
+         <span>请求交易签名</span>
+        </div>
+      </div>
+      
+      <div class="warning-box">
+        ⚠️ 只连接您信任的网站
+      </div>
+      
+      <div class="button-group">
+        <button id="rejectConnect" class="btn btn-secondary">拒绝</button>
+        <button id="approveConnect" class="btn btn-primary">连接</button>
+      </div>
+    </div>
+
+    <!-- 交易确认 -->
+    <div id="transactionRequest" class="hidden">
+      <h2>确认交易</h2>
+      <div class="site-info">
+        <div class="site-icon">🌐</div>
+        <div class="site-url" id="txOrigin"></div>
+      </div>
+      
+      <div class="transaction-details">
+        <h3>交易详情</h3>
+        <div class="detail-row">
+          <span class="detail-label">发送到:</span>
+          <span class="detail-value" id="txTo"></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">金额:</span>
+          <span class="detail-value" id="txValue"></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Gas 限制:</span>
+          <span class="detail-value" id="txGasLimit"></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Gas 价格:</span>
+          <span class="detail-value" id="txGasPrice"></span>
+        </div>
+        <div class="detail-row" id="txDataRow" style="display: none;">
+          <span class="detail-label">数据:</span>
+          <span class="detail-value" id="txData"></span>
+        </div>
+      </div>
+      
+      <div class="warning-box">
+        ⚠️ 请仔细检查交易详情，确认后将无法撤销
+      </div>
+      
+      <div class="button-group">
+        <button id="rejectTx" class="btn btn-secondary">拒绝</button>
+        <button id="approveTx" class="btn btn-primary">确认</button>
+      </div>
+    </div>
+
+    <!-- 签名请求 -->
+    <div id="signRequest" class="hidden">
+      <h2>签名请求</h2>
+      <div class="site-info">
+        <div class="site-icon">🌐</div>
+        <div class="site-url" id="signOrigin"></div>
+      </div>
+      
+      <div>
+        <h3>消息内容:</h3>
+        <div class="message-content" id="signMessage"></div>
+      </div>
+      
+      <div class="warning-box">
+        ⚠️ 签名可能授权网站执行操作，请确认消息内容
+      </div>
+      
+      <div class="button-group">
+        <button id="rejectSign" class="btn btn-secondary">拒绝</button>
+        <button id="approveSign" class="btn btn-primary">签名</button>
+      </div>
+    </div>
+
+    <div id="statusMessage" class="status"></div>
+  </div>
+
+  <script src="js/approval.js"></script>
+</body>
+</html>

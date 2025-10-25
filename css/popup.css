@@ -482,3 +482,158 @@ textarea:focus {
   background: #d1ecf1;
   color: #0c5460;
 }
+
+/* 已授权网站样式 */
+.settings-section {
+  margin: 20px 0;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.settings-section h3 {
+  margin: 0 0 15px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.authorized-site {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: white;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  border: 1px solid #e0e0e0;
+}
+
+.authorized-site .site-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.authorized-site .site-icon {
+  font-size: 20px;
+}
+
+.authorized-site .site-url {
+  font-size: 14px;
+  color: #333;
+  word-break: break-all;
+}
+
+.btn-revoke {
+  padding: 6px 12px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.btn-revoke:hover {
+  background: #c82333;
+}
+
+/* 交易历史样式 */
+.transaction-list {
+  padding: 15px;
+}
+
+.transaction-item {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  background: white;
+  border-radius: 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid #e0e0e0;
+}
+
+.transaction-item:hover {
+  background: #f8f9fa;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.tx-icon {
+  font-size: 24px;
+  margin-right: 12px;
+}
+
+.tx-info {
+  flex: 1;
+}
+
+.tx-type {
+  font-weight: 600;
+  font-size: 14px;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.tx-address {
+  font-size: 12px;
+  color: #666;
+  font-family: monospace;
+  margin-bottom: 4px;
+}
+
+.tx-time {
+  font-size: 11px;
+  color: #999;
+}
+
+.tx-amount {
+  text-align: right;
+}
+
+.tx-value {
+  font-weight: 600;
+  font-size: 14px;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.tx-status {
+  font-size: 11px;
+  color: #666;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+}
+
+.empty-state p:first-child {
+  font-size: 48px;
+  margin-bottom: 10px;
+}
+
+.unlock-reason {
+  background: #f0f7ff;
+  border: 1px solid #4a90e2;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.unlock-reason p:first-child {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 5px;
+  word-break: break-all;
+}
+
+.unlock-reason p:last-child {
+  color: #666;
+  font-size: 14px;
+  margin: 0;
+}

@@ -4,15 +4,32 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>夜莺钱包</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="css/popup.css">
 </head>
 <body>
   <div class="container">
     <!-- 欢迎页面 -->
     <div id="welcomePage" class="page">
-      <h2>简易钱包</h2>
+      <h2>夜莺钱包</h2>
       <button id="createWalletBtn" class="btn btn-primary">新建钱包</button>
       <button id="importWalletBtn" class="btn btn-secondary">导入钱包</button>
+    </div>
+
+    <!-- 设置页面 -->
+    <div id="settingsPage" class="page hidden">
+      <div class="page-header">
+        <button class="back-btn" onclick="UI.showPage('wallet')">←</button>
+        <h2>设置</h2>
+      </div>
+
+      <!-- 已授权网站 -->
+      <div class="settings-section">
+        <h3>已授权网站</h3>
+        <div id="authorizedSitesList"></div>
+        <button onclick="Settings.clearAllAuthorizations()" class="btn btn-secondary">
+          清除所有授权
+        </button>
+      </div>
     </div>
 
     <!-- 加密码设置页面 -->
@@ -81,7 +98,7 @@
       <div class="network-selector">
         <label>网络:</label>
         <select id="networkSelect">
-          <option value="https://devnet.ppaix.com">PAIX 测试网<option>
+          <option value="https://blockchain.yeying.pub"com>夜莺网络<option>
         </select>
         <input type="text" id="customRpcInput" class="hidden" placeholder="输入自定义 RPC URL">
       </div>
@@ -119,11 +136,44 @@
 
       <!-- 设置标签页 -->
       <div id="settingsContent" class="tab-content hidden">
-        <h3>导出私钥</h3>
-        <p class="warning">⚠️ 请勿与任何人分享您的私钥！</p>
-        <button id="showPrivateKeyBtn" class="btn btn-secondary">显示私钥</button>
-        <div id="privateKeyDisplay" class="private-key hidden"></div>
-        <button id="copyPrivateKeyBtn" class="btn btn-small hidden">复制私钥</button>
+        <div class="settings-section">
+          <h3>🔐 已连接的网站</h3>
+          <div id="connectedSitesList" class="connected-sites-list">
+            <!-- 动态加载 -->
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>🔑 私钥管理</h3>
+          <button id="showPrivateKeyBtn" class="btn-secondary">
+            显示私钥
+          </button>
+          <div id="privateKeyDisplay" style="display: none;">
+            <input type="text" id="privateKeyValue" readonly />
+            <button id="copyPrivateKeyBtn" class="btn-secondary">
+              复制
+            </button>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>⚙️ 其他设置</h3>
+          <button id="clearAllAuthBtn" class="btn-danger">
+            清除所有授权
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 交易历史页面 -->
+    <div id="historyPage" class="page hidden">
+      <div class="page-header">
+        <button class="back-btn" onclick="UI.showPage('wallet')">←</button>
+        <h2>交易历史</h2>
+      </div>
+
+      <div id="transactionList" class="transaction-list">
+        <!-- 交易列表将在这里动态生成 -->
       </div>
     </div>
   </div>
@@ -132,8 +182,8 @@
   <div id="globalToast" class="toast hidden"></div>
 
   <!-- 第三方库 -->
-  <script src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js"></script>
-  <script src="https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="lib/ethers-5.7.umd.min.js"></script>
+  <script src="lib/qrcode.min.js"></script>
   
   <!-- 应用模块 - 按依赖顺序加载 -->
   <script src="js/config.js"></script>

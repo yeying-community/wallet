@@ -1,13 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "测试钱包",
+  "name": "夜莺钱包",
   "version": "1.0.0",
-  "description": "测试插件",
+  "description": "夜莺钱包插件",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "tabs"
   ],
   "host_permissions": [
+    "http://localhost:*/*",
     "https://*/*"
   ],
   "action": {
@@ -21,9 +23,33 @@
   "background": {
     "service_worker": "background.js"
   },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost:*/*",
+        "https://*/*"
+      ],
+      "exclude_matches": [
+        "*://chrome.google.com/*",
+        "*://chromewebstore.google.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
   "icons": {
     "16": "icon16.png",
     "48": "icon48.png",
     "128": "icon128.png"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["inject.js"],
+      "matches": [
+        "http://localhost:*/*",
+        "https://*/*"
+      ]
+    }
+  ]
 }

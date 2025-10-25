@@ -10,7 +10,7 @@ const Config = {
   // 网络配置
   NETWORKS: {
     'sepolia': {
-      name: 'YeYing Network',
+      name: 'Sepolia Testnet',
       rpc: 'https://rpc.sepolia.org',
       chainId: 11155111,
       symbol: 'ETH',
@@ -30,7 +30,7 @@ const Config = {
       chainId: 137,
       symbol: 'MATIC',
       explorer: 'https://polygonscan.com'
-    }
+    },
   },
 
   // UI 配置
