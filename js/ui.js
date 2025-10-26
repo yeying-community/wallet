@@ -104,18 +104,20 @@ const UI = {
   // 显示/隐藏私钥
   togglePrivateKey(privateKey) {
     const privateKeyDisplay = document.getElementById('privateKeyDisplay');
+    const privateKeyValue = document.getElementById('privateKeyValue');
     const copyBtn = document.getElementById('copyPrivateKeyBtn');
     const showBtn = document.getElementById('showPrivateKeyBtn');
 
-    if (privateKeyDisplay.classList.contains('hidden')) {
-      privateKeyDisplay.textContent = privateKey;
-      privateKeyDisplay.classList.remove('hidden');
-      copyBtn.classList.remove('hidden');
+    if (privateKeyDisplay.style.display === 'none') {
+      privateKeyValue.value = privateKey;
+      privateKeyDisplay.style.display = 'block';
       showBtn.textContent = '隐藏私钥';
+      showBtn.classList.add('active');
     } else {
-      privateKeyDisplay.classList.add('hidden');
-      copyBtn.classList.add('hidden');
+      privateKeyValue.value = '';
+      privateKeyDisplay.style.display = 'none';
       showBtn.textContent = '显示私钥';
+      copyBtn.classList.remove('active');
     }
   },
 

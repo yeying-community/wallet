@@ -136,6 +136,7 @@
     </div>
     <button onclick="sendTransaction()">发送交易</button>
   </div>
+
   <!-- 签名消息 -->
   <div class="section">
     <h2>签名消息</h2>
@@ -144,6 +145,18 @@
       <textarea id="signMessage" rows="3" placeholder="输入要签名的消息">Hello, YeYing Wallet!</textarea>
     </div>
     <button onclick="signMessage()">签名消息</button>
+  </div>
+
+  <!-- Challenge 登录 -->
+  <div class="section">
+    <h2>🔐 Challenge 登录</h2>
+    <div class="info">
+      <p><strong>登录状态:</strong> <span id="loginStatus">未登录</span></p>
+      <p><strong>Token:</strong> <span id="authToken">-</span></p>
+    </div>
+    <button onclick="loginWithChallenge()">Challenge 登录</button>
+      <button onclick="testAuthenticatedRequest()">测试认证请求</button>
+    <button onclick="logout()">登出</button>
   </div>
 
   <!-- 结果显示 -->
@@ -479,6 +492,134 @@
         connectWallet();
       }
     });
+
+    // 后端 API 地址
+    const API_BASE = 'http://localhost:4001/api';
+    let authToken = null;
+
+    // Challenge 登录
+    async function loginWithChallenge() {
+      if (!walletReady) {
+        showResult('钱包未就绪', true);
+        return;
+      }
+          if (!currentAccount) {
+        showResult('请先连接钱包', true);
+        return;
+      }
+      
+      try {
+        showResult('正在获取 Challenge...');
+        // 1. 从后端获取 Challenge
+        const challengeRes = await fetch(`${API_BASE}/auth/challenge`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address: currentAccount })
+        });
+        
+        if (!challengeRes.ok) {
+          throw new Error('获取 Challenge 失败');
+        }
+
+        const { challenge } = await challengeRes.json();
+        showResult(`Challenge: ${challenge}\n\n正在请求签名...`);
+        
+        // 2. 使用钱包签名 Challenge
+        const signature = await window.ethereum.request({
+          method: 'personal_sign',
+          params: [challenge, currentAccount]
+        });
+
+        showResult(`签名成功！\n\n正在验证...`);
+        
+        // 3. 发送签名到后端验证
+        const verifyRes = await fetch(`${API_BASE}/auth/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            address: currentAccount,
+            signature: signature
+          })
+        });
+
+        if (!verifyRes.ok) {
+          throw new Error('验证失败');
+        }
+        
+        const { token } = await verifyRes.json();
+        
+        // 4. 保存 Token
+        authToken = token;
+        localStorage.setItem('authToken', token);
+
+              // 更新 UI
+        document.getElementById('loginStatus').textContent = '已登录';
+        document.getElementById('authToken').textContent = token.substring(0, 20) + '...';
+        
+        showResult(`登录成功！\n\nToken: ${token.substring(0, 50)}...`);
+        
+      } catch (error) {
+        console.error('登录失败:', error);
+        showResult('登录失败: ' + error.message, true);
+      }
+    }
+
+      // 测试认证请求
+    async function testAuthenticatedRequest() {
+      if (!authToken) {
+        showResult('请先登录', true);
+        return;
+      }
+      
+      try {
+        showResult('正在发送认证请求...');
+        const res = await fetch(`${API_BASE}/user/profile`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!res.ok) {
+          if (res.status === 401) {
+            throw new Error('Token 已过期，请重新登录');
+          }
+          throw new Error('请求失败');
+        }
+        
+        const data = await res.json();
+        showResult(`认证请求成功！\n\n${JSON.stringify(data, null, 2)}`);
+
+      } catch (error) {
+        console.error('请求失败:', error);
+        showResult('请求失败: ' + error.message, true);
+        
+        if (error.message.includes('过期')) {
+          logout();
+        }
+      }
+    }
+
+    // 登出
+    function logout() {
+      authToken = null;
+      localStorage.removeItem('authToken');
+      document.getElementById('loginStatus').textContent = '未登录';
+      document.getElementById('authToken').textContent = '-';
+      showResult('已登出');
+    }
+
+    // 页面加载时恢复 Token
+    window.addEventListener('load', () => {
+      const savedToken = localStorage.getItem('authToken');
+      if (savedToken) {
+        authToken = savedToken;
+        document.getElementById('loginStatus').textContent = '已登录';
+        document.getElementById('authToken').textContent = savedToken.substring(0, 20) + '...';
+      }
+    });
+
   </script>
 </body>
 </html>
