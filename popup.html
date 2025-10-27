@@ -15,23 +15,6 @@
       <button id="importWalletBtn" class="btn btn-secondary">导入钱包</button>
     </div>
 
-    <!-- 设置页面 -->
-    <div id="settingsPage" class="page hidden">
-      <div class="page-header">
-        <button class="back-btn" onclick="UI.showPage('wallet')">←</button>
-        <h2>设置</h2>
-      </div>
-
-      <!-- 已授权网站 -->
-      <div class="settings-section">
-        <h3>已授权网站</h3>
-        <div id="authorizedSitesList"></div>
-        <button onclick="Settings.clearAllAuthorizations()" class="btn btn-secondary">
-          清除所有授权
-        </button>
-      </div>
-    </div>
-
     <!-- 加密码设置页面 -->
     <div id="setPasswordPage" class="page hidden">
       <h2>夜莺钱包</h2>
@@ -102,10 +85,23 @@
         </select>
         <input type="text" id="customRpcInput" class="hidden" placeholder="输入自定义 RPC URL">
       </div>
+
+      <!-- 快捷操作按钮 -->
+      <div class="quick-actions">
+        <button id="historyBtn" class="quick-action-btn">
+          <span class="icon">📜</span>
+          <span>交易历史</span>
+        </button>
+        <button id="settingsBtn" class="quick-action-btn">
+          <span class="icon">⚙️</span>
+          <span>设置</span>
+        </button>
+      </div>
+
       <div class="tabs">
         <button id="sendTab" class="tab active">转账</button>
         <button id="receiveTab" class="tab">接收</button>
-        <button id="settingsTab" class="tab">设置</button>
+        <button id="advancedTab" class="tab">高级</button>
       </div>
 
       <!-- 转账标签页 -->
@@ -134,46 +130,73 @@
         </div>
       </div>
 
-      <!-- 设置标签页 -->
-      <div id="settingsContent" class="tab-content hidden">
-        <div class="settings-section">
-          <h3>🔐 已连接的网站</h3>
-          <div id="connectedSitesList" class="connected-sites-list">
-            <!-- 动态加载 -->
-          </div>
-        </div>
-
+      <!-- 高级标签页 -->
+      <div id="advancedContent" class="tab-content hidden">
         <div class="settings-section">
           <h3>🔑 私钥管理</h3>
           <button id="showPrivateKeyBtn" class="btn btn-secondary">
             显示私钥
           </button>
-          <div id="privateKeyDisplay" style="display: none;">
+          <div id="privateKeyDisplay" style="display: none; margin-top: 10px;">
+            <div class="warning">
+              ⚠️ 请勿泄露私钥！任何人获得私钥都可以控制您的资产。
+            </div>
             <input type="text" id="privateKeyValue" readonly />
             <button id="copyPrivateKeyBtn" class="btn btn-secondary">
-              复制
+              复制私钥
             </button>
           </div>
         </div>
+      </div>
+    </div>
 
-        <div class="settings-section">
-          <h3>⚙️ 其他设置</h3>
-          <button id="clearAllAuthBtn" class="btn btn-danger">
-            清除所有授权
-          </button>
+    <!-- 设置页面 -->
+    <div id="settingsPage" class="page hidden">
+      <div class="page-header">
+        <button id="settingsBackBtn" class="back-btn">←</button>
+        <h2>设置</h2>
+      </div>
+
+      <!-- 已授权网站 -->
+      <div class="settings-section">
+        <h3>🌐 已授权网站</h3>
+        <div id="authorizedSitesList">
+          <div class="empty-message">正在加载...</div>
         </div>
+        <button id="clearAllAuthBtn" class="btn btn-danger" style="margin-top: 10px;">
+          清除所有授权
+        </button>
+      </div>
+
+      <!-- 安全设置 -->
+      <div class="settings-section">
+        <h3>🔐 安全设置</h3>
+        <button id="resetWalletBtn" class="btn btn-danger">
+          重置钱包
+        </button>
+        <p style="font-size: 12px; color: #999; margin-top: 8px;">
+          ⚠️ 重置后将清除所有数据，请确保已备份私钥
+        </p>
       </div>
     </div>
 
     <!-- 交易历史页面 -->
     <div id="historyPage" class="page hidden">
       <div class="page-header">
-        <button class="back-btn" onclick="UI.showPage('wallet')">←</button>
+        <button id="historyBackBtn" class="back-btn">←</button>
         <h2>交易历史</h2>
       </div>
 
       <div id="transactionList" class="transaction-list">
-        <!-- 交易列表将在这里动态生成 -->
+        <div class="empty-state">
+          <p>📭</p>
+          <p>暂无交易记录</p>
+        </div>
+      </div>
+      <div style="padding: 15px; text-align: center;">
+        <button id="clearHistoryBtn" class="btn btn-secondary" style="width: 100%;">
+          清除历史记录
+        </button>
       </div>
     </div>
   </div>
@@ -191,6 +214,8 @@
   <script src="js/storage.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/network.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/history.js"></script>
   <script src="js/wallet.js"></script>
   <script src="js/transaction.js"></script>
   <script src="js/popup.js"></script>

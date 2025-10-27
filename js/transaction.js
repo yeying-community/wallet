@@ -11,27 +11,48 @@ const Transaction = {
     }
 
     try {
-      UI.showStatus('正在发送交易...', 'info', 'sendStatus');
+      UI.showToast('正在发送交易...', 'info');
 
       const wallet = WalletManager.getWallet();
-      const tx = await wallet.sendTransaction({
+      // 🔥 准备交易参数
+      const txParams = {
+         to: recipientAddress,
+         value: ethers.utils.parseEther(amount)
+      };
+
+      // 🔥 发送交易
+      const tx = await wallet.sendTransaction(txParams);
+
+      console.log('✅ Transaction sent:', tx.hash);
+      UI.showToast('交易已提交，等待确认...', 'info');
+
+      // 🔥 立即保存交易历史（pending 状态）
+      await this.saveTransactionToHistory({
+        hash: tx.hash,
+        from: wallet.address,
         to: recipientAddress,
-        value: ethers.utils.parseEther(amount)
+        value: txParams.value.toHexString(),
+        timestamp: Date.now(),
+        status: 'pending',
+        network: await this.getCurrentNetworkName(),
+        source: 'wallet' // 标记来源
       });
 
-      UI.showStatus('交易已提交，等待确认...', 'info', 'sendStatus');
+      // 🔥 等待交易确认
+      const receipt = await tx.wait();
+      console.log('✅ Transaction confirmed:', receipt);
+      UI.showToast('交易成功！', 'success');
 
-      await tx.wait();
+      // 🔥 更新交易状态
+      await this.updateTransactionStatus(tx.hash, receipt.status === 1 ? 'success' : 'failed');
 
-      UI.showStatus('交易成功！交易哈希: ' + tx.hash.substring(0, 10) + '...', 'success', 'sendStatus');
-
-      // 清空表单
-      UI.clearSendForm();
+      document.getElementById('recipientAddress').value = '';
+      document.getElementById('amount').value = '';
 
       // 更新余额
       setTimeout(() => WalletManager.updateBalance(), 2000);
     } catch (error) {
-      console.error('交易失败:', error);
+      console.error('❌ Transaction failed:', error);
       this.handleTransactionError(error);
     }
   },
@@ -39,17 +60,17 @@ const Transaction = {
   // 验证交易输入
   validateTransactionInputs(recipientAddress, amount) {
     if (!recipientAddress || !amount) {
-      UI.showStatus('请填写完整信息', 'error', 'sendStatus');
+      UI.showToast('请填写完整信息', 'error');
       return false;
     }
 
     if (!ethers.utils.isAddress(recipientAddress)) {
-      UI.showStatus('接收地址格式不正确', 'error', 'sendStatus');
+      UI.showToast('接收地址格式不正确', 'error');
       return false;
     }
 
     if (parseFloat(amount) <= 0) {
-      UI.showStatus('金额必须大于0', 'error', 'sendStatus');
+      UI.showToast('金额必须大于0', 'error');
       return false;
     }
 
@@ -67,10 +88,10 @@ const Transaction = {
     } else if (error.code === 'NETWORK_ERROR') {
       errorMsg = '网络错误，请检查网络连接';
     } else if (error.message) {
-      errorMsg = error.message.substring(0, 50);
+       errorMsg = error.message.substring(0, 100);
     }
 
-    UI.showStatus(errorMsg, 'error', 'sendStatus');
+    UI.showToast(errorMsg, 'error', 5000);
   },
 
   // 估算 Gas
@@ -88,11 +109,68 @@ const Transaction = {
     }
   },
 
-  // 获取交易历史（需要区块链浏览器 API）
-  async getTransactionHistory(address, limit = 10) {
-    // 这里可以集成 Etherscan API 或其他区块链浏览器 API
-    // 暂时返回空数组
-    return [];
-  }
+  // 🔥 保存交易到历史记录
+  async saveTransactionToHistory(txData) {
+    try {
+      const result = await chrome.storage.local.get('transactionHistory');
+      const history = result.transactionHistory || [];
+
+      // 添加到历史记录开头
+      history.unshift(txData);
+
+      // 只保留最近 100 条
+      if (history.length > 100) {
+        history.splice(100);
+      }
+
+      await chrome.storage.local.set({ transactionHistory: history });
+
+      console.log('✅ Transaction saved to history:', txData.hash);
+
+      return true;
+    } catch (error) {
+      console.error('❌ Save transaction history failed:', error);
+      return false;
+    }
+  },
+
+  // 🔥 获取当前网络名称
+  async getCurrentNetworkName() {
+    try {
+      const result = await chrome.storage.local.get('selectedNetwork');
+      const networkKey = result.selectedNetwork || 'yeying';
+
+      const networkNames = {
+        'mainnet': 'Ethereum Mainnet',
+        'yeying': 'YeYing Network',
+        'sepolia': 'Sepolia Testnet',
+        'goerli': 'Goerli Testnet',
+      };
+
+      return networkNames[networkKey] || 'YeYing Network';
+    } catch (error) {
+      console.error('获取网络名称失败:', error);
+      return 'Unknown Network';
+    }
+  },
+
+  // 🔥 更新交易状态
+  async updateTransactionStatus(hash, status) {
+    try {
+      const result = await chrome.storage.local.get('transactionHistory');
+      const history = result.transactionHistory || [];
+
+      const tx = history.find(t => t.hash === hash);
+      if (tx) {
+        tx.status = status;
+        await chrome.storage.local.set({ transactionHistory: history });
+        console.log('✅ Transaction status updated:', hash, status);
+      }
+      return true;
+    } catch (error) {
+      console.error('❌ Update transaction status failed:', error);
+      return false;
+    }
+  },
 };
 

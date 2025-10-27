@@ -83,18 +83,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // 🔥 处理解锁成功
 async function handleUnlockSuccess(message) {
   const { requestId, address, origin } = message;
-  
+
   console.log('🔓 Unlock success:', { requestId, address, origin });
-  
+
   const pending = pendingRequests.get(requestId);
-  
+
   if (!pending) {
     console.warn('⚠️ No pending request found for:', requestId);
     return;
   }
   // 检查是否已授权
   const authorized = await checkAuthorization(origin);
-  
+
   if (authorized) {
     // 已授权，直接返回地址
     console.log('✅ Already authorized, returning address');
@@ -469,18 +469,34 @@ async function getBalance(address) {
 
 // 检查授权
 async function checkAuthorization(origin) {
-  const result = await chrome.storage.local.get('authorizedSites');
-  const authorizedSites = result.authorizedSites || [];
-  return authorizedSites.includes(origin);
+  try {
+    const result = await chrome.storage.local.get('authorizations');
+    const authorizations = result.authorizations || {};
+    const isAuthorized = !!authorizations[origin];
+    console.log('🔍 Check authorization:', origin, isAuthorized);
+    return isAuthorized;
+  } catch (error) {
+    console.error('检查授权失败:', error);
+    return false;
+  }
 }
 
 // 保存授权
-async function saveAuthorization(origin) {
-  const result = await chrome.storage.local.get('authorizedSites');
-  const authorizedSites = result.authorizedSites || [];
-  if (!authorizedSites.includes(origin)) {
-    authorizedSites.push(origin);
-    await chrome.storage.local.set({ authorizedSites });
+async function saveAuthorization(origin, address) {
+  try {
+    const result = await chrome.storage.local.get('authorizations');
+    const authorizations = result.authorizations || {};
+
+    authorizations[origin] = {
+      address: address,
+      timestamp: Date.now()
+    };
+    await chrome.storage.local.set({ authorizations });
+    console.log('✅ Authorization saved:', origin, address);
+    return true;
+  } catch (error) {
+    console.error('保存授权失败:', error);
+    return false;
   }
 }
 
@@ -562,28 +578,57 @@ async function sendTransaction(transaction) {
 
 // 保存交易历史
 async function saveTransactionHistory(txData) {
-  const result = await chrome.storage.local.get('transactionHistory');
-  const history = result.transactionHistory || [];
+  try {
+    const result = await chrome.storage.local.get('transactionHistory');
+    const history = result.transactionHistory || [];
 
-  history.unshift(txData);
+    // 🔥 确保数据格式统一
+    const transaction = {
+      hash: txData.hash,
+      from: txData.from,
+      to: txData.to,
+      value: txData.value,
+      timestamp: txData.timestamp || Date.now(),
+      status: txData.status || 'pending',
+      network: txData.network,
+      source: txData.source || 'dapp' // 标记来源
+    };
 
-  // 只保留最近 100 条
-  if (history.length > 100) {
-    history.splice(100);
+    history.unshift(transaction);
+
+    // 只保留最近 100 条
+    if (history.length > 100) {
+      history.splice(100);
+    }
+    await chrome.storage.local.set({ transactionHistory: history });
+
+    console.log('✅ Transaction saved to history:', transaction.hash);
+
+    return true;
+  } catch (error) {
+    console.error('❌ Save transaction history failed:', error);
+    return false;
   }
-
-  await chrome.storage.local.set({ transactionHistory: history });
 }
+
 
 // 更新交易状态
 async function updateTransactionStatus(hash, status) {
-  const result = await chrome.storage.local.get('transactionHistory');
-  const history = result.transactionHistory || [];
+  try {
+    const result = await chrome.storage.local.get('transactionHistory');
+    const history = result.transactionHistory || [];
 
-  const tx = history.find(t => t.hash === hash);
-  if (tx) {
-    tx.status = status;
-    await chrome.storage.local.set({ transactionHistory: history });
+    const tx = history.find(t => t.hash === hash);
+    if (tx) {
+      tx.status = status;
+      await chrome.storage.local.set({ transactionHistory: history });
+      console.log('✅ Transaction status updated:', hash, status);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('❌ Update transaction status failed:', error);
+    return false;
   }
 }
 
@@ -617,7 +662,7 @@ async function signMessage(message, address) {
 // 获取选中的网络
 async function getSelectedNetwork() {
   const result = await chrome.storage.local.get('selectedNetwork');
-  const networkName = result.selectedNetwork || 'paix';
+  const networkName = result.selectedNetwork || 'yeying';
 
   const networks = {
     'mainnet': {
@@ -669,7 +714,7 @@ async function handleRevokePermissions(params, origin) {
     }
 
     const permissions = params[0];
-    
+
     // 检查是否要撤销 eth_accounts 权限
     if (permissions.eth_accounts !== undefined) {
       // 从存储中移除授权
@@ -679,19 +724,19 @@ async function handleRevokePermissions(params, origin) {
       if (authorizedOrigins[origin]) {
         delete authorizedOrigins[origin];
         await chrome.storage.local.set({ authorizedOrigins });
-        
+
         console.log('✅ Permissions revoked for:', origin);
-        
+
         // 触发 accountsChanged 事件，返回空数组
         notifyAccountsChanged(origin, []);
-        
+
         return null; // 成功返回 null
       } else {
         console.log('⚠️ No permissions found for:', origin);
         return null;
       }
     }
-    
+
     return null;
   } catch (error) {
     console.error('❌ Revoke permissions error:', error);
@@ -702,11 +747,11 @@ async function handleRevokePermissions(params, origin) {
 // 🔥 获取当前权限
 async function handleGetPermissions(origin) {
   console.log('📋 Getting permissions for:', origin);
-  
+
   try {
     const result = await chrome.storage.local.get('authorizedOrigins');
     const authorizedOrigins = result.authorizedOrigins || {};
-    
+
     if (authorizedOrigins[origin]) {
       // 返回权限列表
       return [
@@ -724,7 +769,7 @@ async function handleGetPermissions(origin) {
         }
       ];
     }
-    
+
     return []; // 没有权限
   } catch (error) {
     console.error('❌ Get permissions error:', error);
@@ -735,13 +780,13 @@ async function handleGetPermissions(origin) {
 // 🔥 请求权限（标准化方式）
 async function handleRequestPermissions(params, origin) {
   console.log('🔐 Requesting permissions:', params);
-  
+
   try {
     // 参数格式: [{ eth_accounts: {} }]
     if (!params || !params[0] || !params[0].eth_accounts) {
       throw new Error('Invalid params for wallet_requestPermissions');
     }
-    
+
     // 实际上就是请求账户访问权限
     // 复用 eth_requestAccounts 的逻辑
     const accounts = await handleRequestAccounts(origin);

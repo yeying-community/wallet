@@ -6,7 +6,7 @@ const Network = {
 
   // 默认网络配置
   networks: {
-    'paix': {
+    'yeying': {
       name: 'YeYing Network',
       rpc: 'https://blockchain.yeying.pub',
       chainId: 5432,

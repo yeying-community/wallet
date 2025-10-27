@@ -1,57 +1,73 @@
 const Settings = {
   // 加载已授权网站
   async loadAuthorizedSites() {
-    const result = await chrome.storage.local.get('authorizedSites');
-    const sites = result.authorizedSites || [];
-    
     const listEl = document.getElementById('authorizedSitesList');
-    
-    if (sites.length === 0) {
-      listEl.innerHTML = '<p style="color: #999;">暂无授权网站</p>';
-      return;
-    }
+    try {
+      const authorizations = await Storage.getAllAuthorizations();
 
-    listEl.innerHTML = sites.map(site => `
-      <div class="authorized-site">
-        <div class="site-info">
-          <span class="site-icon">🌐</span>
-          <span class="site-url">${site}</span>
+      if (Object.keys(authorizations).length === 0) {
+        listEl.innerHTML = '<div class="empty-message">暂无授权网站</div>';
+        return;
+      }
+
+      listEl.innerHTML = Object.entries(authorizations).map(([origin, data]) => `
+        <div class="authorized-site-item">
+          <div class="site-details">
+            <div class="site-origin">🌐 ${origin}</div>
+            <div class="site-address">${data.address.substring(0, 10)}...${data.address.substring(38)}</div>
+            <div class="site-time">${new Date(data.timestamp).toLocaleString('zh-CN')}</div>
+          </div>
+          <button class="btn-revoke" data-origin="${origin}">
+            撤销
+          </button>
         </div>
-        <button onclick="Settings.revokeAuthorization('${site}')" 
-                class="btn-revoke">撤销</button>
-      </div>
-    `).join('');
+      `).join('');
+
+      // 绑定撤销按钮事件
+      listEl.querySelectorAll('.btn-revoke').forEach(btn => {
+        btn.addEventListener('click', () => {
+          this.revokeAuthorization(btn.dataset.origin);
+        });
+      });
+    } catch (error) {
+      console.error('加载授权网站失败:', error);
+      listEl.innerHTML = '<div class="empty-message">加载失败</div>';
+    }
   },
 
-  // 撤销授权
-  async revokeAuthorization(site) {
-    if (!confirm(`确定要撤销 ${site} 的授权吗？`)) {
+  // 撤销单个授权
+  async revokeAuthorization(origin) {
+    if (!confirm(`确定要撤销 ${origin} 的授权吗？`)) {
       return;
     }
     
-    const result = await chrome.storage.local.get('authorizedSites');
-    const sites = result.authorizedSites || [];
-    
-    const newSites = sites.filter(s => s !== site);
-    await chrome.storage.local.set({ authorizedSites: newSites });
-
-    UI.showToast('授权已撤销', 'success');
-    this.loadAuthorizedSites();
+    try {
+      const success = await Storage.revokeAuthorization(origin);
+      if (success) {
+        UI.showToast('授权已撤销', 'success');
+        await this.loadAuthorizedSites();
+      } else {
+        UI.showToast('撤销失败', 'error');
+      }
+    } catch (error) {
+      console.error('撤销授权失败:', error);
+      UI.showToast('撤销失败: ' + error.message, 'error');
+    }
   },
 
   // 清除所有授权
   async clearAllAuthorizations() {
-    if (!confirm('确定要清除所有网站的授权吗？')) {
+    if (!confirm('确定要清除所有授权吗？此操作不可恢复。')) {
       return;
     }
 
-    await chrome.storage.local.set({ authorizedSites: [] });
-    UI.showToast('已清除所有授权', 'success');
-    this.loadAuthorizedSites();
+    try {
+      await Storage.clearAllAuthorizations();
+      UI.showToast('已清除所有授权', 'success');
+      await this.loadAuthorizedSites();
+    } catch (error) {
+      console.error('清除授权失败:', error);
+      UI.showToast('清除失败: ' + error.message, 'error');
+    }
   }
 };
-
-// 在页面加载时调用
-document.addEventListener('DOMContentLoaded', () => {
-  Settings.loadAuthorizedSites();
-});

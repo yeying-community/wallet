@@ -158,56 +158,73 @@ const Storage = {
     return !!result[this.WALLET_KEY];
   },
 
-  // 🔥 保存授权信息
-  async saveAuthorization(origin, address) {
-    const result = await chrome.storage.local.get('authorizedOrigins');
-    const authorizedOrigins = result.authorizedOrigins || {};
-
-    authorizedOrigins[origin] = {
-      address: address,
-      timestamp: Date.now()
-    };
-    
-    await chrome.storage.local.set({ authorizedOrigins });
-  },
-
-  // 🔥 检查是否已授权
-  async isAuthorized(origin) {
-    const result = await chrome.storage.local.get('authorizedOrigins');
-    const authorizedOrigins = result.authorizedOrigins || {};
-    return !!authorizedOrigins[origin];
-  },
-
-  // 🔥 获取授权地址
-  async getAuthorizedAddress(origin) {
-    const result = await chrome.storage.local.get('authorizedOrigins');
-    const authorizedOrigins = result.authorizedOrigins || {};
-    return authorizedOrigins[origin]?.address || null;
-  },
-
-  // 🔥 撤销授权
-  async revokeAuthorization(origin) {
-    const result = await chrome.storage.local.get('authorizedOrigins');
-    const authorizedOrigins = result.authorizedOrigins || {};
-    
-    if (authorizedOrigins[origin]) {
-      delete authorizedOrigins[origin];
-      await chrome.storage.local.set({ authorizedOrigins });
+  // 添加授权
+  async addAuthorization(origin, address) {
+    try {
+      const authorizations = await this.getAllAuthorizations();
+      authorizations[origin] = {
+        address: address,
+        timestamp: Date.now()
+      };
+      await chrome.storage.local.set({ authorizations });
       return true;
+    } catch (error) {
+      console.error('添加授权失败:', error);
+      return false;
     }
-    
-    return false;
   },
 
-  // 🔥 获取所有授权
+  // 检查是否已授权
+  async isAuthorized(origin) {
+    try {
+      const authorizations = await this.getAllAuthorizations();
+      return !!authorizations[origin];
+    } catch (error) {
+      console.error('检查授权失败:', error);
+      return false;
+    }
+  },
+
+  // 获取授权地址
+  async getAuthorizedAddress(origin) {
+    const result = await chrome.storage.local.get('authorizations');
+    const authorizations = result.authorizations || {};
+    return authorizations[origin]?.address || null;
+  },
+
+  // 撤销授权
+  async revokeAuthorization(origin) {
+    try {
+      const authorizations = await this.getAllAuthorizations();
+      delete authorizations[origin];
+      await chrome.storage.local.set({ authorizations });
+      return true;
+    } catch (error) {
+      console.error('撤销授权失败:', error);
+      return false;
+    }
+  },
+
+  // 获取所有授权
   async getAllAuthorizations() {
-    const result = await chrome.storage.local.get('authorizedOrigins');
-    return result.authorizedOrigins || {};
+    try {
+      const result = await chrome.storage.local.get('authorizations');
+      return result.authorizations || {};
+    } catch (error) {
+      console.error('获取授权列表失败:', error);
+      return {};
+    }
   },
 
-  // 🔥 清除所有授权
+  // 清除所有授权
   async clearAllAuthorizations() {
-    await chrome.storage.local.remove('authorizedOrigins');
+    try {
+      await chrome.storage.local.set({ authorizations: {} });
+      return true;
+    } catch (error) {
+      console.error('清除授权失败:', error);
+      return false;
+    }
   }
 };
 

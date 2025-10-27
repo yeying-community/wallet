@@ -98,8 +98,8 @@ function bindEvents() {
     UI.switchTab('receive');
   });
 
-  document.getElementById('settingsTab')?.addEventListener('click', () => {
-    UI.switchTab('settings');
+  document.getElementById('advancedTab')?.addEventListener('click', () => {
+    UI.switchTab('advanced');
   });
 
   // 转账
@@ -150,15 +150,15 @@ function bindEvents() {
   // 解锁
   document.getElementById('unlockBtn')?.addEventListener('click', async () => {
     const success = await WalletManager.unlockWallet();
-    
+
     if (success) {
       // 检查是否有待处理的连接请求
       const pendingRequest = sessionStorage.getItem('pendingRequest');
-      
+
       if (pendingRequest) {
         const { requestId } = JSON.parse(pendingRequest);
         sessionStorage.removeItem('pendingRequest');
-        
+
         // 自动处理连接请求
         await handlePostUnlock(requestId);
       } else {
@@ -169,14 +169,55 @@ function bindEvents() {
     }
   });
 
-  document.getElementById('resetWalletBtn')?.addEventListener('click', () => {
-    WalletManager.resetWallet();
-  });
-
   // 支持回车键
   document.getElementById('unlockPassword')?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
       WalletManager.unlockWallet();
+    }
+  });
+
+  // 交易历史
+  document.getElementById('historyBtn').addEventListener('click', () => {
+    UI.showPage('history');
+    TransactionHistory.loadHistory();
+  });
+
+  document.getElementById('historyBackBtn').addEventListener('click', () => {
+    UI.showPage('wallet');
+  });
+
+  // 交易项点击事件
+  document.getElementById('transactionList').addEventListener('click', (e) => {
+    const txItem = e.target.closest('.transaction-item');
+    if (txItem) {
+      const hash = txItem.dataset.hash;
+      if (hash) {
+        TransactionHistory.showDetail(hash);
+      }
+    }
+  });
+
+  document.getElementById('clearHistoryBtn').addEventListener('click', () => {
+    TransactionHistory.clearHistory();
+  });
+
+  // 钱包设置
+  document.getElementById('settingsBtn').addEventListener('click', () => {
+    UI.showPage('settings');
+    Settings.loadAuthorizedSites();
+  });
+
+  document.getElementById('settingsBackBtn').addEventListener('click', () => {
+    UI.showPage('wallet');
+  });
+
+  document.getElementById('clearAllAuthBtn').addEventListener('click', () => {
+    Settings.clearAllAuthorizations();
+  });
+
+  document.getElementById('resetWalletBtn').addEventListener('click', () => {
+    if (confirm('确定要重置钱包吗？这将清除所有数据，请确保已备份私钥！')) {
+      WalletManager.resetWallet();
     }
   });
 }
@@ -188,11 +229,11 @@ function showUnlockForConnection(origin) {
   // 修改解锁页面的提示文字
   const unlockPage = document.getElementById('unlockPage');
   const title = unlockPage.querySelector('h2');
-  
+
   if (title) {
     title.textContent = '解锁钱包以连接';
   }
-  
+
   // 添加请求来源提示
   const passwordGroup = unlockPage.querySelector('.form-group');
   if (passwordGroup && !document.getElementById('connectionHint')) {
