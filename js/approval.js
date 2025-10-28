@@ -111,6 +111,9 @@ function bindEvents() {
 
 // 批准连接
 async function approveConnect() {
+  if (isProcessing) return;
+  isProcessing = true;
+
   try {
     showStatus('正在连接...', 'info');
     // 获取钱包地址
@@ -151,6 +154,7 @@ async function approveConnect() {
   } catch (error) {
     console.error('批准连接失败:', error);
     showStatus('连接失败: ' + error.message, 'error');
+    isProcessing = false;
   }
 }
 
@@ -166,10 +170,16 @@ async function approveTransaction() {
   try {
     showStatus('正在发送交易...', 'info');
 
-    const txHash = await chrome.runtime.sendMessage({
+    const response = await chrome.runtime.sendMessage({
       type: 'SEND_TRANSACTION',
       transaction: requestData.transaction
     });
+
+    if (response.error) {
+        throw new Error(response.error)
+    }
+
+    const txHash = response.result || response
 
     await chrome.runtime.sendMessage({
       type: 'APPROVAL_RESPONSE',
