@@ -152,10 +152,10 @@ const TransactionHistory = {
       'Ethereum Mainnet': 'https://etherscan.io',
       'Sepolia Testnet': 'https://sepolia.etherscan.io',
       'Goerli Testnet': 'https://goerli.etherscan.io',
-      'YeYing Network': 'https://blockchain.yeying.pub'
+      'YeYing Network': 'https://blockscout.yeying.pub'
     };
     
-    const baseUrl = explorers[network] || 'https://blockchain.yeying.pub';
+    const baseUrl = explorers[network] || 'https://blockscout.yeying.pub';
     return `${baseUrl}/tx/${hash}`;
   },
 
