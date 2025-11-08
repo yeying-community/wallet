@@ -3,10 +3,18 @@ const TransactionHistory = {
   // 加载交易历史
   async loadHistory() {
     try {
-      const result = await chrome.storage.local.get('transactionHistory');
-      const history = result.transactionHistory || [];
+      // 获取当前钱包地址
+      const session = await chrome.storage.session.get('wallet_address');
+      const currentAddress = session.wallet_address?.toLowerCase();
 
-      console.log('📜 Loading transaction history:', history.length, 'transactions');
+      if (!currentAddress) {
+        console.warn('⚠️ No wallet address found, showing empty history');
+        this.renderEmpty();
+        return;
+      }
+
+      const history = await IndexedDB.getTransactionsByAddress(currentAddress, 50);
+      console.log(`📜 Loading transaction history for ${currentAddress}:`, history.length, 'transactions');
 
       const listEl = document.getElementById('transactionList');
 
@@ -41,6 +49,21 @@ const TransactionHistory = {
           </div>
         `;
       }
+    }
+  },
+
+  renderEmpty() {
+    const listEl = document.getElementById('transactionList');
+    if (listEl) {
+      listEl.innerHTML = `
+        <div class="empty-state">
+          <p style="font-size: 48px; margin: 20px 0;">📭</p>
+          <p style="font-size: 16px; color: #666;">暂无交易记录</p>
+          <p style="font-size: 12px; color: #999; margin-top: 10px;">
+            发送交易后将在这里显示
+        </p>
+      </div>
+    `;
     }
   },
 
@@ -113,10 +136,7 @@ const TransactionHistory = {
 
   // 显示交易详情
   async showDetail(hash) {
-    const result = await chrome.storage.local.get('transactionHistory');
-    const history = result.transactionHistory || [];
-    const tx = history.find(t => t.hash === hash);
-
+    const tx = await IndexedDB.getTransactionByHash(hash)
     if (!tx) return;
 
     const explorerUrl = this.getExplorerUrl(tx.hash, tx.network);
@@ -154,19 +174,27 @@ const TransactionHistory = {
       'Goerli Testnet': 'https://goerli.etherscan.io',
       'YeYing Network': 'https://blockscout.yeying.pub'
     };
-    
+
     const baseUrl = explorers[network] || 'https://blockscout.yeying.pub';
     return `${baseUrl}/tx/${hash}`;
   },
 
-    // 🔥 清除所有历史记录
+  // 清除所有历史记录
   async clearHistory() {
-    if (!confirm('确定要清除所有交易历史吗？此操作不可恢复。')) {
+    const session = await chrome.storage.session.get('wallet_address');
+    const currentAddress = session.wallet_address?.toLowerCase();
+
+    if (!currentAddress) {
+      UI.showToast('当前没有钱包账户', 'error');
       return;
     }
-    
+
+    if (!confirm('确定要清除当前账户的交易历史吗？此操作不可恢复。')) {
+      return;
+    }
+
     try {
-      await chrome.storage.local.set({ transactionHistory: [] });
+      await IndexedDB.clearTransactionsByAddress(currentAddress);
       await this.loadHistory();
       UI.showToast('历史记录已清除', 'success');
     } catch (error) {

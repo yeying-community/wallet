@@ -109,24 +109,11 @@ const Transaction = {
     }
   },
 
-  // 🔥 保存交易到历史记录
+  //  保存交易到历史记录
   async saveTransactionToHistory(txData) {
     try {
-      const result = await chrome.storage.local.get('transactionHistory');
-      const history = result.transactionHistory || [];
-
-      // 添加到历史记录开头
-      history.unshift(txData);
-
-      // 只保留最近 100 条
-      if (history.length > 100) {
-        history.splice(100);
-      }
-
-      await chrome.storage.local.set({ transactionHistory: history });
-
+      await IndexedDB.saveTransaction(txData);
       console.log('✅ Transaction saved to history:', txData.hash);
-
       return true;
     } catch (error) {
       console.error('❌ Save transaction history failed:', error);
@@ -134,7 +121,7 @@ const Transaction = {
     }
   },
 
-  // 🔥 获取当前网络名称
+  // 获取当前网络名称
   async getCurrentNetworkName() {
     try {
       const result = await chrome.storage.local.get('selectedNetwork');
@@ -154,18 +141,11 @@ const Transaction = {
     }
   },
 
-  // 🔥 更新交易状态
+  // 更新交易状态
   async updateTransactionStatus(hash, status) {
     try {
-      const result = await chrome.storage.local.get('transactionHistory');
-      const history = result.transactionHistory || [];
-
-      const tx = history.find(t => t.hash === hash);
-      if (tx) {
-        tx.status = status;
-        await chrome.storage.local.set({ transactionHistory: history });
-        console.log('✅ Transaction status updated:', hash, status);
-      }
+      await IndexedDB.updateTransactionStatus(hash, status);
+      console.log('✅ Transaction status updated:', hash, status);
       return true;
     } catch (error) {
       console.error('❌ Update transaction status failed:', error);

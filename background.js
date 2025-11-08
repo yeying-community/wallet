@@ -1,4 +1,5 @@
 importScripts('lib/ethers-5.7.umd.min.js');
+importScripts('js/indexeddb.js');
 
 const pendingRequests = new Map();
 const connections = new Map();
@@ -579,10 +580,7 @@ async function sendTransaction(transaction) {
 // 保存交易历史
 async function saveTransactionHistory(txData) {
   try {
-    const result = await chrome.storage.local.get('transactionHistory');
-    const history = result.transactionHistory || [];
-
-    // 🔥 确保数据格式统一
+    // 确保数据格式统一
     const transaction = {
       hash: txData.hash,
       from: txData.from,
@@ -594,13 +592,7 @@ async function saveTransactionHistory(txData) {
       source: txData.source || 'dapp' // 标记来源
     };
 
-    history.unshift(transaction);
-
-    // 只保留最近 100 条
-    if (history.length > 100) {
-      history.splice(100);
-    }
-    await chrome.storage.local.set({ transactionHistory: history });
+    await IndexedDB.saveTransaction(transaction)
 
     console.log('✅ Transaction saved to history:', transaction.hash);
 
@@ -615,16 +607,8 @@ async function saveTransactionHistory(txData) {
 // 更新交易状态
 async function updateTransactionStatus(hash, status) {
   try {
-    const result = await chrome.storage.local.get('transactionHistory');
-    const history = result.transactionHistory || [];
-
-    const tx = history.find(t => t.hash === hash);
-    if (tx) {
-      tx.status = status;
-      await chrome.storage.local.set({ transactionHistory: history });
-      console.log('✅ Transaction status updated:', hash, status);
-    }
-
+    await IndexedDB.updateTransactionStatus(hash, status);
+    console.log('✅ Transaction status updated:', hash, status);
     return true;
   } catch (error) {
     console.error('❌ Update transaction status failed:', error);
