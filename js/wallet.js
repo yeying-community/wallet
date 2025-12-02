@@ -10,6 +10,9 @@ const WalletManager = {
     // 临时存储私钥，等待设置密码
     sessionStorage.setItem('temp_private_key', wallet.privateKey);
 
+    // 保存助记词
+    sessionStorage.setItem('temp_mnemonic', wallet.mnemonic.phrase);
+
     UI.showPage('setPassword');
   },
 
@@ -30,16 +33,18 @@ const WalletManager = {
 
     try {
       const privateKey = sessionStorage.getItem('temp_private_key');
+      const mnemonic = sessionStorage.getItem('temp_mnemonic');
 
       // 加密保存
-      await Storage.saveEncryptedWallet(privateKey, password);
+      await Storage.saveEncryptedWallet(privateKey, password, mnemonic);
 
       // 清除临时数据
       sessionStorage.removeItem('temp_private_key');
+      sessionStorage.removeItem('temp_mnemonic');
 
       // 加载钱包
       this.currentPassword = password;
-      await this.loadWallet(privateKey);
+      await this.loadWallet(privateKey, mnemonic);
 
       UI.showPage('wallet');
       UI.showStatus('钱包创建成功！', 'success');
@@ -51,23 +56,30 @@ const WalletManager = {
 
   // 导入钱包（需要密码）
   async importWallet() {
-    const privateKey = document.getElementById('privateKeyInput').value.trim();
+    const input = document.getElementById('privateKeyInput').value.trim();
 
-    if (!privateKey) {
-      UI.showStatus('请输入私钥', 'error', 'importStatus');
+    if (!input) {
+      UI.showStatus('请输入私钥或助记词', 'error', 'importStatus');
       return;
     }
 
     try {
-      // 验证私钥
-      new ethers.Wallet(privateKey);
-
-      // 临时存储
-      sessionStorage.setItem('temp_private_key', privateKey);
+      let wallet;
+      if (input.split(' ').length >= 12) {
+        // 助记词导入
+        wallet = ethers.Wallet.fromMnemonic(input);
+        sessionStorage.setItem('temp_mnemonic', input);
+        sessionStorage.setItem('temp_private_key', wallet.privateKey);
+      } else {
+        // 私钥导入
+        wallet = new ethers.Wallet(input);
+        sessionStorage.setItem('temp_private_key', input);
+        sessionStorage.removeItem('temp_mnemonic');
+      }
 
       UI.showPage('setPassword');
     } catch (error) {
-      UI.showStatus('私钥格式不正确', 'error', 'importStatus');
+      UI.showStatus('私钥或助记词格式不正确', 'error', 'importStatus');
     }
   },
 
@@ -83,11 +95,26 @@ const WalletManager = {
     try {
       UI.showStatus('正在解锁...', 'info', 'unlockStatus');
 
-      const encryptedData = await Storage.getEncryptedWallet();
-      const privateKey = await Storage.decryptPrivateKey(encryptedData, password);
+      let privateKey;
+      let wallet;
+      let mnemonic;
 
-      // 创建钱包实例
-      const wallet = new ethers.Wallet(privateKey);
+      // 先尝试读取加密的助记词
+      const encryptedMnemonic = await Storage.getEncryptedMnemonic();
+      if (encryptedMnemonic) {
+        // 解密助记词
+        mnemonic = await Storage.decryptString(encryptedMnemonic, password);
+        // 从助记词恢复钱包
+        wallet = ethers.Wallet.fromMnemonic(mnemonic);
+      } else {
+        // 如果没有助记词，则用加密的私钥恢复
+        const encryptedPrivateKey = await Storage.getEncryptedPrivateKey();
+        if (!encryptedPrivateKey) {
+          throw new Error('没有找到钱包数据');
+        }
+        privateKey = await Storage.decryptString(encryptedPrivateKey, password);
+        wallet = new ethers.Wallet(privateKey);
+      }
 
       // 保存到 session storage (仅在当前会话有效)
       await chrome.storage.session.set({
@@ -100,7 +127,7 @@ const WalletManager = {
 
       // 加载钱包
       this.currentPassword = password;
-      await this.loadWallet(privateKey);
+      await this.loadWallet(privateKey, mnemonic);
 
       // 🔥 检查是否有待处理的请求
       const pendingRequest = sessionStorage.getItem('pendingRequest');
@@ -150,14 +177,20 @@ const WalletManager = {
   },
 
   // 加载钱包
-  async loadWallet(privateKey) {
+  async loadWallet(privateKey, mnemonic) {
     try {
       // 获取当前网络
       const networkUrl = document.getElementById('networkSelect').value;
       const provider = await Network.initProvider(networkUrl);
 
       // 创建钱包实例
-      this.wallet = new ethers.Wallet(privateKey, provider);
+      if (mnemonic) {
+        // 如果有助记词，用助记词恢复钱包
+        this.wallet = ethers.Wallet.fromMnemonic(mnemonic).connect(provider);
+      } else {
+        // 否则用私钥恢复
+        this.wallet = new ethers.Wallet(privateKey, provider);
+      }
 
       // 更新 UI
       UI.updateAvatar(this.wallet.address);
@@ -209,6 +242,20 @@ const WalletManager = {
   copyPrivateKey() {
     if (this.wallet) {
       Utils.copyToClipboard(this.wallet.privateKey);
+    }
+  },
+
+  showMnemonic() {
+    if (!this.wallet || !this.wallet.mnemonic) {
+      UI.showStatus('当前钱包没有助记词', 'error');
+      return;
+    }
+    UI.toggleMnemonic(this.wallet.mnemonic.phrase);
+  },
+
+  copyMnemonic() {
+    if (this.wallet && this.wallet.mnemonic) {
+      Utils.copyToClipboard(this.wallet.mnemonic.phrase);
     }
   },
 

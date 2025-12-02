@@ -151,4 +151,19 @@ const UI = {
       form.insertBefore(reasonEl, form.firstChild);
     }
   },
+
+  toggleMnemonic(mnemonic) {
+    const display = document.getElementById('mnemonicDisplay');
+    const value = document.getElementById('mnemonicValue');
+    const showBtn = document.getElementById('showMnemonicBtn');
+    if (display.style.display === 'none') {
+      value.value = mnemonic;
+      display.style.display = 'block';
+      showBtn.textContent = '隐藏助记词';
+    } else {
+      display.style.display = 'none';
+      value.value = '';
+      showBtn.textContent = '显示助记词';
+    }
+  },
 };

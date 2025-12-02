@@ -48,7 +48,7 @@
     <!-- 导入钱包页面 -->
     <div id="importPage" class="page hidden">
       <h2>导入钱包</h2>
-      <textarea id="privateKeyInput" placeholder="输入私钥（64位十六进制）" rows="3"></textarea>
+      <textarea id="privateKeyInput" placeholder="输入私钥（64位十六进制）或助记词" rows="3"></textarea>
       <button id="importBtn" class="btn btn-primary">导入</button>
       <button id="backToWelcomeBtn" class="btn btn-secondary">返回</button>
     </div>
@@ -144,6 +144,21 @@
             <input type="text" id="privateKeyValue" readonly />
             <button id="copyPrivateKeyBtn" class="btn btn-secondary">
               复制私钥
+            </button>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3>📝 助记词管理</h3>
+          <button id="showMnemonicBtn" class="btn btn-secondary">
+            显示助记词
+          </button>
+          <div id="mnemonicDisplay" style="display: none; margin-top: 10px;">
+            <div class="warning">
+              ⚠️ 请勿泄露助记词！任何人获得助记词都可以恢复你的钱包。
+            </div>
+            <textarea id="mnemonicValue" readonly rows="3"></textarea>
+            <button id="copyMnemonicBtn" class="btn btn-secondary">
+              复制助记词
             </button>
           </div>
         </div>

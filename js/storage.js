@@ -2,6 +2,7 @@
 const Storage = {
 
   WALLET_KEY: 'web3_wallet_encrypted',
+  MNEMONIC_KEY: 'web3_wallet_mnemonic_encrypted',
   PASSWORD_KEY: 'web3_wallet_password_hash',
   EXPIRE_KEY: 'web3_wallet_expire_time',
   DEFAULT_EXPIRE_MINUTES: 30, // 默认30分钟过期
@@ -28,10 +29,10 @@ const Storage = {
     return result.alchemyApiKey;
   },
 
-  // 使用密码加密私钥
-  async encryptPrivateKey(privateKey, password) {
+  // 使用密码加密私钥/助记词
+  async encryptString(dataString, password) {
     const encoder = new TextEncoder();
-    const data = encoder.encode(privateKey);
+    const data = encoder.encode(dataString);
     const passwordData = encoder.encode(password);
 
     // 生成密钥
@@ -73,8 +74,8 @@ const Storage = {
     };
   },
 
-  // 使用密码解密私钥
-  async decryptPrivateKey(encryptedData, password) {
+  // 使用密码解密字符串（私钥/助记词通用）
+  async decryptString(encryptedData, password) {
     const encoder = new TextEncoder();
     const passwordData = encoder.encode(password);
 
@@ -113,13 +114,15 @@ const Storage = {
   },
 
   // 保存加密的钱包
-  async saveEncryptedWallet(privateKey, password) {
-    const encrypted = await this.encryptPrivateKey(privateKey, password);
+  async saveEncryptedWallet(privateKey, password, mnemonic) {
+    const encryptedPrivateKey = await this.encryptString(privateKey, password);
+    const encryptedMnemonic = await this.encryptString(mnemonic, password);
     const expireTime = Date.now() + (this.DEFAULT_EXPIRE_MINUTES * 60 * 1000);
 
     await chrome.storage.local.set({
-      [this.WALLET_KEY]: encrypted,
-      [this.EXPIRE_KEY]: expireTime
+      [this.WALLET_KEY]: encryptedPrivateKey,
+      [this.MNEMONIC_KEY]: encryptedMnemonic,
+      [this.EXPIRE_KEY]: expireTime,
     });
   },
 
@@ -138,16 +141,23 @@ const Storage = {
     });
   },
 
-  // 获取加密的钱包数据
-  async getEncryptedWallet() {
+  // 获取加密的私钥数据
+  async getEncryptedPrivateKey() {
     const result = await chrome.storage.local.get(this.WALLET_KEY);
     return result[this.WALLET_KEY];
   },
 
-  // 删除钱包
+  // 获取加密的助记词数据
+  async getEncryptedMnemonic() {
+    const result = await chrome.storage.local.get(this.MNEMONIC_KEY);
+    return result[this.MNEMONIC_KEY];
+  },
+
+  // 删除钱包（同时删除助记词）
   async removeWallet() {
     await chrome.storage.local.remove([
       this.WALLET_KEY,
+      this.MNEMONIC_KEY,
       this.EXPIRE_KEY
     ]);
   },

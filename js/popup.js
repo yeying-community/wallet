@@ -124,6 +124,14 @@ function bindEvents() {
     WalletManager.copyPrivateKey();
   });
 
+  document.getElementById('showMnemonicBtn')?.addEventListener('click', () => {
+    WalletManager.showMnemonic();
+  });
+
+  document.getElementById('copyMnemonicBtn')?.addEventListener('click', () => {
+    WalletManager.copyMnemonic();
+  });
+
   // 支持回车键提交
   document.getElementById('privateKeyInput')?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
@@ -222,7 +230,7 @@ function bindEvents() {
   });
 }
 
-// 🔥 显示连接请求的解锁界面
+// 显示连接请求的解锁界面
 function showUnlockForConnection(origin) {
   UI.showPage('unlock');
 
@@ -247,7 +255,7 @@ function showUnlockForConnection(origin) {
   }
 }
 
-// 🔥 解锁后自动处理连接请求
+// 解锁后自动处理连接请求
 async function handlePostUnlock(requestId) {
   try {
     const session = await chrome.storage.session.get('wallet_address');
