@@ -6,10 +6,16 @@
   "permissions": [
     "storage",
     "activeTab",
-    "tabs"
+    "tabs",
+    "scripting"
   ],
   "host_permissions": [
-    "https://*/*"
+    "https://*/*",
+    "http://*/*"
+  ],
+  "optional_host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "action": {
     "default_popup": "popup.html",
@@ -25,7 +31,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://*/*"
+        "https://*/*",
+        "http://*/*"
       ],
       "exclude_matches": [
         "*://chrome.google.com/*",
@@ -45,7 +52,8 @@
     {
       "resources": ["inject.js"],
       "matches": [
-        "https://*/*"
+        "https://*/*",
+        "http://*/*"
       ]
     }
   ]
