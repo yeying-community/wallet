@@ -40,7 +40,7 @@ const Settings = {
     if (!confirm(`确定要撤销 ${origin} 的授权吗？`)) {
       return;
     }
-    
+
     try {
       const success = await Storage.revokeAuthorization(origin);
       if (success) {

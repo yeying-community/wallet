@@ -132,13 +132,13 @@ const WalletManager = {
 
       // 🔥 检查是否有待处理的请求
       const pendingRequest = sessionStorage.getItem('pendingRequest');
-      
+
       if (pendingRequest) {
         const { requestId, origin } = JSON.parse(pendingRequest);
-        
+
         // 清除待处理请求
         sessionStorage.removeItem('pendingRequest');
-        
+
         // 通知 background 解锁成功
         chrome.runtime.sendMessage({
           type: 'UNLOCK_SUCCESS',
@@ -149,18 +149,18 @@ const WalletManager = {
           if (chrome.runtime.lastError) {
             console.error('发送解锁成功消息失败:', chrome.runtime.lastError);
           }
-          
+
           // 关闭弹窗
           window.close();
         });
-        
+
         return; // 不显示钱包页面，直接关闭
       }
 
       // 正常解锁流程
       UI.showPage('wallet');
       UI.showToast('解锁成功！', 'success');
-      
+
     } catch (error) {
       console.error('解锁失败:', error);
       UI.showStatus('密码错误', 'error', 'unlockStatus');

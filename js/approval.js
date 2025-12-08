@@ -176,7 +176,7 @@ async function approveTransaction() {
     });
 
     if (response.error) {
-        throw new Error(response.error)
+      throw new Error(response.error)
     }
 
     const txHash = response.result || response

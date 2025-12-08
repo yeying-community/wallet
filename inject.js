@@ -26,20 +26,20 @@
       console.log('✅ YeYingWalletProvider created');
     }
 
-      // 🔥 设置账户变更监听
+    // 🔥 设置账户变更监听
     _setupAccountsListener() {
       window.addEventListener('message', (event) => {
         if (event.source !== window) return;
-        
+
         if (event.data.type === 'ACCOUNTS_CHANGED') {
           console.log('📢 Accounts changed:', event.data.accounts);
-          
+
           // 更新当前账户
           this.selectedAddress = event.data.accounts[0] || null;
-          
+
           // 触发 accountsChanged 事件
           this._emit('accountsChanged', event.data.accounts);
-          
+
           // 如果账户被清空，也触发 disconnect 事件
           if (event.data.accounts.length === 0) {
             this.isConnected = false;
@@ -49,7 +49,7 @@
             });
           }
         }
-        
+
         if (event.data.type === 'CHAIN_CHANGED') {
           console.log('📢 Chain changed:', event.data.chainId);
           this.chainId = event.data.chainId;

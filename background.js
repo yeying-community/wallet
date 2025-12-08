@@ -107,7 +107,7 @@ async function handleUnlockSuccess(message) {
   // 未授权，显示授权弹窗
   console.log('🔐 Not authorized, showing approval popup');
   chrome.windows.create({
-    url: `approval.html?type=connect&requestId=${requestId}`,
+    url: `html/approval.html?type=connect&requestId=${requestId}`,
     type: 'popup',
     width: 380,
     height: 600,
@@ -229,7 +229,7 @@ async function handleConnectRequest(sender) {
       pending.reject = reject;
 
       chrome.windows.create({
-        url: `popup.html?action=unlock&requestId=${requestId}&origin=${encodeURIComponent(origin)}`,
+        url: `html/popup.html?action=unlock&requestId=${requestId}&origin=${encodeURIComponent(origin)}`,
         type: 'popup',
         width: 380,
         height: 600,
@@ -272,7 +272,7 @@ async function handleConnectRequest(sender) {
     });
 
     chrome.windows.create({
-      url: `approval.html?type=connect&requestId=${requestId}`,
+      url: `html/approval.html?type=connect&requestId=${requestId}`,
       type: 'popup',
       width: 380,
       height: 600,
@@ -316,7 +316,7 @@ async function handleSendTransaction(transaction, sender) {
     });
 
     chrome.windows.create({
-      url: `approval.html?type=transaction&requestId=${requestId}`,
+      url: `html/approval.html?type=transaction&requestId=${requestId}`,
       type: 'popup',
       width: 380,
       height: 650,
@@ -360,7 +360,7 @@ async function handlePersonalSign(message, address, sender) {
     });
 
     chrome.windows.create({
-      url: `approval.html?type=sign&requestId=${requestId}`,
+      url: `html/approval.html?type=sign&requestId=${requestId}`,
       type: 'popup',
       width: 380,
       height: 600,
@@ -402,7 +402,7 @@ async function handleSignTypedData(typedData, address, sender) {
     });
 
     chrome.windows.create({
-      url: `approval.html?type=sign&requestId=${requestId}`,
+      url: `html/approval.html?type=sign&requestId=${requestId}`,
       type: 'popup',
       width: 380,
       height: 600,

@@ -14,19 +14,19 @@ const Transaction = {
       UI.showToast('正在发送交易...', 'info');
 
       const wallet = WalletManager.getWallet();
-      // 🔥 准备交易参数
+      // 准备交易参数
       const txParams = {
-         to: recipientAddress,
-         value: ethers.utils.parseEther(amount)
+        to: recipientAddress,
+        value: ethers.utils.parseEther(amount)
       };
 
-      // 🔥 发送交易
+      // 发送交易
       const tx = await wallet.sendTransaction(txParams);
 
       console.log('✅ Transaction sent:', tx.hash);
       UI.showToast('交易已提交，等待确认...', 'info');
 
-      // 🔥 立即保存交易历史（pending 状态）
+      // 立即保存交易历史（pending 状态）
       await this.saveTransactionToHistory({
         hash: tx.hash,
         from: wallet.address,
@@ -38,12 +38,12 @@ const Transaction = {
         source: 'wallet' // 标记来源
       });
 
-      // 🔥 等待交易确认
+      // 等待交易确认
       const receipt = await tx.wait();
       console.log('✅ Transaction confirmed:', receipt);
       UI.showToast('交易成功！', 'success');
 
-      // 🔥 更新交易状态
+      // 更新交易状态
       await this.updateTransactionStatus(tx.hash, receipt.status === 1 ? 'success' : 'failed');
 
       document.getElementById('recipientAddress').value = '';
@@ -88,7 +88,7 @@ const Transaction = {
     } else if (error.code === 'NETWORK_ERROR') {
       errorMsg = '网络错误，请检查网络连接';
     } else if (error.message) {
-       errorMsg = error.message.substring(0, 100);
+      errorMsg = error.message.substring(0, 100);
     }
 
     UI.showToast(errorMsg, 'error', 5000);
