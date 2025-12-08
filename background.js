@@ -47,7 +47,7 @@ chrome.runtime.onConnect.addListener((port) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('📬 Runtime message:', message.type);
 
-  // 🔥 处理解锁成功
+  // 处理解锁成功
   if (message.type === 'UNLOCK_SUCCESS') {
     handleUnlockSuccess(message)
       .then(result => {
@@ -60,7 +60,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // 保持消息通道开放
   }
 
-  // 🔥 处理解锁取消
+  // 处理解锁取消
   if (message.type === 'UNLOCK_CANCELLED') {
     const pending = pendingRequests.get(message.requestId);
     if (pending) {
@@ -81,7 +81,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true; // 保持消息通道开放
 });
 
-// 🔥 处理解锁成功
+// 处理解锁成功
 async function handleUnlockSuccess(message) {
   const { requestId, address, origin } = message;
 
@@ -148,15 +148,15 @@ async function handleRequest(message, sender) {
     case 'eth_signTypedData_v4':
       return await handleSignTypedData(params[1], params[0], sender);
 
-    // 🔥 撤销权限, wallet_revokePermissions 是 EIP-2255 提案中的方法
+    // 撤销权限, wallet_revokePermissions 是 EIP-2255 提案中的方法
     case 'wallet_revokePermissions':
       return handleRevokePermissions(params, origin);
 
-    // 🔥 获取权限（可选，用于查询当前权限）
+    // 获取权限（可选，用于查询当前权限）
     case 'wallet_getPermissions':
       return handleGetPermissions(origin);
 
-    // 🔥 请求权限（可选，标准化的权限请求）
+    // 请求权限（可选，标准化的权限请求）
     case 'wallet_requestPermissions':
       return handleRequestPermissions(params, origin);
 
@@ -206,7 +206,7 @@ async function handleConnectRequest(sender) {
   const origin = new URL(tab.url).origin;
   const requestId = `connect_${Date.now()}`;
 
-  // 🔥 检查钱包是否解锁
+  // 检查钱包是否解锁
   const session = await chrome.storage.session.get('wallet_address');
 
   if (!session.wallet_address) {

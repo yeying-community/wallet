@@ -1,0 +1,78 @@
+/* 交易历史相关样式 */
+/* 交易历史列表容器 */
+.transaction-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* 单条交易项 */
+.transaction-item {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.transaction-item:hover {
+  background-color: #f8f8f8;
+}
+
+.transaction-item:active {
+  background-color: #f0f0f0;
+}
+
+.tx-icon {
+  font-size: 24px;
+  margin-right: 12px;
+}
+
+.tx-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.tx-type {
+  font-weight: 500;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.tx-address {
+  font-size: 12px;
+  color: #666;
+  font-family: 'Courier New', monospace;
+  margin-bottom: 4px;
+}
+
+.tx-time {
+  font-size: 11px;
+  color: #999;
+}
+
+.tx-amount {
+  text-align: right;
+}
+
+.tx-value {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.tx-status {
+  font-size: 11px;
+}
+
+/* 空状态（历史列表） */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+}
+
+.empty-state p:first-child {
+  font-size: 48px;
+  margin-bottom: 10px;
+}

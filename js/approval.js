@@ -124,7 +124,7 @@ async function approveConnect() {
       throw new Error('钱包未解锁');
     }
 
-    // 🔥 保存授权（传递地址）
+    // 保存授权（传递地址）
     const result = await chrome.storage.local.get('authorizations');
     const authorizations = result.authorizations || {};
 
@@ -140,7 +140,7 @@ async function approveConnect() {
     // 发送批准响应
     chrome.runtime.sendMessage({
       type: 'APPROVAL_RESPONSE',
-      requestId: requestData.requestId,
+      requestId: requestId,
       approved: true,
       result: [address]
     });

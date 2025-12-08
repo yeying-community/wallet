@@ -1,0 +1,105 @@
+/* 设置页, 已授权网站相关样式 */
+/* 设置页块容器 */
+.settings-section {
+  margin: 20px 0;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.settings-section h3 {
+  margin: 0 0 15px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+/* 老版授权网站块（可能仍有使用） */
+.authorized-site {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: white;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  border: 1px solid #e0e0e0;
+}
+
+.authorized-site .site-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.authorized-site .site-icon {
+  font-size: 20px;
+}
+
+.authorized-site .site-url {
+  font-size: 14px;
+  color: #333;
+  word-break: break-all;
+}
+
+/* 新版授权网站项 */
+.authorized-site-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  transition: all 0.2s;
+}
+
+.authorized-site-item:hover {
+  border-color: #667eea;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+}
+
+.site-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.site-origin {
+  font-weight: 600;
+  font-size: 14px;
+  color: #333;
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+
+.site-address {
+  font-size: 12px;
+  color: #666;
+  font-family: monospace;
+  margin-bottom: 2px;
+}
+
+.site-time {
+  font-size: 11px;
+  color: #999;
+}
+
+/* 授权撤销按钮（最终版本） */
+.btn-revoke {
+  padding: 6px 12px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  margin-left: 10px;
+}
+
+.btn-revoke:hover {
+  background: #c82333;
+  transform: scale(1.05);
+}
