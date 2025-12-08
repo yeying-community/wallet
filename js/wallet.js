@@ -106,6 +106,7 @@ const WalletManager = {
         mnemonic = await Storage.decryptString(encryptedMnemonic, password);
         // 从助记词恢复钱包
         wallet = ethers.Wallet.fromMnemonic(mnemonic);
+        privateKey = wallet.privateKey;
       } else {
         // 如果没有助记词，则用加密的私钥恢复
         const encryptedPrivateKey = await Storage.getEncryptedPrivateKey();

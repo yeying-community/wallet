@@ -84,7 +84,7 @@
 
     _handleResponse(message) {
       const { requestId, result, error } = message;
-
+      console.log('📢 handle response:', message);
       if (this._pendingRequests[requestId]) {
         if (error) {
           this._pendingRequests[requestId].reject(new Error(error));
