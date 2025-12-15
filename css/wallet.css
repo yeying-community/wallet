@@ -1,178 +1,210 @@
-/* 钱包主页面相关样式（头部、余额、网络、tabs、二维码、快捷操作）*/
-/* 钱包页面头部 */
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px;
+/* 钱包主页面样式 */
+
+/* ========== 钱包 Header ========== */
+.wallet-header {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border-radius: 12px 12px 0 0;
+  padding: 16px;
+  border-radius: 0 0 20px 20px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  margin: -20px -20px 0 -20px;
 }
 
-.wallet-info {
+/* 网络指示器 */
+.network-indicator {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex: 1;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
+  backdrop-filter: blur(10px);
 }
 
-.wallet-avatar {
-  width: 48px;
-  height: 48px;
+.network-dot {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: white;
-  border: 3px solid rgba(255, 255, 255, 0.3);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  overflow: hidden;
+  background: #4ade80;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+  animation: pulse 2s infinite;
   flex-shrink: 0;
 }
 
-.wallet-avatar canvas {
-  width: 100%;
-  height: 100%;
-  display: block;
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
-.wallet-details {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.wallet-label {
-  font-size: 12px;
-  opacity: 0.9;
-  font-weight: 500;
-}
-
-.wallet-address-header {
-  font-size: 14px;
-  font-weight: 600;
-  font-family: 'Courier New', monospace;
-  letter-spacing: 0.5px;
-  cursor: pointer;
-  transition: opacity 0.2s;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.wallet-address-header:hover {
-  opacity: 0.8;
-}
-
-/* 头部右侧 icon 按钮样式（覆盖基础 .btn-icon） */
-.btn-icon {
-  background: rgba(255, 255, 255, 0.2);
+.network-select {
+  flex: 1;
+  background: transparent;
   border: none;
   color: white;
-  width: 36px;
-  height: 36px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+}
+
+.network-select option {
+  background: #1a1a1a;
+  color: white;
+}
+
+.custom-rpc-input {
+  width: calc(100% - 32px);
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  font-size: 13px;
+  margin: 0 16px 12px 16px;
+}
+
+.custom-rpc-input::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.custom-rpc-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* 操作按钮组 */
+.header-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.header-icon-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: white;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s;
-  flex-shrink: 0;
+  transition: all 0.2s;
+  backdrop-filter: blur(10px);
 }
 
-.btn-icon:hover {
-  background: rgba(255, 255, 255, 0.3);
-  transform: scale(1.05);
+.header-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.btn-icon:active {
-  transform: scale(0.95);
+.header-icon-btn:active {
+  transform: translateY(0);
 }
 
-/* 地址容器（接收页面） */
-.address-container {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.address {
-  font-family: monospace;
-  font-size: 11px;
-  word-break: break-all;
-  flex: 1;
-  color: #333;
+.header-icon-btn svg {
+  stroke: white;
 }
 
 /* 余额部分 */
 .balance-section {
+  padding: 24px 20px;
   text-align: center;
-  padding: 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 12px;
-  margin-top: 15px;
-  margin-bottom: 15px;
-  color: white;
+  position: relative;
 }
 
-.balance {
-  font-size: 32px;
-  font-weight: bold;
-  margin: 10px 0;
+.balance-label {
+  font-size: 13px;
+  color: #6c757d;
+  margin-bottom: 8px;
+  font-weight: 500;
 }
 
-.currency {
+.balance-amount {
+  font-size: 36px;
+  font-weight: 700;
+  color: #212529;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+}
+
+.balance-unit {
   font-size: 18px;
-  opacity: 0.9;
+  color: #6c757d;
+  font-weight: 500;
 }
 
-/* 网络选择器 */
-.network-selector {
-  margin-bottom: 15px;
+.refresh-btn {
+  position: absolute;
+  top: 24px;
+  right: 20px;
+  width: 32px;
+  height: 32px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
 }
 
-.network-selector label {
-  font-size: 12px;
-  color: #666;
-  display: block;
-  margin-bottom: 5px;
+.refresh-btn:hover {
+  background: #e9ecef;
+  border-color: #adb5bd;
+  transform: rotate(90deg);
 }
 
-.network-selector select {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 13px;
+.refresh-btn:active {
+  transform: rotate(90deg) scale(0.95);
 }
 
-.network-selector input[type="text"] {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 13px;
-  margin-top: 8px;
+.refresh-btn svg {
+  stroke: #495057;
 }
 
-/* 标签页 */
+/* ========== 标签页 ========== */
 .tabs {
   display: flex;
-  gap: 5px;
-  margin-bottom: 15px;
-  border-bottom: 2px solid #f0f0f0;
+  border-bottom: 2px solid #e9ecef;
+  padding: 0;
+  gap: 4px;
+  margin: 0 -20px;
+  /* 抵消 .page 的 padding */
+  padding: 0 16px;
 }
 
 .tab {
   flex: 1;
-  padding: 10px;
+  padding: 12px 16px;
   background: none;
   border: none;
-  border-bottom: 3px solid transparent;
+  color: #6c757d;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  color: #666;
-  transition: all 0.3s;
+  transition: all 0.2s;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+}
+
+.tab:hover {
+  color: #495057;
+  background: #f8f9fa;
 }
 
 .tab.active {
@@ -180,94 +212,82 @@
   border-bottom-color: #667eea;
 }
 
+/* ========== 标签内容 ========== */
 .tab-content {
+  padding: 20px 0;
   animation: fadeIn 0.3s;
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-/* 二维码区域 */
-.qr-container {
+/* ========== 接收页面 ========== */
+.receive-section {
+  padding: 20px 0;
+  text-align: center;
+}
+
+.qr-code-container {
   display: flex;
   justify-content: center;
-  margin: 20px 0;
+  margin-bottom: 20px;
+  padding: 20px;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 #qrcode {
-  padding: 10px;
-  background: white;
+  display: inline-block;
+}
+
+#qrcode canvas,
+#qrcode img {
   border-radius: 8px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 200px;
 }
 
-#qrcode img,
-#qrcode canvas {
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+.receive-hint {
+  color: #6c757d;
+  font-size: 14px;
+  margin-bottom: 16px;
 }
 
-/* 私钥显示 */
-#privateKeyValue {
-  width: 100%;
-  padding: 8px;
-  margin: 10px 0;
-  font-family: monospace;
-  font-size: 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+/* ========== 高级页面 ========== */
+.settings-section {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 12px;
 }
 
-/* 警告提示 */
+.settings-section h3 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #212529;
+}
+
+.private-key-display,
+.mnemonic-display {
+  margin-top: 12px;
+}
+
 .warning {
   background: #fff3cd;
+  border: 1px solid #ffc107;
+  padding: 12px;
+  border-radius: 8px;
+  margin: 12px 0;
   color: #856404;
-  padding: 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  margin: 10px 0;
-  border-left: 4px solid #ffc107;
+  font-size: 13px;
+  line-height: 1.5;
 }
-
-/* 快捷操作按钮 */
-.quick-actions {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  margin: 20px 0;
-}
-
-.quick-action-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 15px;
-  background: white;
-  border: 2px solid #e0e0e0;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s;
-  font-size: 14px;
-  font-weight: 500;
-  color: #333;
-}
-
-.quick-action-btn:hover {
-  border-color: #667eea;
-  background: #f8f9ff;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
-}
-
-.quick-action-btn .icon {
-  font-size: 28px;
-  margin-bottom: 8px;
-}
-
 

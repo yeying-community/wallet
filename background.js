@@ -503,9 +503,8 @@ async function saveAuthorization(origin, address) {
 
 // 获取钱包地址
 async function getWalletAddress() {
-  const result = await chrome.storage.local.get(['web3_wallet_encrypted', 'web3_wallet_expire_time']);
-
-  if (!result.web3_wallet_encrypted) {
+  const result = await chrome.storage.local.get(['web3_wallet_current_account', 'web3_wallet_expire_time']);
+  if (!result.web3_wallet_current_account) {
     throw new Error('No wallet found');
   }
 

@@ -1,8 +1,15 @@
 // 工具函数模块
 const Utils = {
+  // 转义HTML
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  },
+
   // 缩短地址显示
   shortenAddress(address) {
-    return address.substring(0, 6) + '...' + address.substring(address.length - 4);
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
   },
 
   // 复制到剪贴板
@@ -105,5 +112,109 @@ const Utils = {
         </div>
       `;
     }
-  }
+  },
+
+  // 使用密码加密
+  async encryptString(text, password) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(text);
+
+    // 生成密钥
+    const passwordKey = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(password),
+      { name: 'PBKDF2' },
+      false,
+      ['deriveBits', 'deriveKey']
+    );
+
+    // 生成盐值
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+
+    // 派生加密密钥
+    const key = await crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: salt,
+        iterations: 100000,
+        hash: 'SHA-256'
+      },
+      passwordKey,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt']
+    );
+
+    // 生成 IV
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+
+    // 加密
+    const encrypted = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: iv },
+      key,
+      data
+    );
+
+    // 组合: salt(16) + iv(12) + encrypted
+    const result = new Uint8Array(salt.length + iv.length + encrypted.byteLength);
+    result.set(salt, 0);
+    result.set(iv, salt.length);
+    result.set(new Uint8Array(encrypted), salt.length + iv.length);
+
+    // 转换为 Base64
+    return btoa(String.fromCharCode(...result));
+  },
+
+  // 解密字符串
+  async decryptString(encryptedBase64, password) {
+    try {
+      // Base64 解码
+      const encrypted = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0));
+
+      // 提取 salt, iv, data
+      const salt = encrypted.slice(0, 16);
+      const iv = encrypted.slice(16, 28);
+      const data = encrypted.slice(28);
+
+      const encoder = new TextEncoder();
+
+      // 生成密钥
+      const passwordKey = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(password),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveBits', 'deriveKey']
+      );
+
+      // 派生解密密钥
+      const key = await crypto.subtle.deriveKey(
+        {
+          name: 'PBKDF2',
+          salt: salt,
+          iterations: 100000,
+          hash: 'SHA-256'
+        },
+        passwordKey,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt']
+      );
+
+      // 解密
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv },
+        key,
+        data
+      );
+
+      // 转换为字符串
+      const decoder = new TextDecoder();
+      return decoder.decode(decrypted);
+
+    } catch (error) {
+      console.error('❌ Decrypt failed:', error);
+      throw new Error('密码错误或数据损坏');
+    }
+  },
 };

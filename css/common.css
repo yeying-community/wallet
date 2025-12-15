@@ -37,43 +37,101 @@ h3 {
   font-size: 16px;
 }
 
-/* 按钮样式（通用） */
+/* ========== 按钮样式（通用） ========== */
 .btn {
   width: 100%;
-  padding: 12px;
+  padding: 12px 20px;
   margin: 8px 0;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  position: relative;
+  overflow: hidden;
 }
 
+/* 主要按钮 - 简洁蓝色风格 */
 .btn-primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #037dd6;
   color: white;
+  box-shadow: 0 2px 4px rgba(3, 125, 214, 0.2);
 }
 
 .btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  background: #0260a4;
+  box-shadow: 0 4px 8px rgba(3, 125, 214, 0.3);
+  transform: translateY(-1px);
 }
 
+.btn-primary:active {
+  background: #024c7e;
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(3, 125, 214, 0.2);
+}
+
+.btn-primary:disabled {
+  background: #b0d4f1;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+/* 次要按钮 - 灰色风格 */
 .btn-secondary {
-  background: #f0f0f0;
-  color: #333;
+  background: #f2f4f6;
+  color: #24292e;
+  border: 1px solid #d1d5db;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .btn-secondary:hover {
-  background: #e0e0e0;
+  background: #e5e7eb;
+  border-color: #9ca3af;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+.btn-secondary:active {
+  background: #d1d5db;
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* 🔥 危险按钮 */
+.btn-danger {
+  background: #d73a49;
+  color: white;
+  box-shadow: 0 2px 4px rgba(215, 58, 73, 0.2);
+}
+
+.btn-danger:hover {
+  background: #cb2431;
+  box-shadow: 0 4px 8px rgba(215, 58, 73, 0.3);
+  transform: translateY(-1px);
+}
+
+.btn-danger:active {
+  background: #b5202e;
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(215, 58, 73, 0.2);
+}
+
+/* 小按钮 */
 .btn-small {
   width: auto;
   padding: 6px 12px;
   font-size: 12px;
   margin: 5px 0;
+  border-radius: 6px;
+}
+
+/* 块级按钮 */
+.btn-block {
+  width: 100%;
+  display: block;
 }
 
 /* 通用 icon 按钮（基础） */
@@ -83,9 +141,19 @@ h3 {
   font-size: 18px;
   cursor: pointer;
   padding: 5px;
+  transition: all 0.2s;
 }
 
-/* 表单 */
+.btn-icon:hover {
+  color: #037dd6;
+  transform: scale(1.1);
+}
+
+.btn-delete:hover {
+  color: #d73a49;
+}
+
+/* ========== 表单 ========== */
 .form-group {
   margin-bottom: 15px;
 }
@@ -93,53 +161,108 @@ h3 {
 .form-group label {
   display: block;
   font-size: 13px;
-  color: #555;
-  margin-bottom: 5px;
+  color: #24292e;
+  margin-bottom: 6px;
   font-weight: 600;
 }
 
 .form-group input,
 textarea {
   width: 100%;
-  padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 13px;
+  padding: 10px 12px;
+  border: 2px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
   font-family: inherit;
+  transition: all 0.2s;
+  background: white;
 }
 
 .form-group input:focus,
 textarea:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #037dd6;
+  box-shadow: 0 0 0 3px rgba(3, 125, 214, 0.1);
 }
 
-/* 状态消息（原始版本） */
+.form-group input:read-only {
+  background: #f6f8fa;
+  color: #586069;
+  cursor: not-allowed;
+}
+
+/* ========== 输入框增强 ========== */
+.input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 14px;
+  transition: all 0.2s;
+  box-sizing: border-box;
+  font-family: inherit;
+  background: white;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #037dd6;
+  box-shadow: 0 0 0 3px rgba(3, 125, 214, 0.1);
+}
+
+.input:read-only {
+  background: #f6f8fa;
+  color: #586069;
+  cursor: not-allowed;
+}
+
+.input::placeholder {
+  color: #9ca3af;
+}
+
+textarea.input {
+  resize: vertical;
+  min-height: 80px;
+  font-family: 'Courier New', monospace;
+  line-height: 1.5;
+}
+
+/* ========== 状态消息 ========== */
 .status {
   margin-top: 10px;
-  padding: 10px;
-  border-radius: 6px;
-  font-size: 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 13px;
   text-align: center;
+  display: none;
+  border: 1px solid transparent;
 }
 
 .status.success {
   background: #d4edda;
   color: #155724;
+  border-color: #c3e6cb;
 }
 
 .status.error {
   background: #f8d7da;
   color: #721c24;
+  border-color: #f5c6cb;
 }
 
 .status.info {
   background: #d1ecf1;
   color: #0c5460;
+  border-color: #bee5eb;
 }
 
-/* 全局悬浮提示 */
+.status.warning {
+  background: #fff3cd;
+  color: #856404;
+  border-color: #ffeaa7;
+}
+
+/* ========== 全局悬浮提示 ========== */
 .toast {
   position: fixed;
   top: 20px;
@@ -148,7 +271,7 @@ textarea:focus {
   min-width: 280px;
   max-width: 320px;
   padding: 12px 20px;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 13px;
   font-weight: 500;
   text-align: center;
@@ -156,6 +279,7 @@ textarea:focus {
   z-index: 9999;
   animation: slideDown 0.3s ease-out;
   word-wrap: break-word;
+  border: 1px solid transparent;
 }
 
 .toast.hidden {
@@ -165,25 +289,25 @@ textarea:focus {
 .toast.success {
   background: #d4edda;
   color: #155724;
-  border: 1px solid #c3e6cb;
+  border-color: #c3e6cb;
 }
 
 .toast.error {
   background: #f8d7da;
   color: #721c24;
-  border: 1px solid #f5c6cb;
+  border-color: #f5c6cb;
 }
 
 .toast.info {
   background: #d1ecf1;
   color: #0c5460;
-  border: 1px solid #bee5eb;
+  border-color: #bee5eb;
 }
 
 .toast.warning {
   background: #fff3cd;
   color: #856404;
-  border: 1px solid #ffeaa7;
+  border-color: #ffeaa7;
 }
 
 @keyframes slideDown {
@@ -212,44 +336,19 @@ textarea:focus {
   }
 }
 
-/* 保留原有的 status 样式作为备用（会覆盖上面的 display） */
-.status {
-  margin-top: 10px;
-  padding: 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  text-align: center;
-  display: none;
-}
-
-.status.success {
-  background: #d4edda;
-  color: #155724;
-}
-
-.status.error {
-  background: #f8d7da;
-  color: #721c24;
-}
-
-.status.info {
-  background: #d1ecf1;
-  color: #0c5460;
-}
-
-/* 页面头部通用（设置页、历史页等） */
+/* ========== 页面头部通用 ========== */
 .page-header {
   display: flex;
   align-items: center;
   gap: 15px;
   margin-bottom: 20px;
   padding-bottom: 15px;
-  border-bottom: 2px solid #f0f0f0;
+  border-bottom: 2px solid #e5e7eb;
 }
 
 .back-btn {
-  background: #f5f5f5;
-  border: none;
+  background: #f6f8fa;
+  border: 1px solid #d1d5db;
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -258,43 +357,69 @@ textarea:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s;
+  transition: all 0.2s;
   flex-shrink: 0;
 }
 
 .back-btn:hover {
-  background: #e0e0e0;
+  background: #e5e7eb;
+  border-color: #9ca3af;
   transform: scale(1.05);
+}
+
+.back-btn:active {
+  transform: scale(0.95);
 }
 
 .page-header h2 {
   margin: 0;
   flex: 1;
   text-align: left;
+  color: #24292e;
+  font-size: 20px;
 }
 
-/* 通用说明文字 */
+/* ========== 通用说明文字 ========== */
 .info-text {
-  color: #666;
+  color: #586069;
   font-size: 13px;
   margin-bottom: 15px;
   text-align: center;
+  line-height: 1.5;
 }
 
-/* 危险按钮（设置页用） */
-.btn-danger {
-  background: #dc3545;
-  color: white;
+/* ========== 加载页面 ========== */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 400px;
 }
 
-.btn-danger:hover {
-  background: #c82333;
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid #e5e7eb;
+  border-top: 4px solid #037dd6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 20px;
 }
 
-/* 设置页用的空状态（授权列表用） */
-.empty-message {
-  text-align: center;
-  padding: 40px 20px;
-  color: #999;
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-container p {
+  color: #586069;
   font-size: 14px;
+  font-weight: 500;
+}
+
+/* ========== 隐藏类 ========== */
+.hidden {
+  display: none !important;
 }

@@ -7,25 +7,165 @@
   <title>夜莺钱包</title>
   <base href="../">
   <link rel="stylesheet" href="css/common.css">
-  <link rel="stylesheet" href="css/wallet.css">
+  <link rel="stylesheet" href="css/mnemonic.css">
   <link rel="stylesheet" href="css/settings.css">
   <link rel="stylesheet" href="css/history.css">
   <link rel="stylesheet" href="css/unlock.css">
+  <link rel="stylesheet" href="css/wallet.css">
+  <link rel="stylesheet" href="css/accounts.css">
 </head>
 
 <body>
   <div class="container">
+    <!-- 添加加载页面，默认显示 -->
+    <div id="loadingPage" class="page">
+      <div class="loading-container">
+        <div class="loading-spinner"></div>
+        <p>加载中...</p>
+      </div>
+    </div>
+
     <!-- 欢迎页面 -->
-    <div id="welcomePage" class="page">
+    <div id="welcomePage" class="page hidden">
       <h2>夜莺钱包</h2>
       <button id="createWalletBtn" class="btn btn-primary">新建钱包</button>
       <button id="importWalletBtn" class="btn btn-secondary">导入钱包</button>
     </div>
 
+    <!-- 主钱包页面 -->
+    <div id="walletPage" class="page hidden">
+      <!-- Header 区域 -->
+      <div class="wallet-header">
+        <!-- 网络选择器 -->
+        <div class="network-indicator">
+          <div class="network-dot"></div>
+          <select id="networkSelect" class="network-select">
+            <option value="https://blockchain.yeying.pub">夜莺网络</option>
+            <option value="https://mainnet.infura.io/v3/YOUR_INFURA_KEY">以太坊主网</option>
+            <option value="https://sepolia.infura.io/v3/YOUR_INFURA_KEY">Sepolia 测试网</option>
+            <option value="custom">自定义 RPC</option>
+          </select>
+        </div>
+        <input type="text" id="customRpcInput" class="custom-rpc-input hidden" placeholder="输入 RPC URL">
+
+        <!-- 账户选择器 -->
+        <div class="account-selector" id="accountHeader">
+          <div class="account-avatar" id="walletAvatar"></div>
+          <div class="account-info">
+            <div class="account-name" id="accountName">主账户</div>
+          </div>
+          <span class="dropdown-arrow">▼</span>
+        </div>
+
+        <!-- 操作按钮组 -->
+        <div class="header-actions">
+          <button class="header-icon-btn" id="accountManageBtn" title="账户管理">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="8" r="4"></circle>
+              <path d="M6 20c0-3.3 2.7-6 6-6s6 2.7 6 6"></path>
+            </svg>
+          </button>
+          <button class="header-icon-btn" id="historyBtn" title="交易历史">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+              <path d="M3 3v5h5"></path>
+              <path d="M12 7v5l4 2"></path>
+            </svg>
+          </button>
+          <button class="header-icon-btn" id="settingsBtn" title="设置">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path
+                d="M12 1v6m0 6v6m5.2-13.2l-4.2 4.2m-2 2l-4.2 4.2m13.2-5.2l-6 0m-6 0l-6 0m13.2 5.2l-4.2-4.2m-2-2l-4.2-4.2">
+              </path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 余额显示 -->
+      <div class="balance-section">
+        <div class="balance-label">余额</div>
+        <div class="balance-amount">
+          <span id="balance">0.0000</span>
+          <span class="balance-unit">ETH</span>
+        </div>
+        <button class="refresh-btn" id="refreshBalanceBtn" title="刷新余额">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- 标签页 -->
+      <div class="tabs">
+        <button class="tab active" id="sendTab">转账</button>
+        <button class="tab" id="receiveTab">接收</button>
+        <button class="tab" id="advancedTab">高级</button>
+      </div>
+
+      <!-- 转账内容 -->
+      <div id="sendContent" class="tab-content">
+        <div class="form-group">
+          <label>接收地址</label>
+          <input type="text" id="recipientAddress" placeholder="0x..." class="input">
+        </div>
+        <div class="form-group">
+          <label>金额 (ETH)</label>
+          <input type="number" id="amount" placeholder="0.0" step="0.0001" class="input">
+        </div>
+        <button class="btn btn-primary btn-block" id="sendBtn">发送</button>
+        <div id="sendStatus" class="status"></div>
+      </div>
+
+      <!-- 接收内容 -->
+      <div id="receiveContent" class="tab-content hidden">
+        <div class="receive-section">
+          <div class="qr-code-container">
+            <div id="qrcode"></div>
+          </div>
+          <p class="receive-hint">扫描二维码接收 ETH</p>
+          <button class="btn btn-secondary btn-block" id="copyReceiveAddressBtn">📋 复制地址</button>
+        </div>
+      </div>
+
+      <!-- 高级内容 -->
+      <div id="advancedContent" class="tab-content hidden">
+        <div class="settings-section">
+          <h3>🔑 私钥管理</h3>
+          <button id="showPrivateKeyBtn" class="btn btn-secondary">显示私钥</button>
+          <div id="privateKeyDisplay" class="private-key-display hidden">
+            <div class="warning">
+              ⚠️ 请勿泄露私钥！任何人获得私钥都可以控制您的资产。
+            </div>
+            <input type="text" id="privateKeyValue" readonly class="input" />
+            <button id="copyPrivateKeyBtn" class="btn btn-secondary">复制私钥</button>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3>📝 助记词管理</h3>
+          <button id="showMnemonicBtn" class="btn btn-secondary">显示助记词</button>
+          <div id="mnemonicDisplay" class="mnemonic-display hidden">
+            <div class="warning">
+              ⚠️ 请勿泄露助记词！任何人获得助记词都可以恢复你的钱包。
+            </div>
+            <textarea id="mnemonicValue" readonly rows="3" class="input"></textarea>
+            <button id="copyMnemonicBtn" class="btn btn-secondary">复制助记词</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
     <!-- 加密码设置页面 -->
     <div id="setPasswordPage" class="page hidden">
       <h2>夜莺钱包</h2>
       <p class="info-text">请设置一个密码来保护您的钱包</p>
+      <!-- 添加账户名称输入 -->
+      <div class="form-group">
+        <label>账户名称</label>
+        <input type="text" id="setAccountName" placeholder="例如：我的主账户" value="主账户">
+      </div>
       <div class="form-group">
         <label>密码:</label>
         <input type="password" id="newPassword" placeholder="至少8位字符">
@@ -60,114 +200,41 @@
       <button id="backToWelcomeBtn" class="btn btn-secondary">返回</button>
     </div>
 
-    <!-- 主钱包页面 -->
-    <div id="walletPage" class="page hidden">
-      <div class="header">
-        <div class="wallet-info">
-          <div id="walletAvatar" class="wallet-avatar"></div>
-          <div class="wallet-details">
-            <div class="wallet-label">我的钱包</div>
-            <div id="walletAddress" class="wallet-address-header">0x0000...0000</div>
+    <!-- 账户管理页面 -->
+    <div id="accountsPage" class="page hidden">
+      <div class="page-header">
+        <button class="back-btn" id="backFromAccounts">←</button>
+        <h2>账户管理</h2>
+      </div>
+
+      <div class="account-manage-content">
+        <!-- 账户列表 -->
+        <div class="account-list-section">
+          <h3>我的账户</h3>
+          <div id="accountManageList" class="account-manage-list">
+            <!-- 动态生成账户列表 -->
           </div>
         </div>
-        <button id="logoutBtn" class="btn-icon" title="登出">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-            <polyline points="16 17 21 12 16 7"></polyline>
-            <line x1="21" y1="12" x2="9" y2="12"></line>
-          </svg>
-        </button>
-      </div>
-      <div class="balance-section">
-        <h3>余额</h3>
-        <div class="balance">
-          <span id="balance">0.0000</span> <span class="currency">ETH</span>
-        </div>
-        <button id="refreshBalanceBtn" class="btn btn-small">刷新</button>
-      </div>
-      <div class="network-selector">
-        <label>网络:</label>
-        <select id="networkSelect">
-          <option value="https://blockchain.yeying.pub">夜莺网络</option>
-        </select>
-        <input type="text" id="customRpcInput" class="hidden" placeholder="输入自定义 RPC URL">
-      </div>
 
-      <!-- 快捷操作按钮 -->
-      <div class="quick-actions">
-        <button id="historyBtn" class="quick-action-btn">
-          <span class="icon">📜</span>
-          <span>交易历史</span>
-        </button>
-        <button id="settingsBtn" class="quick-action-btn">
-          <span class="icon">⚙️</span>
-          <span>设置</span>
-        </button>
-      </div>
-
-      <div class="tabs">
-        <button id="sendTab" class="tab active">转账</button>
-        <button id="receiveTab" class="tab">接收</button>
-        <button id="advancedTab" class="tab">高级</button>
-      </div>
-
-      <!-- 转账标签页 -->
-      <div id="sendContent" class="tab-content">
-        <div class="form-group">
-          <label>接收地址:</label>
-          <input type="text" id="recipientAddress" placeholder="0x...">
-        </div>
-        <div class="form-group">
-          <label>金额 (ETH):</label>
-          <input type="number" id="amount" placeholder="0.0" step="0.0001">
-        </div>
-        <button id="sendBtn" class="btn btn-primary">发送</button>
-        <div id="sendStatus" class="status"></div>
-      </div>
-
-      <!-- 接收标签页 -->
-      <div id="receiveContent" class="tab-content hidden">
-        <p>扫描或分享您的地址以接收资金:</p>
-        <div class="qr-container">
-          <div id="qrcode"></div>
-        </div>
-        <div class="address-container">
-          <span id="receiveAddress" class="address"></span>
-          <button id="copyReceiveAddressBtn" class="btn-icon">📋</button>
-        </div>
-      </div>
-
-      <!-- 高级标签页 -->
-      <div id="advancedContent" class="tab-content hidden">
-        <div class="settings-section">
-          <h3>🔑 私钥管理</h3>
-          <button id="showPrivateKeyBtn" class="btn btn-secondary">
-            显示私钥
+        <!-- 操作按钮 -->
+        <div class="account-actions">
+          <button class="btn btn-primary" id="createAccountBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              style="margin-right: 8px;">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            创建新账户
           </button>
-          <div id="privateKeyDisplay" style="display: none; margin-top: 10px;">
-            <div class="warning">
-              ⚠️ 请勿泄露私钥！任何人获得私钥都可以控制您的资产。
-            </div>
-            <input type="text" id="privateKeyValue" readonly />
-            <button id="copyPrivateKeyBtn" class="btn btn-secondary">
-              复制私钥
-            </button>
-          </div>
-        </div>
-        <div class="settings-section">
-          <h3>📝 助记词管理</h3>
-          <button id="showMnemonicBtn" class="btn btn-secondary">
-            显示助记词
+          <button class="btn btn-secondary" id="importAccountBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              style="margin-right: 8px;">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            导入账户
           </button>
-          <div id="mnemonicDisplay" style="display: none; margin-top: 10px;">
-            <div class="warning">
-              ⚠️ 请勿泄露助记词！任何人获得助记词都可以恢复你的钱包。
-            </div>
-            <textarea id="mnemonicValue" readonly rows="3"></textarea>
-            <button id="copyMnemonicBtn" class="btn btn-secondary">
-              复制助记词
-            </button>
-          </div>
         </div>
       </div>
     </div>
@@ -221,27 +288,151 @@
         </button>
       </div>
     </div>
-  </div>
 
-  <!-- 全局悬浮提示 -->
-  <div id="globalToast" class="toast hidden"></div>
+    <!-- 全局悬浮提示 -->
+    <div id="globalToast" class="toast hidden"></div>
 
-  <!-- 第三方库 -->
-  <script src="lib/ethers-5.7.umd.min.js"></script>
-  <script src="lib/qrcode.min.js"></script>
+    <!-- 创建账户模态框 -->
+    <div id="createAccountModal" class="modal hidden">
+      <div class="modal-overlay"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>创建新账户</h3>
+          <button class="btn-close" id="closeCreateAccountModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>账户名称</label>
+            <input type="text" id="newAccountName" class="input" placeholder="例如：我的账户 2" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="cancelCreateAccount">取消</button>
+          <button class="btn btn-primary" id="confirmCreateAccount">创建</button>
+        </div>
+      </div>
+    </div>
 
-  <!-- 应用模块 - 按依赖顺序加载 -->
-  <script src="js/config.js"></script>
-  <script src="js/utils.js"></script>
-  <script src="js/indexeddb.js"></script>
-  <script src="js/storage.js"></script>
-  <script src="js/ui.js"></script>
-  <script src="js/network.js"></script>
-  <script src="js/settings.js"></script>
-  <script src="js/history.js"></script>
-  <script src="js/wallet.js"></script>
-  <script src="js/transaction.js"></script>
-  <script src="js/popup.js"></script>
+    <!-- 导入账户模态框 -->
+    <div id="importAccountModal" class="modal hidden">
+      <div class="modal-overlay"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>导入账户</h3>
+          <button class="btn-close" id="closeImportAccountModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>账户名称</label>
+            <input type="text" id="importAccountName" class="input" placeholder="例如：导入的账户" />
+          </div>
+          <div class="form-group">
+            <label>私钥</label>
+            <textarea id="importPrivateKey" class="input" rows="3" placeholder="输入私钥（0x 开头）"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="cancelImportAccount">取消</button>
+          <button class="btn btn-primary" id="confirmImportAccount">导入</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 删除账户模态框 -->
+    <div id="deleteAccountModal" class="modal hidden">
+      <div class="modal-overlay"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>删除账户</h3>
+          <button class="btn-close" id="closeDeleteAccountModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="warning-box">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            <p>删除账户后将无法恢复，请确保已备份助记词或私钥！</p>
+          </div>
+
+          <div class="account-info-box">
+            <div class="info-row">
+              <span class="label">账户名称：</span>
+              <span id="deleteAccountName"></span>
+            </div>
+            <div class="info-row">
+              <span class="label">地址：</span>
+              <span id="deleteAccountAddress"></span>
+            </div>
+          </div>
+
+          <input type="hidden" id="deleteAccountId">
+
+          <div class="form-group">
+            <label for="deleteAccountPassword">请输入密码确认删除：</label>
+            <input type="password" id="deleteAccountPassword" placeholder="输入密码">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="cancelDeleteAccount">取消</button>
+          <button class="btn-danger" id="confirmDeleteAccount">确认删除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑账户模态框 -->
+    <div id="editAccountModal" class="modal hidden">
+      <div class="modal-overlay"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>编辑账户</h3>
+          <button class="btn-close" id="closeEditAccountModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="editAccountId">
+
+          <div class="account-info-box">
+            <div class="info-row">
+              <span class="label">地址：</span>
+              <span id="editAccountAddress"></span>
+            </div>
+            <div class="info-row">
+              <span class="label">类型：</span>
+              <span id="editAccountType"></span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="editAccountName">账户名称：</label>
+            <input type="text" id="editAccountName" placeholder="输入账户名称" maxlength="20">
+            <small class="form-hint">最多 20 个字符</small>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="cancelEditAccount">取消</button>
+          <button class="btn-primary" id="confirmEditAccount">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 第三方库 -->
+    <script src="lib/ethers-5.7.umd.min.js"></script>
+    <script src="lib/qrcode.min.js"></script>
+
+    <!-- 应用模块 - 按依赖顺序加载 -->
+    <script src="js/config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/indexeddb.js"></script>
+    <script src="js/storage.js"></script>
+    <script src="js/network.js"></script>
+    <script src="js/accounts.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/settings.js"></script>
+    <script src="js/history.js"></script>
+    <script src="js/wallet.js"></script>
+    <script src="js/transaction.js"></script>
+    <script src="js/popup.js"></script>
 </body>
 
 </html>
