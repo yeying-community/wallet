@@ -57,8 +57,10 @@
   color: #999;
 }
 
-/* 授权撤销按钮（最终版本） */
+/* 授权撤销按钮 */
 .btn-revoke {
+  width: auto;
+  margin: 0 0 0 10px;
   padding: 6px 12px;
   background: #dc3545;
   color: white;
@@ -69,7 +71,6 @@
   font-weight: 500;
   transition: all 0.2s;
   flex-shrink: 0;
-  margin-left: 10px;
 }
 
 .btn-revoke:hover {
