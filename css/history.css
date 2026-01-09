@@ -64,6 +64,21 @@
 .tx-status {
   font-size: 11px;
 }
+.tx-status.pending {
+  color: #f0ad4e;
+}
+
+.tx-status.confirmed {
+  color: #2d8a4b;
+}
+
+.tx-status.failed {
+  color: #d9534f;
+}
+
+.tx-status.cancelled {
+  color: #999;
+}
 
 /* 空状态（历史列表） */
 .empty-state {
@@ -75,4 +90,9 @@
 .empty-state p:first-child {
   font-size: 48px;
   margin-bottom: 10px;
+}
+
+.history-actions {
+  padding: 15px 0 5px;
+  text-align: center;
 }

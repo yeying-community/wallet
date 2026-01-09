@@ -100,7 +100,16 @@ h3 {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
-/* 🔥 危险按钮 */
+.btn-secondary:disabled {
+  background: #e5e7eb;
+  color: #9ca3af;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+  border-color: #d1d5db;
+}
+
+/* 危险按钮 */
 .btn-danger {
   background: #d73a49;
   color: white;
@@ -117,6 +126,14 @@ h3 {
   background: #b5202e;
   transform: translateY(0);
   box-shadow: 0 2px 4px rgba(215, 58, 73, 0.2);
+}
+
+.btn-danger:disabled {
+  background: #f5c6cb;
+  color: #d1d5db;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
 }
 
 /* 小按钮 */
@@ -265,7 +282,7 @@ textarea.input {
 /* ========== 全局悬浮提示 ========== */
 .toast {
   position: fixed;
-  top: 20px;
+  top: 8px;
   left: 50%;
   transform: translateX(-50%);
   min-width: 280px;
@@ -276,7 +293,7 @@ textarea.input {
   font-weight: 500;
   text-align: center;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 9999;
+  z-index: 20000;
   animation: slideDown 0.3s ease-out;
   word-wrap: break-word;
   border: 1px solid transparent;
@@ -423,3 +440,211 @@ textarea.input {
 .hidden {
   display: none !important;
 }
+
+/* ========== 模态框通用样式 ========== */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+.modal-content {
+  position: relative;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  max-width: 90%;
+  width: 400px;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideUp 0.3s ease-out;
+  z-index: 1001;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #24292e;
+  font-weight: 600;
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #6c757d;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s;
+  padding: 0;
+  line-height: 1;
+}
+
+.btn-close:hover {
+  background: #f6f8fa;
+  color: #24292e;
+  transform: rotate(90deg);
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.modal-footer {
+  display: flex;
+  gap: 12px;
+  padding: 20px;
+  border-top: 2px solid #e5e7eb;
+  background: #f6f8fa;
+  border-radius: 0 0 12px 12px;
+}
+
+.modal-footer .btn {
+  flex: 1;
+  margin: 0;
+}
+
+/* ========== 警告框样式 ========== */
+.warning-box {
+  background: #fff3cd;
+  border: 2px solid #ffc107;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.warning-box svg {
+  flex-shrink: 0;
+  color: #856404;
+  margin-top: 2px;
+}
+
+.warning-box p {
+  color: #856404;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ========== 信息框样式 ========== */
+.account-info-box {
+  background: #f6f8fa;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  font-size: 13px;
+}
+
+.info-row:not(:last-child) {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.info-row .label {
+  color: #6c757d;
+  font-weight: 600;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.info-row span:not(.label) {
+  color: #24292e;
+  word-break: break-all;
+}
+
+/* ========== 空状态样式 ========== */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: #6c757d;
+  font-size: 14px;
+}
+
+.empty-state p:first-child {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.empty-message {
+  text-align: center;
+  padding: 20px;
+  color: #6c757d;
+  font-size: 13px;
+}
+
+/* ========== 表单提示样式 ========== */
+.form-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6c757d;
+  line-height: 1.4;
+}
+
+.form-hint.error {
+  color: #d73a49;
+}
+
+.form-hint.success {
+  color: #28a745;
+}
+

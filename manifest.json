@@ -21,7 +21,8 @@
     }
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "js/background/index.js",
+    "type": "module"
   },
   "content_scripts": [
     {
@@ -45,7 +46,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["inject.js"],
+      "resources": ["inject.js", "js/protocol/protocol.js"],
       "matches": [
         "https://*/*",
         "http://*/*"

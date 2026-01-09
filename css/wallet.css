@@ -1,7 +1,44 @@
 /* 钱包主页面样式 */
 
-/* ========== 钱包 Header ========== */
-.wallet-header {
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+.container {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ========== 转账页面布局（中间可滚动） ========== */
+#transferPage {
+  padding: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+#transferPage .page-header {
+  margin: 0;
+  padding: 20px 20px 15px;
+  flex: 0 0 auto;
+  background: #ffffff;
+}
+
+#transferPage .transfer-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0 20px;
+}
+
+#transferPage .transfer-footer {
+  flex: 0 0 auto;
+  padding: 12px 20px 20px;
+}
+
+/* ========== 钱包页面 Header（紫色渐变背景）========== */
+#walletPage .wallet-header {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   padding: 16px;
   border-radius: 0 0 20px 20px;
@@ -9,75 +46,188 @@
   margin: -20px -20px 0 -20px;
 }
 
-/* 网络指示器 */
-.network-indicator {
-  display: flex;
+/* 网络选择器 */
+.network-selector {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 16px;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 20px;
-  backdrop-filter: blur(10px);
+  gap: 6px;
+  padding: 6px 10px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  position: relative;
 }
 
 .network-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: #4ade80;
-  box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.6);
   animation: pulse 2s infinite;
   flex-shrink: 0;
 }
 
 @keyframes pulse {
-
-  0%,
-  100% {
+  0%, 100% {
     opacity: 1;
   }
-
   50% {
     opacity: 0.5;
   }
 }
 
-.network-select {
-  flex: 1;
+.network-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: transparent;
   border: none;
-  color: white;
-  font-size: 13px;
-  font-weight: 500;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  outline: none;
+  padding: 0;
+  width: 100%;
+  justify-content: space-between;
 }
 
-.network-select option {
-  background: #1a1a1a;
-  color: white;
+.network-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.custom-rpc-input {
-  width: calc(100% - 32px);
-  padding: 8px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+.network-chevron {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.network-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  padding: 6px;
+  z-index: 20;
+  max-height: 220px;
+  overflow: auto;
+  will-change: transform;
+}
+
+.network-menu.hidden {
+  display: none;
+}
+
+.network-option {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 8px 10px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
-  font-size: 13px;
-  margin: 0 16px 12px 16px;
+  font-size: 12px;
+  color: #111827;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
-.custom-rpc-input::placeholder {
-  color: rgba(255, 255, 255, 0.6);
+.network-menu::-webkit-scrollbar {
+  width: 6px;
 }
 
-.custom-rpc-input:focus {
-  outline: none;
-  border-color: rgba(255, 255, 255, 0.5);
-  background: rgba(255, 255, 255, 0.15);
+.network-menu::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.6);
+  border-radius: 999px;
+}
+
+.network-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.network-option:hover {
+  background: #f8fafc;
+}
+
+.network-option.active {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+/* ========== 账户选择器（钱包页面头部）========== */
+.account-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: white;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 2px solid transparent;
+  margin-bottom: 0;
+}
+
+.account-selector:hover {
+  background: #f8f9fa;
+  border-color: #037dd6;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(3, 125, 214, 0.15);
+}
+
+.account-selector:active {
+  transform: translateY(0);
+}
+
+.account-selector .account-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.account-selector .account-avatar canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.account-selector .account-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-selector .account-name {
+  font-weight: 600;
+  color: #212529;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-arrow {
+  color: #6c757d;
+  font-size: 12px;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.account-selector:hover .dropdown-arrow {
+  transform: translateX(2px);
 }
 
 /* 操作按钮组 */
@@ -85,6 +235,7 @@
   display: flex;
   gap: 8px;
   justify-content: center;
+  margin-top: 8px;
 }
 
 .header-icon-btn {
@@ -116,67 +267,6 @@
   stroke: white;
 }
 
-/* 余额部分 */
-.balance-section {
-  padding: 24px 20px;
-  text-align: center;
-  position: relative;
-}
-
-.balance-label {
-  font-size: 13px;
-  color: #6c757d;
-  margin-bottom: 8px;
-  font-weight: 500;
-}
-
-.balance-amount {
-  font-size: 36px;
-  font-weight: 700;
-  color: #212529;
-  margin-bottom: 4px;
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 8px;
-}
-
-.balance-unit {
-  font-size: 18px;
-  color: #6c757d;
-  font-weight: 500;
-}
-
-.refresh-btn {
-  position: absolute;
-  top: 24px;
-  right: 20px;
-  width: 32px;
-  height: 32px;
-  background: #f8f9fa;
-  border: 1px solid #dee2e6;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.refresh-btn:hover {
-  background: #e9ecef;
-  border-color: #adb5bd;
-  transform: rotate(90deg);
-}
-
-.refresh-btn:active {
-  transform: rotate(90deg) scale(0.95);
-}
-
-.refresh-btn svg {
-  stroke: #495057;
-}
-
 /* ========== 标签页 ========== */
 .tabs {
   display: flex;
@@ -184,7 +274,6 @@
   padding: 0;
   gap: 4px;
   margin: 0 -20px;
-  /* 抵消 .page 的 padding */
   padding: 0 16px;
 }
 
@@ -223,7 +312,6 @@
     opacity: 0;
     transform: translateY(10px);
   }
-
   to {
     opacity: 1;
     transform: translateY(0);
@@ -234,6 +322,244 @@
 .receive-section {
   padding: 20px 0;
   text-align: center;
+}
+
+/* ========== Tab 工具栏 ========== */
+.tab-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -6px 0 12px;
+  justify-content: space-between;
+}
+
+.tab-toolbar .network-selector {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 140px;
+  max-width: 200px;
+  padding: 8px 12px;
+  height: 32px;
+}
+
+.tab-toolbar-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.tab-toolbar-actions .btn {
+  width: auto;
+  margin: 0;
+}
+
+.tab-toolbar-actions .btn-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #374151;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.tab-toolbar-actions .btn-icon:hover {
+  background: #f8fafc;
+  border-color: #cbd5f5;
+  color: #1f2937;
+}
+
+.input-like {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #d1d5db;
+  border-radius: 10px;
+  box-shadow: none;
+  background: #ffffff;
+}
+
+.input-like .network-dot {
+  width: 8px;
+  height: 8px;
+}
+
+.input-like .network-trigger {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.input-like .network-menu {
+  left: -2px;
+  right: -2px;
+}
+
+.token-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  position: relative;
+}
+
+.token-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.token-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.token-chevron {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.token-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  padding: 6px;
+  z-index: 20;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.token-menu.hidden {
+  display: none;
+}
+
+.token-option {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #111827;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.token-option:hover {
+  background: #f8fafc;
+}
+
+.token-option.active {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.token-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.token-menu::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.6);
+  border-radius: 999px;
+}
+
+.token-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ========== 通证列表 ========== */
+.token-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.token-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05);
+}
+
+.token-item.native {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+}
+
+.token-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 4px;
+}
+
+.token-symbol {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.token-name {
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.token-balance {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  text-align: right;
+}
+
+.token-balance span {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.token-badge {
+  background: #dcfce7;
+  color: #166534;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+/* ========== 藏品列表（占位） ========== */
+.collectibles-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .qr-code-container {
@@ -291,3 +617,37 @@
   line-height: 1.5;
 }
 
+/* ==================== 导入页面样式 ==================== */
+
+.import-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 4px;
+  background: #f5f5f5;
+  border-radius: 8px;
+}
+
+.import-tab {
+  flex: 1;
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.import-tab:hover {
+  background: rgba(102, 126, 234, 0.1);
+  color: #667eea;
+}
+
+.import-tab.active {
+  background: white;
+  color: #667eea;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
