@@ -5,7 +5,8 @@
 
 import { getWalletInstance } from './keyring.js';
 import { state } from './state.js';
-import { getNetworkByChainId } from '../config/index.js';
+import { getNetworkByChainId, getNetworkConfigByKey } from '../storage/index.js';
+import { DEFAULT_NETWORK } from '../config/index.js';
 import { ethers } from '../../lib/ethers-5.7.esm.min.js';
 
 /**
@@ -19,15 +20,23 @@ export async function signTransaction(accountId, transaction) {
     const wallet = getWalletInstance(accountId);
 
     // 连接到 provider
-    const network = getNetworkByChainId(state.currentChainId);
-    const rpcUrl = state.currentRpcUrl || network?.rpcUrl || network?.rpc;
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const network = await getNetworkByChainId(state.currentChainId);
+    let rpcUrl = state.currentRpcUrl || network?.rpcUrl || network?.rpc;
+    if (!rpcUrl) {
+      const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+      rpcUrl = fallbackConfig?.rpcUrl || fallbackConfig?.rpc || '';
+    }
+    if (!rpcUrl) {
+      throw new Error('RPC URL not configured');
+    }
+    const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
     const connectedWallet = wallet.connect(provider);
 
     // 签名并发送交易
     const tx = await connectedWallet.sendTransaction(transaction);
 
     console.log('✅ Transaction signed:', tx.hash);
+
     return {
       hash: tx.hash,
       from: tx.from,
@@ -58,6 +67,7 @@ export async function signMessage(accountId, message) {
     console.log('✅ Message signed');
 
     return signature;
+
   } catch (error) {
     console.error('❌ Sign message failed:', error);
     throw error;

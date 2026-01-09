@@ -24,7 +24,7 @@ export function cancellableDelay(ms) {
     timeoutId = setTimeout(resolve, ms);
     rejectFn = reject;
   });
-
+  
   const cancel = () => {
     clearTimeout(timeoutId);
     rejectFn(new Error('Delay cancelled'));
@@ -50,7 +50,7 @@ export async function waitUntil(condition, interval = 100, timeout = 5000) {
     
     await delay(interval);
   }
-
+  
   return true;
 }
 
@@ -81,6 +81,7 @@ export async function retry(fn, retries = 3, delayMs = 1000, onRetry = null) {
       return await fn();
     } catch (error) {
       lastError = error;
+      
       if (i < retries) {
         if (onRetry) {
           onRetry(error, i + 1, retries);
@@ -133,7 +134,7 @@ export async function retryWithBackoff(fn, options = {}) {
       }
     }
   }
-
+  
   throw lastError;
 }
 
@@ -179,7 +180,7 @@ export async function parallelLimit(tasks, concurrency = 5) {
       results.push(result);
       executing.delete(wrappedTask);
     };
-
+    
     executing.add(wrappedTask);
     
     if (executing.size >= concurrency) {
@@ -244,7 +245,7 @@ export async function withTimeoutResult(promise, timeout = 5000) {
       resolve({ success: false, error: new Error(`Operation timed out after ${timeout}ms`) });
     }, timeout);
   });
-
+  
   const resultPromise = promise.then(
     result => ({ success: true, result }),
     error => ({ success: false, error })
@@ -340,7 +341,7 @@ export async function asyncMap(array, mapper, concurrency = 10) {
       results[index] = result;
       executing.delete(wrappedMapper);
     };
-
+    
     executing.add(wrappedMapper);
     
     if (executing.size >= concurrency) {
@@ -357,7 +358,7 @@ export async function asyncMap(array, mapper, concurrency = 10) {
   while (executing.size > 0) {
     await Promise.race(executing);
   }
-
+  
   return results;
 }
 
@@ -388,6 +389,7 @@ export async function asyncFilter(array, filterer, concurrency = 10) {
  */
 export async function asyncReduce(array, reducer, initialValue) {
   let accumulator = initialValue;
+  
   for (let i = 0; i < array.length; i++) {
     accumulator = await reducer(accumulator, array[i], i, array);
   }
@@ -405,7 +407,7 @@ export class AsyncQueue {
     this.executing = 0;
     this.paused = false;
   }
-
+  
   /**
    * 添加任务到队列
    * @param {Function} task - 任务函数
@@ -425,7 +427,7 @@ export class AsyncQueue {
     if (this.paused || this.executing >= this.concurrency || this.queue.length === 0) {
       return;
     }
-
+    
     this.executing++;
     
     const { task, resolve, reject } = this.queue.shift();
@@ -493,7 +495,7 @@ export class Semaphore {
       this.currentCount++;
       return;
     }
-
+    
     return new Promise(resolve => {
       this.waitQueue.push(resolve);
     });
@@ -504,6 +506,7 @@ export class Semaphore {
    */
   release() {
     this.currentCount--;
+    
     if (this.waitQueue.length > 0 && this.currentCount < this.maxConcurrency) {
       this.currentCount++;
       const next = this.waitQueue.shift();
@@ -526,3 +529,4 @@ export class Semaphore {
     }
   }
 }
+

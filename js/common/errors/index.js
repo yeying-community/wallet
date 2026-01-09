@@ -13,7 +13,8 @@ export {
   SigningErrorCode,
   ValidationErrorCode,
   SystemErrorCode,
-  ErrorCodeRange
+  ErrorCodeRange,
+  getErrorCode
 } from './error-codes.js';
 
 // 错误消息
@@ -21,13 +22,18 @@ export {
   ErrorMessage,
   ErrorMessageEN,
   ErrorMessageZH,
-  getErrorMessage
+  getErrorMessage,
+  getErrorMessageFromError
 } from './error-messages.js';
 
 // 错误工厂
 export {
   createError,
   createErrorFromException,
+  createCustomError,
+  createValidationError,
+  createApiError,
+  createNetworkErrorException,
   // JSON-RPC
   createParseError,
   createInvalidRequest,
@@ -88,6 +94,20 @@ export {
   isTransactionError,
   isInsufficientFundsError,
   isValidationError,
+  isTimeoutError,
+  isPermissionError,
+  isErrorType,
+  getErrorName,
+  getErrorStack,
+  getFullErrorMessage,
+  formatErrorForLog,
+  safeCall,
+  safeAsyncCall,
+  wrapWithErrorHandler,
+  wrapWithAsyncErrorHandler,
+  showErrorToast,
+  getUserFriendlyError,
+  isKnownError,
   getUserFriendlyMessage,
   logError,
   safeExecute,

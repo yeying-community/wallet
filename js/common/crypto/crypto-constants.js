@@ -144,3 +144,4 @@ export const CRYPTO_ERROR_MESSAGES = {
   KEY_DERIVATION_FAILED: 'Key derivation failed',
   INVALID_SALT: 'Invalid salt value'
 };
+

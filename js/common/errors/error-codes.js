@@ -115,7 +115,7 @@ export const ErrorCodeRange = {
   isTransaction(code) {
     return code >= 5200 && code < 5300;
   },
-
+  
   isSigning(code) {
     return code >= 5300 && code < 5400;
   },
@@ -128,3 +128,28 @@ export const ErrorCodeRange = {
     return code >= 5500 && code < 5600;
   }
 };
+
+/**
+ * 提取错误代码
+ * @param {Error|any} error - 错误对象
+ * @returns {number|string|null}
+ */
+export function getErrorCode(error) {
+  if (!error) {
+    return null;
+  }
+
+  if (error.code) {
+    return error.code;
+  }
+
+  if (error.status) {
+    return error.status;
+  }
+
+  if (error.statusCode) {
+    return error.statusCode;
+  }
+
+  return null;
+}

@@ -11,49 +11,13 @@
  */
 import { isValidAddress } from '../common/utils/index.js';
 import { TransactionMessageType } from '../protocol/protocol.js';
+import { BaseDomain } from './base-domain.js';
 export { TransactionMessageType };
 
-export class TransactionDomain {
+export class TransactionDomain extends BaseDomain {
   constructor() {
+    super();
     this._history = [];
-  }
-
-  // ==================== 消息发送 ====================
-
-  /**
-   * 发送消息到 background
-   * @param {string} type - 消息类型
-   * @param {Object} data - 消息数据
-   * @returns {Promise<Object>} 响应结果
-   */
-  async _sendMessage(type, data = {}) {
-    return new Promise((resolve, reject) => {
-      if (typeof browser !== 'undefined') {
-        browser.runtime.sendMessage({ type, data })
-          .then(response => {
-            if (response?.success === false) {
-              reject(new Error(response.error || '操作失败'));
-            } else {
-              resolve(response);
-            }
-          })
-          .catch(error => {
-            reject(error);
-          });
-      } else if (typeof chrome !== 'undefined') {
-        chrome.runtime.sendMessage({ type, data }, (response) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else if (response?.success === false) {
-            reject(new Error(response.error || '操作失败'));
-          } else {
-            resolve(response);
-          }
-        });
-      } else {
-        reject(new Error('不支持的浏览器环境'));
-      }
-    });
   }
 
   // ==================== 单位转换 ====================
@@ -79,9 +43,17 @@ export class TransactionDomain {
    * @returns {string} ETH 数量
    */
   formatEther(wei) {
-    const weiBigInt = typeof wei === 'string' ? BigInt(wei.replace('0x', '')) : BigInt(wei);
-    const ether = Number(weiBigInt) / 1e18;
-    return ether.toFixed(6);
+    try {
+      if (wei === null || wei === undefined || wei === '') {
+        return '0.000000';
+      }
+      const normalized = typeof wei === 'string' ? wei.trim() : wei;
+      const weiBigInt = BigInt(normalized);
+      const ether = Number(weiBigInt) / 1e18;
+      return ether.toFixed(6);
+    } catch (error) {
+      return '0.000000';
+    }
   }
 
   /**
@@ -145,7 +117,8 @@ export class TransactionDomain {
       to,
       value,
       timestamp: Date.now(),
-      status: 'pending'
+      status: 'pending',
+      chainId: chainId || null
     });
 
     return result.txHash;
@@ -221,10 +194,11 @@ export class TransactionDomain {
    * @param {string} address - 地址
    * @returns {Promise<Array>} 交易历史
    */
-  async getTransactionHistory(address) {
+  async getTransactionHistory(address, chainId = null) {
     try {
       const result = await this._sendMessage(TransactionMessageType.GET_TRANSACTION_HISTORY, {
-        address
+        address,
+        chainId
       });
       this._history = result.transactions || [];
       return this._history;
@@ -238,8 +212,11 @@ export class TransactionDomain {
    * 清除交易历史
    * @returns {Promise<Object>} 清除结果
    */
-  async clearHistory() {
-    const result = await this._sendMessage(TransactionMessageType.CLEAR_TRANSACTION_HISTORY);
+  async clearHistory(address = null, chainId = null) {
+    const result = await this._sendMessage(TransactionMessageType.CLEAR_TRANSACTION_HISTORY, {
+      address,
+      chainId
+    });
     this._history = [];
     return result;
   }

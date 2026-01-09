@@ -1,22 +1,24 @@
-import { NETWORKS } from '../config/index.js';
+import { DEFAULT_NETWORK } from '../config/index.js';
 import { normalizeChainId } from '../common/utils/index.js';
 import {
   showPage,
   showStatus,
   showError,
-  showSuccess,
-  updateNetworkIndicator
-} from './ui.js';
+  showSuccess
+} from '../common/ui/index.js';
 
 export class NetworkController {
-  constructor({ network, wallet, onNetworkChanged, onTokenAdded } = {}) {
+  constructor({ network, onNetworkChanged } = {}) {
     this.network = network;
-    this.wallet = wallet;
     this.onNetworkChanged = onNetworkChanged;
-    this.onTokenAdded = onTokenAdded;
     this.currentNetworkValue = null;
     this.boundDocumentClick = false;
     this.handleDocumentClick = this.handleDocumentClick.bind(this);
+  }
+
+  getNetworkLabel(network, fallback = '网络') {
+    if (!network) return fallback;
+    return network.chainName || network.name || network.nativeCurrency?.name || fallback;
   }
 
   bindEvents() {
@@ -51,13 +53,6 @@ export class NetworkController {
       });
     }
 
-    const tokenAddBtn = document.getElementById('tokenAddBtn');
-    if (tokenAddBtn) {
-      tokenAddBtn.addEventListener('click', async () => {
-        await this.handleOpenTokenAdd();
-      });
-    }
-
     const saveNetworkBtn = document.getElementById('saveNetworkBtn');
     if (saveNetworkBtn) {
       saveNetworkBtn.addEventListener('click', async () => {
@@ -73,20 +68,6 @@ export class NetworkController {
       });
     }
 
-    const saveTokenBtn = document.getElementById('saveTokenBtn');
-    if (saveTokenBtn) {
-      saveTokenBtn.addEventListener('click', async () => {
-        await this.handleSaveToken();
-      });
-    }
-
-    const cancelTokenBtn = document.getElementById('cancelTokenBtn');
-    if (cancelTokenBtn) {
-      cancelTokenBtn.addEventListener('click', () => {
-        this.resetTokenForm();
-        showPage('walletPage');
-      });
-    }
   }
 
   async refreshNetworkState() {
@@ -127,35 +108,46 @@ export class NetworkController {
 
   async refreshNetworkOptions(currentRpcOverride = null) {
     const selectors = this.getNetworkSelectors();
-    if (selectors.length === 0) return;
+    if (selectors.length === 0 || !this.network) return;
 
-    const yeyingRpc = NETWORKS.yeying?.rpcUrl || NETWORKS.yeying?.rpc || 'https://blockchain.yeying.pub';
     let currentRpc = currentRpcOverride;
     if (!currentRpc) {
       try {
         currentRpc = await this.network.getRpcUrl();
       } catch {
-        currentRpc = yeyingRpc;
+        currentRpc = null;
       }
     }
 
-    const customNetworks = await this.network.getCustomNetworks();
-
+    const networks = await this.network.getNetworks();
     const options = [];
-    options.push({ value: yeyingRpc, label: '夜莺网络' });
+    const values = new Set();
+    const ordered = Array.isArray(networks) ? [...networks] : [];
+    const defaultIndex = ordered.findIndex(item => item?.key === DEFAULT_NETWORK || item?.id === DEFAULT_NETWORK);
+    if (defaultIndex > 0) {
+      const [defaultItem] = ordered.splice(defaultIndex, 1);
+      ordered.unshift(defaultItem);
+    }
 
-    customNetworks.forEach((network) => {
-      if (!network?.rpcUrl) return;
-      if (network.rpcUrl === yeyingRpc) return;
-      const label = network.chainName || network.name || `Chain ${network.chainId}`;
-      options.push({ value: network.rpcUrl, label });
+    ordered.forEach((network) => {
+      const rpc = network?.rpcUrl || network?.rpc;
+      if (!rpc) return;
+      if (values.has(rpc)) return;
+      const label = this.getNetworkLabel(network, `Chain ${network.chainId || ''}`.trim());
+      options.push({ value: rpc, label });
+      values.add(rpc);
     });
 
-    const values = options.map(option => option.value);
-    const selectedValue = values.includes(currentRpc) ? currentRpc : yeyingRpc;
+    if (!options.length && currentRpc) {
+      options.push({ value: currentRpc, label: '当前网络' });
+      values.add(currentRpc);
+    }
+
+    const fallbackValue = options[0]?.value || currentRpc || '';
+    const selectedValue = values.has(currentRpc) ? currentRpc : fallbackValue;
     this.currentNetworkValue = selectedValue;
 
-    const selectedLabel = options.find(option => option.value === selectedValue)?.label || '夜莺网络';
+    const selectedLabel = options.find(option => option.value === selectedValue)?.label || '网络';
 
     selectors.forEach((selector) => {
       const labelEl = selector.querySelector('.network-label');
@@ -228,12 +220,6 @@ export class NetworkController {
     showPage('networkFormPage');
   }
 
-  async handleOpenTokenAdd() {
-    this.resetTokenForm();
-    showPage('tokenAddPage');
-    await this.refreshNetworkOptions();
-  }
-
   resetNetworkForm() {
     const nameInput = document.getElementById('networkNameInput');
     const rpcInput = document.getElementById('networkRpcInput');
@@ -259,23 +245,9 @@ export class NetworkController {
     if (status) status.style.display = 'none';
   }
 
-  resetTokenForm() {
-    const addressInput = document.getElementById('tokenAddressInput');
-    const symbolInput = document.getElementById('tokenSymbolInput');
-    const decimalsInput = document.getElementById('tokenDecimalsInput');
-    const nameInput = document.getElementById('tokenNameInput');
-    const status = document.getElementById('tokenAddStatus');
-
-    if (addressInput) addressInput.value = '';
-    if (symbolInput) symbolInput.value = '';
-    if (decimalsInput) decimalsInput.value = '';
-    if (nameInput) nameInput.value = '';
-    if (status) status.style.display = 'none';
-  }
-
   async loadNetworkList() {
     try {
-      const networks = await this.network.getCustomNetworks();
+      const networks = await this.network.getNetworks();
       let currentChainId = null;
       try {
         currentChainId = await this.network.getChainId();
@@ -310,54 +282,15 @@ export class NetworkController {
       return normalizedValue && normalizedValue === normalizedCurrent;
     };
 
-    const yeyingConfig = NETWORKS.yeying;
-    if (yeyingConfig) {
-      const yeyingChainId = yeyingConfig.chainIdHex || yeyingConfig.chainId;
-      const isYeyingCurrent = isCurrent(yeyingChainId);
-      const item = document.createElement('div');
-      item.className = 'network-item';
-      if (isYeyingCurrent) {
-        item.classList.add('is-current');
-      }
-
-      const header = document.createElement('div');
-      header.className = 'network-item-header';
-
-      const title = document.createElement('div');
-      title.className = 'network-item-title';
-      title.textContent = '夜莺网络';
-
-      const badge = document.createElement('span');
-      badge.className = 'network-badge';
-      badge.textContent = '默认';
-      title.appendChild(badge);
-
-      if (isYeyingCurrent) {
-        const currentBadge = document.createElement('span');
-        currentBadge.className = 'network-badge current';
-        currentBadge.textContent = '当前';
-        title.appendChild(currentBadge);
-      }
-
-      header.appendChild(title);
-      item.appendChild(header);
-
-      const meta = document.createElement('div');
-      meta.className = 'network-item-meta';
-      meta.textContent = `Chain ID: ${yeyingChainId} | 符号: ${yeyingConfig.symbol || 'YY'}`;
-      item.appendChild(meta);
-      list.appendChild(item);
-    }
-
     if (!Array.isArray(networks) || networks.length === 0) {
       return;
     }
 
     networks.forEach((network) => {
-      const isCustomCurrent = isCurrent(network.chainId);
+      const isNetworkCurrent = isCurrent(network.chainIdHex || network.chainId);
       const item = document.createElement('div');
       item.className = 'network-item';
-      if (isCustomCurrent) {
+      if (isNetworkCurrent) {
         item.classList.add('is-current');
       }
 
@@ -366,8 +299,14 @@ export class NetworkController {
 
       const title = document.createElement('div');
       title.className = 'network-item-title';
-      title.textContent = network.chainName || network.name || `Chain ${network.chainId}`;
-      if (isCustomCurrent) {
+      title.textContent = this.getNetworkLabel(network, `Chain ${network.chainId || ''}`.trim());
+      if (network.key === DEFAULT_NETWORK || network.id === DEFAULT_NETWORK) {
+        const defaultBadge = document.createElement('span');
+        defaultBadge.className = 'network-badge';
+        defaultBadge.textContent = '默认';
+        title.appendChild(defaultBadge);
+      }
+      if (isNetworkCurrent) {
         const currentBadge = document.createElement('span');
         currentBadge.className = 'network-badge current';
         currentBadge.textContent = '当前';
@@ -392,7 +331,7 @@ export class NetworkController {
 
       const meta = document.createElement('div');
       meta.className = 'network-item-meta';
-      meta.textContent = `Chain ID: ${network.chainId} | 符号: ${network.symbol || 'ETH'}`;
+      meta.textContent = `Chain ID: ${network.chainIdHex || network.chainId} | 符号: ${network.symbol || network.nativeCurrency?.symbol || 'ETH'}`;
 
       item.appendChild(header);
       item.appendChild(meta);
@@ -422,7 +361,6 @@ export class NetworkController {
       chainIdInput.value = network.chainId || '';
       chainIdInput.disabled = true;
     }
-
     if (symbolInput) symbolInput.value = network.symbol || 'ETH';
     if (explorerInput) explorerInput.value = network.explorer || '';
     if (title) title.textContent = '编辑网络';
@@ -433,21 +371,31 @@ export class NetworkController {
   }
 
   async handleDeleteNetwork(network) {
-    if (!network?.chainId) return;
-    if (!confirm(`确定要删除 "${network.chainName || network.name || network.chainId}" 吗？`)) {
+    const targetChainId = network?.chainIdHex || network?.chainId;
+    if (!targetChainId) return;
+    const allNetworks = await this.network.getNetworks();
+    if (Array.isArray(allNetworks) && allNetworks.length <= 1) {
+      showError('至少保留一个网络');
+      return;
+    }
+    if (!confirm(`确定要删除 "${network.chainName || network.name || targetChainId}" 吗？`)) {
       return;
     }
 
     try {
-      await this.network.removeCustomNetwork(network.chainId);
+      await this.network.removeNetwork(targetChainId);
       const currentChainId = await this.network.getChainId();
-      if (currentChainId === normalizeChainId(network.chainId)) {
-        const yeyingRpc = NETWORKS.yeying?.rpcUrl || NETWORKS.yeying?.rpc || 'https://blockchain.yeying.pub';
-        await this.network.setRpcUrl(yeyingRpc);
-        const chainId = await this.network.getChainId();
-        updateNetworkIndicator(chainId);
-        if (this.onNetworkChanged) {
-          await this.onNetworkChanged();
+      if (currentChainId === normalizeChainId(targetChainId)) {
+        const remaining = (await this.network.getNetworks()) || [];
+        const fallback = remaining.find(item => item?.key === DEFAULT_NETWORK || item?.id === DEFAULT_NETWORK) || remaining[0];
+        const fallbackRpc = fallback?.rpcUrl || fallback?.rpc || '';
+        if (fallbackRpc) {
+          await this.network.setRpcUrl(fallbackRpc);
+          const chainId = await this.network.getChainId();
+          updateNetworkIndicator(chainId);
+          if (this.onNetworkChanged) {
+            await this.onNetworkChanged();
+          }
         }
       }
       await this.loadNetworkList();
@@ -504,7 +452,7 @@ export class NetworkController {
       showStatus('networkFormStatus', editingChainId ? '保存中...' : '添加中...', 'info');
 
       if (editingChainId) {
-        await this.network.updateCustomNetwork(chainId, {
+        await this.network.updateNetwork(chainId, {
           chainName,
           rpcUrl,
           explorer,
@@ -512,7 +460,7 @@ export class NetworkController {
           decimals: 18
         });
       } else {
-        await this.network.addCustomNetwork({
+        await this.network.addNetwork({
           chainName,
           chainId,
           rpcUrls: [rpcUrl],
@@ -547,76 +495,13 @@ export class NetworkController {
     }
   }
 
-  async handleSaveToken() {
-    if (!this.wallet) {
-      showStatus('tokenAddStatus', '钱包未初始化', 'error');
-      return;
-    }
+}
 
-    const addressInput = document.getElementById('tokenAddressInput');
-    const symbolInput = document.getElementById('tokenSymbolInput');
-    const decimalsInput = document.getElementById('tokenDecimalsInput');
-    const nameInput = document.getElementById('tokenNameInput');
-
-    const address = addressInput?.value.trim() || '';
-    const symbol = symbolInput?.value.trim() || '';
-    const decimalsRaw = decimalsInput?.value.trim() || '';
-    const name = nameInput?.value.trim() || '';
-
-    if (!address) {
-      showStatus('tokenAddStatus', '请输入合约地址', 'error');
-      return;
-    }
-
-    if (!symbol) {
-      showStatus('tokenAddStatus', '请输入通证符号', 'error');
-      return;
-    }
-
-    let decimals = 18;
-    if (decimalsRaw !== '') {
-      const parsed = parseInt(decimalsRaw, 10);
-      if (Number.isNaN(parsed)) {
-        showStatus('tokenAddStatus', '小数位格式不正确', 'error');
-        return;
-      }
-      decimals = parsed;
-    }
-
-    try {
-      showStatus('tokenAddStatus', '添加中...', 'info');
-
-      let chainId = null;
-      if (this.network) {
-        try {
-          chainId = await this.network.getChainId();
-        } catch {
-          chainId = null;
-        }
-      }
-
-      const tokenPayload = {
-        address,
-        symbol,
-        decimals,
-        name: name || symbol,
-      };
-      if (chainId) {
-        tokenPayload.chainId = chainId;
-      }
-
-      await this.wallet.addToken(tokenPayload);
-
-      if (this.onTokenAdded) {
-        await this.onTokenAdded();
-      }
-
-      this.resetTokenForm();
-      showPage('walletPage');
-      showSuccess('通证已添加');
-    } catch (error) {
-      console.error('[NetworkController] 添加通证失败:', error);
-      showStatus('tokenAddStatus', '添加失败: ' + error.message, 'error');
-    }
-  }
+function updateNetworkIndicator(chainId) {
+  const indicators = document.querySelectorAll('.network-dot');
+  if (!indicators || indicators.length === 0) return;
+  const isMainnet = chainId === '1' || chainId === 1;
+  indicators.forEach((indicator) => {
+    indicator.style.backgroundColor = isMainnet ? '#10B981' : '#F59E0B';
+  });
 }

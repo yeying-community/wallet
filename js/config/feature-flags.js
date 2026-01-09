@@ -34,7 +34,7 @@ export const FEATURES = {
   ENABLE_TOKEN_DETECTION: true,          // 代币检测
   ENABLE_NFT_SUPPORT: false,             // NFT 支持
   ENABLE_TOKEN_SWAP: false,              // 代币交换
-
+  
   // UI
   ENABLE_DARK_MODE: true,                // 深色模式
   ENABLE_ANIMATIONS: true,               // 动画效果

@@ -191,59 +191,63 @@
           <button class="back-btn">←</button>
           <h2>转账</h2>
         </div>
-        <div class="form-group">
-          <label>网络</label>
-          <div class="network-selector input-like">
-            <div class="network-dot"></div>
-            <button type="button" class="network-trigger" aria-haspopup="listbox" aria-expanded="false">
-              <span class="network-label">夜莺网络</span>
-              <span class="network-chevron">▾</span>
-            </button>
-            <div class="network-menu hidden" role="listbox"></div>
+        <div class="transfer-body">
+          <div class="form-group">
+            <label>网络</label>
+            <div class="network-selector input-like">
+              <div class="network-dot"></div>
+              <button type="button" class="network-trigger" aria-haspopup="listbox" aria-expanded="false">
+                <span class="network-label">夜莺网络</span>
+                <span class="network-chevron">▾</span>
+              </button>
+              <div class="network-menu hidden" role="listbox"></div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>通证</label>
+            <div class="token-selector input-like">
+              <button type="button" class="token-trigger" aria-haspopup="listbox" aria-expanded="false">
+                <span class="token-label">原生代币</span>
+                <span class="token-chevron">▾</span>
+              </button>
+              <div class="token-menu hidden" role="listbox"></div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>发送地址</label>
+            <input
+              type="text"
+              id="senderAddress"
+              placeholder="0x..."
+              class="input"
+              readonly
+            />
+          </div>
+          <div class="form-group">
+            <label>接收地址</label>
+            <input
+              type="text"
+              id="recipientAddress"
+              placeholder="0x..."
+              class="input"
+            />
+          </div>
+          <div class="form-group">
+            <label>数量 <span id="transferTokenSymbol">(ETH)</span></label>
+            <input
+              type="number"
+              id="amount"
+              placeholder="0.0"
+              step="0.0001"
+              class="input"
+            />
+            <span id="transferMaxHint" class="form-hint"></span>
           </div>
         </div>
-        <div class="form-group">
-          <label>通证</label>
-          <div class="token-selector input-like">
-            <button type="button" class="token-trigger" aria-haspopup="listbox" aria-expanded="false">
-              <span class="token-label">原生代币</span>
-              <span class="token-chevron">▾</span>
-            </button>
-            <div class="token-menu hidden" role="listbox"></div>
-          </div>
+        <div class="transfer-footer">
+          <button class="btn btn-primary btn-block" id="sendBtn">发送</button>
+          <div id="sendStatus" class="status"></div>
         </div>
-        <div class="form-group">
-          <label>发送地址</label>
-          <input
-            type="text"
-            id="senderAddress"
-            placeholder="0x..."
-            class="input"
-            readonly
-          />
-        </div>
-        <div class="form-group">
-          <label>接收地址</label>
-          <input
-            type="text"
-            id="recipientAddress"
-            placeholder="0x..."
-            class="input"
-          />
-        </div>
-        <div class="form-group">
-          <label>数量 <span id="transferTokenSymbol">(ETH)</span></label>
-          <input
-            type="number"
-            id="amount"
-            placeholder="0.0"
-            step="0.0001"
-            class="input"
-          />
-          <span id="transferMaxHint" class="form-hint"></span>
-        </div>
-        <button class="btn btn-primary btn-block" id="sendBtn">发送</button>
-        <div id="sendStatus" class="status"></div>
       </div>
 
       <!-- 设置密码页面（复用于首次创建和账户管理创建） -->
@@ -252,7 +256,7 @@
           <button id="backFromPasswordBtn" class="back-btn hidden">←</button>
           <h2>夜莺钱包</h2>
         </div>
-        <p class="info-text">请设置一个密码来保护您的钱包</p>
+        <p class="info-text" id="setPasswordHint">请设置一个密码来保护您的钱包</p>
 
         <!-- 钱包名称输入 -->
         <div class="form-group">
@@ -266,12 +270,12 @@
         </div>
 
         <div class="form-group">
-          <label>密码</label>
+          <label id="setPasswordLabel">密码</label>
           <input type="password" id="newPassword" placeholder="至少8位字符" />
         </div>
 
-        <div class="form-group">
-          <label>确认密码</label>
+        <div class="form-group" id="confirmPasswordGroup">
+          <label id="confirmPasswordLabel">确认密码</label>
           <input
             type="password"
             id="confirmPassword"
@@ -344,7 +348,7 @@
 
         <!-- 密码 -->
         <div class="form-group">
-          <label>密码</label>
+          <label id="importPasswordLabel">密码</label>
           <input
             type="password"
             id="importWalletPassword"
@@ -420,6 +424,7 @@
             </button>
           </div>
         </div>
+
         <div class="network-list" id="networkManageList"></div>
       </div>
 
@@ -441,6 +446,7 @@
               placeholder="例如：MyChain"
             />
           </div>
+
           <div class="form-group">
             <label>RPC URL</label>
             <input
@@ -450,6 +456,7 @@
               placeholder="https://..."
             />
           </div>
+
           <div class="form-group">
             <label>Chain ID</label>
             <input
@@ -459,6 +466,7 @@
               placeholder="例如：0x1 或 1"
             />
           </div>
+
           <div class="form-group">
             <label>货币符号</label>
             <input
@@ -468,6 +476,7 @@
               placeholder="例如：ETH"
             />
           </div>
+
           <div class="form-group">
             <label>区块浏览器（可选）</label>
             <input
@@ -477,7 +486,9 @@
               placeholder="https://explorer.example.com"
             />
           </div>
+
           <div id="networkFormStatus" class="status"></div>
+
           <div class="network-form-actions">
             <button id="saveNetworkBtn" class="btn btn-primary">
               添加网络
@@ -518,6 +529,7 @@
               placeholder="0x..."
             />
           </div>
+
           <div class="form-group">
             <label>通证符号</label>
             <input
@@ -527,6 +539,7 @@
               placeholder="例如：USDT"
             />
           </div>
+
           <div class="form-group">
             <label>小数位（可选）</label>
             <input
@@ -538,6 +551,7 @@
               max="18"
             />
           </div>
+
           <div class="form-group">
             <label>通证名称（可选）</label>
             <input
@@ -547,7 +561,9 @@
               placeholder="例如：Tether USD"
             />
           </div>
+
           <div id="tokenAddStatus" class="status"></div>
+
           <div class="token-form-actions">
             <button id="saveTokenBtn" class="btn btn-primary">
               添加通证
@@ -601,6 +617,7 @@
           </div>
           <div class="account-detail-type" id="accountDetailType"></div>
         </div>
+
         <div class="account-detail-qr-actions">
           <div class="account-detail-qr-size">
             <label for="accountDetailQrSize">二维码大小</label>
@@ -627,30 +644,64 @@
           <h2>设置</h2>
         </div>
 
-        <!-- 已授权网站 -->
-        <div class="settings-section">
-          <h3>🌐 已授权网站</h3>
-          <div id="authorizedSitesList">
-            <div class="empty-message">正在加载...</div>
+        <div class="settings-body">
+          <!-- 已授权网站 -->
+          <div class="settings-section">
+            <h3>🌐 已授权网站</h3>
+            <div id="authorizedSitesList">
+              <div class="empty-message">正在加载...</div>
+            </div>
+            <button
+              id="clearAllAuthBtn"
+              class="btn btn-danger"
+              style="margin-top: 10px"
+            >
+              清除所有授权
+            </button>
           </div>
-          <button
-            id="clearAllAuthBtn"
-            class="btn btn-danger"
-            style="margin-top: 10px"
-          >
-            清除所有授权
-          </button>
-        </div>
 
-        <!-- 安全设置 -->
-        <div class="settings-section">
-          <h3>🔐 安全设置</h3>
-          <button id="resetWalletBtn" class="btn btn-danger">重置钱包</button>
-          <p style="font-size: 12px; color: #999; margin-top: 8px">
-            ⚠️ 重置后将清除所有数据，请确保已备份私钥
-          </p>
+          <!-- 安全设置 -->
+          <div class="settings-section">
+            <h3>🔐 安全设置</h3>
+            <div class="form-group">
+              <label>旧密码</label>
+              <input
+                type="password"
+                id="oldPasswordInput"
+                placeholder="输入当前密码"
+              />
+            </div>
+            <div class="form-group">
+              <label>新密码</label>
+              <input
+                type="password"
+                id="newPasswordInput"
+                placeholder="至少8位字符"
+              />
+            </div>
+            <div class="form-group">
+              <label>确认新密码</label>
+              <input
+                type="password"
+                id="confirmNewPasswordInput"
+                placeholder="再次输入新密码"
+              />
+            </div>
+            <button id="changePasswordBtn" class="btn btn-primary">
+              修改密码
+            </button>
+            <div id="changePasswordStatus" class="status"></div>
+
+            <div class="settings-divider"></div>
+
+            <button id="resetWalletBtn" class="btn btn-danger">重置钱包</button>
+            <p style="font-size: 12px; color: #999; margin-top: 8px">
+              ⚠️ 重置后将清除所有数据，请确保已备份私钥
+            </p>
+          </div>
         </div>
       </div>
+
     </div>
 
     <!-- 全局悬浮提示 -->
@@ -723,6 +774,7 @@
               <span id="deleteAccountAddress"></span>
             </div>
           </div>
+
           <input type="hidden" id="deleteAccountId" />
         </div>
         <div class="modal-footer">
@@ -783,6 +835,7 @@
         </div>
       </div>
     </div>
+
 
     <!-- 第三方库 -->
     <script type="module" src="lib/ethers-5.7.esm.min.js"></script>

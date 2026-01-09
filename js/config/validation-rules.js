@@ -94,6 +94,8 @@ export const INPUT_VALIDATION = {
 
 // ==================== 工具函数 ====================
 
+
+
 /**
  * 验证以太坊地址
  * @param {string} address - 地址
@@ -109,6 +111,7 @@ export function validateEthereumAddress(address, requireChecksum = false) {
   if (!ADDRESS_VALIDATION.ETHEREUM.pattern.test(address)) {
     return { valid: false, error: 'Invalid address format' };
   }
+  
   // 校验和检查（如果需要）
   if (requireChecksum && ADDRESS_VALIDATION.ETHEREUM.checksum) {
     // 这里需要实现 EIP-55 校验和验证
@@ -143,7 +146,7 @@ export function validateTransaction(transaction) {
       errors.push(addressValidation.error);
     }
   }
-
+  
   // 验证金额
   if (transaction.value !== undefined) {
     const value = parseFloat(transaction.value);
@@ -170,7 +173,7 @@ export function validateTransaction(transaction) {
       }
     }
   }
-
+  
   // 验证 Gas 价格
   if (transaction.gasPrice) {
     const gasPrice = parseFloat(transaction.gasPrice);
@@ -185,7 +188,7 @@ export function validateTransaction(transaction) {
       }
     }
   }
-
+  
   // 验证数据字段（合约交互）
   if (TRANSACTION_VALIDATION.REQUIRE_DATA_FOR_CONTRACT && transaction.data && transaction.data !== '0x') {
     if (!/^0x[0-9a-fA-F]*$/.test(transaction.data)) {
@@ -214,7 +217,6 @@ export function validateNetworkConfig(network) {
     if (network.name.length < NETWORK_VALIDATION.NAME.MIN_LENGTH) {
       errors.push(`Network name must be at least ${NETWORK_VALIDATION.NAME.MIN_LENGTH} character`);
     }
-
     if (network.name.length > NETWORK_VALIDATION.NAME.MAX_LENGTH) {
       errors.push(`Network name must not exceed ${NETWORK_VALIDATION.NAME.MAX_LENGTH} characters`);
     }
@@ -222,7 +224,7 @@ export function validateNetworkConfig(network) {
       errors.push('Network name contains invalid characters');
     }
   }
-
+  
   // 验证 RPC URL
   if (!network.rpcUrl && !network.rpc) {
     errors.push('RPC URL is required');
@@ -235,7 +237,7 @@ export function validateNetworkConfig(network) {
       errors.push('RPC URL must use HTTPS');
     }
   }
-
+  
   // 验证 Chain ID
   if (!network.chainId) {
     errors.push('Chain ID is required');
@@ -319,7 +321,7 @@ export function validateTokenConfig(token) {
       errors.push(`Name must not exceed ${TOKEN_VALIDATION.NAME.MAX_LENGTH} characters`);
     }
   }
-
+  
   // 验证小数位数
   if (token.decimals !== undefined) {
     const decimals = parseInt(token.decimals);
@@ -334,7 +336,7 @@ export function validateTokenConfig(token) {
       }
     }
   }
-
+  
   return {
     valid: errors.length === 0,
     errors
@@ -354,7 +356,7 @@ export function validateAccountName(name) {
   if (name.length < INPUT_VALIDATION.ACCOUNT_NAME.MIN_LENGTH) {
     return { valid: false, error: `Name must be at least ${INPUT_VALIDATION.ACCOUNT_NAME.MIN_LENGTH} character` };
   }
-
+  
   if (name.length > INPUT_VALIDATION.ACCOUNT_NAME.MAX_LENGTH) {
     return { valid: false, error: `Name must not exceed ${INPUT_VALIDATION.ACCOUNT_NAME.MAX_LENGTH} characters` };
   }
@@ -379,7 +381,7 @@ export function validateContactName(name) {
   if (name.length < INPUT_VALIDATION.CONTACT_NAME.MIN_LENGTH) {
     return { valid: false, error: `Name must be at least ${INPUT_VALIDATION.CONTACT_NAME.MIN_LENGTH} character` };
   }
-
+  
   if (name.length > INPUT_VALIDATION.CONTACT_NAME.MAX_LENGTH) {
     return { valid: false, error: `Name must not exceed ${INPUT_VALIDATION.CONTACT_NAME.MAX_LENGTH} characters` };
   }
@@ -404,7 +406,7 @@ export function validateLabel(label) {
   if (label.length < INPUT_VALIDATION.LABEL.MIN_LENGTH) {
     return { valid: false, error: `Label must be at least ${INPUT_VALIDATION.LABEL.MIN_LENGTH} character` };
   }
-
+  
   if (label.length > INPUT_VALIDATION.LABEL.MAX_LENGTH) {
     return { valid: false, error: `Label must not exceed ${INPUT_VALIDATION.LABEL.MAX_LENGTH} characters` };
   }
@@ -484,7 +486,6 @@ export function validateNumberRange(value, min, max) {
   if (value > max) {
     return { valid: false, error: `Value must not exceed ${max}` };
   }
-
+  
   return { valid: true };
 }
-

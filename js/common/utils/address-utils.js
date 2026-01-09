@@ -83,7 +83,7 @@ export function shortenAddress(address, startLength = 6, endLength = 4) {
   if (!address || !isValidAddress(address)) {
     return '';
   }
-
+  
   const str = String(address);
   if (str.length <= startLength + endLength) {
     return str;
@@ -113,7 +113,7 @@ export function addChecksum(address) {
   if (!isValidAddressCaseInsensitive(address)) {
     throw new Error('Invalid address format');
   }
-
+  
   const addressLower = address.toLowerCase().slice(2);
   
   // TODO: 实现完整的 EIP-55 校验和
@@ -152,7 +152,7 @@ export function generateAvatar(address, size = 48) {
   canvas.width = Number(size);
   canvas.height = Number(size);
   const ctx = canvas.getContext('2d');
-
+  
   // 使用地址生成颜色和图案
   const hash = address.slice(2); // 移除 '0x'
   
@@ -166,6 +166,7 @@ export function generateAvatar(address, size = 48) {
   
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, Number(size), Number(size));
+  
   // 生成图案（5x5 网格，对称）
   const gridSize = 5;
   const cellSize = Number(size) / gridSize;
@@ -253,3 +254,4 @@ export function validateAddressOrEns(value) {
   
   return { valid: false, type: null };
 }
+

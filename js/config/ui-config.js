@@ -254,5 +254,3 @@ export function showToast(message, type = 'info', duration = UI_CONFIG.TOAST_DUR
   // 这个函数需要在实际的 UI 层实现
   console.log(`[${type.toUpperCase()}] ${message}`);
 }
-
-

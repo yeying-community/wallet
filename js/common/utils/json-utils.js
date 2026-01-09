@@ -13,7 +13,7 @@ export function safeJsonParse(jsonString, defaultValue = null, reviver = null) {
   if (!jsonString || typeof jsonString !== 'string') {
     return defaultValue;
   }
-
+  
   try {
     return JSON.parse(jsonString, reviver);
   } catch (error) {
@@ -87,7 +87,7 @@ export function isValidJson(str) {
   if (!str || typeof str !== 'string') {
     return false;
   }
-
+  
   try {
     JSON.parse(str);
     return true;
@@ -187,7 +187,7 @@ export function formatJsonSize(jsonString) {
   if (bytes < 1024 * 1024) {
     return `${(bytes / 1024).toFixed(2)} KB`;
   }
-
+  
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
@@ -200,7 +200,7 @@ export function serializeBigInt(obj) {
   if (obj === null || obj === undefined) {
     return obj;
   }
-
+  
   if (typeof obj === 'bigint') {
     return { __type: 'BigInt', value: obj.toString() };
   }
@@ -218,7 +218,7 @@ export function serializeBigInt(obj) {
     }
     return result;
   }
-
+  
   return obj;
 }
 
@@ -235,7 +235,7 @@ export function deserializeBigInt(obj) {
   if (obj && typeof obj === 'object' && obj.__type === 'BigInt') {
     return BigInt(obj.value);
   }
-
+  
   if (Array.isArray(obj)) {
     return obj.map(item => deserializeBigInt(item));
   }
@@ -283,7 +283,7 @@ export function serializeDate(obj) {
   if (obj instanceof Date) {
     return { __type: 'Date', value: obj.toISOString() };
   }
-
+  
   if (Array.isArray(obj)) {
     return obj.map(item => serializeDate(item));
   }
@@ -412,7 +412,7 @@ export function serializeMap(obj) {
   if (obj instanceof Map) {
     return { __type: 'Map', value: Array.from(obj.entries()) };
   }
-
+  
   if (Array.isArray(obj)) {
     return obj.map(item => serializeMap(item));
   }
@@ -443,7 +443,7 @@ export function deserializeMap(obj) {
   if (Array.isArray(obj)) {
     return obj.map(item => deserializeMap(item));
   }
-
+  
   if (typeof obj === 'object') {
     const result = {};
     for (const key in obj) {

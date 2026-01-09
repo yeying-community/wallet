@@ -6,7 +6,8 @@ import { PopupController } from '../controller/popup-controller.js';
 import { WalletDomain } from '../domain/wallet-domain.js';
 import { TransactionDomain } from '../domain/transaction-domain.js';
 import { NetworkDomain } from '../domain/network-domain.js';
-import { showToast } from '../controller/ui.js';
+import { TokenDomain } from '../domain/token-domain.js';
+import { showToast } from '../common/ui/index.js';
 import { WalletMessageType } from '../protocol/protocol.js';
 
 class PopupApp {
@@ -14,6 +15,7 @@ class PopupApp {
     this.wallet = new WalletDomain();
     this.transaction = new TransactionDomain();
     this.network = new NetworkDomain();
+    this.token = new TokenDomain({ network: this.network });
     this.controller = null;
   }
 
@@ -22,7 +24,8 @@ class PopupApp {
       this.controller = new PopupController({
         wallet: this.wallet,
         transaction: this.transaction,
-        network: this.network
+        network: this.network,
+        token: this.token
       });
 
       await this.controller.init();

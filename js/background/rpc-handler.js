@@ -5,7 +5,8 @@
 
 import { state } from './state.js';
 import { createRpcError, createNetworkError } from '../common/errors/index.js';
-import { getNetworkByChainId, NETWORKS, DEFAULT_NETWORK } from '../config/index.js';
+import { DEFAULT_NETWORK } from '../config/index.js';
+import { getNetworkByChainId, getNetworkConfigByKey } from '../storage/index.js';
 
 /**
  * 处理 RPC 方法
@@ -24,9 +25,16 @@ export async function handleRpcMethod(method, params) {
  * @returns {Promise<any>} RPC 结果
  */
 async function rpcCall(method, params) {
-  const network = getNetworkByChainId(state.currentChainId);
-  const rpcUrl = state.currentRpcUrl || network?.rpcUrl || network?.rpc || NETWORKS[DEFAULT_NETWORK].rpc;
-  console.log(`network=${network}, rpcUrl=${rpcUrl}, method=${method}, params=${params}`)
+  const network = await getNetworkByChainId(state.currentChainId);
+  let rpcUrl = state.currentRpcUrl || network?.rpcUrl || network?.rpc;
+  if (!rpcUrl) {
+    const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+    rpcUrl = fallbackConfig?.rpcUrl || fallbackConfig?.rpc || '';
+  }
+  if (!rpcUrl) {
+    throw createNetworkError('RPC URL not configured');
+  }
+  console.log(`network=${JSON.stringify(network)}, rpcUrl=${rpcUrl}, method=${method}, params=${params}`)
   try {
     const response = await fetch(rpcUrl, {
       method: 'POST',
@@ -40,17 +48,20 @@ async function rpcCall(method, params) {
     });
 
     if (!response.ok) {
+      console.log(`HTTP ${response.status}`)
       throw createRpcError(`HTTP ${response.status}`);
     }
 
     const data = await response.json();
 
     if (data.error) {
+      console.log(`Error ${data.error.message}`)
       throw createRpcError(data.error.message || 'RPC error', data.error);
     }
 
     return data.result;
   } catch (error) {
+    console.log(`Throw error ${error.message}`)
     if (error.code) throw error;
     throw createNetworkError(error.message);
   }

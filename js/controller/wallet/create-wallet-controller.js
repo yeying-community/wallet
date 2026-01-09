@@ -1,4 +1,4 @@
-import { showPage, showError, showSuccess, getPageOrigin } from './ui.js';
+import { showPage, showError, showSuccess, getPageOrigin } from '../../common/ui/index.js';
 
 export class CreateWalletController {
   constructor({ wallet, onCreated }) {
@@ -35,9 +35,11 @@ export class CreateWalletController {
     const name = document.getElementById('setWalletName')?.value.trim() || '主钱包';
     const password = document.getElementById('newPassword')?.value;
     const confirmPassword = document.getElementById('confirmPassword')?.value;
+    const origin = getPageOrigin('setPasswordPage', 'welcome');
+    const useExistingPassword = origin === 'accounts';
 
     if (!password) {
-      showError('请输入密码');
+      showError(useExistingPassword ? '请输入当前密码' : '请输入密码');
       return;
     }
 
@@ -46,21 +48,28 @@ export class CreateWalletController {
       return;
     }
 
-    if (!confirmPassword) {
-      showError('请再次输入密码');
-      return;
-    }
+    if (!useExistingPassword) {
+      if (!confirmPassword) {
+        showError('请再次输入密码');
+        return;
+      }
 
-    if (password !== confirmPassword) {
-      showError('两次密码不一致');
-      return;
+      if (password !== confirmPassword) {
+        showError('两次密码不一致');
+        return;
+      }
     }
 
     try {
+      if (useExistingPassword) {
+        await this.verifyExistingPassword(password);
+      }
+
       await this.wallet.createHDWallet(name, password);
 
       showSuccess('钱包创建成功');
       showPage('walletPage');
+
       this.resetForm();
 
       if (this.onCreated) {
@@ -89,5 +98,13 @@ export class CreateWalletController {
     if (nameInput) nameInput.value = '主钱包';
     if (passwordInput) passwordInput.value = '';
     if (confirmInput) confirmInput.value = '';
+  }
+
+  async verifyExistingPassword(password) {
+    const account = await this.wallet.getCurrentAccount();
+    if (!account?.id) {
+      throw new Error('未找到当前账户');
+    }
+    await this.wallet.exportPrivateKey(account.id, password);
   }
 }

@@ -143,3 +143,24 @@ export function getErrorMessage(code, locale = 'en') {
   const messages = locale === 'zh' ? ErrorMessageZH : ErrorMessageEN;
   return messages[code] || ErrorMessageEN[ErrorCode.UNKNOWN_ERROR];
 }
+
+/**
+ * 从 Error 对象获取消息文本
+ * @param {Error|any} error - 错误对象
+ * @returns {string}
+ */
+export function getErrorMessageFromError(error) {
+  if (!error) {
+    return 'Unknown error occurred';
+  }
+
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  if (error.message) {
+    return error.message;
+  }
+
+  return String(error);
+}

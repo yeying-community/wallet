@@ -11,7 +11,7 @@ export function normalizeChainId(chainId) {
   if (chainId === null || chainId === undefined) {
     throw new Error('chainId is required');
   }
-
+  
   if (typeof chainId === 'number') {
     if (!Number.isInteger(chainId) || chainId < 0) {
       throw new Error('Invalid chainId: must be a non-negative integer');
@@ -29,7 +29,7 @@ export function normalizeChainId(chainId) {
     }
     return `0x${num.toString(16)}`;
   }
-
+  
   throw new Error('Invalid chainId format');
 }
 
@@ -124,7 +124,7 @@ export function isValidMnemonic(mnemonic) {
   if (!allowedLengths.includes(words.length)) {
     return false;
   }
-
+  
   // 检查每个单词是否只包含字母
   return words.every(word => /^[a-z]+$/i.test(word));
 }
@@ -221,7 +221,7 @@ export function hexToBytes(hex) {
   for (let i = 0; i < cleanHex.length; i += 2) {
     bytes.push(parseInt(cleanHex.slice(i, i + 2), 16));
   }
-
+  
   return bytes;
 }
 
@@ -255,7 +255,7 @@ export function hexToUtf8(hex) {
     const charCode = parseInt(cleanHex.slice(i, i + 2), 16);
     str += String.fromCharCode(charCode);
   }
-
+  
   return decodeURIComponent(escape(str));
 }
 
@@ -272,7 +272,7 @@ export function utf8ToHex(str, prefix = true) {
     const charCode = str.charCodeAt(i);
     hex += charCode.toString(16).padStart(2, '0');
   }
-
+  
   return prefix ? `0x${hex}` : hex;
 }
 
@@ -404,3 +404,4 @@ export function getChainName(chainId) {
   
   return names[id] || `Unknown Chain (${id})`;
 }
+

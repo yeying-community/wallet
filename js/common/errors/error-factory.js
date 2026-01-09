@@ -39,6 +39,69 @@ export function createErrorFromException(error, code = ErrorCode.INTERNAL_ERROR)
   });
 }
 
+// ==================== 自定义 Error 对象 ====================
+
+/**
+ * 创建自定义 Error 实例（非标准错误码）
+ * @param {string} message - 错误消息
+ * @param {string} name - 错误名称
+ * @param {Object} extra - 额外属性
+ * @returns {Error}
+ */
+export function createCustomError(message, name = 'CustomError', extra = {}) {
+  const error = new Error(message);
+  error.name = name;
+
+  for (const key in extra) {
+    if (Object.prototype.hasOwnProperty.call(extra, key)) {
+      error[key] = extra[key];
+    }
+  }
+
+  return error;
+}
+
+/**
+ * 创建验证错误
+ * @param {string} message - 错误消息
+ * @param {Object} fieldErrors - 字段错误
+ * @returns {Error}
+ */
+export function createValidationError(message, fieldErrors = {}) {
+  const error = new Error(message);
+  error.name = 'ValidationError';
+  error.fieldErrors = fieldErrors;
+  return error;
+}
+
+/**
+ * 创建 API 错误
+ * @param {string} message - 错误消息
+ * @param {number} code - 错误代码
+ * @param {Object} details - 错误详情
+ * @returns {Error}
+ */
+export function createApiError(message, code = 500, details = {}) {
+  const error = new Error(message);
+  error.name = 'ApiError';
+  error.code = code;
+  error.details = details;
+  return error;
+}
+
+/**
+ * 创建网络错误（Error 实例）
+ * @param {string} message - 错误消息
+ * @param {Object} networkInfo - 网络信息
+ * @returns {Error}
+ */
+export function createNetworkErrorException(message, networkInfo = {}) {
+  const error = new Error(message);
+  error.name = 'NetworkError';
+  error.networkInfo = networkInfo;
+  return error;
+}
+
 // ==================== JSON-RPC 错误 ====================
 
 export function createParseError(message) {

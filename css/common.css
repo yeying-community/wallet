@@ -282,7 +282,7 @@ textarea.input {
 /* ========== 全局悬浮提示 ========== */
 .toast {
   position: fixed;
-  top: 20px;
+  top: 8px;
   left: 50%;
   transform: translateX(-50%);
   min-width: 280px;
@@ -293,7 +293,7 @@ textarea.input {
   font-weight: 500;
   text-align: center;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 9999;
+  z-index: 20000;
   animation: slideDown 0.3s ease-out;
   word-wrap: break-word;
   border: 1px solid transparent;
@@ -647,3 +647,4 @@ textarea.input {
 .form-hint.success {
   color: #28a745;
 }
+

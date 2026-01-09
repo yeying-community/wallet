@@ -7,7 +7,8 @@ import { initMessageListeners } from './message-handler.js';
 import { cleanupConnections } from './connection.js';
 import { state } from './state.js';
 import { NETWORKS, DEFAULT_NETWORK } from '../config/index.js';
-import { getSelectedNetworkName, getUserSetting } from '../storage/index.js';
+import { getSelectedNetworkName, getUserSetting, ensureDefaultNetworks, getNetworkConfigByKey } from '../storage/index.js';
+import { normalizeChainId } from '../common/utils/index.js';
 import { normalizePopupBounds } from './window-utils.js';
 
 /**
@@ -20,16 +21,31 @@ async function init() {
   console.log('🚀 YeYing Wallet Background Script Starting...');
 
   try {
+    const seededNetworks = await ensureDefaultNetworks(NETWORKS);
+
     // 加载保存的网络选择
     const savedNetwork = await getSelectedNetworkName();
-    if (savedNetwork && NETWORKS[savedNetwork]) {
-      state.currentChainId = NETWORKS[savedNetwork].chainIdHex;
-      state.currentRpcUrl = NETWORKS[savedNetwork].rpcUrl || NETWORKS[savedNetwork].rpc;
+    const savedConfig = savedNetwork ? await getNetworkConfigByKey(savedNetwork) : null;
+    const defaultConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+
+    if (savedConfig) {
+      const chainIdHex = savedConfig.chainIdHex || normalizeChainId(savedConfig.chainId);
+      state.currentChainId = chainIdHex;
+      state.currentRpcUrl = savedConfig.rpcUrl || savedConfig.rpc;
       console.log('✅ Loaded saved network:', savedNetwork);
-    } else {
-      state.currentChainId = NETWORKS[DEFAULT_NETWORK].chainIdHex;
-      state.currentRpcUrl = NETWORKS[DEFAULT_NETWORK].rpcUrl || NETWORKS[DEFAULT_NETWORK].rpc;
+    } else if (defaultConfig) {
+      const chainIdHex = defaultConfig.chainIdHex || normalizeChainId(defaultConfig.chainId);
+      state.currentChainId = chainIdHex;
+      state.currentRpcUrl = defaultConfig.rpcUrl || defaultConfig.rpc;
       console.log('✅ Using default network:', DEFAULT_NETWORK);
+    } else if (seededNetworks?.length) {
+      const fallback = seededNetworks.find(item => item?.key === DEFAULT_NETWORK || item?.id === DEFAULT_NETWORK) || seededNetworks[0];
+      if (fallback) {
+        const chainIdHex = fallback.chainIdHex || normalizeChainId(fallback.chainId);
+        state.currentChainId = chainIdHex;
+        state.currentRpcUrl = fallback.rpcUrl || fallback.rpc;
+      }
+      console.log('✅ Using fallback stored network:', DEFAULT_NETWORK);
     }
 
     const savedPopupBounds = await getUserSetting('popupBounds', null);

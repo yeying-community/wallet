@@ -2,6 +2,8 @@
  * 二维码生成工具函数
  */
 
+import {escapeHtml} from './html-ui.js'
+
 /**
  * 生成二维码
  * @param {string} text - 要编码的文本
@@ -11,6 +13,7 @@
  */
 export function generateQRCode(text, elementId, options = {}) {
   const container = document.getElementById(elementId);
+  
   if (!container) {
     console.error('QR code element not found:', elementId);
     return false;
@@ -25,7 +28,7 @@ export function generateQRCode(text, elementId, options = {}) {
     renderQRCodeFallback(container, text, options);
     return false;
   }
-
+  
   try {
     const defaultOptions = {
       width: 200,
@@ -154,7 +157,7 @@ export function generateEthereumUri(address, amount = null, chainId = 1, extra =
   if (params.length > 0) {
     uri += '@' + chainId + '?' + params.join('&');
   }
-
+  
   return uri;
 }
 
@@ -187,7 +190,7 @@ export function parseEthereumUri(uri) {
     if (chainId) {
       result.chainId = parseInt(chainId, 10);
     }
-
+    
     // 解析查询参数
     const params = new URLSearchParams(url.search);
     result.amount = params.get('value');
@@ -216,6 +219,7 @@ export function generateTokenTransferQRCode(tokenAddress, toAddress, amount, ele
   const uri = generateEthereumUri(tokenAddress, 0, options.chainId || 1, {
     data: data
   });
+  
   return generateQRCode(uri, elementId, options);
 }
 
@@ -232,6 +236,7 @@ export function generateTokenTransferData(toAddress, amount, decimals = 18) {
   // 编码参数
   const paddedAddress = toAddress.toLowerCase().replace('0x', '').padStart(64, '0');
   const amountInWei = parseBalance(String(amount), decimals).toString(16).padStart(64, '0');
+  
   return '0x' + methodId + paddedAddress + amountInWei;
 }
 
@@ -246,6 +251,7 @@ export async function getQRCodeDataUrl(text, options = {}) {
     const container = document.createElement('div');
     
     generateQRCode(text, container, options);
+    
     const canvas = container.querySelector('canvas');
     
     if (canvas) {
@@ -259,17 +265,6 @@ export async function getQRCodeDataUrl(text, options = {}) {
       }
     }
   });
-}
-
-/**
- * 辅助函数：转义 HTML
- * @param {string} text - 文本
- * @returns {string}
- */
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 /**

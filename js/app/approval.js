@@ -6,15 +6,16 @@ import { ApprovalController } from '../controller/approval-controller.js';
 import { WalletDomain } from '../domain/wallet-domain.js';
 import { TransactionDomain } from '../domain/transaction-domain.js';
 import { NetworkDomain } from '../domain/network-domain.js';
+import { TokenDomain } from '../domain/token-domain.js';
 import { ethers } from '../../lib/ethers-5.7.esm.min.js';
-import { showToast } from '../controller/ui.js';
+import { showToast } from '../common/ui/index.js';
 import { ApprovalMessageType } from '../protocol/protocol.js';
-
 class ApprovalApp {
   constructor() {
     this.wallet = new WalletDomain();
     this.transaction = new TransactionDomain();
     this.network = new NetworkDomain();
+    this.token = new TokenDomain({ network: this.network });
     this.controller = null;
     this.requestId = null;
     this.requestType = null;
@@ -56,6 +57,7 @@ class ApprovalApp {
         wallet: this.wallet,
         transaction: this.transaction,
         network: this.network,
+        token: this.token,
         requestId: this.requestId,
         requestType: this.requestType,
         requestData: this.requestData
@@ -131,6 +133,7 @@ class ApprovalApp {
   renderSignRequest() {
     document.getElementById('signRequest').classList.remove('hidden');
     document.getElementById('signOrigin').textContent = this.requestData.origin;
+
     let message = this.requestData.message;
 
     // 处理TypedData签名
@@ -141,7 +144,6 @@ class ApprovalApp {
         message = String(this.requestData.typedData);
       }
     }
-
     // 处理普通签名
     else if (message && message.startsWith('0x')) {
       try {

@@ -1,5 +1,4 @@
 /* 交易历史相关样式 */
-
 /* 交易历史列表容器 */
 .transaction-list {
   max-height: 400px;
@@ -65,6 +64,21 @@
 .tx-status {
   font-size: 11px;
 }
+.tx-status.pending {
+  color: #f0ad4e;
+}
+
+.tx-status.confirmed {
+  color: #2d8a4b;
+}
+
+.tx-status.failed {
+  color: #d9534f;
+}
+
+.tx-status.cancelled {
+  color: #999;
+}
 
 /* 空状态（历史列表） */
 .empty-state {
@@ -82,4 +96,3 @@
   padding: 15px 0 5px;
   text-align: center;
 }
-

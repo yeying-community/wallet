@@ -1,4 +1,166 @@
 /**
+ * 密码相关功能
+ * 密码验证、强度检查等
+ */
+
+import {
+  PASSWORD_REQUIREMENTS,
+  PASSWORD_STRENGTH,
+  PASSWORD_STRENGTH_RULES,
+  CRYPTO_ERROR_MESSAGES
+} from './crypto-constants.js';
+import { hashHex } from './crypto-utils.js';
+
+/**
+ * 检查密码是否包含大写字母
+ * @param {string} password - 密码
+ * @returns {boolean}
+ */
+function hasUpperCase(password) {
+  return /[A-Z]/.test(password);
+}
+
+/**
+ * 检查密码是否包含小写字母
+ * @param {string} password - 密码
+ * @returns {boolean}
+ */
+function hasLowerCase(password) {
+  return /[a-z]/.test(password);
+}
+
+/**
+ * 检查密码是否包含数字
+ * @param {string} password - 密码
+ * @returns {boolean}
+ */
+function hasNumbers(password) {
+  return /[0-9]/.test(password);
+}
+
+/**
+ * 检查密码是否包含字母
+ * @param {string} password - 密码
+ * @returns {boolean}
+ */
+function hasLetters(password) {
+  return /[A-Za-z]/.test(password);
+}
+
+/**
+ * 检查密码是否包含特殊字符
+ * @param {string} password - 密码
+ * @returns {boolean}
+ */
+function hasSpecialChars(password) {
+  return /[^A-Za-z0-9]/.test(password);
+}
+
+/**
+ * 检查密码要求
+ * @param {string} password - 密码
+ * @param {string[]} requirements - 要求列表
+ * @returns {boolean}
+ */
+function checkRequirements(password, requirements) {
+  const checks = {
+    hasUpperCase: () => hasUpperCase(password),
+    hasLowerCase: () => hasLowerCase(password),
+    hasNumbers: () => hasNumbers(password),
+    hasLetters: () => hasLetters(password),
+    hasSpecialChars: () => hasSpecialChars(password)
+  };
+
+  return requirements.every(req => checks[req] && checks[req]());
+}
+
+/**
+ * 计算密码强度
+ * @param {string} password - 密码
+ * @returns {string} 强度等级
+ */
+export function calculatePasswordStrength(password) {
+  if (!password || password.length < PASSWORD_REQUIREMENTS.minLength) {
+    return PASSWORD_STRENGTH.WEAK;
+  }
+
+  // 从最强到最弱检查
+  const strengths = [
+    PASSWORD_STRENGTH.VERY_STRONG,
+    PASSWORD_STRENGTH.STRONG,
+    PASSWORD_STRENGTH.MEDIUM,
+    PASSWORD_STRENGTH.WEAK
+  ];
+
+  for (const strength of strengths) {
+    const rule = PASSWORD_STRENGTH_RULES[strength];
+    if (password.length >= rule.minLength && checkRequirements(password, rule.requirements)) {
+      return strength;
+    }
+  }
+
+  return PASSWORD_STRENGTH.WEAK;
+}
+
+/**
+ * 验证密码
+ * @param {string} password - 密码
+ * @param {Object} options - 验证选项
+ * @param {number} options.minLength - 最小长度
+ * @param {string} options.minStrength - 最小强度
+ * @returns {{valid: boolean, error?: string, strength?: string}}
+ */
+export function validatePassword(password, options = {}) {
+  const {
+    minLength = PASSWORD_REQUIREMENTS.minLength,
+    minStrength = PASSWORD_STRENGTH.WEAK
+  } = options;
+
+  // 检查是否为空
+  if (!password || typeof password !== 'string') {
+    return {
+      valid: false,
+      error: CRYPTO_ERROR_MESSAGES.PASSWORD_REQUIRED
+    };
+  }
+
+  // 检查长度
+  if (password.length < minLength) {
+    return {
+      valid: false,
+      error: `Password must be at least ${minLength} characters`
+    };
+  }
+
+  // 计算强度
+  const strength = calculatePasswordStrength(password);
+
+  // 检查最小强度要求
+  const strengthLevels = [
+    PASSWORD_STRENGTH.WEAK,
+    PASSWORD_STRENGTH.MEDIUM,
+    PASSWORD_STRENGTH.STRONG,
+    PASSWORD_STRENGTH.VERY_STRONG
+  ];
+
+  const currentLevel = strengthLevels.indexOf(strength);
+  const requiredLevel = strengthLevels.indexOf(minStrength);
+
+  if (currentLevel < requiredLevel) {
+    return {
+      valid: false,
+      error: `Password is too weak.Required: ${minStrength}, Current: ${strength}`,
+      strength
+    };
+  }
+
+  return {
+    valid: true,
+    strength
+  };
+}
+
+/**
 * 获取密码强度详情
 * @param {string} password - 密码
 * @returns {Object} 强度详情
@@ -114,6 +276,7 @@ export function validatePasswordConfirmation(password, confirmPassword) {
       error: 'Passwords do not match'
     };
   }
+
   return { valid: true };
 }
 
@@ -181,3 +344,4 @@ export function getPasswordStrengthText(strength) {
   };
   return texts[strength] || texts[PASSWORD_STRENGTH.WEAK];
 }
+

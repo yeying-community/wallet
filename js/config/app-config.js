@@ -92,3 +92,4 @@ export function shouldLog(level) {
   const messagePriority = getLogLevelPriority(level);
   return messagePriority >= currentPriority;
 }
+

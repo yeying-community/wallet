@@ -1,4 +1,4 @@
-import { showPage, setPageOrigin } from './ui.js';
+import { showPage, setPageOrigin } from '../common/ui/index.js';
 
 export class WelcomeController {
   constructor() {}
@@ -13,6 +13,7 @@ export class WelcomeController {
         if (setPasswordBtn) {
           setPasswordBtn.textContent = '创建钱包';
         }
+        this.preparePasswordFormForNewWallet();
         this.resetCreateWalletForm();
       });
     }
@@ -22,7 +23,44 @@ export class WelcomeController {
       importBtn.addEventListener('click', () => {
         setPageOrigin('importPage', 'welcome');
         showPage('importPage');
+        this.prepareImportFormForNewWallet();
       });
+    }
+  }
+
+  preparePasswordFormForNewWallet() {
+    const hint = document.getElementById('setPasswordHint');
+    const passwordLabel = document.getElementById('setPasswordLabel');
+    const confirmLabel = document.getElementById('confirmPasswordLabel');
+    const confirmGroup = document.getElementById('confirmPasswordGroup');
+    const passwordInput = document.getElementById('newPassword');
+
+    if (hint) {
+      hint.textContent = '请设置一个密码来保护您的钱包';
+    }
+    if (passwordLabel) {
+      passwordLabel.textContent = '密码';
+    }
+    if (confirmLabel) {
+      confirmLabel.textContent = '确认密码';
+    }
+    if (confirmGroup) {
+      confirmGroup.classList.remove('hidden');
+    }
+    if (passwordInput) {
+      passwordInput.placeholder = '至少8位字符';
+    }
+  }
+
+  prepareImportFormForNewWallet() {
+    const passwordLabel = document.getElementById('importPasswordLabel');
+    const passwordInput = document.getElementById('importWalletPassword');
+
+    if (passwordLabel) {
+      passwordLabel.textContent = '密码';
+    }
+    if (passwordInput) {
+      passwordInput.placeholder = '至少8位字符';
     }
   }
 

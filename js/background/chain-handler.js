@@ -5,9 +5,9 @@
 import { EventType } from '../protocol/protocol.js';
 import { state } from './state.js';
 import { createInvalidParams, createUnrecognizedChainError } from '../common/errors/index.js';
-import { getNetworkByChainId, NETWORKS } from '../config/index.js';
+import { DEFAULT_NETWORK } from '../config/index.js';
 import { normalizeChainId } from '../common/utils/index.js';
-import { saveSelectedNetworkName } from '../storage/index.js';
+import { saveSelectedNetworkName, getNetworkByChainId, getNetworkConfigByKey } from '../storage/index.js';
 import { broadcastEvent } from './connection.js';
 
 /**
@@ -39,7 +39,7 @@ export async function handleSwitchChain(params) {
   }
 
   const normalizedChainId = normalizeChainId(chainId);
-  const network = getNetworkByChainId(normalizedChainId);
+  const network = await getNetworkByChainId(normalizedChainId);
 
   if (!network) {
     throw createUnrecognizedChainError(chainId);
@@ -49,10 +49,15 @@ export async function handleSwitchChain(params) {
   state.currentChainId = normalizedChainId;
 
   // 保存网络选择
-  const networkName = Object.entries(NETWORKS)
-    .find(([_, config]) => config.chainIdHex === normalizedChainId)?.[0];
-
-  await saveSelectedNetworkName(networkName);
+  const networkName = network?.key || network?.id || null;
+  if (!networkName) {
+    const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+    if (fallbackConfig?.chainIdHex === normalizedChainId) {
+      await saveSelectedNetworkName(DEFAULT_NETWORK);
+    }
+  } else {
+    await saveSelectedNetworkName(networkName);
+  }
 
   // 如果链 ID 改变，广播事件
   if (oldChainId !== normalizedChainId) {

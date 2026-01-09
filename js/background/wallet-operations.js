@@ -12,7 +12,8 @@ import {
   WALLET_TYPE,
   createWalletInstance,
   getAccountPrivateKey,
-  getWalletMnemonic
+  getWalletMnemonic,
+  changeWalletPassword
 } from './vault.js';
 import {
   getAccount,
@@ -44,6 +45,7 @@ import { TIMEOUTS, LIMITS } from '../config/index.js';
 import { notifyUnlocked } from './unlock-flow.js';
 
 const CUSTOM_TOKENS_KEY = 'custom_tokens';
+const MIN_PASSWORD_LENGTH = 8;
 
 /**
  * 检查钱包是否已初始化
@@ -295,6 +297,7 @@ export async function handleSwitchAccount(accountId, password = null) {
     if (!account) {
       throw new Error('Account not found');
     }
+
     // 检查 keyring 中是否有该账户的私钥
     if (!state.keyring || !state.keyring.has(accountId)) {
       console.log('🔓 Account not unlocked, attempting to unlock...');
@@ -706,6 +709,66 @@ export async function handleExportMnemonic(walletId, password) {
 }
 
 /**
+ * 修改密码
+ * @param {string} oldPassword
+ * @param {string} newPassword
+ * @returns {Promise<Object>} { success, updatedWallets, updatedAccounts }
+ */
+export async function changePassword(oldPassword, newPassword) {
+  if (!oldPassword || oldPassword.length < MIN_PASSWORD_LENGTH) {
+    throw new Error('旧密码至少需要8位字符');
+  }
+  if (!newPassword || newPassword.length < MIN_PASSWORD_LENGTH) {
+    throw new Error('新密码至少需要8位字符');
+  }
+  if (oldPassword === newPassword) {
+    throw new Error('新密码不能与旧密码相同');
+  }
+
+  const walletsMap = await getWallets();
+  const wallets = Object.values(walletsMap || {});
+  if (wallets.length === 0) {
+    throw new Error('钱包不存在');
+  }
+
+  const updates = [];
+
+  for (const wallet of wallets) {
+    if (!wallet?.id) continue;
+    const accounts = await getWalletAccounts(wallet.id);
+    if (!accounts || accounts.length === 0) {
+      throw new Error('没有账户需要更新');
+    }
+
+    const updated = await changeWalletPassword(
+      wallet,
+      accounts,
+      oldPassword,
+      newPassword
+    );
+    updates.push(updated);
+  }
+
+  let updatedWallets = 0;
+  let updatedAccounts = 0;
+  for (const updated of updates) {
+    if (updated?.wallet) {
+      await saveWallet(updated.wallet);
+      updatedWallets += 1;
+    }
+    for (const account of updated?.accounts || []) {
+      await updateAccount(account);
+      updatedAccounts += 1;
+    }
+  }
+
+  cachePassword(newPassword, TIMEOUTS.PASSWORD);
+  resetLockTimer();
+
+  return { success: true, updatedWallets, updatedAccounts };
+}
+
+/**
  * 获取授权网站列表
  * @returns {Promise<Object>} { success, sites }
  */
@@ -792,6 +855,7 @@ function formatTokenBalance(balanceHex, decimals = 18, displayDecimals = 4) {
     if (displayDecimals <= 0) {
       return integer.toString();
     }
+
     const fractionStr = fraction.toString().padStart(decimals, '0').slice(0, displayDecimals);
     let formatted = `${integer.toString()}.${fractionStr}`;
     formatted = formatted.replace(/\.?0+$/, '');
@@ -807,6 +871,7 @@ async function getTokenBalanceHex(tokenAddress, accountAddress) {
   if (!normalizedToken || !normalizedAccount) {
     throw new Error('invalid token or account');
   }
+
   const addressData = normalizedAccount.replace(/^0x/, '').padStart(64, '0');
   const data = `0x70a08231${addressData}`;
 
@@ -818,4 +883,3 @@ async function getTokenBalanceHex(tokenAddress, accountAddress) {
     'latest'
   ]);
 }
-

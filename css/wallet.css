@@ -11,6 +11,32 @@ body {
   overflow: hidden;
 }
 
+/* ========== 转账页面布局（中间可滚动） ========== */
+#transferPage {
+  padding: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+#transferPage .page-header {
+  margin: 0;
+  padding: 20px 20px 15px;
+  flex: 0 0 auto;
+  background: #ffffff;
+}
+
+#transferPage .transfer-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0 20px;
+}
+
+#transferPage .transfer-footer {
+  flex: 0 0 auto;
+  padding: 12px 20px 20px;
+}
+
 /* ========== 钱包页面 Header（紫色渐变背景）========== */
 #walletPage .wallet-header {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);

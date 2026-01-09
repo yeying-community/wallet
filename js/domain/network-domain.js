@@ -8,53 +8,16 @@
  * 
  * 通信协议：{ type, data }
  */
-import { NETWORKS } from "../config/index.js";
 import { NetworkMessageType } from '../protocol/protocol.js';
+import { BaseDomain } from './base-domain.js';
 export { NetworkMessageType };
 
-export class NetworkDomain {
+export class NetworkDomain extends BaseDomain {
   constructor() {
+    super();
     this._currentChainId = null;
     this._currentRpcUrl = null;
-    this._customNetworks = [];
-  }
-
-  // ==================== 消息发送 ====================
-
-  /**
-   * 发送消息到 background
-   * @param {string} type - 消息类型
-   * @param {Object} data - 消息数据
-   * @returns {Promise<Object>} 响应结果
-   */
-  async _sendMessage(type, data = {}) {
-    return new Promise((resolve, reject) => {
-      if (typeof browser !== 'undefined') {
-        browser.runtime.sendMessage({ type, data })
-          .then(response => {
-            if (response?.success === false) {
-              reject(new Error(response.error || '操作失败'));
-            } else {
-              resolve(response);
-            }
-          })
-          .catch(error => {
-            reject(error);
-          });
-      } else if (typeof chrome !== 'undefined') {
-        chrome.runtime.sendMessage({ type, data }, (response) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else if (response?.success === false) {
-            reject(new Error(response.error || '操作失败'));
-          } else {
-            resolve(response);
-          }
-        });
-      } else {
-        reject(new Error('不支持的浏览器环境'));
-      }
-    });
+    this._networks = [];
   }
 
   // ==================== 网络切换 ====================
@@ -65,24 +28,7 @@ export class NetworkDomain {
    * @returns {Promise<Object>} 切换结果
    */
   async switchNetwork(networkKey) {
-    // 检查是否是预设网络
-    if (NETWORKS[networkKey]) {
-      const network = NETWORKS[networkKey];
-      
-      const result = await this._sendMessage(NetworkMessageType.SWITCH_NETWORK, {
-        chainId: network.chainId,
-        rpcUrl: network.rpcUrl,
-        networkKey
-      });
-
-      this._currentChainId = result.chainId || network.chainId;
-      this._currentRpcUrl = result.rpcUrl || network.rpcUrl;
-      
-      return result;
-    }
-
-    // 可能是自定义网络或直接使用 RPC URL
-    if (networkKey.startsWith('http') || networkKey.startsWith('https')) {
+    if (typeof networkKey === 'string' && (networkKey.startsWith('http') || networkKey.startsWith('https'))) {
       const result = await this._sendMessage(NetworkMessageType.SWITCH_NETWORK, {
         rpcUrl: networkKey
       });
@@ -95,7 +41,17 @@ export class NetworkDomain {
       return result;
     }
 
-    throw new Error(`未知网络: ${networkKey}`);
+    if (networkKey) {
+      const result = await this._sendMessage(NetworkMessageType.SWITCH_NETWORK, {
+        networkKey
+      });
+
+      this._currentChainId = result.chainId || this._currentChainId;
+      this._currentRpcUrl = result.rpcUrl || this._currentRpcUrl;
+      return result;
+    }
+
+    throw new Error('未知网络');
   }
 
   /**
@@ -121,11 +77,11 @@ export class NetworkDomain {
   }
 
   /**
-   * 添加自定义网络
+   * 添加网络
    * @param {Object} networkInfo - 网络信息
    * @returns {Promise<Object>} 添加结果
    */
-  async addCustomNetwork(networkInfo) {
+  async addNetwork(networkInfo) {
     const { chainName, chainId, rpcUrls, blockExplorerUrls, nativeCurrency } = networkInfo;
 
     // 验证必要参数
@@ -147,47 +103,48 @@ export class NetworkDomain {
     });
 
     // 添加到本地缓存
-    this._customNetworks.push({
+    const entry = {
       chainId,
       chainName,
       rpcUrl: rpcUrls[0],
       explorer: blockExplorerUrls?.[0],
       symbol: nativeCurrency?.symbol || 'ETH',
       decimals: nativeCurrency?.decimals || 18
-    });
+    };
+    this._networks.push(entry);
 
     return result;
   }
 
   /**
-   * 移除自定义网络
+   * 移除网络
    * @param {string} chainId - 链 ID
    * @returns {Promise<Object>} 移除结果
    */
-  async removeCustomNetwork(chainId) {
+  async removeNetwork(chainId) {
     const result = await this._sendMessage(NetworkMessageType.REMOVE_CUSTOM_NETWORK, {
       chainId
     });
 
     // 从本地缓存移除
-    this._customNetworks = this._customNetworks.filter(n => n.chainId !== chainId);
+    this._networks = this._networks.filter(n => n.chainId !== chainId);
 
     return result;
   }
 
   /**
-   * 更新自定义网络
+   * 更新网络
    * @param {string} chainId - 链 ID
    * @param {Object} updates - 更新字段
    * @returns {Promise<Object>} 更新结果
    */
-  async updateCustomNetwork(chainId, updates) {
+  async updateNetwork(chainId, updates) {
     const result = await this._sendMessage(NetworkMessageType.UPDATE_CUSTOM_NETWORK, {
       chainId,
       ...updates
     });
 
-    this._customNetworks = this._customNetworks.map(n => {
+    this._networks = this._networks.map(n => {
       if (n.chainId !== chainId) return n;
       return { ...n, ...updates };
     });
@@ -233,7 +190,12 @@ export class NetworkDomain {
       return this._currentRpcUrl;
     } catch (error) {
       console.error('[NetworkDomain] 获取 RPC URL 失败:', error);
-      return NETWORKS.mainnet.rpcUrl;
+      try {
+        const info = await this.getNetworkInfo();
+        return info?.rpcUrl || info?.rpc || '';
+      } catch {
+        return '';
+      }
     }
   }
 
@@ -242,62 +204,49 @@ export class NetworkDomain {
    * @returns {Promise<Object>} 网络信息
    */
   async getNetworkInfo() {
+    try {
+      const result = await this._sendMessage(NetworkMessageType.GET_NETWORK_INFO);
+      if (result?.network) {
+        return result.network;
+      }
+    } catch (error) {
+      console.error('[NetworkDomain] 获取网络信息失败:', error);
+    }
+
     const chainId = await this.getChainId();
     const rpcUrl = await this.getRpcUrl();
-
-    // 检查是否是预设网络
-    for (const [key, network] of Object.entries(NETWORKS)) {
-      if (network.chainId === chainId) {
-        return {
-          key,
-          ...network,
-          isCustom: false
-        };
-      }
-    }
-
-    // 检查是否是自定义网络
-    const customNetwork = this._customNetworks.find(n => n.chainId === chainId);
-    if (customNetwork) {
-      return {
-        ...customNetwork,
-        isCustom: true
-      };
-    }
-
-    // 返回基本信息
-    return {
-      chainId,
-      rpcUrl,
-      isCustom: true
-    };
+    return { chainId, rpcUrl, isCustom: true };
   }
 
   /**
    * 获取所有支持的网络
    * @returns {Array} 网络列表
    */
-  getSupportedNetworks() {
-    return Object.entries(NETWORKS).map(([key, network]) => ({
-      key,
-      ...network,
-      isCustom: false
-    }));
+  async getNetworks() {
+    try {
+      const result = await this._sendMessage(NetworkMessageType.GET_SUPPORTED_NETWORKS);
+      this._networks = result.networks || [];
+      return this._networks;
+    } catch (error) {
+      console.error('[NetworkDomain] 获取支持网络失败:', error);
+      return this._networks;
+    }
   }
 
   /**
-   * 获取自定义网络列表
-   * @returns {Promise<Array>} 自定义网络列表
+   * 获取网络列表（兼容旧接口）
+   * @returns {Promise<Array>}
    */
   async getCustomNetworks() {
-    try {
-      const result = await this._sendMessage(NetworkMessageType.GET_CUSTOM_NETWORKS);
-      this._customNetworks = result.networks || [];
-      return this._customNetworks;
-    } catch (error) {
-      console.error('[NetworkDomain] 获取自定义网络失败:', error);
-      return this._customNetworks;
-    }
+    return await this.getNetworks();
+  }
+
+  /**
+   * 获取网络列表（兼容旧接口）
+   * @returns {Promise<Array>}
+   */
+  async getSupportedNetworks() {
+    return await this.getNetworks();
   }
 
   // ==================== 工具方法 ====================
@@ -308,20 +257,10 @@ export class NetworkDomain {
    * @returns {string} 显示名称
    */
   getNetworkDisplayName(chainId) {
-    // 检查预设网络
-    for (const [key, network] of Object.entries(NETWORKS)) {
-      if (network.chainId === chainId) {
-        return network.name;
-      }
+    const network = this._networks.find(n => n.chainId === chainId || n.chainIdHex === chainId);
+    if (network) {
+      return network.name || network.chainName || '网络';
     }
-
-    // 检查自定义网络
-    const customNetwork = this._customNetworks.find(n => n.chainId === chainId);
-    if (customNetwork) {
-      return customNetwork.chainName || '自定义网络';
-    }
-
-    // 返回链 ID
     return `Chain ${parseInt(chainId, 16)}`;
   }
 

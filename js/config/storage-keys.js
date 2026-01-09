@@ -23,7 +23,7 @@ export const LOCAL_KEYS = {
   // 代币
   CUSTOM_TOKENS: 'custom_tokens',                    // 自定义代币
   HIDDEN_TOKENS: 'hidden_tokens',                    // 隐藏的代币
-
+  
   // 交易历史
   TRANSACTION_HISTORY: 'transaction_history',        // 交易历史
   PENDING_TRANSACTIONS: 'pending_transactions',      // 待处理交易
@@ -47,7 +47,7 @@ export const SESSION_KEYS = {
   WALLET_ADDRESS: 'wallet_address',                  // 当前地址
   WALLET_PRIVATE_KEY: 'wallet_privateKey',           // 私钥（加密）
   CURRENT_ACCOUNT_ID: 'current_account_id',          // 当前账户 ID
-
+  
   // 会话状态
   SESSION_ACTIVE: 'session_active',                  // 会话是否激活
   LAST_ACTIVITY: 'last_activity',                    // 最后活动时间
@@ -58,7 +58,7 @@ export const SESSION_KEYS = {
   TEMP_MNEMONIC: 'temp_mnemonic',                    // 临时助记词（仅创建时）
   TEMP_ACTION: 'temp_action',                        // 临时操作类型
   TEMP_PASSWORD: 'temp_password',                    // 临时密码（仅导入时）
-
+  
   // 缓存数据
   CACHED_BALANCE: 'cached_balance',                  // 缓存的余额
   CACHED_GAS_PRICE: 'cached_gas_price',             // 缓存的 Gas 价格
@@ -75,7 +75,7 @@ export const CHROME_KEYS = {
     CUSTOM_NETWORKS: 'sync_custom_networks',
     ADDRESS_BOOK: 'sync_address_book'
   },
-
+  
   // 本地存储
   LOCAL: {
     WALLET_DATA: 'chrome_wallet_data',

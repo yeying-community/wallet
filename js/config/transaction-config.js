@@ -36,7 +36,7 @@ export const GAS_CONFIG = {
       estimatedTime: '< 30 sec'
     }
   },
-
+  
   // Gas 限制
   MIN_GAS_LIMIT: 21000,
   MAX_GAS_LIMIT: 10000000,
@@ -117,7 +117,7 @@ export function validateGasLimit(gasLimit) {
       error: `Gas limit must be at least ${GAS_CONFIG.MIN_GAS_LIMIT}`
     };
   }
-
+  
   if (gasLimit > GAS_CONFIG.MAX_GAS_LIMIT) {
     return {
       valid: false,
@@ -140,7 +140,7 @@ export function validateGasPrice(gasPrice) {
       error: `Gas price must be at least ${GAS_CONFIG.MIN_GAS_PRICE} Gwei`
     };
   }
-
+  
   if (gasPrice > GAS_CONFIG.MAX_GAS_PRICE) {
     return {
       valid: false,
@@ -179,7 +179,7 @@ export function calculateEIP1559Fee(gasLimit, maxFeePerGas, maxPriorityFeePerGas
   
   const maxFeeTotal = (gasLimit * maxFeeWei) / 1e18;
   const priorityFeeTotal = (gasLimit * priorityFeeWei) / 1e18;
-
+  
   return {
     maxFee: maxFeeTotal.toString(),
     priorityFee: priorityFeeTotal.toString(),
@@ -207,7 +207,7 @@ export function validateEIP1559Fee(maxFeePerGas, maxPriorityFeePerGas) {
   if (maxFeePerGas < GAS_CONFIG.EIP1559.MIN_MAX_FEE) {
     errors.push(`Max fee must be at least ${GAS_CONFIG.EIP1559.MIN_MAX_FEE} Gwei`);
   }
-
+  
   if (maxFeePerGas > GAS_CONFIG.EIP1559.MAX_MAX_FEE) {
     errors.push(`Max fee must not exceed ${GAS_CONFIG.EIP1559.MAX_MAX_FEE} Gwei`);
   }
@@ -279,3 +279,5 @@ export function getGasPriceLevels() {
     ...value
   }));
 }
+
+

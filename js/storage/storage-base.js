@@ -246,3 +246,4 @@ export function onStorageChanged(callback) {
     chrome.storage.onChanged.removeListener(callback);
   };
 }
+

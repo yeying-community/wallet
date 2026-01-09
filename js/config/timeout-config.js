@@ -106,7 +106,7 @@ export function shouldRetry(error, attempt) {
   if (error.name === 'NetworkError' && RETRY_CONFIG.RETRY_ON_NETWORK_ERROR) {
     return true;
   }
-
+  
   return false;
 }
 
@@ -194,7 +194,7 @@ export function createPoller(fn, interval, shouldContinue = () => true) {
       isRunning = true;
       poll();
     },
-
+    
     stop() {
       isRunning = false;
       if (timerId) {
@@ -222,7 +222,7 @@ export function debounce(fn, delay) {
     if (timerId) {
       clearTimeout(timerId);
     }
-
+    
     timerId = setTimeout(() => {
       fn.apply(this, args);
       timerId = null;
@@ -248,3 +248,4 @@ export function throttle(fn, delay) {
     }
   };
 }
+

@@ -160,6 +160,7 @@ import {
 
       const { category } = message;
 
+      // ✅ 修正：正确判断消息类别
       if (category === MessageCategory.RESPONSE) {
         this._handleResponse(message);
       } else if (category === MessageCategory.EVENT) {

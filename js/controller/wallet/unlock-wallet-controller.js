@@ -1,6 +1,6 @@
-import { showPage, showStatus, showSuccess } from './ui.js';
+import { showPage, showStatus, showSuccess } from '../../common/ui/index.js';
 
-export class UnlockController {
+export class UnlockWalletController {
   constructor({ wallet, onUnlocked }) {
     this.wallet = wallet;
     this.onUnlocked = onUnlocked;
@@ -54,7 +54,7 @@ export class UnlockController {
         showSuccess('欢迎回来！');
       }, 500);
     } catch (error) {
-      console.error('[UnlockController] 解锁失败:', error);
+      console.error('[UnlockWalletController] 解锁失败:', error);
       showStatus('unlockStatus', '密码错误', 'error');
     }
   }

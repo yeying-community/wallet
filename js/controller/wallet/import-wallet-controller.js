@@ -1,6 +1,6 @@
-import { showPage, showStatus, showError, getPageOrigin } from './ui.js';
+import { showPage, showStatus, showError, getPageOrigin } from '../../common/ui/index.js';
 
-export class ImportController {
+export class ImportWalletController {
   constructor({ wallet, onImportSuccess }) {
     this.wallet = wallet;
     this.onImportSuccess = onImportSuccess;
@@ -48,14 +48,21 @@ export class ImportController {
     const password = document.getElementById('importWalletPassword')?.value;
     const activeTab = document.querySelector('.import-tab.active');
     const importType = activeTab?.dataset.type;
+    const origin = getPageOrigin('importPage', 'welcome');
+    const useExistingPassword = origin === 'accounts';
 
     if (!password || password.length < 8) {
-      showError('密码至少需要8位字符');
+      showError(useExistingPassword ? '请输入当前密码（至少8位）' : '密码至少需要8位字符');
       return;
     }
 
     try {
       showStatus('importStatus', '正在导入...', 'info');
+
+      if (useExistingPassword) {
+        await this.verifyExistingPassword(password);
+      }
+
       if (importType === 'mnemonic') {
         const mnemonic = document.getElementById('importMnemonic')?.value.trim();
         if (!mnemonic) {
@@ -93,5 +100,13 @@ export class ImportController {
     }
 
     showPage('welcomePage');
+  }
+
+  async verifyExistingPassword(password) {
+    const account = await this.wallet.getCurrentAccount();
+    if (!account?.id) {
+      throw new Error('未找到当前账户');
+    }
+    await this.wallet.exportPrivateKey(account.id, password);
   }
 }

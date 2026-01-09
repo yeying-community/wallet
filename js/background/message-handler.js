@@ -3,10 +3,12 @@
  * 负责：处理来自 content script 和 popup 的消息
  */
 
-import { MessageValidator, PORT_NAME, ApprovalMessageType, WalletMessageType, NetworkMessageType, EventType } from '../protocol/protocol.js';
+import { MessageValidator, PORT_NAME, ApprovalMessageType, WalletMessageType, NetworkMessageType, TransactionMessageType, EventType } from '../protocol/protocol.js';
 import { sendResponse, sendError, registerConnection, unregisterConnection, checkSessionAndNotify } from './connection.js';
 import { routeRequest } from './request-router.js';
 import { unlockWallet, lockWallet } from './keyring.js';
+import { signMessage, signTransaction } from './signing.js';
+import { ethers } from '../../lib/ethers-5.7.esm.min.js';
 import {
   isWalletInitialized,
   HandleGetWalletList,
@@ -26,18 +28,26 @@ import {
   handleExportMnemonic,
   handleGetAuthorizedSites,
   handleRevokeSite,
-  handleClearAllAuthorizations
+  handleClearAllAuthorizations,
+  changePassword
 } from './wallet-operations.js';
 import { state } from './state.js';
-import { DEFAULT_NETWORK, NETWORKS, getNetworkByChainId } from '../config/index.js';
+import { DEFAULT_NETWORK } from '../config/index.js';
 import { normalizeChainId } from '../common/utils/index.js';
 import {
   saveSelectedNetworkName,
   updateUserSetting,
-  addCustomNetwork,
-  getCustomNetworks,
-  deleteCustomNetwork,
-  updateCustomNetwork
+  addNetwork,
+  getNetworks,
+  deleteNetwork,
+  updateNetwork,
+  getNetworkByChainId as getStoredNetworkByChainId,
+  getNetworkConfigByKey,
+  getAccountList,
+  addTransaction,
+  updateTransaction,
+  getTransactionsByAddress,
+  clearTransactionsByAddress
 } from '../storage/index.js';
 import { validateNetworkConfig } from '../config/validation-rules.js';
 import { broadcastEvent } from './connection.js';
@@ -91,29 +101,31 @@ async function handleSwitchNetworkMessage(data) {
   let nextRpcUrl = null;
   let selectedNetworkName = networkKey;
 
-  if (networkKey && NETWORKS[networkKey]) {
-    const network = NETWORKS[networkKey];
-    nextChainId = network.chainIdHex;
+  if (networkKey) {
+    const network = await getNetworkConfigByKey(networkKey);
+    if (!network) {
+      return { success: false, error: 'Unknown network key' };
+    }
+    nextChainId = network.chainIdHex || normalizeChainId(network.chainId);
     nextRpcUrl = network.rpcUrl || network.rpc;
   } else if (chainId) {
     const normalizedChainId = normalizeChainId(chainId);
-    const network = getNetworkByChainId(normalizedChainId);
+    const network = await getStoredNetworkByChainId(normalizedChainId);
     nextChainId = normalizedChainId;
     nextRpcUrl = rpcUrl || network?.rpcUrl || network?.rpc;
 
     if (!selectedNetworkName) {
-      selectedNetworkName = Object.entries(NETWORKS)
-        .find(([_, config]) => config.chainIdHex === normalizedChainId)?.[0];
+      selectedNetworkName = network?.key || network?.id || null;
     }
   } else if (rpcUrl) {
     const resolvedChainId = await fetchChainIdFromRpc(rpcUrl);
     const normalizedChainId = normalizeChainId(resolvedChainId);
-    const network = getNetworkByChainId(normalizedChainId);
+    const network = await getStoredNetworkByChainId(normalizedChainId);
 
     nextChainId = normalizedChainId;
     nextRpcUrl = rpcUrl;
     selectedNetworkName = network
-      ? Object.entries(NETWORKS).find(([_, config]) => config.chainIdHex === normalizedChainId)?.[0]
+      ? (network?.key || network?.id || null)
       : null;
   } else {
     return { success: false, error: 'rpcUrl or chainId is required' };
@@ -124,9 +136,16 @@ async function handleSwitchNetworkMessage(data) {
   }
 
   const prevChainId = state.currentChainId;
-  state.currentChainId = nextChainId || NETWORKS[DEFAULT_NETWORK].chainIdHex;
+  if (!nextChainId) {
+    const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+    nextChainId = fallbackConfig?.chainIdHex || (fallbackConfig?.chainId ? normalizeChainId(fallbackConfig.chainId) : null);
+  }
+  state.currentChainId = nextChainId || state.currentChainId;
   state.currentRpcUrl = nextRpcUrl;
 
+  if (!selectedNetworkName && nextChainId) {
+    selectedNetworkName = nextChainId;
+  }
   if (selectedNetworkName) {
     await saveSelectedNetworkName(selectedNetworkName);
   }
@@ -181,20 +200,197 @@ async function handleAddCustomNetworkMessage(data) {
   };
 
   try {
-    await addCustomNetwork(network);
-    return { success: true, network };
+    const stored = await addNetwork(network);
+    return { success: true, network: stored };
   } catch (error) {
-    return { success: false, error: error.message || 'Failed to add custom network' };
+    return { success: false, error: error.message || 'Failed to add network' };
   }
 }
 
-async function handleGetCustomNetworksMessage() {
+async function handleGetNetworksMessage() {
   try {
-    const networks = await getCustomNetworks();
+    const networks = await getNetworks();
     return { success: true, networks };
   } catch (error) {
-    return { success: false, error: error.message || 'Failed to get custom networks' };
+    return { success: false, error: error.message || 'Failed to get networks' };
   }
+}
+
+async function handleGetSupportedNetworksMessage() {
+  try {
+    const networks = await getNetworks();
+    return { success: true, networks };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to get networks' };
+  }
+}
+
+async function handleGetNetworkInfoMessage() {
+  try {
+    let chainId = state.currentChainId;
+    if (!chainId) {
+      const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+      chainId = fallbackConfig?.chainIdHex
+        || (fallbackConfig?.chainId ? normalizeChainId(fallbackConfig.chainId) : null)
+        || null;
+      if (chainId) {
+        state.currentChainId = chainId;
+      }
+    }
+    const network = await getStoredNetworkByChainId(chainId);
+    return {
+      success: true,
+      network: network || {
+        chainId: chainId,
+        rpcUrl: state.currentRpcUrl
+      }
+    };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to get network info' };
+  }
+}
+
+async function resolveAccountIdByAddress(address) {
+  if (!address) return null;
+  const accounts = await getAccountList();
+  const lowered = address.toLowerCase();
+  const match = accounts.find(account => account?.address?.toLowerCase() === lowered);
+  return match?.id || null;
+}
+
+async function handleSendTransactionMessage(data) {
+  const { from, to, value, data: txData, gas, gasLimit, chainId } = data || {};
+  if (!from || !to || !value) {
+    return { success: false, error: 'Invalid transaction params' };
+  }
+
+  const accountId = await resolveAccountIdByAddress(from);
+  if (!accountId) {
+    return { success: false, error: 'Account not found' };
+  }
+
+  try {
+    const tx = {
+      to,
+      value,
+      data: txData || '0x'
+    };
+    const limit = gasLimit || gas;
+    if (limit) {
+      tx.gasLimit = limit;
+    }
+
+    const result = await signTransaction(accountId, tx);
+    const txHash = result?.hash || result?.transactionHash || result?.txHash || result;
+    let normalizedChainId = null;
+    if (chainId) {
+      try {
+        normalizedChainId = normalizeChainId(chainId);
+      } catch {
+        normalizedChainId = String(chainId);
+      }
+    }
+    await addTransaction({
+      hash: txHash,
+      from,
+      to,
+      value: result?.value ?? value,
+      timestamp: Date.now(),
+      status: 'pending',
+      chainId: normalizedChainId || state.currentChainId || null
+    });
+    return {
+      success: true,
+      txHash
+    };
+  } catch (error) {
+    return { success: false, error: error.message || 'Send transaction failed' };
+  }
+}
+
+async function resolveRpcUrl(chainIdOverride = null) {
+  const targetChainId = chainIdOverride || state.currentChainId;
+  let rpcUrl = state.currentRpcUrl;
+  if (targetChainId) {
+    const network = await getStoredNetworkByChainId(targetChainId);
+    rpcUrl = rpcUrl || network?.rpcUrl || network?.rpc;
+  }
+  if (!rpcUrl) {
+    const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+    rpcUrl = fallbackConfig?.rpcUrl || fallbackConfig?.rpc || '';
+  }
+  return rpcUrl;
+}
+
+async function refreshTransactionStatuses(transactions, chainId = null) {
+  const pending = (transactions || []).filter(tx => tx?.status === 'pending' && tx?.hash);
+  if (pending.length === 0) {
+    return transactions || [];
+  }
+
+  const rpcUrl = await resolveRpcUrl(chainId);
+  if (!rpcUrl) {
+    return transactions || [];
+  }
+
+  const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+
+  for (const tx of pending) {
+    try {
+      const receipt = await provider.getTransactionReceipt(tx.hash);
+      if (!receipt || receipt.blockNumber == null) {
+        continue;
+      }
+      const status = receipt.status === 1 ? 'confirmed' : 'failed';
+      if (tx.status !== status) {
+        await updateTransaction(tx.hash, {
+          status,
+          confirmedAt: Date.now(),
+          blockNumber: receipt.blockNumber
+        });
+        tx.status = status;
+      }
+    } catch (error) {
+      console.warn('[Background] 更新交易状态失败:', error);
+    }
+  }
+
+  return transactions || [];
+}
+
+async function handleGetTransactionHistoryMessage(data) {
+  const { address, chainId } = data || {};
+  let normalizedChainId = null;
+  if (chainId) {
+    try {
+      normalizedChainId = normalizeChainId(chainId);
+    } catch {
+      normalizedChainId = String(chainId);
+    }
+  }
+  if (!normalizedChainId) {
+    normalizedChainId = state.currentChainId;
+  }
+  const transactions = await getTransactionsByAddress(address, normalizedChainId || null);
+  const refreshed = await refreshTransactionStatuses(transactions, normalizedChainId || null);
+  return { success: true, transactions: refreshed };
+}
+
+async function handleClearTransactionHistoryMessage(data) {
+  const { address, chainId } = data || {};
+  let normalizedChainId = null;
+  if (chainId) {
+    try {
+      normalizedChainId = normalizeChainId(chainId);
+    } catch {
+      normalizedChainId = String(chainId);
+    }
+  }
+  if (!normalizedChainId) {
+    normalizedChainId = state.currentChainId;
+  }
+  const removed = await clearTransactionsByAddress(address || null, normalizedChainId || null);
+  return { success: true, removed };
 }
 
 async function handleRemoveCustomNetworkMessage(chainId) {
@@ -210,10 +406,10 @@ async function handleRemoveCustomNetworkMessage(chainId) {
   }
 
   try {
-    await deleteCustomNetwork(normalizedChainId);
+    await deleteNetwork(normalizedChainId);
     return { success: true };
   } catch (error) {
-    return { success: false, error: error.message || 'Failed to remove custom network' };
+    return { success: false, error: error.message || 'Failed to remove network' };
   }
 }
 
@@ -258,15 +454,15 @@ async function handleUpdateCustomNetworkMessage(data) {
   };
 
   try {
-    await updateCustomNetwork(normalizedChainId, updates);
+    await updateNetwork(normalizedChainId, updates);
 
     if (state.currentChainId === normalizedChainId) {
       state.currentRpcUrl = updates.rpcUrl;
     }
 
-    return { success: true, network: updates };
+      return { success: true, network: updates };
   } catch (error) {
-    return { success: false, error: error.message || 'Failed to update custom network' };
+    return { success: false, error: error.message || 'Failed to update network' };
   }
 }
 
@@ -296,6 +492,7 @@ export async function handleContentMessage(message, port, origin, tabId) {
   try {
     // 路由请求
     const result = await routeRequest(method, params, { origin, tabId });
+
     // 发送响应
     sendResponse(port, requestId, result);
 
@@ -386,6 +583,12 @@ export async function handlePopupMessage(message, response) {
         break;
 
       case NetworkMessageType.GET_CURRENT_CHAIN_ID:
+        if (!state.currentChainId) {
+          const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+          state.currentChainId = fallbackConfig?.chainIdHex
+            || (fallbackConfig?.chainId ? normalizeChainId(fallbackConfig.chainId) : null)
+            || state.currentChainId;
+        }
         response({
           success: true,
           chainId: state.currentChainId
@@ -393,10 +596,17 @@ export async function handlePopupMessage(message, response) {
         break;
 
       case NetworkMessageType.GET_CURRENT_RPC_URL:
-        response({
-          success: true,
-          rpcUrl: state.currentRpcUrl || NETWORKS[DEFAULT_NETWORK].rpc
-        });
+        {
+          let rpcUrl = state.currentRpcUrl;
+          if (!rpcUrl) {
+            const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+            rpcUrl = fallbackConfig?.rpcUrl || fallbackConfig?.rpc || '';
+            if (rpcUrl) {
+              state.currentRpcUrl = rpcUrl;
+            }
+          }
+          response({ success: true, rpcUrl });
+        }
         break;
 
       case NetworkMessageType.SWITCH_NETWORK:
@@ -411,8 +621,16 @@ export async function handlePopupMessage(message, response) {
         response(await handleUpdateCustomNetworkMessage(data));
         break;
 
+      case NetworkMessageType.GET_SUPPORTED_NETWORKS:
+        response(await handleGetSupportedNetworksMessage());
+        break;
+
+      case NetworkMessageType.GET_NETWORK_INFO:
+        response(await handleGetNetworkInfoMessage());
+        break;
+
       case NetworkMessageType.GET_CUSTOM_NETWORKS:
-        response(await handleGetCustomNetworksMessage());
+        response(await handleGetNetworksMessage());
         break;
 
       case NetworkMessageType.REMOVE_CUSTOM_NETWORK:
@@ -461,6 +679,20 @@ export async function handlePopupMessage(message, response) {
 
       case WalletMessageType.CLEAR_ALL_AUTHORIZATIONS:
         response(await handleClearAllAuthorizations());
+        break;
+
+      // ==================== 交易 ====================
+
+      case TransactionMessageType.SEND_TRANSACTION:
+        response(await handleSendTransactionMessage(data));
+        break;
+
+      case TransactionMessageType.GET_TRANSACTION_HISTORY:
+        response(await handleGetTransactionHistoryMessage(data));
+        break;
+
+      case TransactionMessageType.CLEAR_TRANSACTION_HISTORY:
+        response(await handleClearTransactionHistoryMessage(data));
         break;
 
       // ==================== 导出密钥 ====================
@@ -553,6 +785,7 @@ export async function handlePopupMessage(message, response) {
   }
 }
 
+
 /**
  * 初始化消息监听器
  */
@@ -594,4 +827,3 @@ export function initMessageListeners() {
 
   console.log('✅ Message listeners initialized');
 }
-

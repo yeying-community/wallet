@@ -13,7 +13,7 @@ export const WalletStorageKeys = {
 // ==================== 网络相关 ====================
 export const NetworkStorageKeys = {
   SELECTED_NETWORK: 'selectedNetwork',     // 选中的网络名称
-  CUSTOM_NETWORKS: 'customNetworks'        // 自定义网络列表
+  NETWORKS: 'networks'                     // 网络列表
 };
 
 // ==================== 权限相关 ====================
@@ -26,11 +26,16 @@ export const SettingsStorageKeys = {
   USER_SETTINGS: 'user_settings'           // 用户设置
 };
 
+// ==================== 交易相关 ====================
+export const TransactionStorageKeys = {
+  TRANSACTIONS: 'transactions'            // 交易历史
+};
+
 // ==================== 统一导出 ====================
 export const StorageKeys = {
   ...WalletStorageKeys,
   ...NetworkStorageKeys,
   ...PermissionStorageKeys,
-  ...SettingsStorageKeys
+  ...SettingsStorageKeys,
+  ...TransactionStorageKeys
 };
-

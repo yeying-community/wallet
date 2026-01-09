@@ -96,6 +96,7 @@ export function requestUnlock() {
         }
 
         // 解锁弹窗不更新 popupBounds（仅由用户操作的主弹窗更新）
+
         unlockWindowId = window.id;
         unlockWindowCreated = true;
 

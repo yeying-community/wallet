@@ -170,3 +170,4 @@ export async function deriveBits(password, salt, length = 256) {
     throw createCryptoError('Failed to derive bits');
   }
 }
+

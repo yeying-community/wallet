@@ -117,3 +117,4 @@ export async function updateUserSettings(updates) {
     throw error;
   }
 }
+

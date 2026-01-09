@@ -7,83 +7,6 @@ export const DEFAULT_NETWORK = 'yeying';
 
 // ==================== 网络配置 ====================
 export const NETWORKS = {
-  mainnet: {
-    id: 'mainnet',
-    name: 'Ethereum Mainnet',
-    rpc: 'https://eth.llamarpc.com',
-    rpcUrl: 'https://eth.llamarpc.com',
-    chainId: 1,
-    chainIdHex: '0x1',
-    symbol: 'ETH',
-    decimals: 18,
-    explorer: 'https://etherscan.io',
-    type: 'mainnet',
-    isTestnet: false,
-    nativeCurrency: {
-      name: 'Ether',
-      symbol: 'ETH',
-      decimals: 18
-    }
-  },
-  
-  sepolia: {
-    id: 'sepolia',
-    name: 'Sepolia Testnet',
-    rpc: 'https://rpc.sepolia.org',
-    rpcUrl: 'https://rpc.sepolia.org',
-    chainId: 11155111,
-    chainIdHex: '0xaa36a7',
-    symbol: 'ETH',
-    decimals: 18,
-    explorer: 'https://sepolia.etherscan.io',
-    faucet: 'https://sepoliafaucet.com/',
-    type: 'testnet',
-    isTestnet: true,
-    nativeCurrency: {
-      name: 'Sepolia Ether',
-      symbol: 'ETH',
-      decimals: 18
-    }
-  },
-
-  goerli: {
-    id: 'goerli',
-    name: 'Goerli Testnet',
-    rpc: 'https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
-    rpcUrl: 'https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
-    chainId: 5,
-    chainIdHex: '0x5',
-    symbol: 'ETH',
-    decimals: 18,
-    explorer: 'https://goerli.etherscan.io',
-    type: 'testnet',
-    isTestnet: true,
-    nativeCurrency: {
-      name: 'Goerli Ether',
-      symbol: 'ETH',
-      decimals: 18
-    }
-  },
-
-  polygon: {
-    id: 'polygon',
-    name: 'Polygon Mainnet',
-    rpc: 'https://polygon-rpc.com',
-    rpcUrl: 'https://polygon-rpc.com',
-    chainId: 137,
-    chainIdHex: '0x89',
-    symbol: 'MATIC',
-    decimals: 18,
-    explorer: 'https://polygonscan.com',
-    type: 'mainnet',
-    isTestnet: false,
-    nativeCurrency: {
-      name: 'MATIC',
-      symbol: 'MATIC',
-      decimals: 18
-    }
-  },
-
   yeying: {
     id: 'yeying',
     name: 'YeYing Mainnet',
@@ -285,4 +208,3 @@ export function getExplorerBlockUrl(networkName, blockNumber) {
   if (!network || !network.explorer) return '';
   return `${network.explorer}/block/${blockNumber}`;
 }
-

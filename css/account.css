@@ -470,9 +470,10 @@
 /* ==================== 底部操作按钮（固定）==================== */
 .account-actions-footer {
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  padding: 15px;
+  padding: 15px 0;
   background: #fff;
   border-top: none;
   flex-shrink: 0;
@@ -481,15 +482,15 @@
 .account-actions-footer::before {
   content: '';
   position: absolute;
-  left: 15px;
-  right: 15px;
+  left: 0;
+  right: 0;
   top: 0;
   height: 1px;
   background: #e5e7eb;
 }
 
 .account-actions-footer .btn {
-  flex: 1;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;

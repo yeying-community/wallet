@@ -11,7 +11,7 @@ export async function copyToClipboard(text) {
   if (!text) {
     return false;
   }
-
+  
   try {
     // 现代浏览器 API
     await navigator.clipboard.writeText(String(text));
@@ -38,6 +38,7 @@ async function copyToClipboardFallback(text) {
     
     document.body.appendChild(textarea);
     textarea.select();
+    
     const success = document.execCommand('copy');
     document.body.removeChild(textarea);
     
@@ -174,6 +175,34 @@ export async function copyPrivateKeyToClipboard(privateKey, showWarning = null, 
   }
   
   return success;
+}
+
+/**
+ * 判断复制提示是否为失败消息
+ * @param {string} message - 提示文本
+ * @returns {boolean}
+ */
+export function isCopyFailureMessage(message) {
+  if (!message) return false;
+  return /失败|fail/i.test(String(message));
+}
+
+/**
+ * 创建统一的复制提示处理函数
+ * @param {Object} handlers - 处理函数集合
+ * @param {Function} handlers.onSuccess - 成功提示处理
+ * @param {Function} handlers.onError - 失败提示处理
+ * @returns {(message: string) => void}
+ */
+export function createCopyToastHandler({ onSuccess, onError } = {}) {
+  return (message) => {
+    if (!message) return;
+    if (isCopyFailureMessage(message)) {
+      onError?.(message);
+      return;
+    }
+    onSuccess?.(message);
+  };
 }
 
 /**

@@ -29,7 +29,7 @@ export function validateMnemonic(mnemonic) {
     // 清理并分割单词
     const words = mnemonic.trim().split(/\s+/);
     const wordCount = words.length;
-
+    
     // 检查单词数量
     if (!VALID_MNEMONIC_LENGTHS.includes(wordCount)) {
       return {
@@ -56,6 +56,7 @@ export function validateMnemonic(mnemonic) {
       address: wallet.address,
       wordCount
     };
+    
   } catch (error) {
     logError('crypto-validate-mnemonic', error);
     return {
@@ -79,7 +80,7 @@ export function validatePrivateKey(privateKey) {
         error: CRYPTO_ERROR_MESSAGES.PRIVATE_KEY_REQUIRED
       };
     }
-
+    
     // 清理格式
     privateKey = privateKey.trim();
     
@@ -95,7 +96,7 @@ export function validatePrivateKey(privateKey) {
         error: CRYPTO_ERROR_MESSAGES.PRIVATE_KEY_INVALID_LENGTH
       };
     }
-
+    
     // 检查是否为有效的十六进制
     if (!/^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
       return {
@@ -111,6 +112,7 @@ export function validatePrivateKey(privateKey) {
       valid: true,
       address: wallet.address
     };
+    
   } catch (error) {
     logError('crypto-validate-private-key', error);
     return {
@@ -133,7 +135,7 @@ export function validateAddress(address) {
         error: 'Address is required'
       };
     }
-
+    
     // 使用 ethers.js 验证地址
     if (!ethers.utils.isAddress(address)) {
       return {
@@ -188,7 +190,7 @@ export function getMnemonicSuggestions(prefix, limit = 10) {
     
     const wordlist = ethers.wordlists.en;
     const words = [];
-
+    
     for (let i = 0; i < 2048; i++) {
       const word = wordlist.getWord(i);
       if (word.startsWith(prefix.toLowerCase())) {
@@ -219,7 +221,7 @@ export function validateDerivationPath(path) {
         error: 'Derivation path is required'
       };
     }
-
+    
     // 标准以太坊路径格式: m/44'/60'/0'/0/x
     const pathRegex = /^m(\/\d+'?)+$/;
     
@@ -248,6 +250,8 @@ export function validateDerivationPath(path) {
  */
 export function generateEthereumPath(accountIndex = 0) {
   return `m/44'/60'/0'/0/${accountIndex}`;
+}
+
 /**
  * 验证签名
  * @param {string} message - 消息

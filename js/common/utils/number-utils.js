@@ -14,7 +14,7 @@ export function formatNumber(num, decimals = 0) {
   if (isNaN(number)) {
     return '0';
   }
-
+  
   const options = {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals
@@ -57,7 +57,7 @@ export function formatCurrency(amount, currency = 'USD', locale = 'en-US') {
   if (isNaN(number)) {
     return formatCurrency(0, currency, locale);
   }
-
+  
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: currency
@@ -72,6 +72,7 @@ export function formatCurrency(amount, currency = 'USD', locale = 'en-US') {
  */
 export function formatPercent(value, decimals = 2) {
   const number = parseFloat(value);
+  
   if (isNaN(number)) {
     return '0%';
   }
@@ -87,6 +88,7 @@ export function formatPercent(value, decimals = 2) {
  */
 export function formatPercentWithColor(value, decimals = 2) {
   const number = parseFloat(value);
+  
   if (isNaN(number)) {
     return { text: '0%', color: 'neutral' };
   }
@@ -133,7 +135,7 @@ export function formatCompact(num, decimals = 1) {
   if (number === 0) {
     return '0';
   }
-
+  
   const absNumber = Math.abs(number);
   const sign = number < 0 ? '-' : '';
   
@@ -150,7 +152,7 @@ export function formatCompact(num, decimals = 1) {
       return sign + removeTrailingZeros(formatted) + suffix;
     }
   }
-
+  
   return sign + number.toString();
 }
 
@@ -166,7 +168,7 @@ export function formatCompactZh(num, decimals = 1) {
   if (isNaN(number)) {
     return '0';
   }
-
+  
   if (number === 0) {
     return '0';
   }
@@ -230,7 +232,7 @@ export function formatTimeLength(seconds) {
   if (seconds < 60) {
     return `${seconds}s`;
   }
-
+  
   if (seconds < 3600) {
     const minutes = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -271,7 +273,7 @@ export function formatPercentChange(oldValue, newValue) {
   if (oldValue === 0) {
     return newValue === 0 ? '0%' : '+∞';
   }
-
+  
   const change = ((newValue - oldValue) / oldValue) * 100;
   const sign = change >= 0 ? '+' : '';
   return `${sign}${change.toFixed(2)}%`;
@@ -285,6 +287,7 @@ export function formatPercentChange(oldValue, newValue) {
  */
 export function formatPrecision(num, decimals = 8) {
   const number = typeof num === 'string' ? parseFloat(num) : num;
+  
   if (isNaN(number)) {
     return '0';
   }
@@ -333,6 +336,7 @@ export function randomBool(probability = 0.5) {
 export function randomColor() {
   const letters = '0123456789ABCDEF';
   let color = '#';
+  
   for (let i = 0; i < 6; i++) {
     color += letters[Math.floor(Math.random() * 16)];
   }
@@ -418,7 +422,7 @@ export function numberToChinese(num) {
   if (isNaN(number) || number < 0) {
     return '零';
   }
-
+  
   const digits = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
   const units = ['', '十', '百', '千'];
   const bigUnits = ['', '万', '亿', '兆'];
@@ -430,6 +434,7 @@ export function numberToChinese(num) {
   // 处理每一位
   for (let i = numStr.length - 1; i >= 0; i--) {
     const digit = parseInt(numStr[i]);
+    
     if (digit !== 0) {
       result = digits[digit] + units[unitIndex] + result;
     } else if (!result.startsWith('零')) {
@@ -444,7 +449,7 @@ export function numberToChinese(num) {
       result = bigUnits[Math.floor(numStr.length / 4) - Math.floor(i / 4)] + result;
     }
   }
-
+  
   // 移除末尾的零
   result = result.replace(/零+$/, '');
   
@@ -541,3 +546,4 @@ export function toChineseOrdinal(num) {
   
   return '第' + numberToChinese(num);
 }
+

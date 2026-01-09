@@ -105,7 +105,7 @@ function formatRelativeTime(diff) {
   if (diff < 60000) {
     return '刚刚';
   }
-
+  
   // 1小时内
   if (diff < 3600000) {
     const minutes = Math.floor(diff / 60000);
@@ -359,7 +359,7 @@ export function parseTimeString(timeStr) {
     }
     return offset;
   }
-
+  
   // 解析具体时间
   const date = new Date(str);
   if (!isNaN(date.getTime())) {
@@ -368,3 +368,4 @@ export function parseTimeString(timeStr) {
   
   return null;
 }
+

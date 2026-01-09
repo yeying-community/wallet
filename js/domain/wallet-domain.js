@@ -12,71 +12,14 @@
 
 import { WalletMessageType } from '../protocol/protocol.js';
 import { validateAccountName } from '../config/validation-rules.js';
+import { BaseDomain } from './base-domain.js';
 export { WalletMessageType };
 
-export class WalletDomain {
+export class WalletDomain extends BaseDomain {
   constructor() {
+    super();
     this._currentAccount = null;
     this._accounts = [];
-  }
-
-  // ==================== 消息发送 ====================
-
-  /**
-   * 发送消息到 background
-   * @param {string} type - 消息类型
-   * @param {Object} data - 消息数据
-   * @returns {Promise<Object>} 响应结果
-   */
-  async _sendMessage(type, data = {}) {
-    return new Promise((resolve, reject) => {
-      if (typeof browser !== 'undefined') {
-        // Firefox 浏览器
-        browser.runtime.sendMessage({ type, data })
-          .then(response => {
-            if (response?.success === false) {
-              const error = new Error(response.error || '操作失败');
-              if (response?.requirePassword) {
-                error.requirePassword = true;
-              }
-              reject(error);
-            } else {
-              resolve(response);
-            }
-          })
-          .catch(error => {
-            reject(error);
-          });
-      } else if (typeof chrome !== 'undefined') {
-        // Chrome 浏览器（带重试，避免 SW 冷启动时丢消息）
-        const sendWithRetry = (attempt) => {
-          chrome.runtime.sendMessage({ type, data }, (response) => {
-            if (chrome.runtime.lastError) {
-              const message = chrome.runtime.lastError.message || 'Unknown error';
-              const shouldRetry = message.includes('Receiving end does not exist') && attempt < 2;
-              if (shouldRetry) {
-                const delay = 150 * (attempt + 1);
-                setTimeout(() => sendWithRetry(attempt + 1), delay);
-                return;
-              }
-              reject(new Error(message));
-            } else if (response?.success === false) {
-              const error = new Error(response.error || '操作失败');
-              if (response?.requirePassword) {
-                error.requirePassword = true;
-              }
-              reject(error);
-            } else {
-              resolve(response);
-            }
-          });
-        };
-
-        sendWithRetry(0);
-      } else {
-        reject(new Error('不支持的浏览器环境'));
-      }
-    });
   }
 
   // ==================== 状态管理 ====================
@@ -122,35 +65,6 @@ export class WalletDomain {
     });
 
     return result.balance;
-  }
-
-  /**
-   * 获取通证余额列表
-   * @param {string} address - 地址
-   * @returns {Promise<Array>} 通证列表
-   */
-  async getTokenBalances(address) {
-    if (!address) {
-      throw new Error('地址不能为空');
-    }
-
-    const result = await this._sendMessage(WalletMessageType.GET_TOKEN_BALANCES, {
-      address
-    });
-
-    return result.tokens || [];
-  }
-
-  /**
-   * 添加通证
-   * @param {Object} tokenInfo - 代币信息
-   * @returns {Promise<Object>} 添加结果
-   */
-  async addToken(tokenInfo) {
-    const result = await this._sendMessage(WalletMessageType.ADD_TOKEN, {
-      token: tokenInfo
-    });
-    return result.token;
   }
 
   // ==================== 钱包创建 ====================
@@ -216,6 +130,7 @@ export class WalletDomain {
     if (!password || password.length < 8) {
       throw new Error('密码至少需要8位字符');
     }
+
     const result = await this._sendMessage(WalletMessageType.IMPORT_PRIVATE_KEY_WALLET, {
       accountName: accountName || '导入钱包',
       privateKey: privateKey.trim(),

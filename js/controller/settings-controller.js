@@ -1,4 +1,4 @@
-import { showPage, showSuccess, showError } from './ui.js';
+import { showPage, showSuccess, showError, showStatus } from '../common/ui/index.js';
 
 export class SettingsController {
   constructor({ wallet }) {
@@ -6,6 +6,13 @@ export class SettingsController {
   }
 
   bindEvents() {
+    const changePasswordBtn = document.getElementById('changePasswordBtn');
+    if (changePasswordBtn) {
+      changePasswordBtn.addEventListener('click', async () => {
+        await this.handleChangePassword();
+      });
+    }
+
     const clearAuthBtn = document.getElementById('clearAllAuthBtn');
     if (clearAuthBtn) {
       clearAuthBtn.addEventListener('click', async () => {
@@ -67,6 +74,7 @@ export class SettingsController {
 
   async handleResetWallet() {
     const confirmText = prompt('警告：此操作将删除所有钱包数据，且无法恢复！\n\n请输入 "RESET" 以确认:');
+
     if (confirmText !== 'RESET') {
       if (confirmText !== null) {
         showError('输入不正确，取消操作');
@@ -87,6 +95,62 @@ export class SettingsController {
     }
   }
 
+  async handleChangePassword() {
+    const oldInput = document.getElementById('oldPasswordInput');
+    const newInput = document.getElementById('newPasswordInput');
+    const confirmInput = document.getElementById('confirmNewPasswordInput');
+
+    const oldPassword = oldInput?.value.trim() || '';
+    const newPassword = newInput?.value.trim() || '';
+    const confirmPassword = confirmInput?.value.trim() || '';
+
+    if (!oldPassword) {
+      showStatus('changePasswordStatus', '请输入旧密码', 'error');
+      return;
+    }
+
+    if (!newPassword || newPassword.length < 8) {
+      showStatus('changePasswordStatus', '新密码至少需要8位字符', 'error');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      showStatus('changePasswordStatus', '两次输入的新密码不一致', 'error');
+      return;
+    }
+
+    if (oldPassword === newPassword) {
+      showStatus('changePasswordStatus', '新密码不能与旧密码相同', 'error');
+      return;
+    }
+
+    try {
+      showStatus('changePasswordStatus', '修改中...', 'info');
+      await this.wallet.changePassword(oldPassword, newPassword);
+      this.resetChangePasswordForm();
+      showSuccess('密码已更新');
+    } catch (error) {
+      console.error('[SettingsController] 修改密码失败:', error);
+      showStatus('changePasswordStatus', '修改失败: ' + error.message, 'error');
+    }
+  }
+
+  resetChangePasswordForm() {
+    const oldInput = document.getElementById('oldPasswordInput');
+    const newInput = document.getElementById('newPasswordInput');
+    const confirmInput = document.getElementById('confirmNewPasswordInput');
+    const status = document.getElementById('changePasswordStatus');
+
+    if (oldInput) oldInput.value = '';
+    if (newInput) newInput.value = '';
+    if (confirmInput) confirmInput.value = '';
+    if (status) {
+      status.textContent = '';
+      status.className = 'status';
+      status.style.display = 'none';
+    }
+  }
+
   renderAuthorizedSites(sites, onRevoke) {
     const container = document.getElementById('authorizedSitesList');
     if (!container) return;
@@ -95,6 +159,7 @@ export class SettingsController {
       container.innerHTML = '<div class="empty-message">暂无授权网站</div>';
       return;
     }
+
     container.innerHTML = sites.map(site => `
       <div class="authorized-site-item">
         <span class="site-origin">${site.origin}</span>

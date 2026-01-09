@@ -261,4 +261,3 @@
 
   console.log('✅ Content script bridge ready');
 })();
-

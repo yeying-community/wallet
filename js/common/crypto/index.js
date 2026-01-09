@@ -150,6 +150,7 @@ export async function validateAndDecrypt(encrypted, password) {
     
     // 解密
     const decrypted = await decryptString(encrypted, password);
+    
     return {
       success: true,
       decrypted

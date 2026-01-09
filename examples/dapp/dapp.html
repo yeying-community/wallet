@@ -695,7 +695,8 @@
                 address: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
                 symbol: "DAI",
                 decimals: 18,
-                image: "https://cryptologos.cc/logos/multi-collateral-dai-dai-logo.png",
+                image:
+                  "https://cryptologos.cc/logos/multi-collateral-dai-dai-logo.png",
               },
             },
           });
@@ -824,6 +825,7 @@
             ethereum.removeListener("chainChanged", eventListeners.chainChanged);
           }
         }
+
         eventListeners = {};
         log("✅ 事件监听已移除", "success");
       }
@@ -834,6 +836,7 @@
           await waitForEthereum();
           log("✅ YeYing Wallet 已检测到", "success");
           await testListenEvents();
+
           try {
             const accounts = await ethereum.request({ method: "eth_accounts" });
             if (accounts.length > 0) {

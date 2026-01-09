@@ -233,6 +233,7 @@ export async function importHDWallet(accountName, mnemonic, password) {
     if (error.code) {
       throw error;
     }
+
     // 否则包装成内部错误
     throw createInternalError('导入钱包失败：' + error.message);
   }
@@ -451,6 +452,7 @@ export async function getWalletMnemonic(wallet, password) {
     // 解密助记词
     const mnemonic = await decryptString(wallet.encryptedMnemonic, password);
     return mnemonic;
+
   } catch (error) {
     console.error('❌ Get wallet mnemonic failed:', error);
 

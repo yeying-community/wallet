@@ -9,7 +9,8 @@ export {
   WalletStorageKeys,
   NetworkStorageKeys,
   PermissionStorageKeys,
-  SettingsStorageKeys
+  SettingsStorageKeys,
+  TransactionStorageKeys
 } from './storage-keys.js';
 
 // ==================== 基础存储 ====================
@@ -31,6 +32,13 @@ export {
   setArray,
   onStorageChanged
 } from './storage-base.js';
+
+// ==================== IndexedDB 基础 ====================
+export {
+  registerStore,
+  openDatabase,
+  runStoreTransaction
+} from './indexeddb-base.js';
 
 // ==================== 钱包存储 ====================
 export {
@@ -63,11 +71,15 @@ export {
 export {
   saveSelectedNetworkName,
   getSelectedNetworkName,
-  saveCustomNetworks,
-  getCustomNetworks,
-  addCustomNetwork,
-  deleteCustomNetwork,
-  updateCustomNetwork
+  saveNetworks,
+  getNetworks,
+  addNetwork,
+  deleteNetwork,
+  updateNetwork,
+  ensureDefaultNetworks,
+  getNetworkConfigByKey,
+  getAllNetworks,
+  getNetworkByChainId
 } from './network-storage.js';
 
 // ==================== 权限存储 ====================
@@ -92,6 +104,16 @@ export {
   resetUserSettings,
   updateUserSettings
 } from './settings-storage.js';
+
+// ==================== 交易存储 ====================
+export {
+  getAllTransactions,
+  saveAllTransactions,
+  addTransaction,
+  updateTransaction,
+  getTransactionsByAddress,
+  clearTransactionsByAddress
+} from './transaction-storage.js';
 
 // ==================== 工具方法 ====================
 

@@ -3,15 +3,13 @@
  * 负责：管理所有全局状态
  */
 
-import { NETWORKS, DEFAULT_NETWORK } from '../config/index.js';
-
 /**
  * 全局状态对象
  */
 export const state = {
   // 网络状态
-  currentChainId: NETWORKS[DEFAULT_NETWORK].chainIdHex,
-  currentRpcUrl: NETWORKS[DEFAULT_NETWORK].rpc,
+  currentChainId: null,
+  currentRpcUrl: null,
 
   // 连接管理
   connectedSites: new Map(),      // origin => { accounts, chainId, connectedAt }
@@ -36,8 +34,8 @@ export const state = {
  * 重置状态（用于测试）
  */
 export function resetState() {
-  state.currentChainId = NETWORKS[DEFAULT_NETWORK].chainIdHex;
-  state.currentRpcUrl = NETWORKS[DEFAULT_NETWORK].rpc;
+  state.currentChainId = null;
+  state.currentRpcUrl = null;
   state.connectedSites.clear();
   state.connections.clear();
   state.pendingRequests.clear();

@@ -11,7 +11,7 @@ export function deepClone(obj) {
   if (obj === null || obj === undefined) {
     return obj;
   }
-
+  
   // 处理日期
   if (obj instanceof Date) {
     return new Date(obj.getTime());
@@ -21,7 +21,7 @@ export function deepClone(obj) {
   if (Array.isArray(obj)) {
     return obj.map(item => deepClone(item));
   }
-
+  
   // 处理 Map
   if (obj instanceof Map) {
     const clonedMap = new Map();
@@ -71,7 +71,7 @@ export function deepMerge(target, ...sources) {
   if (!source || typeof source !== 'object') {
     return target;
   }
-
+  
   for (const key in source) {
     if (source.hasOwnProperty(key)) {
       if (source[key] && typeof source[key] === 'object' && target[key] && typeof target[key] === 'object') {
@@ -136,8 +136,10 @@ export function setNestedValue(obj, path, value) {
   
   const keys = path.split('.');
   let current = obj;
+  
   for (let i = 0; i < keys.length - 1; i++) {
     const key = keys[i];
+    
     if (!current.hasOwnProperty(key) || current[key] === null || typeof current[key] !== 'object') {
       current[key] = {};
     }
@@ -163,8 +165,10 @@ export function deleteNestedValue(obj, path) {
   
   const keys = path.split('.');
   let current = obj;
+  
   for (let i = 0; i < keys.length - 1; i++) {
     const key = keys[i];
+    
     if (!current.hasOwnProperty(key) || current[key] === null || typeof current[key] !== 'object') {
       return false;
     }
@@ -246,8 +250,9 @@ export function objectToArray(obj, mapper = null) {
   if (!obj || typeof obj !== 'object') {
     return [];
   }
-
+  
   const result = [];
+  
   for (const key in obj) {
     if (obj.hasOwnProperty(key)) {
       const value = mapper ? mapper(obj[key], key) : obj[key];
@@ -298,6 +303,7 @@ export function filterObject(obj, predicate) {
       result[key] = obj[key];
     }
   }
+  
   return result;
 }
 
@@ -311,7 +317,7 @@ export function mapObject(obj, mapper) {
   if (!obj || typeof obj !== 'object') {
     return {};
   }
-
+  
   const result = {};
   
   for (const key in obj) {
@@ -391,6 +397,7 @@ export function invertObject(obj) {
   }
   
   const result = {};
+  
   for (const key in obj) {
     if (obj.hasOwnProperty(key)) {
       result[obj[key]] = key;
@@ -407,6 +414,7 @@ export function invertObject(obj) {
  */
 export function createPlainObject(obj = {}) {
   const result = {};
+  
   for (const key in obj) {
     if (obj.hasOwnProperty(key)) {
       result[key] = obj[key];
@@ -431,3 +439,4 @@ export function deepFreeze(obj) {
   
   return Object.freeze(obj);
 }
+

@@ -87,7 +87,7 @@ export async function encryptString(text, password) {
     
     // 派生密钥（自动生成盐值）
     const { key, salt } = await deriveKeyWithSalt(password, ['encrypt']);
-
+    
     // 生成 IV
     const iv = generateIV();
     
@@ -103,7 +103,7 @@ export async function encryptString(text, password) {
     
     // 转换为 Base64
     return base64Encode(result);
-
+    
   } catch (error) {
     logError('crypto-encrypt-string', error);
     throw createCryptoError(CRYPTO_ERROR_MESSAGES.ENCRYPTION_FAILED);
@@ -148,6 +148,7 @@ export async function decryptString(encryptedBase64, password) {
     
   } catch (error) {
     logError('crypto-decrypt-string', error);
+    
     // 如果是解密失败，返回更友好的错误消息
     if (error.message.includes('password') || error.name === 'OperationError') {
       throw createCryptoError(CRYPTO_ERROR_MESSAGES.INVALID_PASSWORD);
@@ -189,6 +190,7 @@ export async function decryptObject(encryptedBase64, password) {
     if (error.message.includes('password')) {
       throw error;
     }
+    
     throw createCryptoError('Failed to decrypt object');
   }
 }
@@ -226,3 +228,4 @@ export async function decryptBatch(encryptedTexts, password) {
     throw createCryptoError('Failed to decrypt batch');
   }
 }
+

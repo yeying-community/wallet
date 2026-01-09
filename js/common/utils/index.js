@@ -2,27 +2,6 @@
  * 统一导出 - 工具函数集合
  */
 
-// HTML 处理
-export {
-  escapeHtml,
-  stripHtml,
-  nl2br,
-  br2nl,
-  truncateText,
-  trim,
-  normalizeSpaces,
-  capitalizeFirst,
-  capitalizeWords,
-  camelToKebab,
-  kebabToCamel,
-  snakeToCamel,
-  camelToSnake,
-  removeWhitespace,
-  repeatString,
-  padString,
-  templateReplace,
-} from './html-utils.js';
-
 // 地址处理
 export {
   isValidAddress,
@@ -40,32 +19,6 @@ export {
   isValidUnstoppableDomain,
   validateAddressOrEns,
 } from './address-utils.js';
-
-// 剪贴板操作
-export {
-  copyToClipboard,
-  readFromClipboard,
-  copyHtmlToClipboard,
-  copyImageToClipboard,
-  copyAddressToClipboard,
-  copyTxHashToClipboard,
-  copyMnemonicToClipboard,
-  copyPrivateKeyToClipboard,
-  getClipboardPermissionStatus,
-  requestClipboardPermission,
-} from './clipboard-utils.js';
-
-// 二维码生成
-export {
-  generateQRCode,
-  generateAddressQRCode,
-  generateTransactionQRCode,
-  generateEthereumUri,
-  parseEthereumUri,
-  generateTokenTransferQRCode,
-  generateTokenTransferData,
-  getQRCodeDataUrl,
-} from './qrcode-utils.js';
 
 // ChainId 和十六进制处理
 export {
@@ -166,33 +119,6 @@ export {
   serializeMap,
   deserializeMap
 } from './json-utils.js';
-
-// 错误处理
-export {
-  getErrorName,
-  getErrorMessage,
-  getErrorStack,
-  getFullErrorMessage,
-  createError,
-  createValidationError,
-  createApiError,
-  createNetworkError,
-  isErrorType,
-  isValidationError,
-  isNetworkError,
-  isTimeoutError,
-  isPermissionError,
-  formatErrorForLog,
-  logError,
-  safeCall,
-  safeAsyncCall,
-  wrapWithErrorHandler,
-  wrapWithAsyncErrorHandler,
-  showErrorToast,
-  getUserFriendlyError,
-  getErrorCode,
-  isKnownError
-} from './error-utils.js';
 
 // 异步工具
 export {

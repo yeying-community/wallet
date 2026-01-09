@@ -14,7 +14,7 @@
  * - watchAsset: 添加代币请求
  */
 
-import { showError, showStatus, showSuccess } from './ui.js';
+import { showError, showStatus, showSuccess } from '../common/ui/index.js';
 import { ApprovalMessageType } from '../protocol/protocol.js';
 import { shortenAddress } from '../common/utils/index.js'
 
@@ -23,6 +23,7 @@ export class ApprovalController {
     this.wallet = dependencies.wallet;
     this.transaction = dependencies.transaction;
     this.network = dependencies.network;
+    this.token = dependencies.token;
 
     this.requestId = dependencies.requestId;
     this.requestType = dependencies.requestType;
@@ -316,7 +317,10 @@ export class ApprovalController {
       showStatus('watchAssetStatus', '添加代币中...', 'info');
 
       // 添加代币到资产列表
-      await this.wallet.addToken(this.requestData.tokenInfo);
+      if (!this.token) {
+        throw new Error('Token domain unavailable');
+      }
+      await this.token.addToken(this.requestData.tokenInfo);
 
       showStatus('watchAssetStatus', '代币添加成功！', 'success');
 
