@@ -1,5 +1,5 @@
-/* 交易历史相关样式 */
-/* 交易历史列表容器 */
+/* 交易相关样式 */
+/* 交易列表容器 */
 .transaction-list {
   max-height: 400px;
   overflow-y: auto;
@@ -80,7 +80,7 @@
   color: #999;
 }
 
-/* 空状态（历史列表） */
+/* 空状态（交易列表） */
 .empty-state {
   text-align: center;
   padding: 60px 20px;
@@ -92,7 +92,7 @@
   margin-bottom: 10px;
 }
 
-.history-actions {
+.transaction-actions {
   padding: 15px 0 5px;
   text-align: center;
 }

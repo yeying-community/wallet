@@ -1,5 +1,6 @@
 import { DEFAULT_NETWORK } from '../config/index.js';
 import { normalizeChainId } from '../common/utils/index.js';
+import { getSelectedNetworkName, getNetworkConfigByKey } from '../storage/index.js';
 import {
   showPage,
   showWaiting,
@@ -79,6 +80,31 @@ export class NetworkController {
       console.warn('[NetworkController] 获取链 ID 失败:', error);
     }
     await this.refreshNetworkOptions();
+  }
+
+  async prefillNetworkLabels() {
+    const selectors = this.getNetworkSelectors();
+    if (selectors.length === 0) return;
+
+    try {
+      const savedKey = await getSelectedNetworkName();
+      if (!savedKey) return;
+
+      const config = await getNetworkConfigByKey(savedKey);
+      if (!config) return;
+
+      const label = this.getNetworkLabel(config, null);
+      if (!label) return;
+
+      selectors.forEach((selector) => {
+        const labelEl = selector.querySelector('.network-label');
+        if (labelEl) {
+          labelEl.textContent = label;
+        }
+      });
+    } catch (error) {
+      console.warn('[NetworkController] 预填网络名称失败:', error);
+    }
   }
 
   async handleNetworkChange(rpcUrl) {

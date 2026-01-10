@@ -1,13 +1,13 @@
 /**
  * 交易存储
- * 基于 IndexedDB 管理交易历史记录
+ * 基于 IndexedDB 管理交易记录
  */
 
 import { TransactionStorageKeys } from './storage-keys.js';
 import { registerStore, runStoreTransaction } from './indexeddb-base.js';
 import { logError } from '../common/errors/index.js';
 
-const MAX_HISTORY = 200;
+const MAX_TRANSACTIONS = 200;
 const STORE_NAME = TransactionStorageKeys.TRANSACTIONS;
 
 registerStore(STORE_NAME, {
@@ -28,15 +28,15 @@ function normalizeHash(hash) {
   return hash ? String(hash).toLowerCase() : '';
 }
 
-function enforceHistoryLimit(store, txHandle) {
+function enforceTransactionLimit(store, txHandle) {
   const countRequest = store.count();
   countRequest.onsuccess = () => {
     const count = countRequest.result || 0;
-    if (count <= MAX_HISTORY) {
+    if (count <= MAX_TRANSACTIONS) {
       return;
     }
 
-    const excess = count - MAX_HISTORY;
+    const excess = count - MAX_TRANSACTIONS;
     let removed = 0;
     const index = store.index('timestamp');
     const cursorRequest = index.openCursor(null, 'next');
@@ -100,7 +100,7 @@ export async function saveAllTransactions(transactions) {
     await runStoreTransaction(STORE_NAME, 'readwrite', (store, tx, setResult) => {
       const clearRequest = store.clear();
       clearRequest.onsuccess = () => {
-        const list = Array.isArray(transactions) ? transactions.slice(0, MAX_HISTORY) : [];
+        const list = Array.isArray(transactions) ? transactions.slice(0, MAX_TRANSACTIONS) : [];
         list.forEach((item) => {
           if (!item?.hash) return;
           const payload = {
@@ -145,7 +145,7 @@ export async function addTransaction(tx) {
         const addRequest = store.add(payload);
         addRequest.onsuccess = () => {
           setResult(payload);
-          enforceHistoryLimit(store, txHandle);
+          enforceTransactionLimit(store, txHandle);
         };
         addRequest.onerror = () => txHandle.abort();
       };

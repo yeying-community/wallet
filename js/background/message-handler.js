@@ -358,7 +358,7 @@ async function refreshTransactionStatuses(transactions, chainId = null) {
   return transactions || [];
 }
 
-async function handleGetTransactionHistoryMessage(data) {
+async function handleGetTransactionsMessage(data) {
   const { address, chainId } = data || {};
   let normalizedChainId = null;
   if (chainId) {
@@ -376,7 +376,7 @@ async function handleGetTransactionHistoryMessage(data) {
   return { success: true, transactions: refreshed };
 }
 
-async function handleClearTransactionHistoryMessage(data) {
+async function handleClearTransactionsMessage(data) {
   const { address, chainId } = data || {};
   let normalizedChainId = null;
   if (chainId) {
@@ -687,12 +687,12 @@ export async function handlePopupMessage(message, response) {
         response(await handleSendTransactionMessage(data));
         break;
 
-      case TransactionMessageType.GET_TRANSACTION_HISTORY:
-        response(await handleGetTransactionHistoryMessage(data));
+      case TransactionMessageType.GET_TRANSACTIONS:
+        response(await handleGetTransactionsMessage(data));
         break;
 
-      case TransactionMessageType.CLEAR_TRANSACTION_HISTORY:
-        response(await handleClearTransactionHistoryMessage(data));
+      case TransactionMessageType.CLEAR_TRANSACTIONS:
+        response(await handleClearTransactionsMessage(data));
         break;
 
       // ==================== 导出密钥 ====================

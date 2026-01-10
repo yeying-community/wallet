@@ -5,7 +5,7 @@
  * 1. 发送交易
  * 2. 交易签名
  * 3. 消息签名
- * 4. 交易历史管理
+ * 4. 交易记录管理
  * 
  * 通信协议：{ type, data }
  */
@@ -17,7 +17,7 @@ export { TransactionMessageType };
 export class TransactionDomain extends BaseDomain {
   constructor() {
     super();
-    this._history = [];
+    this._transactions = [];
   }
 
   // ==================== 单位转换 ====================
@@ -110,8 +110,8 @@ export class TransactionDomain extends BaseDomain {
       rpcUrl
     });
 
-    // 添加到历史记录
-    this._addToHistory({
+    // 添加到交易记录
+    this._addTransaction({
       hash: result.txHash,
       from,
       to,
@@ -187,49 +187,49 @@ export class TransactionDomain extends BaseDomain {
     return result.gasPrice;
   }
 
-  // ==================== 交易历史 ====================
+  // ==================== 交易记录 ====================
 
   /**
-   * 获取交易历史
+   * 获取交易记录
    * @param {string} address - 地址
-   * @returns {Promise<Array>} 交易历史
+   * @returns {Promise<Array>} 交易记录
    */
-  async getTransactionHistory(address, chainId = null) {
+  async getTransactions(address, chainId = null) {
     try {
-      const result = await this._sendMessage(TransactionMessageType.GET_TRANSACTION_HISTORY, {
+      const result = await this._sendMessage(TransactionMessageType.GET_TRANSACTIONS, {
         address,
         chainId
       });
-      this._history = result.transactions || [];
-      return this._history;
+      this._transactions = result.transactions || [];
+      return this._transactions;
     } catch (error) {
-      console.error('[TransactionDomain] 获取交易历史失败:', error);
-      return this._history;
+      console.error('[TransactionDomain] 获取交易记录失败:', error);
+      return this._transactions;
     }
   }
 
   /**
-   * 清除交易历史
+   * 清除交易记录
    * @returns {Promise<Object>} 清除结果
    */
-  async clearHistory(address = null, chainId = null) {
-    const result = await this._sendMessage(TransactionMessageType.CLEAR_TRANSACTION_HISTORY, {
+  async clearTransactions(address = null, chainId = null) {
+    const result = await this._sendMessage(TransactionMessageType.CLEAR_TRANSACTIONS, {
       address,
       chainId
     });
-    this._history = [];
+    this._transactions = [];
     return result;
   }
 
   /**
-   * 添加交易到历史记录（本地）
+   * 添加交易到本地记录
    * @param {Object} tx - 交易对象
    */
-  _addToHistory(tx) {
-    this._history.unshift(tx);
+  _addTransaction(tx) {
+    this._transactions.unshift(tx);
     // 限制本地存储的数量
-    if (this._history.length > 100) {
-      this._history = this._history.slice(0, 100);
+    if (this._transactions.length > 100) {
+      this._transactions = this._transactions.slice(0, 100);
     }
   }
 
@@ -239,7 +239,7 @@ export class TransactionDomain extends BaseDomain {
    * @param {string} status - 新状态
    */
   async updateTransactionStatus(txHash, status) {
-    const tx = this._history.find(t => t.hash === txHash);
+    const tx = this._transactions.find(t => t.hash === txHash);
     if (tx) {
       tx.status = status;
     }

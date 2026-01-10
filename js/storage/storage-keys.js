@@ -28,7 +28,7 @@ export const SettingsStorageKeys = {
 
 // ==================== 交易相关 ====================
 export const TransactionStorageKeys = {
-  TRANSACTIONS: 'transactions'            // 交易历史
+  TRANSACTIONS: 'transactions'            // 交易记录
 };
 
 // ==================== 统一导出 ====================

@@ -77,6 +77,7 @@ export class PopupController {
   }
 
   async init() {
+    await this.networkController?.prefillNetworkLabels?.();
     await this.showInitialPage();
     this.bindEvents();
   }
@@ -245,7 +246,7 @@ export class PopupController {
     if (activityTab) {
       activityTab.addEventListener('click', async () => {
         this.switchWalletTab('activity');
-        await this.walletController.loadTransactionHistory();
+        await this.walletController.loadTransactions();
       });
     }
 

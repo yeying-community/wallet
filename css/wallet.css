@@ -101,6 +101,10 @@ body {
   text-overflow: ellipsis;
 }
 
+.network-label:empty::before {
+  content: ' ';
+}
+
 .network-chevron {
   font-size: 12px;
   color: #6b7280;
@@ -334,10 +338,10 @@ body {
 }
 
 .tab-toolbar .network-selector {
-  flex: 0 0 auto;
-  width: auto;
-  min-width: 140px;
-  max-width: 200px;
+  flex: 0 0 160px;
+  width: 160px;
+  min-width: 160px;
+  max-width: 160px;
   padding: 8px 12px;
   height: 32px;
 }

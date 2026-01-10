@@ -15,10 +15,10 @@ export class WalletController {
   }
 
   bindEvents() {
-    const clearHistoryBtn = document.getElementById('clearHistoryBtn');
-    if (clearHistoryBtn) {
-      clearHistoryBtn.addEventListener('click', async () => {
-        await this.handleClearHistory();
+    const clearTransactionsBtn = document.getElementById('clearTransactionsBtn');
+    if (clearTransactionsBtn) {
+      clearTransactionsBtn.addEventListener('click', async () => {
+        await this.handleClearTransactions();
       });
     }
   }
@@ -104,7 +104,7 @@ export class WalletController {
       amountInput.value = '';
 
       await this.handleRefreshBalance();
-      await this.loadTransactionHistory();
+      await this.loadTransactions();
     };
 
     try {
@@ -138,11 +138,11 @@ export class WalletController {
     }
   }
 
-  async loadTransactionHistory() {
+  async loadTransactions() {
     try {
       const account = await this.wallet.getCurrentAccount();
       if (!account) {
-        this.renderTransactionHistory([]);
+        this.renderTransactions([]);
         return;
       }
       let chainId = null;
@@ -151,15 +151,15 @@ export class WalletController {
       } catch (error) {
         chainId = null;
       }
-      const transactions = await this.transaction.getTransactionHistory(account.address, chainId);
-      this.renderTransactionHistory(transactions, account.address);
+      const transactions = await this.transaction.getTransactions(account.address, chainId);
+      this.renderTransactions(transactions, account.address);
     } catch (error) {
-      console.error('[WalletController] 加载交易历史失败:', error);
-      this.renderTransactionHistory([]);
+      console.error('[WalletController] 加载交易记录失败:', error);
+      this.renderTransactions([]);
     }
   }
 
-  renderTransactionHistory(transactions, currentAddress = null) {
+  renderTransactions(transactions, currentAddress = null) {
     const container = document.getElementById('transactionList');
     if (!container) return;
 
@@ -204,7 +204,7 @@ export class WalletController {
       }).join('');
   }
 
-  async handleClearHistory() {
+  async handleClearTransactions() {
     if (!confirm('确定要清除所有交易记录吗？')) {
       return;
     }
@@ -217,11 +217,11 @@ export class WalletController {
       } catch (error) {
         chainId = null;
       }
-      await this.transaction.clearHistory(account?.address || null, chainId);
-      this.renderTransactionHistory([]);
-      showSuccess('历史记录已清除');
+      await this.transaction.clearTransactions(account?.address || null, chainId);
+      this.renderTransactions([]);
+      showSuccess('交易记录已清除');
     } catch (error) {
-      console.error('[WalletController] 清除历史记录失败:', error);
+      console.error('[WalletController] 清除交易记录失败:', error);
       showError('清除失败: ' + error.message);
     }
   }
