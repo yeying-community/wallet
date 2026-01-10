@@ -693,3 +693,34 @@ textarea.input {
 .form-hint.success {
   color: #28a745;
 }
+
+/* ========== 隐藏滚动条（保留滚动） ========== */
+.transaction-list,
+.transaction-detail-body,
+#transferPage .transfer-body,
+#settingsPage .settings-body,
+.wallet-list-wrapper,
+.modal-content,
+.message-content,
+.token-list,
+.collectibles-list,
+#networkFormPage .network-form,
+#tokenAddPage .token-form {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.transaction-list::-webkit-scrollbar,
+.transaction-detail-body::-webkit-scrollbar,
+#transferPage .transfer-body::-webkit-scrollbar,
+#settingsPage .settings-body::-webkit-scrollbar,
+.wallet-list-wrapper::-webkit-scrollbar,
+.modal-content::-webkit-scrollbar,
+.message-content::-webkit-scrollbar,
+.token-list::-webkit-scrollbar,
+.collectibles-list::-webkit-scrollbar,
+#networkFormPage .network-form::-webkit-scrollbar,
+#tokenAddPage .token-form::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}

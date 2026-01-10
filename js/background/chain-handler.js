@@ -7,7 +7,8 @@ import { state } from './state.js';
 import { createInvalidParams, createUnrecognizedChainError } from '../common/errors/index.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
 import { normalizeChainId } from '../common/chain/index.js';
-import { saveSelectedNetworkName, getNetworkByChainId, getNetworkConfigByKey } from '../storage/index.js';
+import { validateNetworkConfig } from '../config/validation-rules.js';
+import { saveSelectedNetworkName, getNetworkByChainId, getNetworkConfigByKey, addNetwork } from '../storage/index.js';
 import { broadcastEvent } from './connection.js';
 
 /**
@@ -47,15 +48,23 @@ export async function handleSwitchChain(params) {
 
   const oldChainId = state.currentChainId;
   state.currentChainId = normalizedChainId;
+  const rpcUrl = network?.rpcUrl || network?.rpc || null;
+  if (rpcUrl) {
+    state.currentRpcUrl = rpcUrl;
+  }
 
   // 保存网络选择
-  const networkName = network?.key || network?.id || null;
+  let networkName = network?.key || network?.id || null;
   if (!networkName) {
     const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
     if (fallbackConfig?.chainIdHex === normalizedChainId) {
-      await saveSelectedNetworkName(DEFAULT_NETWORK);
+      networkName = DEFAULT_NETWORK;
+    } else {
+      networkName = normalizedChainId;
     }
-  } else {
+  }
+
+  if (networkName) {
     await saveSelectedNetworkName(networkName);
   }
 
@@ -64,5 +73,65 @@ export async function handleSwitchChain(params) {
     broadcastEvent(EventType.CHAIN_CHANGED, { chainId: normalizedChainId });
   }
 
+  return null;
+}
+
+/**
+ * 处理 wallet_addEthereumChain
+ * @param {Array} params - 参数 [{ chainId, chainName, rpcUrls, nativeCurrency, blockExplorerUrls }]
+ * @returns {Promise<null>}
+ */
+export async function handleAddEthereumChain(params) {
+  const [chainInfo] = Array.isArray(params) ? params : [];
+
+  if (!chainInfo || typeof chainInfo !== 'object') {
+    throw createInvalidParams('Invalid chain parameters');
+  }
+
+  const { chainId, chainName, rpcUrls, nativeCurrency, blockExplorerUrls } = chainInfo;
+
+  if (!chainId) {
+    throw createInvalidParams('chainId is required');
+  }
+
+  if (!chainName) {
+    throw createInvalidParams('chainName is required');
+  }
+
+  if (!Array.isArray(rpcUrls) || !rpcUrls[0]) {
+    throw createInvalidParams('rpcUrls is required');
+  }
+
+  const rpcUrl = rpcUrls[0];
+  const symbol = nativeCurrency?.symbol || chainInfo.symbol || 'ETH';
+  const decimals = Number.isFinite(nativeCurrency?.decimals) ? nativeCurrency.decimals : 18;
+
+  const validation = validateNetworkConfig({
+    name: chainName,
+    rpcUrl,
+    chainId,
+    symbol
+  });
+
+  if (!validation.valid) {
+    throw createInvalidParams(validation.errors?.[0] || 'Invalid network params');
+  }
+
+  const normalizedChainId = normalizeChainId(chainId);
+  let network = await getNetworkByChainId(normalizedChainId);
+
+  if (!network) {
+    await addNetwork({
+      chainId: normalizedChainId,
+      chainName,
+      rpcUrl,
+      explorer: Array.isArray(blockExplorerUrls) ? blockExplorerUrls[0] : '',
+      symbol,
+      decimals,
+      nativeCurrency: nativeCurrency ? { ...nativeCurrency } : { name: chainName, symbol, decimals }
+    });
+  }
+
+  await handleSwitchChain([{ chainId: normalizedChainId }]);
   return null;
 }

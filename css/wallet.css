@@ -16,6 +16,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
+  padding-bottom: 8px;
 }
 
 #walletPage .tabs {
@@ -149,6 +150,8 @@ body {
   max-height: 220px;
   overflow: auto;
   will-change: transform;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .network-menu.hidden {
@@ -169,7 +172,8 @@ body {
 }
 
 .network-menu::-webkit-scrollbar {
-  width: 6px;
+  width: 0;
+  height: 0;
 }
 
 .network-menu::-webkit-scrollbar-thumb {
@@ -207,12 +211,10 @@ body {
 .account-selector:hover {
   background: #f8f9fa;
   border-color: #037dd6;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(3, 125, 214, 0.15);
 }
 
 .account-selector:active {
-  transform: translateY(0);
+  background: #f3f4f6;
 }
 
 .account-selector .account-avatar {
@@ -256,7 +258,7 @@ body {
 }
 
 .account-selector:hover .dropdown-arrow {
-  transform: translateX(2px);
+  transform: none;
 }
 
 /* 操作按钮组 */
@@ -332,7 +334,7 @@ body {
 
 /* ========== 标签内容 ========== */
 .tab-content {
-  padding: 20px 0;
+  padding: 16px 0 8px;
   animation: fadeIn 0.3s;
 }
 
@@ -475,6 +477,8 @@ body {
   z-index: 20;
   max-height: 220px;
   overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .token-menu.hidden {
@@ -504,7 +508,8 @@ body {
 }
 
 .token-menu::-webkit-scrollbar {
-  width: 6px;
+  width: 0;
+  height: 0;
 }
 
 .token-menu::-webkit-scrollbar-thumb {
