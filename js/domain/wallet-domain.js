@@ -13,6 +13,7 @@
 import { WalletMessageType } from '../protocol/protocol.js';
 import { validateAccountName } from '../config/validation-rules.js';
 import { BaseDomain } from './base-domain.js';
+import { getTimestamp } from '../common/utils/time-utils.js';
 export { WalletMessageType };
 
 export class WalletDomain extends BaseDomain {
@@ -152,7 +153,7 @@ export class WalletDomain extends BaseDomain {
   async createSubAccount(walletId, accountName) {
     const result = await this._sendMessage(WalletMessageType.CREATE_SUB_ACCOUNT, {
       walletId,
-      accountName: accountName || `账户 ${Date.now()}`
+      accountName: accountName || `账户 ${getTimestamp()}`
     });
 
     return result;

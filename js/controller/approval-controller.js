@@ -16,7 +16,7 @@
 
 import { showError, showSuccess, showWaiting } from '../common/ui/index.js';
 import { ApprovalMessageType } from '../protocol/protocol.js';
-import { shortenAddress } from '../common/utils/index.js'
+import { shortenAddress } from '../common/chain/index.js'
 
 export class ApprovalController {
   constructor(dependencies) {

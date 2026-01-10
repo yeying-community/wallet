@@ -8,7 +8,7 @@ import { cleanupConnections } from './connection.js';
 import { state } from './state.js';
 import { NETWORKS, DEFAULT_NETWORK } from '../config/index.js';
 import { getSelectedNetworkName, getUserSetting, ensureDefaultNetworks, getNetworkConfigByKey } from '../storage/index.js';
-import { normalizeChainId } from '../common/utils/index.js';
+import { normalizeChainId } from '../common/chain/index.js';
 import { normalizePopupBounds } from './window-utils.js';
 
 /**

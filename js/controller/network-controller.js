@@ -1,5 +1,5 @@
 import { DEFAULT_NETWORK } from '../config/index.js';
-import { normalizeChainId } from '../common/utils/index.js';
+import { normalizeChainId } from '../common/chain/index.js';
 import { getSelectedNetworkName, getNetworkConfigByKey } from '../storage/index.js';
 import {
   showPage,

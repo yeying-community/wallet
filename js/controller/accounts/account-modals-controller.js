@@ -1,4 +1,5 @@
 import { showSuccess, showError, showWarning, copyMnemonicToClipboard, copyPrivateKeyToClipboard, createCopyToastHandler } from '../../common/ui/index.js';
+import { getTimestamp } from '../../common/utils/time-utils.js';
 
 export class AccountModalsController {
   constructor({ wallet, onWalletListRefresh, onWalletUpdated, onAccountSelected }) {
@@ -58,7 +59,7 @@ export class AccountModalsController {
 
     const nameInput = document.getElementById('newAccountName');
     if (nameInput) {
-      nameInput.value = `账户 ${Date.now()}`;
+      nameInput.value = `账户 ${getTimestamp()}`;
     }
 
     openModal('createAccountModal');
@@ -92,7 +93,7 @@ export class AccountModalsController {
     }
 
     const nameInput = document.getElementById('newAccountName');
-    const name = nameInput?.value.trim() || `账户 ${Date.now()}`;
+    const name = nameInput?.value.trim() || `账户 ${getTimestamp()}`;
 
     try {
       const result = await this.wallet.createSubAccount(walletId, name);

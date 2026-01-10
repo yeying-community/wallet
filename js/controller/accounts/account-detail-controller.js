@@ -1,5 +1,5 @@
 import { showPage, showSuccess, showError, copyAddressToClipboard, generateQRCode, createCopyToastHandler } from '../../common/ui/index.js';
-import { shortenAddress, generateAvatar } from '../../common/utils/index.js';
+import { shortenAddress, generateAvatar } from '../../common/chain/index.js';
 
 export class AccountDetailController {
   constructor({ wallet, onWalletListRefresh }) {

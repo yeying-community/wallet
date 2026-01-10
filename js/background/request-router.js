@@ -24,6 +24,7 @@ import { refreshPasswordCache } from './password-cache.js';
 import { requestUnlock } from './unlock-flow.js';
 import { withPopupBoundsAsync } from './window-utils.js';
 import { POPUP_DIMENSIONS } from '../config/index.js';
+import { getTimestamp } from '../common/utils/time-utils.js';
 
 function findPendingRequest(type, origin, tabId) {
   for (const [requestId, request] of state.pendingRequests.entries()) {
@@ -172,7 +173,7 @@ async function handleSendTransaction(accountId, params, origin, tabId) {
   }
 
   // 🔑 创建签名请求
-  const requestId = `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const requestId = `tx_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
 
   state.pendingRequests.set(requestId, {
     type: 'transaction',
@@ -183,7 +184,7 @@ async function handleSendTransaction(accountId, params, origin, tabId) {
       transaction,
       origin
     },
-    timestamp: Date.now()
+    timestamp: getTimestamp()
   });
 
   console.log('📝 Opening approval window for transaction:', requestId);
@@ -299,7 +300,7 @@ async function handleSignTransaction(accountId, params, origin, tabId) {
   }
 
   // 创建签名请求
-  const requestId = `sign_tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const requestId = `sign_tx_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
 
   state.pendingRequests.set(requestId, {
     type: 'sign_transaction',
@@ -310,7 +311,7 @@ async function handleSignTransaction(accountId, params, origin, tabId) {
       transaction,
       origin
     },
-    timestamp: Date.now()
+    timestamp: getTimestamp()
   });
 
   // 打开授权弹窗
@@ -416,7 +417,7 @@ async function handlePersonalSign(accountId, params, origin, tabId) {
   }
 
   // 创建签名请求
-  const requestId = `sign_msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const requestId = `sign_msg_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
 
   state.pendingRequests.set(requestId, {
     type: 'sign_message',
@@ -427,7 +428,7 @@ async function handlePersonalSign(accountId, params, origin, tabId) {
       message: messageToSign,
       origin
     },
-    timestamp: Date.now()
+    timestamp: getTimestamp()
   });
 
   // 打开授权弹窗
@@ -530,7 +531,7 @@ async function handleSignTypedData(accountId, params, origin, tabId) {
   }
 
   // 创建签名请求
-  const requestId = `sign_typed_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const requestId = `sign_typed_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
 
   state.pendingRequests.set(requestId, {
     type: 'sign_typed_data',
@@ -541,7 +542,7 @@ async function handleSignTypedData(accountId, params, origin, tabId) {
       typedData,
       origin
     },
-    timestamp: Date.now()
+    timestamp: getTimestamp()
   });
 
   // 打开授权弹窗

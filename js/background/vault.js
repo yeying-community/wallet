@@ -20,6 +20,7 @@ import {
   validatePrivateKey,
 } from '../common/crypto/index.js';
 import { generateId } from '../common/utils/index.js';
+import { getTimestamp } from '../common/utils/time-utils.js';
 import { ethers } from '../../lib/ethers-5.7.esm.min.js';
 import {
   createInvalidAddressError,
@@ -114,7 +115,7 @@ export async function createHDWallet(accountName, password) {
       name: 'HD Wallet',
       type: WALLET_TYPE.HD,
       encryptedMnemonic: encryptedMnemonic,
-      createdAt: Date.now(),
+      createdAt: getTimestamp(),
       accountCount: 1 // 初始有 1 个账户
     };
 
@@ -128,7 +129,7 @@ export async function createHDWallet(accountName, password) {
       derivationPath: derivationPath,
       address: mainWallet.address,
       encryptedPrivateKey: encryptedPrivateKey,
-      createdAt: Date.now()
+      createdAt: getTimestamp()
     };
 
     console.log('✅ HD Wallet created:', {
@@ -199,7 +200,7 @@ export async function importHDWallet(accountName, mnemonic, password) {
       name: 'HD Wallet',
       type: WALLET_TYPE.HD,
       encryptedMnemonic: encryptedMnemonic,
-      createdAt: Date.now(),
+      createdAt: getTimestamp(),
       accountCount: 1
     };
 
@@ -213,7 +214,7 @@ export async function importHDWallet(accountName, mnemonic, password) {
       derivationPath: derivationPath,
       address: mainWallet.address,
       encryptedPrivateKey: encryptedPrivateKey,
-      createdAt: Date.now()
+      createdAt: getTimestamp()
     };
 
     console.log('✅ HD Wallet imported:', {
@@ -285,7 +286,7 @@ export async function importPrivateKeyWallet(accountName, privateKey, password) 
       id: walletId,
       name: 'Imported Wallet',
       type: WALLET_TYPE.IMPORTED,
-      createdAt: Date.now(),
+      createdAt: getTimestamp(),
       accountCount: 1
     };
 
@@ -298,7 +299,7 @@ export async function importPrivateKeyWallet(accountName, privateKey, password) 
       index: 0,
       address: ethersWallet.address,
       encryptedPrivateKey: encryptedPrivateKey,
-      createdAt: Date.now()
+      createdAt: getTimestamp()
     };
 
     console.log('✅ Private key wallet imported:', {
@@ -377,7 +378,7 @@ export async function deriveSubAccount(wallet, newIndex, accountName, password) 
       derivationPath: derivationPath,
       address: ethersWallet.address,
       encryptedPrivateKey: encryptedPrivateKey,
-      createdAt: Date.now()
+      createdAt: getTimestamp()
     };
 
     console.log('✅ Sub account derived:', {

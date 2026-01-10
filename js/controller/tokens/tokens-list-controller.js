@@ -1,4 +1,4 @@
-import { shortenAddress } from '../../common/utils/index.js';
+import { shortenAddress } from '../../common/chain/index.js';
 import { TransferTokenController } from './transfer-token-controller.js';
 
 export class TokensListController {

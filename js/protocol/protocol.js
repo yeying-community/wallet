@@ -3,6 +3,8 @@
  * 纯数据结构 + 校验 + Builder 工具函数
  */
 
+import { getTimestamp } from '../common/utils/time-utils.js';
+
 // ==================== Dapp <-> Extension 协议 ====================
 
 export const PROTOCOL_VERSION = '1.0.0';
@@ -26,13 +28,9 @@ export const EventType = {
 const INTERNAL_ERROR_CODE = -32603;
 
 function generateId(prefix = 'id') {
-  const timestamp = Date.now();
+  const timestamp = getTimestamp();
   const random = Math.random().toString(36).substring(2, 9);
   return `${prefix}_${timestamp}_${random}`;
-}
-
-function getTimestamp() {
-  return Date.now();
 }
 
 function normalizeError(error) {

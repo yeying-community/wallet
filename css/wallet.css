@@ -32,6 +32,12 @@ body {
   padding: 0 20px;
 }
 
+#transferPage #senderAddress,
+#transferPage #recipientAddress {
+  font-size: 12px;
+  letter-spacing: 0.2px;
+}
+
 #transferPage .transfer-footer {
   flex: 0 0 auto;
   padding: 12px 20px 20px;

@@ -2,6 +2,8 @@
  * 应用基础配置
  */
 
+import { formatIsoTimestamp } from '../common/utils/time-utils.js';
+
 // ==================== 应用信息 ====================
 export const APP_NAME = 'YeYing Wallet';
 export const VERSION = '1.0.0';
@@ -49,7 +51,7 @@ export function getVersionInfo() {
   return {
     version: VERSION,
     protocolVersion: PROTOCOL_VERSION,
-    buildDate: new Date().toISOString()
+    buildDate: formatIsoTimestamp()
   };
 }
 

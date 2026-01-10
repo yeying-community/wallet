@@ -9,7 +9,8 @@
  * 
  * 通信协议：{ type, data }
  */
-import { isValidAddress } from '../common/utils/index.js';
+import { isValidAddress } from '../common/chain/index.js';
+import { getTimestamp } from '../common/utils/time-utils.js';
 import { TransactionMessageType } from '../protocol/protocol.js';
 import { BaseDomain } from './base-domain.js';
 export { TransactionMessageType };
@@ -116,7 +117,7 @@ export class TransactionDomain extends BaseDomain {
       from,
       to,
       value,
-      timestamp: Date.now(),
+      timestamp: getTimestamp(),
       status: 'pending',
       chainId: chainId || null
     });

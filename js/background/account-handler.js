@@ -18,6 +18,7 @@ import { refreshPasswordCache } from './password-cache.js';
 import { sendEvent } from './connection.js';
 import { POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
 import { withPopupBoundsAsync } from './window-utils.js';
+import { getTimestamp } from '../common/utils/time-utils.js';
 
 const connectInFlight = new Map();
 
@@ -136,7 +137,7 @@ export async function handleEthRequestAccounts(origin, tabId) {
       }
 
       // 🔑 创建授权请求
-      const requestId = `connect_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const requestId = `connect_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
 
       state.pendingRequests.set(requestId, {
         type: EventType.CONNECT,
@@ -146,7 +147,7 @@ export async function handleEthRequestAccounts(origin, tabId) {
           origin,
           accounts: [address]
         },
-        timestamp: Date.now()
+        timestamp: getTimestamp()
       });
 
       console.log('📝 Opening approval window for request:', requestId);
@@ -205,7 +206,7 @@ export async function handleEthRequestAccounts(origin, tabId) {
                 state.connectedSites.set(origin, {
                   accounts: [address],
                   chainId: state.currentChainId,
-                  connectedAt: Date.now()
+                  connectedAt: getTimestamp()
                 });
 
                 // 持久化授权

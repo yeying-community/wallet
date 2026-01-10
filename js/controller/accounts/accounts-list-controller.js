@@ -1,5 +1,5 @@
 import { showPage, showSuccess, showError, setPageOrigin } from '../../common/ui/index.js';
-import { shortenAddress, generateAvatar } from '../../common/utils/index.js';
+import { shortenAddress, generateAvatar } from '../../common/chain/index.js';
 
 export class AccountsListController {
   constructor({

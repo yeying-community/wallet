@@ -2,60 +2,21 @@
  * 统一导出 - 工具函数集合
  */
 
-// 地址处理
-export {
-  isValidAddress,
-  isValidAddressCaseInsensitive,
-  isValidChecksum,
-  isContractAddress,
-  normalizeAddress,
-  isEOAAddress,
-  shortenAddress,
-  addChecksum,
-  isSameAddress,
-  generateAvatar,
-  getAvatarDataUrl,
-  isValidEnsName,
-  isValidUnstoppableDomain,
-  validateAddressOrEns,
-} from './address-utils.js';
-
-// ChainId 和十六进制处理
-export {
-  KNOWN_CHAIN_IDS,
-  normalizeChainId,
-  getChainName,
-  chainIdToNumber,
-  isValidChainId,
-  isValidHex,
-  isValidHexWithoutPrefix,
-  isValidPrivateKey,
-  isValidMnemonic,
-  isValidTxHash,
-  isValidBlockHash,
-  isValidTopic,
-  isValidData,
-  hexToDecimal,
-  decimalToHex,
-  hexToBytes,
-  bytesToHex,
-  hexToUtf8,
-  utf8ToHex,
-  removeHexPrefix,
-  addHexPrefix,
-  padHex,
-  truncateHex,
-  isSameHex,
-} from './chain-utils.js';
-
-// ID 和时间戳
+// ID
 export {
   generateId,
   generateShortId,
   generateUUID,
-  generateNanoId,
+  generateNanoId
+} from './id-utils.js';
+
+// 时间
+export {
   getTimestamp,
   getTimestampSeconds,
+  formatIsoTimestamp,
+  formatLocaleDateTime,
+  formatRelativeTimeEn,
   formatDate,
   formatDateOnly,
   formatTimeOnly,
@@ -68,7 +29,7 @@ export {
   getStartOfMonth,
   getEndOfMonth,
   parseTimeString,
-} from './id-utils.js';
+} from './time-utils.js';
 
 // 对象操作
 export {

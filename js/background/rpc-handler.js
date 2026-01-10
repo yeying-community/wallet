@@ -7,6 +7,7 @@ import { state } from './state.js';
 import { createRpcError, createNetworkError } from '../common/errors/index.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
 import { getNetworkByChainId, getNetworkConfigByKey } from '../storage/index.js';
+import { getTimestamp } from '../common/utils/time-utils.js';
 
 /**
  * 处理 RPC 方法
@@ -41,7 +42,7 @@ async function rpcCall(method, params) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         jsonrpc: '2.0',
-        id: Date.now(),
+        id: getTimestamp(),
         method,
         params
       })

@@ -5,6 +5,7 @@
 
 import { ErrorCode, ErrorCodeRange, getErrorCode as extractErrorCode } from './error-codes.js';
 import { ErrorMessageZH, getErrorMessageFromError } from './error-messages.js';
+import { formatIsoTimestamp } from '../utils/time-utils.js';
 
 /**
  * 获取错误名称
@@ -237,7 +238,7 @@ export function logError(context, error = null, extra = {}) {
         message: error?.message,
         data: error?.data
       },
-      timestamp: new Date().toISOString(),
+      timestamp: formatIsoTimestamp(),
       ...extra
     };
 
@@ -327,7 +328,7 @@ export async function retryExecute(fn, maxRetries = 3, delay = 1000) {
  */
 export function formatErrorForLog(error, context = {}) {
   return {
-    timestamp: new Date().toISOString(),
+    timestamp: formatIsoTimestamp(),
     name: getErrorName(error),
     message: getErrorMessage(error),
     stack: getErrorStack(error),

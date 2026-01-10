@@ -33,7 +33,8 @@ import {
 } from './wallet-operations.js';
 import { state } from './state.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
-import { normalizeChainId } from '../common/utils/index.js';
+import { normalizeChainId } from '../common/chain/index.js';
+import { getTimestamp } from '../common/utils/time-utils.js';
 import {
   saveSelectedNetworkName,
   updateUserSetting,
@@ -76,7 +77,7 @@ async function fetchChainIdFromRpc(rpcUrl) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       jsonrpc: '2.0',
-      id: Date.now(),
+      id: getTimestamp(),
       method: 'eth_chainId',
       params: []
     })
@@ -295,7 +296,7 @@ async function handleSendTransactionMessage(data) {
       from,
       to,
       value: result?.value ?? value,
-      timestamp: Date.now(),
+      timestamp: getTimestamp(),
       status: 'pending',
       chainId: normalizedChainId || state.currentChainId || null
     });
@@ -345,7 +346,7 @@ async function refreshTransactionStatuses(transactions, chainId = null) {
       if (tx.status !== status) {
         await updateTransaction(tx.hash, {
           status,
-          confirmedAt: Date.now(),
+          confirmedAt: getTimestamp(),
           blockNumber: receipt.blockNumber
         });
         tx.status = status;

@@ -1,4 +1,4 @@
-import { isValidAddress, shortenAddress, generateAvatar } from '../../common/utils/index.js';
+import { isValidAddress, shortenAddress, generateAvatar } from '../../common/chain/index.js';
 import {
   showError,
   showSuccess,
@@ -6,6 +6,7 @@ import {
   hideToast
 } from '../../common/ui/index.js';
 import { isWalletLockedError } from '../../common/errors/index.js';
+import { formatLocaleDateTime, getTimestamp } from '../../common/utils/time-utils.js';
 
 export class WalletController {
   constructor({ wallet, transaction, network }) {
@@ -186,14 +187,14 @@ export class WalletController {
         const counterparty = isSent ? to : from;
         const amountText = this.transaction.formatTransactionValue(tx?.value || '0', isSent);
         const statusText = this.transaction.getStatusText(tx?.status || 'pending');
-        const time = tx?.timestamp ? new Date(tx.timestamp) : new Date();
+        const timeValue = tx?.timestamp ? tx.timestamp : getTimestamp();
         return `
           <div class="transaction-item">
             <div class="tx-icon">${isSent ? '↗' : '↙'}</div>
             <div class="tx-info">
               <div class="tx-type">${isSent ? '发送' : '接收'}</div>
               <div class="tx-address">${shortenAddress(counterparty || '')}</div>
-              <div class="tx-time">${time.toLocaleString()}</div>
+              <div class="tx-time">${formatLocaleDateTime(timeValue)}</div>
             </div>
             <div class="tx-amount">
               <div class="tx-value">${amountText}</div>
