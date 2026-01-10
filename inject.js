@@ -10,7 +10,7 @@ import {
   MessageCategory,
   EventType,
   MessageBuilder
-} from './js/protocol/protocol.js';
+} from './js/protocol/dapp-protocol.js';
 
 (function () {
   'use strict';

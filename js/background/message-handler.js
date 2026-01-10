@@ -3,7 +3,8 @@
  * 负责：处理来自 content script 和 popup 的消息
  */
 
-import { MessageValidator, PORT_NAME, ApprovalMessageType, WalletMessageType, NetworkMessageType, TransactionMessageType, EventType } from '../protocol/protocol.js';
+import { MessageValidator, PORT_NAME, EventType } from '../protocol/dapp-protocol.js';
+import { ApprovalMessageType, WalletMessageType, NetworkMessageType, TransactionMessageType } from '../protocol/extension-protocol.js';
 import { sendResponse, sendError, registerConnection, unregisterConnection, checkSessionAndNotify } from './connection.js';
 import { routeRequest } from './request-router.js';
 import { unlockWallet, lockWallet } from './keyring.js';

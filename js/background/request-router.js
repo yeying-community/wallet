@@ -4,7 +4,7 @@
  */
 
 import { state } from './state.js';
-import { ApprovalMessageType } from '../protocol/protocol.js';
+import { ApprovalMessageType } from '../protocol/extension-protocol.js';
 import {
   createWalletLockedError,
   createAccountNotFoundError,

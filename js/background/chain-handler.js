@@ -2,7 +2,7 @@
  * YeYing Wallet - 链处理
  * 负责：切换链、获取链 ID
  */
-import { EventType } from '../protocol/protocol.js';
+import { EventType } from '../protocol/dapp-protocol.js';
 import { state } from './state.js';
 import { createInvalidParams, createUnrecognizedChainError } from '../common/errors/index.js';
 import { DEFAULT_NETWORK } from '../config/index.js';

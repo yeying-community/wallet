@@ -2,7 +2,7 @@
  * YeYing Wallet - 密钥管理（内存）
  * 负责：解锁/锁定钱包、管理内存中的私钥
  */
-import { EventType } from '../protocol/protocol.js';
+import { EventType } from '../protocol/dapp-protocol.js';
 import { state } from './state.js';
 import { createInvalidPasswordError, createAccountNotFoundError, createWalletLockedError } from '../common/errors/index.js';
 import { validatePassword } from '../common/crypto/index.js';

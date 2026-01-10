@@ -11,7 +11,7 @@
  */
 import { isValidAddress } from '../common/chain/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
-import { TransactionMessageType } from '../protocol/protocol.js';
+import { TransactionMessageType } from '../protocol/extension-protocol.js';
 import { BaseDomain } from './base-domain.js';
 export { TransactionMessageType };
 

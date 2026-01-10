@@ -2,7 +2,7 @@
  * YeYing Wallet - 连接管理
  * 负责：管理与 DApp 的连接
  */
-import { EventType, MessageBuilder } from '../protocol/protocol.js';
+import { EventType, MessageBuilder } from '../protocol/dapp-protocol.js';
 import { state } from './state.js';
 import { getSelectedAccount, isAuthorized } from '../storage/index.js';
 

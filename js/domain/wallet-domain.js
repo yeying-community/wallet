@@ -10,7 +10,7 @@
  * 通信协议：{ type, data }
  */
 
-import { WalletMessageType } from '../protocol/protocol.js';
+import { WalletMessageType } from '../protocol/extension-protocol.js';
 import { validateAccountName } from '../config/validation-rules.js';
 import { BaseDomain } from './base-domain.js';
 import { getTimestamp } from '../common/utils/time-utils.js';

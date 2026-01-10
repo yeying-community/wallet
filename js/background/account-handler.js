@@ -2,7 +2,8 @@
  * YeYing Wallet - 账户处理
  * 负责：eth_accounts、eth_requestAccounts
  */
-import { EventType, ApprovalMessageType } from '../protocol/protocol.js';
+import { EventType } from '../protocol/dapp-protocol.js';
+import { ApprovalMessageType } from '../protocol/extension-protocol.js';
 import { state } from './state.js';
 import {
   createWalletLockedError,

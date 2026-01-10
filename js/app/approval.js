@@ -9,7 +9,7 @@ import { NetworkDomain } from '../domain/network-domain.js';
 import { TokenDomain } from '../domain/token-domain.js';
 import { ethers } from '../../lib/ethers-5.7.esm.min.js';
 import { showToast } from '../common/ui/index.js';
-import { ApprovalMessageType } from '../protocol/protocol.js';
+import { ApprovalMessageType } from '../protocol/extension-protocol.js';
 class ApprovalApp {
   constructor() {
     this.wallet = new WalletDomain();

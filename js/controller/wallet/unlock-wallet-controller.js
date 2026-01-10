@@ -1,4 +1,4 @@
-import { showPage, showError, showSuccess, showWaiting } from '../../common/ui/index.js';
+import { showPage, showError, showWaiting, hideWaiting } from '../../common/ui/index.js';
 
 export class UnlockWalletController {
   constructor({ wallet, onUnlocked }) {
@@ -44,15 +44,11 @@ export class UnlockWalletController {
       const currentAccount = await this.wallet.getCurrentAccount();
       await this.wallet.unlock(password, currentAccount?.id);
 
-      showSuccess('解锁成功！');
-
-      setTimeout(async () => {
-        showPage('walletPage');
-        if (this.onUnlocked) {
-          await this.onUnlocked();
-        }
-        showSuccess('欢迎回来！');
-      }, 500);
+      showPage('walletPage');
+      if (this.onUnlocked) {
+        await this.onUnlocked();
+      }
+      hideWaiting();
     } catch (error) {
       console.error('[UnlockWalletController] 解锁失败:', error);
       showError('密码错误');

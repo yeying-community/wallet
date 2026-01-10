@@ -460,6 +460,28 @@ textarea.input {
   font-weight: 500;
 }
 
+/* ========== 全局等待遮罩 ========== */
+.waiting-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.waiting-overlay.hidden {
+  display: none !important;
+}
+
+.waiting-overlay .loading-spinner {
+  margin-bottom: 0;
+  width: 48px;
+  height: 48px;
+  border-width: 4px;
+}
+
 /* ========== 隐藏类 ========== */
 .hidden {
   display: none !important;

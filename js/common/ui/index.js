@@ -20,6 +20,7 @@ export function getCurrentPage() {
 }
 
 export function showToast(message, type = 'info', duration = 2000) {
+  hideWaiting();
   const toast = document.getElementById('globalToast');
   if (!toast) {
     console.warn('[UI] Toast 元素不存在');
@@ -65,6 +66,32 @@ export function hideToast() {
   toast.classList.remove('toast-waiting');
 }
 
+function ensureWaitingOverlay() {
+  let overlay = document.getElementById('globalWaitingOverlay');
+  if (overlay) {
+    return overlay;
+  }
+
+  overlay = document.createElement('div');
+  overlay.id = 'globalWaitingOverlay';
+  overlay.className = 'waiting-overlay hidden';
+  overlay.innerHTML = '<div class="loading-spinner"></div>';
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+export function showWaiting() {
+  hideToast();
+  const overlay = ensureWaitingOverlay();
+  overlay.classList.remove('hidden');
+}
+
+export function hideWaiting() {
+  const overlay = document.getElementById('globalWaitingOverlay');
+  if (!overlay) return;
+  overlay.classList.add('hidden');
+}
+
 export function showSuccess(message, duration = 2000) {
   showToast(message, 'success', duration);
 }
@@ -79,10 +106,6 @@ export function showWarning(message, duration = 2000) {
 
 export function showInfo(message, duration = 2000) {
   showToast(message, 'info', duration);
-}
-
-export function showWaiting(message = '等待中...') {
-  showToast(message, 'info', 0);
 }
 
 export function setPageOrigin(pageId, origin) {

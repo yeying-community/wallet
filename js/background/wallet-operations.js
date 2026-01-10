@@ -2,7 +2,7 @@
  * YeYing Wallet - 钱包操作
  * 负责：创建钱包、导入钱包、切换账户、创建子账户
  */
-import { EventType } from '../protocol/protocol.js';
+import { EventType } from '../protocol/dapp-protocol.js';
 import { state } from './state.js';
 import {
   createHDWallet,
