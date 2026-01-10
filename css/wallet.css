@@ -11,6 +11,25 @@ body {
   overflow: hidden;
 }
 
+/* ========== 钱包页面整体布局 ========== */
+#walletPage {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+#walletPage .tabs {
+  flex: 0 0 auto;
+}
+
+#walletPage .tab-content {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
 /* ========== 转账页面布局（中间可滚动） ========== */
 #transferPage {
   padding: 0;
@@ -341,6 +360,7 @@ body {
   gap: 10px;
   margin: -6px 0 12px;
   justify-content: space-between;
+  flex: 0 0 auto;
 }
 
 .tab-toolbar .network-selector {
@@ -501,6 +521,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .token-item {
@@ -570,6 +593,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .qr-code-container {
