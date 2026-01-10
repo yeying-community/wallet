@@ -1,4 +1,5 @@
 import { showPage, getCurrentPage, getPageOrigin, showError } from '../common/ui/index.js';
+import { POLLING_CONFIG } from '../config/index.js';
 import { WelcomeController } from './welcome-controller.js';
 import { UnlockWalletController } from './wallet/unlock-wallet-controller.js';
 import { WalletController } from './wallet/wallet-controller.js';
@@ -16,6 +17,7 @@ export class PopupController {
     this.transaction = transaction;
     this.network = network;
     this.token = token;
+    this.transactionPollingTimer = null;
 
     this.welcomeController = new WelcomeController();
     this.unlockWalletController = new UnlockWalletController({
@@ -41,7 +43,7 @@ export class PopupController {
     });
     this.networkController = new NetworkController({
       network: this.network,
-      onNetworkChanged: () => this.walletController.handleRefreshBalance()
+      onNetworkChanged: () => this.handleNetworkChanged()
     });
     this.tokensListController.setNetworkController(this.networkController);
     this.addTokenController.setNetworkController(this.networkController);
@@ -78,6 +80,7 @@ export class PopupController {
 
   async init() {
     await this.networkController?.prefillNetworkLabels?.();
+    await this.networkController?.syncSelectedNetwork?.();
     await this.showInitialPage();
     this.bindEvents();
   }
@@ -164,16 +167,19 @@ export class PopupController {
   }
 
   async openAccountsPage() {
+    this.stopTransactionPolling();
     showPage('accountsPage');
     await this.accountsListController.loadWalletList();
   }
 
   async openSettingsPage() {
+    this.stopTransactionPolling();
     showPage('settingsPage');
     await this.settingsController.loadAuthorizedSites();
   }
 
   async openTransferPage() {
+    this.stopTransactionPolling();
     showPage('transferPage');
     await this.tokensListController?.prepareTransferSelectors?.();
   }
@@ -189,6 +195,28 @@ export class PopupController {
     if (tokensContent && !tokensContent.classList.contains('hidden')) {
       await this.tokensListController?.loadTokenBalances?.();
     }
+  }
+
+  startTransactionPolling() {
+    this.stopTransactionPolling();
+    const interval = POLLING_CONFIG?.TRANSACTION || 5000;
+    this.transactionPollingTimer = setInterval(async () => {
+      if (getCurrentPage() !== 'walletPage') return;
+      const activityContent = document.getElementById('activityContent');
+      if (!activityContent || activityContent.classList.contains('hidden')) return;
+      await this.walletController.loadTransactions();
+    }, interval);
+  }
+
+  stopTransactionPolling() {
+    if (!this.transactionPollingTimer) return;
+    clearInterval(this.transactionPollingTimer);
+    this.transactionPollingTimer = null;
+  }
+
+  async handleNetworkChanged() {
+    await this.walletController.refreshWalletData();
+    await this.tokensListController?.loadTokenBalances?.();
   }
 
   bindWalletPageEvents() {
@@ -222,7 +250,12 @@ export class PopupController {
           return;
         }
         await this.walletController.handleSendTransaction({
-          requestPassword: () => this.promptWalletPassword()
+          requestPassword: () => this.promptWalletPassword(),
+          silentBalanceRefresh: true,
+          onSuccess: async () => {
+            showPage('walletPage');
+            this.switchWalletTab('activity');
+          }
         });
       });
     }
@@ -269,6 +302,12 @@ export class PopupController {
     if (targetContent) {
       targetContent.classList.remove('hidden');
       console.log(`[UI] 切换标签: ${tabId}`);
+    }
+
+    if (tabId === 'activity') {
+      this.startTransactionPolling();
+    } else {
+      this.stopTransactionPolling();
     }
   }
 

@@ -3,7 +3,8 @@ import {
   showError,
   showSuccess,
   showWaiting,
-  hideToast
+  hideToast,
+  hideWaiting
 } from '../../common/ui/index.js';
 import { isWalletLockedError } from '../../common/errors/index.js';
 import { formatLocaleDateTime, getTimestamp } from '../../common/utils/time-utils.js';
@@ -58,7 +59,7 @@ export class WalletController {
     }
   }
 
-  async handleSendTransaction({ requestPassword } = {}) {
+  async handleSendTransaction({ requestPassword, onSuccess, silentBalanceRefresh = false } = {}) {
     const recipientInput = document.getElementById('recipientAddress');
     const amountInput = document.getElementById('amount');
 
@@ -99,13 +100,20 @@ export class WalletController {
         rpcUrl: rpcUrl
       });
 
-      showSuccess(`交易已发送: ${shortenAddress(txHash)}`);
-
       recipientInput.value = '';
       amountInput.value = '';
 
-      await this.handleRefreshBalance();
+      if (silentBalanceRefresh) {
+        await this.refreshBalanceSilently();
+      } else {
+        await this.handleRefreshBalance();
+      }
       await this.loadTransactions();
+      if (onSuccess) {
+        await onSuccess(txHash);
+      }
+      hideWaiting();
+      return txHash;
     };
 
     try {
@@ -114,6 +122,7 @@ export class WalletController {
       console.error('[WalletController] 发送交易失败:', error);
       if (isWalletLockedError(error) && requestPassword) {
         hideToast();
+        hideWaiting();
         const password = await requestPassword();
         if (!password) {
           return;
@@ -136,6 +145,17 @@ export class WalletController {
         return;
       }
       showError('发送失败: ' + error.message);
+    }
+  }
+
+  async refreshBalanceSilently() {
+    try {
+      const account = await this.wallet.getCurrentAccount();
+      if (!account) return;
+      const balance = await this.wallet.getBalance(account.address);
+      updateBalance(balance);
+    } catch (error) {
+      console.warn('[WalletController] 静默刷新余额失败:', error);
     }
   }
 

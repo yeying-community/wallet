@@ -60,10 +60,27 @@ async function rpcCall(method, params) {
       throw createRpcError(data.error.message || 'RPC error', data.error);
     }
 
+    console.log(`[RPC] result ${method}: ${formatRpcLog(data.result)}`);
     return data.result;
   } catch (error) {
     console.log(`Throw error ${error.message}`)
     if (error.code) throw error;
     throw createNetworkError(error.message);
   }
+}
+
+function formatRpcLog(result, maxLength = 300) {
+  if (result === null || result === undefined) return 'null';
+  let text;
+  if (typeof result === 'string') {
+    text = result;
+  } else {
+    try {
+      text = JSON.stringify(result);
+    } catch {
+      text = String(result);
+    }
+  }
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}...`;
 }

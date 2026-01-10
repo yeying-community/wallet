@@ -107,9 +107,50 @@ export class NetworkController {
     }
   }
 
+  async syncSelectedNetwork() {
+    if (!this.network) return false;
+    try {
+      const savedKey = await getSelectedNetworkName();
+      if (!savedKey) return false;
+
+      const config = await getNetworkConfigByKey(savedKey);
+      if (!config) return false;
+
+      const targetRpc = config.rpcUrl || config.rpc;
+      if (!targetRpc) return false;
+
+      let currentRpc = null;
+      try {
+        currentRpc = await this.network.getRpcUrl();
+      } catch {
+        currentRpc = null;
+      }
+
+      if (currentRpc && currentRpc === targetRpc) {
+        this.currentNetworkValue = currentRpc;
+        return true;
+      }
+
+      await this.network.switchNetwork(savedKey);
+
+      const chainId = await this.network.getChainId();
+      updateNetworkIndicator(chainId);
+      this.currentNetworkValue = targetRpc;
+      await this.refreshNetworkOptions(targetRpc);
+      return true;
+    } catch (error) {
+      console.warn('[NetworkController] 同步网络失败:', error);
+      return false;
+    }
+  }
+
   async handleNetworkChange(rpcUrl) {
     try {
       if (!rpcUrl) return;
+
+      this.closeAllMenus();
+      showWaiting();
+      await waitForNextFrame();
 
       await this.network.setRpcUrl(rpcUrl);
 
@@ -519,6 +560,16 @@ export class NetworkController {
     }
   }
 
+}
+
+function waitForNextFrame() {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => resolve());
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
 }
 
 function updateNetworkIndicator(chainId) {
