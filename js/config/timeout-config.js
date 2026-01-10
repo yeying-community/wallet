@@ -2,6 +2,8 @@
  * 超时配置
  */
 
+import { getTimestamp } from '../common/utils/time-utils.js';
+
 // ==================== 超时设置 ====================
 export const TIMEOUTS = {
   REQUEST: 60000,        // 普通请求超时（毫秒）
@@ -240,7 +242,7 @@ export function throttle(fn, delay) {
   let lastCall = 0;
   
   return function(...args) {
-    const now = Date.now();
+    const now = getTimestamp();
     
     if (now - lastCall >= delay) {
       lastCall = now;
@@ -248,4 +250,3 @@ export function throttle(fn, delay) {
     }
   };
 }
-

@@ -8,9 +8,9 @@
     <link rel="stylesheet" href="css/common.css" />
     <link rel="stylesheet" href="css/mnemonic.css" />
     <link rel="stylesheet" href="css/settings.css" />
-    <link rel="stylesheet" href="css/history.css" />
+    <link rel="stylesheet" href="css/transaction.css" />
     <link rel="stylesheet" href="css/wallet.css" />
-    <link rel="stylesheet" href="css/account.css" />
+    <link rel="stylesheet" href="css/accounts.css" />
     <link rel="stylesheet" href="css/network.css" />
   </head>
 
@@ -107,7 +107,7 @@
             <div class="network-selector">
               <div class="network-dot"></div>
               <button type="button" class="network-trigger" aria-haspopup="listbox" aria-expanded="false">
-                <span class="network-label">夜莺网络</span>
+                <span class="network-label"></span>
                 <span class="network-chevron">▾</span>
               </button>
               <div class="network-menu hidden" role="listbox"></div>
@@ -142,7 +142,7 @@
             <div class="network-selector">
               <div class="network-dot"></div>
               <button type="button" class="network-trigger" aria-haspopup="listbox" aria-expanded="false">
-                <span class="network-label">夜莺网络</span>
+                <span class="network-label"></span>
                 <span class="network-chevron">▾</span>
               </button>
               <div class="network-menu hidden" role="listbox"></div>
@@ -163,12 +163,29 @@
             <div class="network-selector">
               <div class="network-dot"></div>
               <button type="button" class="network-trigger" aria-haspopup="listbox" aria-expanded="false">
-                <span class="network-label">夜莺网络</span>
+                <span class="network-label"></span>
                 <span class="network-chevron">▾</span>
               </button>
               <div class="network-menu hidden" role="listbox"></div>
             </div>
-            <div class="tab-toolbar-actions"></div>
+            <div class="tab-toolbar-actions">
+              <button id="clearTransactionsBtn" class="btn btn-icon" aria-label="清除交易记录" title="清除交易记录">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M3 6h18"></path>
+                  <path d="M8 6V4h8v2"></path>
+                  <path d="M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14"></path>
+                  <path d="M10 11v6"></path>
+                  <path d="M14 11v6"></path>
+                </svg>
+              </button>
+            </div>
           </div>
           <div id="transactionList" class="transaction-list">
             <div class="empty-state">
@@ -176,13 +193,90 @@
               <p>暂无交易记录</p>
             </div>
           </div>
-          <div class="history-actions">
-            <button id="clearHistoryBtn" class="btn btn-secondary btn-block">
-              清除历史记录
-            </button>
-          </div>
         </div>
 
+      </div>
+
+      <!-- 交易详情页面 -->
+      <div id="transactionDetailPage" class="page hidden">
+        <div class="page-header">
+          <button class="back-btn">←</button>
+          <h2>交易详情</h2>
+        </div>
+        <div class="transaction-detail-body">
+          <div class="transaction-detail-card">
+            <div class="detail-row" id="txDetailStatusRow">
+              <div class="detail-label">状态</div>
+              <div class="detail-value tx-status pending" id="txDetailStatus">待确认</div>
+            </div>
+            <div class="detail-row" id="txDetailHashRow">
+              <div class="detail-label">交易哈希</div>
+              <div class="detail-value-row">
+                <div class="detail-value mono" id="txDetailHash"></div>
+                <button type="button" class="detail-copy-icon" id="txDetailCopyHash" aria-label="复制交易哈希">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="detail-row" id="txDetailFromRow">
+              <div class="detail-label">发送地址</div>
+              <div class="detail-value-row">
+                <div class="detail-value mono" id="txDetailFrom"></div>
+                <button type="button" class="detail-copy-icon" id="txDetailCopyFrom" aria-label="复制发送地址">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="detail-row" id="txDetailToRow">
+              <div class="detail-label">接收地址</div>
+              <div class="detail-value-row">
+                <div class="detail-value mono" id="txDetailTo"></div>
+                <button type="button" class="detail-copy-icon" id="txDetailCopyTo" aria-label="复制接收地址">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="detail-row" id="txDetailValueRow">
+              <div class="detail-label">金额</div>
+              <div class="detail-value" id="txDetailValue"></div>
+            </div>
+            <div class="detail-row" id="txDetailTimeRow">
+              <div class="detail-label">发起时间</div>
+              <div class="detail-value" id="txDetailTime"></div>
+            </div>
+            <div class="detail-row" id="txDetailNetworkRow">
+              <div class="detail-label">网络</div>
+              <div class="detail-value" id="txDetailNetwork"></div>
+            </div>
+            <div class="detail-row hidden" id="txDetailConfirmedRow">
+              <div class="detail-label">确认时间</div>
+              <div class="detail-value" id="txDetailConfirmedTime"></div>
+            </div>
+            <div class="detail-row hidden" id="txDetailBlockRow">
+              <div class="detail-label">区块高度</div>
+              <div class="detail-value" id="txDetailBlock"></div>
+            </div>
+            <div class="detail-row hidden" id="txDetailChainRow">
+              <div class="detail-label">链 ID</div>
+              <div class="detail-value" id="txDetailChain"></div>
+            </div>
+            <div class="detail-row hidden" id="txDetailExplorerRow">
+              <div class="detail-label">浏览器</div>
+              <div class="detail-value">
+                <a id="txDetailExplorerLink" class="detail-link" target="_blank" rel="noreferrer">查看交易</a>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- 转账页面 -->
@@ -197,7 +291,7 @@
             <div class="network-selector input-like">
               <div class="network-dot"></div>
               <button type="button" class="network-trigger" aria-haspopup="listbox" aria-expanded="false">
-                <span class="network-label">夜莺网络</span>
+                <span class="network-label"></span>
                 <span class="network-chevron">▾</span>
               </button>
               <div class="network-menu hidden" role="listbox"></div>
@@ -246,7 +340,6 @@
         </div>
         <div class="transfer-footer">
           <button class="btn btn-primary btn-block" id="sendBtn">发送</button>
-          <div id="sendStatus" class="status"></div>
         </div>
       </div>
 
@@ -296,7 +389,6 @@
           <input type="password" id="unlockPassword" placeholder="输入密码" />
         </div>
         <button id="unlockBtn" class="btn btn-primary">解锁</button>
-        <div id="unlockStatus" class="status"></div>
       </div>
 
       <!-- 导入钱包页面（复用于首次导入和账户管理导入） -->
@@ -487,8 +579,6 @@
             />
           </div>
 
-          <div id="networkFormStatus" class="status"></div>
-
           <div class="network-form-actions">
             <button id="saveNetworkBtn" class="btn btn-primary">
               添加网络
@@ -512,7 +602,7 @@
           <div class="network-selector input-like">
             <div class="network-dot"></div>
             <button type="button" class="network-trigger" aria-haspopup="listbox" aria-expanded="false">
-              <span class="network-label">夜莺网络</span>
+                <span class="network-label"></span>
               <span class="network-chevron">▾</span>
             </button>
             <div class="network-menu hidden" role="listbox"></div>
@@ -561,8 +651,6 @@
               placeholder="例如：Tether USD"
             />
           </div>
-
-          <div id="tokenAddStatus" class="status"></div>
 
           <div class="token-form-actions">
             <button id="saveTokenBtn" class="btn btn-primary">
@@ -690,7 +778,6 @@
             <button id="changePasswordBtn" class="btn btn-primary">
               修改密码
             </button>
-            <div id="changePasswordStatus" class="status"></div>
 
             <div class="settings-divider"></div>
 

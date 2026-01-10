@@ -1,8 +1,9 @@
 import { DEFAULT_NETWORK } from '../config/index.js';
-import { normalizeChainId } from '../common/utils/index.js';
+import { normalizeChainId } from '../common/chain/index.js';
+import { getSelectedNetworkName, getNetworkConfigByKey } from '../storage/index.js';
 import {
   showPage,
-  showStatus,
+  showWaiting,
   showError,
   showSuccess
 } from '../common/ui/index.js';
@@ -81,9 +82,75 @@ export class NetworkController {
     await this.refreshNetworkOptions();
   }
 
+  async prefillNetworkLabels() {
+    const selectors = this.getNetworkSelectors();
+    if (selectors.length === 0) return;
+
+    try {
+      const savedKey = await getSelectedNetworkName();
+      if (!savedKey) return;
+
+      const config = await getNetworkConfigByKey(savedKey);
+      if (!config) return;
+
+      const label = this.getNetworkLabel(config, null);
+      if (!label) return;
+
+      selectors.forEach((selector) => {
+        const labelEl = selector.querySelector('.network-label');
+        if (labelEl) {
+          labelEl.textContent = label;
+        }
+      });
+    } catch (error) {
+      console.warn('[NetworkController] 预填网络名称失败:', error);
+    }
+  }
+
+  async syncSelectedNetwork() {
+    if (!this.network) return false;
+    try {
+      const savedKey = await getSelectedNetworkName();
+      if (!savedKey) return false;
+
+      const config = await getNetworkConfigByKey(savedKey);
+      if (!config) return false;
+
+      const targetRpc = config.rpcUrl || config.rpc;
+      if (!targetRpc) return false;
+
+      let currentRpc = null;
+      try {
+        currentRpc = await this.network.getRpcUrl();
+      } catch {
+        currentRpc = null;
+      }
+
+      if (currentRpc && currentRpc === targetRpc) {
+        this.currentNetworkValue = currentRpc;
+        return true;
+      }
+
+      await this.network.switchNetwork(savedKey);
+
+      const chainId = await this.network.getChainId();
+      updateNetworkIndicator(chainId);
+      this.currentNetworkValue = targetRpc;
+      await this.refreshNetworkOptions(targetRpc);
+      return true;
+    } catch (error) {
+      console.warn('[NetworkController] 同步网络失败:', error);
+      return false;
+    }
+  }
+
   async handleNetworkChange(rpcUrl) {
     try {
       if (!rpcUrl) return;
+
+      this.closeAllMenus();
+      showWaiting();
+      await waitForNextFrame();
 
       await this.network.setRpcUrl(rpcUrl);
 
@@ -226,7 +293,6 @@ export class NetworkController {
     const chainIdInput = document.getElementById('networkChainIdInput');
     const symbolInput = document.getElementById('networkSymbolInput');
     const explorerInput = document.getElementById('networkExplorerInput');
-    const status = document.getElementById('networkFormStatus');
     const title = document.getElementById('networkFormPageTitle');
     const saveBtn = document.getElementById('saveNetworkBtn');
     const editChainId = document.getElementById('networkEditChainId');
@@ -242,7 +308,6 @@ export class NetworkController {
     if (editChainId) editChainId.value = '';
     if (title) title.textContent = '新增网络';
     if (saveBtn) saveBtn.textContent = '添加网络';
-    if (status) status.style.display = 'none';
   }
 
   async loadNetworkList() {
@@ -423,15 +488,15 @@ export class NetworkController {
     const editingChainId = editChainId?.value || '';
 
     if (!chainName) {
-      showStatus('networkFormStatus', '请输入网络名称', 'error');
+      showError('请输入网络名称');
       return;
     }
     if (!rpcUrl) {
-      showStatus('networkFormStatus', '请输入 RPC URL', 'error');
+      showError('请输入 RPC URL');
       return;
     }
     if (!chainIdRaw) {
-      showStatus('networkFormStatus', '请输入 Chain ID', 'error');
+      showError('请输入 Chain ID');
       return;
     }
 
@@ -439,17 +504,17 @@ export class NetworkController {
     try {
       chainId = normalizeChainId(chainIdRaw);
     } catch (error) {
-      showStatus('networkFormStatus', 'Chain ID 格式不正确', 'error');
+      showError('Chain ID 格式不正确');
       return;
     }
 
     if (editingChainId && chainId !== normalizeChainId(editingChainId)) {
-      showStatus('networkFormStatus', '编辑时不允许修改 Chain ID', 'error');
+      showError('编辑时不允许修改 Chain ID');
       return;
     }
 
     try {
-      showStatus('networkFormStatus', editingChainId ? '保存中...' : '添加中...', 'info');
+      showWaiting();
 
       if (editingChainId) {
         await this.network.updateNetwork(chainId, {
@@ -491,10 +556,20 @@ export class NetworkController {
       showSuccess(editingChainId ? '网络已更新' : '网络已添加');
     } catch (error) {
       console.error('[NetworkController] 保存网络失败:', error);
-      showStatus('networkFormStatus', '保存失败: ' + error.message, 'error');
+      showError('保存失败: ' + error.message);
     }
   }
 
+}
+
+function waitForNextFrame() {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => resolve());
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
 }
 
 function updateNetworkIndicator(chainId) {

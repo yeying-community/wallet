@@ -3,6 +3,8 @@
  * 提供所有存储相关的功能
  */
 
+import { getTimestamp } from '../common/utils/time-utils.js';
+
 // ==================== 存储键 ====================
 export {
   StorageKeys,
@@ -128,7 +130,7 @@ export async function exportAllData() {
 
     return {
       data,
-      timestamp: Date.now(),
+      timestamp: getTimestamp(),
       version: '1.0.0'
     };
   } catch (error) {

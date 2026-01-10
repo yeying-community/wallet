@@ -6,6 +6,7 @@
 import { PermissionStorageKeys } from './storage-keys.js';
 import { getMap, setMap, getMapItem, setMapItem, deleteMapItem } from './storage-base.js';
 import { logError } from '../common/errors/index.js';
+import { getTimestamp } from '../common/utils/time-utils.js';
 
 /**
  * 获取所有授权
@@ -30,7 +31,7 @@ export async function saveAuthorization(origin, address) {
   try {
     const permission = {
       address,
-      timestamp: Date.now()
+      timestamp: getTimestamp()
     };
 
     await setMapItem(PermissionStorageKeys.CONNECTED_SITES, origin, permission);
@@ -131,4 +132,3 @@ export async function getAuthorizationList() {
     return [];
   }
 }
-

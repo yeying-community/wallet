@@ -1,4 +1,4 @@
-import { showPage, showStatus, showSuccess } from '../../common/ui/index.js';
+import { showPage, showError, showWaiting, hideWaiting } from '../../common/ui/index.js';
 
 export class UnlockWalletController {
   constructor({ wallet, onUnlocked }) {
@@ -29,33 +29,29 @@ export class UnlockWalletController {
     const password = passwordInput?.value;
 
     if (!password) {
-      showStatus('unlockStatus', '请输入密码', 'error');
+      showError('请输入密码');
       return;
     }
 
     if (password.length < 8) {
-      showStatus('unlockStatus', '密码至少8位', 'error');
+      showError('密码至少8位');
       return;
     }
 
     try {
-      showStatus('unlockStatus', '解锁中...', 'info');
+      showWaiting();
 
       const currentAccount = await this.wallet.getCurrentAccount();
       await this.wallet.unlock(password, currentAccount?.id);
 
-      showStatus('unlockStatus', '解锁成功！', 'success');
-
-      setTimeout(async () => {
-        showPage('walletPage');
-        if (this.onUnlocked) {
-          await this.onUnlocked();
-        }
-        showSuccess('欢迎回来！');
-      }, 500);
+      showPage('walletPage');
+      if (this.onUnlocked) {
+        await this.onUnlocked();
+      }
+      hideWaiting();
     } catch (error) {
       console.error('[UnlockWalletController] 解锁失败:', error);
-      showStatus('unlockStatus', '密码错误', 'error');
+      showError('密码错误');
     }
   }
 }

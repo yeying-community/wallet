@@ -8,7 +8,7 @@
  * 
  * 通信协议：{ type, data }
  */
-import { NetworkMessageType } from '../protocol/protocol.js';
+import { NetworkMessageType } from '../protocol/extension-protocol.js';
 import { BaseDomain } from './base-domain.js';
 export { NetworkMessageType };
 

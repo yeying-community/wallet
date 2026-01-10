@@ -46,7 +46,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["inject.js", "js/protocol/protocol.js"],
+      "resources": ["inject.js", "js/protocol/dapp-protocol.js"],
       "matches": [
         "https://*/*",
         "http://*/*"

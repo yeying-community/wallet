@@ -6,7 +6,7 @@
 import { NetworkStorageKeys } from './storage-keys.js';
 import { getValue, setValue, getArray, setArray } from './storage-base.js';
 import { logError } from '../common/errors/index.js';
-import { normalizeChainId } from '../common/utils/index.js';
+import { normalizeChainId } from '../common/chain/index.js';
 
 const LEGACY_CUSTOM_NETWORKS_KEY = 'customNetworks';
 const LEGACY_CONFIG_NETWORKS_KEY = 'networkConfigs';

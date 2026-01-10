@@ -1,4 +1,4 @@
-import { showPage, showSuccess, showError, showStatus } from '../common/ui/index.js';
+import { showPage, showSuccess, showError, showWaiting } from '../common/ui/index.js';
 
 export class SettingsController {
   constructor({ wallet }) {
@@ -105,33 +105,33 @@ export class SettingsController {
     const confirmPassword = confirmInput?.value.trim() || '';
 
     if (!oldPassword) {
-      showStatus('changePasswordStatus', '请输入旧密码', 'error');
+      showError('请输入旧密码');
       return;
     }
 
     if (!newPassword || newPassword.length < 8) {
-      showStatus('changePasswordStatus', '新密码至少需要8位字符', 'error');
+      showError('新密码至少需要8位字符');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      showStatus('changePasswordStatus', '两次输入的新密码不一致', 'error');
+      showError('两次输入的新密码不一致');
       return;
     }
 
     if (oldPassword === newPassword) {
-      showStatus('changePasswordStatus', '新密码不能与旧密码相同', 'error');
+      showError('新密码不能与旧密码相同');
       return;
     }
 
     try {
-      showStatus('changePasswordStatus', '修改中...', 'info');
+      showWaiting();
       await this.wallet.changePassword(oldPassword, newPassword);
       this.resetChangePasswordForm();
       showSuccess('密码已更新');
     } catch (error) {
       console.error('[SettingsController] 修改密码失败:', error);
-      showStatus('changePasswordStatus', '修改失败: ' + error.message, 'error');
+      showError('修改失败: ' + error.message);
     }
   }
 
@@ -139,16 +139,9 @@ export class SettingsController {
     const oldInput = document.getElementById('oldPasswordInput');
     const newInput = document.getElementById('newPasswordInput');
     const confirmInput = document.getElementById('confirmNewPasswordInput');
-    const status = document.getElementById('changePasswordStatus');
-
     if (oldInput) oldInput.value = '';
     if (newInput) newInput.value = '';
     if (confirmInput) confirmInput.value = '';
-    if (status) {
-      status.textContent = '';
-      status.className = 'status';
-      status.style.display = 'none';
-    }
   }
 
   renderAuthorizedSites(sites, onRevoke) {

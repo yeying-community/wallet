@@ -3,7 +3,8 @@
  * 负责：处理来自 content script 和 popup 的消息
  */
 
-import { MessageValidator, PORT_NAME, ApprovalMessageType, WalletMessageType, NetworkMessageType, TransactionMessageType, EventType } from '../protocol/protocol.js';
+import { MessageValidator, PORT_NAME, EventType } from '../protocol/dapp-protocol.js';
+import { ApprovalMessageType, WalletMessageType, NetworkMessageType, TransactionMessageType } from '../protocol/extension-protocol.js';
 import { sendResponse, sendError, registerConnection, unregisterConnection, checkSessionAndNotify } from './connection.js';
 import { routeRequest } from './request-router.js';
 import { unlockWallet, lockWallet } from './keyring.js';
@@ -33,7 +34,8 @@ import {
 } from './wallet-operations.js';
 import { state } from './state.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
-import { normalizeChainId } from '../common/utils/index.js';
+import { normalizeChainId } from '../common/chain/index.js';
+import { getTimestamp } from '../common/utils/time-utils.js';
 import {
   saveSelectedNetworkName,
   updateUserSetting,
@@ -76,7 +78,7 @@ async function fetchChainIdFromRpc(rpcUrl) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       jsonrpc: '2.0',
-      id: Date.now(),
+      id: getTimestamp(),
       method: 'eth_chainId',
       params: []
     })
@@ -295,7 +297,7 @@ async function handleSendTransactionMessage(data) {
       from,
       to,
       value: result?.value ?? value,
-      timestamp: Date.now(),
+      timestamp: getTimestamp(),
       status: 'pending',
       chainId: normalizedChainId || state.currentChainId || null
     });
@@ -345,7 +347,7 @@ async function refreshTransactionStatuses(transactions, chainId = null) {
       if (tx.status !== status) {
         await updateTransaction(tx.hash, {
           status,
-          confirmedAt: Date.now(),
+          confirmedAt: getTimestamp(),
           blockNumber: receipt.blockNumber
         });
         tx.status = status;
@@ -358,7 +360,7 @@ async function refreshTransactionStatuses(transactions, chainId = null) {
   return transactions || [];
 }
 
-async function handleGetTransactionHistoryMessage(data) {
+async function handleGetTransactionsMessage(data) {
   const { address, chainId } = data || {};
   let normalizedChainId = null;
   if (chainId) {
@@ -376,7 +378,7 @@ async function handleGetTransactionHistoryMessage(data) {
   return { success: true, transactions: refreshed };
 }
 
-async function handleClearTransactionHistoryMessage(data) {
+async function handleClearTransactionsMessage(data) {
   const { address, chainId } = data || {};
   let normalizedChainId = null;
   if (chainId) {
@@ -687,12 +689,12 @@ export async function handlePopupMessage(message, response) {
         response(await handleSendTransactionMessage(data));
         break;
 
-      case TransactionMessageType.GET_TRANSACTION_HISTORY:
-        response(await handleGetTransactionHistoryMessage(data));
+      case TransactionMessageType.GET_TRANSACTIONS:
+        response(await handleGetTransactionsMessage(data));
         break;
 
-      case TransactionMessageType.CLEAR_TRANSACTION_HISTORY:
-        response(await handleClearTransactionHistoryMessage(data));
+      case TransactionMessageType.CLEAR_TRANSACTIONS:
+        response(await handleClearTransactionsMessage(data));
         break;
 
       // ==================== 导出密钥 ====================

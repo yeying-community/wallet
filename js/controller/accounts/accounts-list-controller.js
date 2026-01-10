@@ -1,5 +1,5 @@
-import { showPage, showSuccess, showError, setPageOrigin } from '../../common/ui/index.js';
-import { shortenAddress, generateAvatar } from '../../common/utils/index.js';
+import { showPage, showError, setPageOrigin, showWaiting, hideWaiting } from '../../common/ui/index.js';
+import { shortenAddress, generateAvatar } from '../../common/chain/index.js';
 
 export class AccountsListController {
   constructor({
@@ -103,31 +103,42 @@ export class AccountsListController {
 
   async handleSelectAccount(accountId) {
     try {
+      showWaiting();
       await this.wallet.switchAccount(accountId);
 
       showPage('walletPage');
       await this.refreshWalletData();
-      showSuccess('已切换账户');
+      hideWaiting();
     } catch (error) {
       if (error?.requirePassword && this.promptPassword) {
-        await this.promptPassword({
+        hideWaiting();
+        const password = await this.promptPassword({
           title: '切换账户',
           confirmText: '确认切换',
           placeholder: '输入密码',
           onConfirm: async (password) => {
-            try {
-              await this.wallet.switchAccount(accountId, password);
-              showPage('walletPage');
-              await this.refreshWalletData();
-              showSuccess('已切换账户');
-            } catch (err) {
-              if (err?.requirePassword || /password/i.test(err?.message || '')) {
-                throw new Error('密码错误');
-              }
-              throw err;
+            if (!password || password.length < 8) {
+              throw new Error('密码至少需要8位字符');
             }
           }
         });
+        if (!password) {
+          return;
+        }
+        showWaiting();
+        try {
+          await this.wallet.switchAccount(accountId, password);
+          showPage('walletPage');
+          await this.refreshWalletData();
+        } catch (err) {
+          if (err?.requirePassword || /password/i.test(err?.message || '')) {
+            showError('密码错误');
+          } else {
+            showError('切换失败: ' + (err?.message || '切换失败'));
+          }
+        } finally {
+          hideWaiting();
+        }
         return;
       }
 

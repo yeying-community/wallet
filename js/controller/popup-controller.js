@@ -1,14 +1,25 @@
-import { showPage, getCurrentPage, getPageOrigin, showStatus } from '../common/ui/index.js';
+import { showPage, getCurrentPage, getPageOrigin, showError } from '../common/ui/index.js';
+import { POLLING_CONFIG } from '../config/index.js';
 import { WelcomeController } from './welcome-controller.js';
 import { UnlockWalletController } from './wallet/unlock-wallet-controller.js';
-import { WalletController } from './wallet/wallet-controller.js';
 import { NetworkController } from './network-controller.js';
 import { TokensListController } from './tokens/tokens-list-controller.js';
 import { AddTokenController } from './tokens/add-token-controller.js';
-import { AccountsListController, AccountDetailController, AccountModalsController } from './accounts/index.js';
+import {
+  AccountsListController,
+  AccountDetailController,
+  AccountModalsController,
+  AccountHeaderController
+} from './accounts/index.js';
+import { TokenBalanceController } from './tokens/index.js';
 import { SettingsController } from './settings-controller.js';
 import { ImportWalletController } from './wallet/import-wallet-controller.js';
 import { CreateWalletController } from './wallet/create-wallet-controller.js';
+import {
+  TransactionListController,
+  TransactionDetailController,
+  TransactionSendController
+} from './transaction/index.js';
 
 export class PopupController {
   constructor({ wallet, transaction, network, token }) {
@@ -16,6 +27,7 @@ export class PopupController {
     this.transaction = transaction;
     this.network = network;
     this.token = token;
+    this.transactionPollingTimer = null;
 
     this.welcomeController = new WelcomeController();
     this.unlockWalletController = new UnlockWalletController({
@@ -23,10 +35,28 @@ export class PopupController {
       onUnlocked: () => this.refreshWalletData()
     });
     this.settingsController = new SettingsController({ wallet: this.wallet });
-    this.walletController = new WalletController({
-      wallet: this.wallet,
+    this.transactionDetailController = new TransactionDetailController({
       transaction: this.transaction,
       network: this.network
+    });
+    this.transactionListController = new TransactionListController({
+      wallet: this.wallet,
+      transaction: this.transaction,
+      network: this.network,
+      detailController: this.transactionDetailController
+    });
+    this.accountHeaderController = new AccountHeaderController({
+      wallet: this.wallet
+    });
+    this.tokenBalanceController = new TokenBalanceController({
+      wallet: this.wallet
+    });
+    this.transactionSendController = new TransactionSendController({
+      wallet: this.wallet,
+      transaction: this.transaction,
+      network: this.network,
+      balanceController: this.tokenBalanceController,
+      transactionListController: this.transactionListController
     });
     this.tokensListController = new TokensListController({
       token: this.token,
@@ -41,7 +71,7 @@ export class PopupController {
     });
     this.networkController = new NetworkController({
       network: this.network,
-      onNetworkChanged: () => this.walletController.handleRefreshBalance()
+      onNetworkChanged: () => this.handleNetworkChanged()
     });
     this.tokensListController.setNetworkController(this.networkController);
     this.addTokenController.setNetworkController(this.networkController);
@@ -77,6 +107,8 @@ export class PopupController {
   }
 
   async init() {
+    await this.networkController?.prefillNetworkLabels?.();
+    await this.networkController?.syncSelectedNetwork?.();
     await this.showInitialPage();
     this.bindEvents();
   }
@@ -105,7 +137,8 @@ export class PopupController {
 
     this.welcomeController.bindEvents();
     this.unlockWalletController.bindEvents();
-    this.walletController.bindEvents();
+    this.transactionListController.bindEvents();
+    this.transactionDetailController.bindEvents();
     this.tokensListController.bindEvents();
     this.addTokenController.bindEvents();
     this.networkController.bindEvents();
@@ -126,8 +159,16 @@ export class PopupController {
     });
   }
 
-  handleBackNavigation() {
+  async handleBackNavigation() {
     const currentPage = getCurrentPage();
+
+    if (currentPage === 'transactionDetailPage') {
+      showPage('walletPage');
+      this.switchWalletTab('activity');
+      await this.transactionListController.loadTransactions();
+      this.transactionListController.restoreActivityScrollPosition();
+      return;
+    }
 
     const backMap = {
       setPasswordPage: this.getSetPasswordBackTarget(),
@@ -145,7 +186,7 @@ export class PopupController {
     if (targetPage) {
       showPage(targetPage);
       if (targetPage === 'networkManagePage') {
-        this.networkController?.loadNetworkList();
+        await this.networkController?.loadNetworkList();
       }
     } else {
       showPage('walletPage');
@@ -163,22 +204,26 @@ export class PopupController {
   }
 
   async openAccountsPage() {
+    this.stopTransactionPolling();
     showPage('accountsPage');
     await this.accountsListController.loadWalletList();
   }
 
   async openSettingsPage() {
+    this.stopTransactionPolling();
     showPage('settingsPage');
     await this.settingsController.loadAuthorizedSites();
   }
 
   async openTransferPage() {
+    this.stopTransactionPolling();
     showPage('transferPage');
     await this.tokensListController?.prepareTransferSelectors?.();
   }
 
   async refreshWalletData() {
-    await this.walletController.refreshWalletData();
+    await this.accountHeaderController?.refreshHeader?.();
+    await this.tokenBalanceController?.refreshBalanceSilently?.();
 
     if (this.networkController) {
       await this.networkController.refreshNetworkState();
@@ -188,6 +233,29 @@ export class PopupController {
     if (tokensContent && !tokensContent.classList.contains('hidden')) {
       await this.tokensListController?.loadTokenBalances?.();
     }
+  }
+
+  startTransactionPolling() {
+    this.stopTransactionPolling();
+    const interval = POLLING_CONFIG?.TRANSACTION || 5000;
+    this.transactionPollingTimer = setInterval(async () => {
+      if (getCurrentPage() !== 'walletPage') return;
+      const activityContent = document.getElementById('activityContent');
+      if (!activityContent || activityContent.classList.contains('hidden')) return;
+      await this.transactionListController.loadTransactions();
+    }, interval);
+  }
+
+  stopTransactionPolling() {
+    if (!this.transactionPollingTimer) return;
+    clearInterval(this.transactionPollingTimer);
+    this.transactionPollingTimer = null;
+  }
+
+  async handleNetworkChanged() {
+    await this.accountHeaderController?.refreshHeader?.();
+    await this.tokenBalanceController?.refreshBalanceSilently?.();
+    await this.tokensListController?.loadTokenBalances?.();
   }
 
   bindWalletPageEvents() {
@@ -217,10 +285,17 @@ export class PopupController {
       sendBtn.addEventListener('click', async () => {
         const selectedToken = this.tokensListController?.getCurrentTransferToken?.();
         if (selectedToken && !selectedToken.isNative) {
-          showStatus('sendStatus', '暂不支持通证转账', 'error');
+          showError('暂不支持通证转账');
           return;
         }
-        await this.walletController.handleSendTransaction();
+        await this.transactionSendController.handleSendTransaction({
+          requestPassword: () => this.promptWalletPassword(),
+          silentBalanceRefresh: true,
+          onSuccess: async () => {
+            showPage('walletPage');
+            this.switchWalletTab('activity');
+          }
+        });
       });
     }
 
@@ -243,7 +318,7 @@ export class PopupController {
     if (activityTab) {
       activityTab.addEventListener('click', async () => {
         this.switchWalletTab('activity');
-        await this.walletController.loadTransactionHistory();
+        await this.transactionListController.loadTransactions();
       });
     }
 
@@ -267,5 +342,27 @@ export class PopupController {
       targetContent.classList.remove('hidden');
       console.log(`[UI] 切换标签: ${tabId}`);
     }
+
+    if (tabId === 'activity') {
+      this.startTransactionPolling();
+    } else {
+      this.stopTransactionPolling();
+    }
+  }
+
+  async promptWalletPassword() {
+    if (!this.accountModalsController?.promptPassword) {
+      return null;
+    }
+    return await this.accountModalsController.promptPassword({
+      title: '解锁钱包',
+      confirmText: '确认',
+      placeholder: '输入密码',
+      onConfirm: async (input) => {
+        if (!input || input.length < 8) {
+          throw new Error('密码至少需要8位字符');
+        }
+      }
+    });
   }
 }

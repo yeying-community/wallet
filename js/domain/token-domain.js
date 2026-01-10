@@ -8,7 +8,7 @@
  * 通信协议：{ type, data }
  */
 
-import { WalletMessageType } from '../protocol/protocol.js';
+import { WalletMessageType } from '../protocol/extension-protocol.js';
 import { BaseDomain } from './base-domain.js';
 
 export class TokenDomain extends BaseDomain {

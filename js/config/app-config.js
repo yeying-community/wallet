@@ -2,6 +2,8 @@
  * 应用基础配置
  */
 
+import { formatIsoTimestamp } from '../common/utils/time-utils.js';
+
 // ==================== 应用信息 ====================
 export const APP_NAME = 'YeYing Wallet';
 export const VERSION = '1.0.0';
@@ -34,7 +36,7 @@ export const LOG_CONFIG = {
 export const LIMITS = {
   MAX_ACCOUNTS: 10,                    // 最大账户数
   MAX_ADDRESS_BOOK: 100,               // 地址簿最大条目
-  MAX_TRANSACTION_HISTORY: 1000,       // 最大交易历史
+  MAX_TRANSACTIONS: 1000,              // 最大交易记录
   MAX_CUSTOM_NETWORKS: 20,             // 最大自定义网络数
   MAX_TOKENS_PER_ACCOUNT: 100,         // 每个账户最大代币数
   MAX_PENDING_REQUESTS: 10             // 最大待处理请求数
@@ -49,7 +51,7 @@ export function getVersionInfo() {
   return {
     version: VERSION,
     protocolVersion: PROTOCOL_VERSION,
-    buildDate: new Date().toISOString()
+    buildDate: formatIsoTimestamp()
   };
 }
 
@@ -92,4 +94,3 @@ export function shouldLog(level) {
   const messagePriority = getLogLevelPriority(level);
   return messagePriority >= currentPriority;
 }
-

@@ -12,7 +12,7 @@
     MessageCategory,
     EventType,
     MessageBuilder
-  } = await import(chrome.runtime.getURL('js/protocol/protocol.js'));
+  } = await import(chrome.runtime.getURL('js/protocol/dapp-protocol.js'));
 
   console.log('🌉 Content script bridge loading...');
 

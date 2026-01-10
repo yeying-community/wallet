@@ -68,14 +68,9 @@ export class WelcomeController {
     const nameInput = document.getElementById('setWalletName');
     const passwordInput = document.getElementById('newPassword');
     const confirmInput = document.getElementById('confirmPassword');
-    const statusEl = document.getElementById('passwordStatus');
 
     if (nameInput) nameInput.value = '主钱包';
     if (passwordInput) passwordInput.value = '';
     if (confirmInput) confirmInput.value = '';
-    if (statusEl) {
-      statusEl.style.display = 'none';
-      statusEl.className = 'status';
-    }
   }
 }

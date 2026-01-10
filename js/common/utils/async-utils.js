@@ -2,6 +2,8 @@
  * 异步工具函数
  */
 
+import { getTimestamp } from './time-utils.js';
+
 /**
  * 延迟执行
  * @param {number} ms - 延迟毫秒数
@@ -41,10 +43,10 @@ export function cancellableDelay(ms) {
  * @returns {Promise<boolean>}
  */
 export async function waitUntil(condition, interval = 100, timeout = 5000) {
-  const startTime = Date.now();
+  const startTime = getTimestamp();
   
   while (!condition()) {
-    if (Date.now() - startTime > timeout) {
+    if (getTimestamp() - startTime > timeout) {
       return false;
     }
     
@@ -529,4 +531,3 @@ export class Semaphore {
     }
   }
 }
-

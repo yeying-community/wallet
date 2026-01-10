@@ -49,19 +49,7 @@ export {
   FORMAT_CONFIG,
   PAGINATION,
   FORM_CONFIG,
-  NOTIFICATION_CONFIG,
-  formatBalance,
-  shortenAddress,
-  formatTxHash,
-  getStatusColor,
-  getNetworkColor,
-  formatNumber,
-  formatCurrency,
-  formatDate,
-  formatTime,
-  formatRelativeTime,
-  copyToClipboard,
-  showToast
+  NOTIFICATION_CONFIG
 } from './ui-config.js';
 
 // 交易配置
@@ -159,5 +147,4 @@ export {
   validateUrl,
   validateNumberRange
 } from './validation-rules.js';
-
 

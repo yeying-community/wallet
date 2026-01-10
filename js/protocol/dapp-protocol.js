@@ -1,9 +1,7 @@
 /**
- * 协议层 - 通用消息协议与扩展内部消息类型
- * 纯数据结构 + 校验 + Builder 工具函数
+ * Dapp protocol definitions (no dependencies).
+ * This file can be injected into Dapp pages.
  */
-
-// ==================== Dapp <-> Extension 协议 ====================
 
 export const PROTOCOL_VERSION = '1.0.0';
 export const MESSAGE_TYPE = 'yeying_message';
@@ -25,14 +23,14 @@ export const EventType = {
 
 const INTERNAL_ERROR_CODE = -32603;
 
-function generateId(prefix = 'id') {
-  const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2, 9);
-  return `${prefix}_${timestamp}_${random}`;
-}
-
 function getTimestamp() {
   return Date.now();
+}
+
+function generateId(prefix = 'id') {
+  const timestamp = getTimestamp();
+  const random = Math.random().toString(36).substring(2, 9);
+  return `${prefix}_${timestamp}_${random}`;
 }
 
 function normalizeError(error) {
@@ -256,62 +254,4 @@ export const MessageValidator = {
   isSuccessResponse(message) {
     return this.isResponse(message) && 'result' in message.payload;
   }
-};
-
-// ==================== Extension 内部消息类型 ====================
-
-export const WalletMessageType = {
-  IS_WALLET_INITIALIZED: 'IS_WALLET_INITIALIZED',
-  CREATE_HD_WALLET: 'CREATE_HD_WALLET',
-  IMPORT_HD_WALLET: 'IMPORT_HD_WALLET',
-  IMPORT_PRIVATE_KEY_WALLET: 'IMPORT_PRIVATE_KEY_WALLET',
-  CREATE_SUB_ACCOUNT: 'CREATE_SUB_ACCOUNT',
-  SWITCH_ACCOUNT: 'SWITCH_ACCOUNT',
-  DELETE_ACCOUNT: 'DELETE_ACCOUNT',
-  UPDATE_ACCOUNT_NAME: 'UPDATE_ACCOUNT_NAME',
-  GET_BALANCE: 'GET_BALANCE',
-  GET_TOKEN_BALANCES: 'GET_TOKEN_BALANCES',
-  ADD_TOKEN: 'ADD_TOKEN',
-  UNLOCK_WALLET: 'UNLOCK_WALLET',
-  LOCK_WALLET: 'LOCK_WALLET',
-  EXPORT_PRIVATE_KEY: 'EXPORT_PRIVATE_KEY',
-  EXPORT_MNEMONIC: 'EXPORT_MNEMONIC',
-  CHANGE_PASSWORD: 'CHANGE_PASSWORD',
-  GET_AUTHORIZED_SITES: 'GET_AUTHORIZED_SITES',
-  REVOKE_SITE: 'REVOKE_SITE',
-  CLEAR_ALL_AUTHORIZATIONS: 'CLEAR_ALL_AUTHORIZATIONS',
-  GET_WALLET_STATE: 'GET_WALLET_STATE',
-  GET_CURRENT_ACCOUNT: 'GET_CURRENT_ACCOUNT',
-  GET_ALL_WALLETS: 'GET_ALL_WALLETS',
-  GET_ACCOUNT_BY_ID: 'GET_ACCOUNT_BY_ID',
-  UPDATE_POPUP_BOUNDS: 'UPDATE_POPUP_BOUNDS',
-  RESET_WALLET: 'RESET_WALLET'
-};
-
-export const TransactionMessageType = {
-  SEND_TRANSACTION: 'SEND_TRANSACTION',
-  SIGN_TRANSACTION: 'SIGN_TRANSACTION',
-  SIGN_MESSAGE: 'SIGN_MESSAGE',
-  GET_TRANSACTION_HISTORY: 'GET_TRANSACTION_HISTORY',
-  CLEAR_TRANSACTION_HISTORY: 'CLEAR_TRANSACTION_HISTORY',
-  ESTIMATE_GAS: 'ESTIMATE_GAS',
-  GET_GAS_PRICE: 'GET_GAS_PRICE'
-};
-
-export const NetworkMessageType = {
-  SWITCH_NETWORK: 'SWITCH_NETWORK',
-  ADD_NETWORK: 'ADD_NETWORK',
-  GET_CURRENT_CHAIN_ID: 'GET_CURRENT_CHAIN_ID',
-  GET_CURRENT_RPC_URL: 'GET_CURRENT_RPC_URL',
-  GET_NETWORK_INFO: 'GET_NETWORK_INFO',
-  GET_SUPPORTED_NETWORKS: 'GET_SUPPORTED_NETWORKS',
-  ADD_CUSTOM_NETWORK: 'ADD_CUSTOM_NETWORK',
-  UPDATE_CUSTOM_NETWORK: 'UPDATE_CUSTOM_NETWORK',
-  REMOVE_CUSTOM_NETWORK: 'REMOVE_CUSTOM_NETWORK',
-  GET_CUSTOM_NETWORKS: 'GET_CUSTOM_NETWORKS'
-};
-
-export const ApprovalMessageType = {
-  GET_PENDING_REQUEST: 'GET_PENDING_REQUEST',
-  APPROVAL_RESPONSE: 'APPROVAL_RESPONSE'
 };

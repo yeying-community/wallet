@@ -24,8 +24,8 @@ export const LOCAL_KEYS = {
   CUSTOM_TOKENS: 'custom_tokens',                    // 自定义代币
   HIDDEN_TOKENS: 'hidden_tokens',                    // 隐藏的代币
   
-  // 交易历史
-  TRANSACTION_HISTORY: 'transaction_history',        // 交易历史
+  // 交易记录
+  TRANSACTIONS: 'transactions',                      // 交易记录
   PENDING_TRANSACTIONS: 'pending_transactions',      // 待处理交易
   
   // 连接的网站
@@ -79,7 +79,7 @@ export const CHROME_KEYS = {
   // 本地存储
   LOCAL: {
     WALLET_DATA: 'chrome_wallet_data',
-    TRANSACTION_HISTORY: 'chrome_transaction_history'
+    TRANSACTIONS: 'chrome_transactions'
   }
 };
 
@@ -205,4 +205,3 @@ export function getSessionKeys() {
 export function getLocalKeys() {
   return Object.values(LOCAL_KEYS);
 }
-

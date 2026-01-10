@@ -8,7 +8,7 @@ import { TransactionDomain } from '../domain/transaction-domain.js';
 import { NetworkDomain } from '../domain/network-domain.js';
 import { TokenDomain } from '../domain/token-domain.js';
 import { showToast } from '../common/ui/index.js';
-import { WalletMessageType } from '../protocol/protocol.js';
+import { WalletMessageType } from '../protocol/extension-protocol.js';
 
 class PopupApp {
   constructor() {
