@@ -20,6 +20,7 @@ import {
   TransactionDetailController,
   TransactionSendController
 } from './transaction/index.js';
+import { NetworkStorageKeys, onStorageChanged } from '../storage/index.js';
 
 export class PopupController {
   constructor({ wallet, transaction, network, token }) {
@@ -28,6 +29,7 @@ export class PopupController {
     this.network = network;
     this.token = token;
     this.transactionPollingTimer = null;
+    this.storageUnsubscribe = null;
 
     this.welcomeController = new WelcomeController();
     this.unlockWalletController = new UnlockWalletController({
@@ -134,6 +136,7 @@ export class PopupController {
   bindEvents() {
     this.bindBackEvents();
     this.bindWalletPageEvents();
+    this.bindStorageEvents();
 
     this.welcomeController.bindEvents();
     this.unlockWalletController.bindEvents();
@@ -148,6 +151,23 @@ export class PopupController {
     this.settingsController.bindEvents();
     this.importWalletController.bindEvents();
     this.createWalletController.bindEvents();
+  }
+
+  bindStorageEvents() {
+    if (this.storageUnsubscribe) return;
+    this.storageUnsubscribe = onStorageChanged(async (changes, areaName) => {
+      if (areaName && areaName !== 'local') return;
+      if (!changes || !changes[NetworkStorageKeys.SELECTED_NETWORK]) return;
+      await this.networkController?.syncSelectedNetwork?.();
+      await this.networkController?.refreshNetworkState?.();
+      await this.handleNetworkChanged();
+      if (getCurrentPage() === 'walletPage') {
+        const activityContent = document.getElementById('activityContent');
+        if (activityContent && !activityContent.classList.contains('hidden')) {
+          await this.transactionListController.loadTransactions();
+        }
+      }
+    });
   }
 
   bindBackEvents() {

@@ -15,7 +15,7 @@ import {
   createError
 } from '../common/errors/index.js';
 import { handleEthAccounts, handleEthRequestAccounts, handleWalletGetPermissions, handleWalletRequestPermissions, handleWalletRevokePermissions } from './account-handler.js';
-import { handleEthChainId, handleNetVersion, handleSwitchChain } from './chain-handler.js';
+import { handleEthChainId, handleNetVersion, handleSwitchChain, handleAddEthereumChain } from './chain-handler.js';
 import { handleRpcMethod } from './rpc-handler.js';
 import { signTransaction, signMessage, signTypedData } from './signing.js';
 import { getSelectedAccount } from '../storage/index.js';
@@ -123,6 +123,10 @@ export async function routeRequest(method, params, metadata) {
 
   if (method === 'wallet_switchEthereumChain') {
     return handleSwitchChain(params);
+  }
+
+  if (method === 'wallet_addEthereumChain') {
+    return handleAddEthereumChain(params);
   }
 
   // ==================== 签名相关 ====================
