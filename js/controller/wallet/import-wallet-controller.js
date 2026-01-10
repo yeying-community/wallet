@@ -1,4 +1,4 @@
-import { showPage, showStatus, showError, getPageOrigin } from '../../common/ui/index.js';
+import { showPage, showError, showSuccess, showWaiting, getPageOrigin } from '../../common/ui/index.js';
 
 export class ImportWalletController {
   constructor({ wallet, onImportSuccess }) {
@@ -57,7 +57,21 @@ export class ImportWalletController {
     }
 
     try {
-      showStatus('importStatus', '正在导入...', 'info');
+      if (importType === 'mnemonic') {
+        const mnemonic = document.getElementById('importMnemonic')?.value.trim();
+        if (!mnemonic) {
+          showError('请输入助记词');
+          return;
+        }
+      } else {
+        const privateKey = document.getElementById('importPrivateKey')?.value.trim();
+        if (!privateKey) {
+          showError('请输入私钥');
+          return;
+        }
+      }
+
+      showWaiting();
 
       if (useExistingPassword) {
         await this.verifyExistingPassword(password);
@@ -65,21 +79,13 @@ export class ImportWalletController {
 
       if (importType === 'mnemonic') {
         const mnemonic = document.getElementById('importMnemonic')?.value.trim();
-        if (!mnemonic) {
-          showStatus('importStatus', '请输入助记词', 'error');
-          return;
-        }
         await this.wallet.importFromMnemonic(name, mnemonic, password);
       } else {
         const privateKey = document.getElementById('importPrivateKey')?.value.trim();
-        if (!privateKey) {
-          showStatus('importStatus', '请输入私钥', 'error');
-          return;
-        }
         await this.wallet.importFromPrivateKey(name, privateKey, password);
       }
 
-      showStatus('importStatus', '导入成功！', 'success');
+      showSuccess('导入成功！');
 
       setTimeout(() => {
         showPage('walletPage');
@@ -88,7 +94,7 @@ export class ImportWalletController {
         }
       }, 1000);
     } catch (error) {
-      showStatus('importStatus', `导入失败: ${error.message}`, 'error');
+      showError(`导入失败: ${error.message}`);
     }
   }
 

@@ -1,4 +1,4 @@
-import { showPage, showStatus, showSuccess } from '../../common/ui/index.js';
+import { showPage, showError, showSuccess, showWaiting } from '../../common/ui/index.js';
 
 export class AddTokenController {
   constructor({ token, network, networkController, onTokenAdded } = {}) {
@@ -47,18 +47,15 @@ export class AddTokenController {
     const symbolInput = document.getElementById('tokenSymbolInput');
     const decimalsInput = document.getElementById('tokenDecimalsInput');
     const nameInput = document.getElementById('tokenNameInput');
-    const status = document.getElementById('tokenAddStatus');
-
     if (addressInput) addressInput.value = '';
     if (symbolInput) symbolInput.value = '';
     if (decimalsInput) decimalsInput.value = '';
     if (nameInput) nameInput.value = '';
-    if (status) status.style.display = 'none';
   }
 
   async handleSaveToken() {
     if (!this.token) {
-      showStatus('tokenAddStatus', '通证模块未初始化', 'error');
+      showError('通证模块未初始化');
       return;
     }
 
@@ -73,11 +70,11 @@ export class AddTokenController {
     const name = nameInput?.value.trim() || '';
 
     if (!address) {
-      showStatus('tokenAddStatus', '请输入合约地址', 'error');
+      showError('请输入合约地址');
       return;
     }
     if (!symbol) {
-      showStatus('tokenAddStatus', '请输入通证符号', 'error');
+      showError('请输入通证符号');
       return;
     }
 
@@ -85,14 +82,14 @@ export class AddTokenController {
     if (decimalsRaw !== '') {
       const parsed = parseInt(decimalsRaw, 10);
       if (Number.isNaN(parsed)) {
-        showStatus('tokenAddStatus', '小数位格式不正确', 'error');
+        showError('小数位格式不正确');
         return;
       }
       decimals = parsed;
     }
 
     try {
-      showStatus('tokenAddStatus', '添加中...', 'info');
+      showWaiting();
 
       let chainId = null;
       if (this.network) {
@@ -124,7 +121,7 @@ export class AddTokenController {
       showSuccess('通证已添加');
     } catch (error) {
       console.error('[AddTokenController] 添加通证失败:', error);
-      showStatus('tokenAddStatus', '添加失败: ' + error.message, 'error');
+      showError('添加失败: ' + error.message);
     }
   }
 }

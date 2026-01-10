@@ -299,6 +299,30 @@ textarea.input {
   border: 1px solid transparent;
 }
 
+.toast.toast-waiting {
+  padding-left: 36px;
+}
+
+.toast.toast-waiting::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  border-top-color: rgba(255, 255, 255, 1);
+  animation: toastSpin 0.8s linear infinite;
+}
+
+@keyframes toastSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .toast.hidden {
   display: none;
 }
@@ -647,4 +671,3 @@ textarea.input {
 .form-hint.success {
   color: #28a745;
 }
-

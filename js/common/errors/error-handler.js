@@ -96,7 +96,20 @@ export function isUserRejectedError(error) {
  * 判断是否为钱包锁定错误
  */
 export function isWalletLockedError(error) {
-  return error && error.code === ErrorCode.WALLET_LOCKED;
+  if (!error) {
+    return false;
+  }
+
+  if (error.requirePassword) {
+    return true;
+  }
+
+  if (error.code === ErrorCode.WALLET_LOCKED) {
+    return true;
+  }
+
+  const message = getErrorMessage(error).toLowerCase();
+  return message.includes('wallet is locked') || message.includes('钱包已锁定');
 }
 
 /**

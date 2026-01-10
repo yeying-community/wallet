@@ -29,12 +29,40 @@ export function showToast(message, type = 'info', duration = 2000) {
   toast.textContent = message;
   toast.className = `toast ${type}`;
   toast.classList.remove('hidden');
+  if (duration <= 0) {
+    toast.classList.add('toast-waiting');
+  } else {
+    toast.classList.remove('toast-waiting');
+  }
 
-  setTimeout(() => {
-    toast.classList.add('hidden');
-  }, duration);
+  if (toast.dataset.timer) {
+    clearTimeout(Number(toast.dataset.timer));
+    delete toast.dataset.timer;
+  }
+
+  if (duration > 0) {
+    const timerId = setTimeout(() => {
+      toast.classList.add('hidden');
+      toast.classList.remove('toast-waiting');
+      delete toast.dataset.timer;
+    }, duration);
+    toast.dataset.timer = String(timerId);
+  }
 
   console.log(`[UI] Toast [${type}]: ${message}`);
+}
+
+export function hideToast() {
+  const toast = document.getElementById('globalToast');
+  if (!toast) return;
+
+  if (toast.dataset.timer) {
+    clearTimeout(Number(toast.dataset.timer));
+    delete toast.dataset.timer;
+  }
+
+  toast.classList.add('hidden');
+  toast.classList.remove('toast-waiting');
 }
 
 export function showSuccess(message, duration = 2000) {
@@ -53,27 +81,8 @@ export function showInfo(message, duration = 2000) {
   showToast(message, 'info', duration);
 }
 
-export function showStatus(elementId, message, type = 'info') {
-  const statusEl = document.getElementById(elementId);
-  if (!statusEl) {
-    console.warn(`[UI] 状态元素不存在: ${elementId}`);
-    return;
-  }
-
-  statusEl.textContent = message;
-  statusEl.className = `status ${type}`;
-  statusEl.style.display = 'block';
-
-  setTimeout(() => {
-    statusEl.style.display = 'none';
-  }, 5000);
-}
-
-export function clearStatus(elementId) {
-  const statusEl = document.getElementById(elementId);
-  if (statusEl) {
-    statusEl.style.display = 'none';
-  }
+export function showWaiting(message = '等待中...') {
+  showToast(message, 'info', 0);
 }
 
 export function setPageOrigin(pageId, origin) {

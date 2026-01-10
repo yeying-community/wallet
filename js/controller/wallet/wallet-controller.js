@@ -1,10 +1,11 @@
 import { isValidAddress, shortenAddress, generateAvatar } from '../../common/utils/index.js';
 import {
-  showStatus,
-  clearStatus,
   showError,
-  showSuccess
+  showSuccess,
+  showWaiting,
+  hideToast
 } from '../../common/ui/index.js';
+import { isWalletLockedError } from '../../common/errors/index.js';
 
 export class WalletController {
   constructor({ wallet, transaction, network }) {
@@ -44,20 +45,19 @@ export class WalletController {
         return;
       }
 
-      showStatus('sendStatus', '刷新中...', 'info');
+      showWaiting();
 
       const balance = await this.wallet.getBalance(account.address);
       updateBalance(balance);
 
-      clearStatus('sendStatus');
       showSuccess('余额已更新');
     } catch (error) {
       console.error('[WalletController] 刷新余额失败:', error);
-      showStatus('sendStatus', '刷新失败: ' + error.message, 'error');
+      showError('刷新失败: ' + error.message);
     }
   }
 
-  async handleSendTransaction() {
+  async handleSendTransaction({ requestPassword } = {}) {
     const recipientInput = document.getElementById('recipientAddress');
     const amountInput = document.getElementById('amount');
 
@@ -65,22 +65,22 @@ export class WalletController {
     const amount = amountInput?.value;
 
     if (!recipient) {
-      showStatus('sendStatus', '请输入接收地址', 'error');
+      showError('请输入接收地址');
       return;
     }
 
     if (!isValidAddress(recipient)) {
-      showStatus('sendStatus', '地址格式无效', 'error');
+      showError('地址格式无效');
       return;
     }
 
     if (!amount || parseFloat(amount) <= 0) {
-      showStatus('sendStatus', '请输入有效金额', 'error');
+      showError('请输入有效金额');
       return;
     }
 
-    try {
-      showStatus('sendStatus', '交易签名中...', 'info');
+    const sendTransaction = async () => {
+      showWaiting();
 
       const account = await this.wallet.getCurrentAccount();
       if (!account) {
@@ -98,16 +98,43 @@ export class WalletController {
         rpcUrl: rpcUrl
       });
 
-      showStatus('sendStatus', `交易已发送: ${shortenAddress(txHash)}`, 'success');
+      showSuccess(`交易已发送: ${shortenAddress(txHash)}`);
 
       recipientInput.value = '';
       amountInput.value = '';
 
       await this.handleRefreshBalance();
       await this.loadTransactionHistory();
+    };
+
+    try {
+      await sendTransaction();
     } catch (error) {
       console.error('[WalletController] 发送交易失败:', error);
-      showStatus('sendStatus', '发送失败: ' + error.message, 'error');
+      if (isWalletLockedError(error) && requestPassword) {
+        hideToast();
+        const password = await requestPassword();
+        if (!password) {
+          return;
+        }
+        try {
+          showWaiting('解锁中...');
+          const account = await this.wallet.getCurrentAccount();
+          await this.wallet.unlock(password, account?.id);
+        } catch (unlockError) {
+          console.error('[WalletController] 解锁失败:', unlockError);
+          showError('密码错误');
+          return;
+        }
+        try {
+          await sendTransaction();
+        } catch (retryError) {
+          console.error('[WalletController] 重试发送失败:', retryError);
+          showError('发送失败: ' + retryError.message);
+        }
+        return;
+      }
+      showError('发送失败: ' + error.message);
     }
   }
 
@@ -198,6 +225,7 @@ export class WalletController {
       showError('清除失败: ' + error.message);
     }
   }
+
 }
 
 function updateAccountInfo(account) {

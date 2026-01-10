@@ -14,7 +14,7 @@
  * - watchAsset: 添加代币请求
  */
 
-import { showError, showStatus, showSuccess } from '../common/ui/index.js';
+import { showError, showSuccess, showWaiting } from '../common/ui/index.js';
 import { ApprovalMessageType } from '../protocol/protocol.js';
 import { shortenAddress } from '../common/utils/index.js'
 
@@ -254,12 +254,12 @@ export class ApprovalController {
     this.isProcessing = true;
 
     try {
-      showStatus('addChainStatus', '添加网络中...', 'info');
+      showWaiting();
 
       // 添加网络
       await this.network.addNetwork(this.requestData.chainInfo);
 
-      showStatus('addChainStatus', '网络添加成功！', 'success');
+      showSuccess('网络添加成功！');
 
       await this.sendResponse({
         approved: true
@@ -268,7 +268,7 @@ export class ApprovalController {
       setTimeout(() => this.closeWindow(), 1000);
     } catch (error) {
       this.isProcessing = false;
-      showStatus('addChainStatus', `添加失败: ${error.message}`, 'error');
+      showError(`添加失败: ${error.message}`);
     }
   }
 
@@ -314,7 +314,7 @@ export class ApprovalController {
     this.isProcessing = true;
 
     try {
-      showStatus('watchAssetStatus', '添加代币中...', 'info');
+      showWaiting();
 
       // 添加代币到资产列表
       if (!this.token) {
@@ -322,7 +322,7 @@ export class ApprovalController {
       }
       await this.token.addToken(this.requestData.tokenInfo);
 
-      showStatus('watchAssetStatus', '代币添加成功！', 'success');
+      showSuccess('代币添加成功！');
 
       await this.sendResponse({
         approved: true
@@ -331,7 +331,7 @@ export class ApprovalController {
       setTimeout(() => this.closeWindow(), 1000);
     } catch (error) {
       this.isProcessing = false;
-      showStatus('watchAssetStatus', `添加失败: ${error.message}`, 'error');
+      showError(`添加失败: ${error.message}`);
     }
   }
 

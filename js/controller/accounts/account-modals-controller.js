@@ -320,7 +320,6 @@ function ensurePasswordPromptModal() {
             placeholder="输入密码"
           />
         </div>
-        <div id="passwordPromptStatus" class="status"></div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" id="passwordPromptCancel">取消</button>
@@ -350,7 +349,6 @@ function promptPassword(options = {}) {
   const overlay = modal.querySelector('.modal-overlay');
   const titleEl = document.getElementById('passwordPromptTitle');
   const input = document.getElementById('passwordPromptInput');
-  const status = document.getElementById('passwordPromptStatus');
   const confirmBtn = document.getElementById('passwordPromptConfirm');
   const cancelBtn = document.getElementById('passwordPromptCancel');
   const closeBtn = document.getElementById('passwordPromptClose');
@@ -360,30 +358,11 @@ function promptPassword(options = {}) {
   if (cancelBtn) cancelBtn.textContent = cancelText;
   if (input) input.placeholder = placeholder;
   confirmBtn?.removeAttribute('disabled');
-  if (status) {
-    status.textContent = '';
-    status.className = 'status';
-    status.style.display = 'none';
-  }
 
   modal.classList.remove('hidden');
   setTimeout(() => {
     input?.focus();
   }, 0);
-
-  const setStatus = (message, type = 'error') => {
-    if (!status) return;
-    status.textContent = message;
-    status.className = `status ${type}`;
-    status.style.display = 'block';
-  };
-
-  const clearStatus = () => {
-    if (!status) return;
-    status.textContent = '';
-    status.className = 'status';
-    status.style.display = 'none';
-  };
 
   const cleanup = () => {
     confirmBtn?.removeEventListener('click', handleConfirm);
@@ -404,12 +383,11 @@ function promptPassword(options = {}) {
     if (!input) return;
     const password = input.value;
     if (!password) {
-      setStatus('请输入密码', 'error');
+      showError('请输入密码');
       input.focus();
       return;
     }
 
-    clearStatus();
     confirmBtn?.setAttribute('disabled', 'disabled');
 
     try {
@@ -420,7 +398,7 @@ function promptPassword(options = {}) {
       resolvePromise(password);
     } catch (error) {
       const message = error?.message || '密码错误';
-      setStatus(message, 'error');
+      showError(message);
       if (input) {
         input.value = '';
         input.focus();

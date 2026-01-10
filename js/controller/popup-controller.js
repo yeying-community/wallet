@@ -1,4 +1,4 @@
-import { showPage, getCurrentPage, getPageOrigin, showStatus } from '../common/ui/index.js';
+import { showPage, getCurrentPage, getPageOrigin, showError } from '../common/ui/index.js';
 import { WelcomeController } from './welcome-controller.js';
 import { UnlockWalletController } from './wallet/unlock-wallet-controller.js';
 import { WalletController } from './wallet/wallet-controller.js';
@@ -217,10 +217,12 @@ export class PopupController {
       sendBtn.addEventListener('click', async () => {
         const selectedToken = this.tokensListController?.getCurrentTransferToken?.();
         if (selectedToken && !selectedToken.isNative) {
-          showStatus('sendStatus', '暂不支持通证转账', 'error');
+          showError('暂不支持通证转账');
           return;
         }
-        await this.walletController.handleSendTransaction();
+        await this.walletController.handleSendTransaction({
+          requestPassword: () => this.promptWalletPassword()
+        });
       });
     }
 
@@ -267,5 +269,21 @@ export class PopupController {
       targetContent.classList.remove('hidden');
       console.log(`[UI] 切换标签: ${tabId}`);
     }
+  }
+
+  async promptWalletPassword() {
+    if (!this.accountModalsController?.promptPassword) {
+      return null;
+    }
+    return await this.accountModalsController.promptPassword({
+      title: '解锁钱包',
+      confirmText: '确认',
+      placeholder: '输入密码',
+      onConfirm: async (input) => {
+        if (!input || input.length < 8) {
+          throw new Error('密码至少需要8位字符');
+        }
+      }
+    });
   }
 }
