@@ -9,7 +9,7 @@ import {
   CRYPTO_ERROR_MESSAGES
 } from './crypto-constants.js';
 import { logError } from '../errors/index.js';
-import { ethers } from '../../../lib/ethers-5.7.esm.min.js';
+import { ethers } from '../../../lib/ethers-6.16.esm.min.js';
 
 /**
  * 验证助记词
@@ -27,7 +27,8 @@ export function validateMnemonic(mnemonic) {
     }
     
     // 清理并分割单词
-    const words = mnemonic.trim().split(/\s+/);
+    const normalizedMnemonic = mnemonic.trim().split(/\s+/).join(' ');
+    const words = normalizedMnemonic.split(/\s+/);
     const wordCount = words.length;
     
     // 检查单词数量
@@ -40,7 +41,7 @@ export function validateMnemonic(mnemonic) {
     }
     
     // 使用 ethers.js 验证助记词
-    if (!ethers.utils.isValidMnemonic(mnemonic)) {
+    if (!ethers.Mnemonic.isValidMnemonic(normalizedMnemonic)) {
       return {
         valid: false,
         error: CRYPTO_ERROR_MESSAGES.MNEMONIC_INVALID_FORMAT,
@@ -49,7 +50,7 @@ export function validateMnemonic(mnemonic) {
     }
     
     // 获取地址用于预览
-    const wallet = ethers.Wallet.fromMnemonic(mnemonic);
+    const wallet = ethers.HDNodeWallet.fromPhrase(normalizedMnemonic);
     
     return {
       valid: true,
@@ -137,7 +138,7 @@ export function validateAddress(address) {
     }
     
     // 使用 ethers.js 验证地址
-    if (!ethers.utils.isAddress(address)) {
+    if (!ethers.isAddress(address)) {
       return {
         valid: false,
         error: 'Invalid Ethereum address'
@@ -145,7 +146,7 @@ export function validateAddress(address) {
     }
     
     // 获取校验和地址
-    const checksumAddress = ethers.utils.getAddress(address);
+    const checksumAddress = ethers.getAddress(address);
     
     return {
       valid: true,
@@ -269,7 +270,7 @@ export function validateSignature(message, signature, address) {
     }
     
     // 恢复签名者地址
-    const recoveredAddress = ethers.utils.verifyMessage(message, signature);
+    const recoveredAddress = ethers.verifyMessage(message, signature);
     
     // 比较地址（不区分大小写）
     const isValid = recoveredAddress.toLowerCase() === address.toLowerCase();

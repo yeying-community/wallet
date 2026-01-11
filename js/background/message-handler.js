@@ -9,7 +9,7 @@ import { sendResponse, sendError, registerConnection, unregisterConnection, chec
 import { routeRequest } from './request-router.js';
 import { unlockWallet, lockWallet } from './keyring.js';
 import { signMessage, signTransaction } from './signing.js';
-import { ethers } from '../../lib/ethers-5.7.esm.min.js';
+import { ethers } from '../../lib/ethers-6.16.esm.min.js';
 import {
   isWalletInitialized,
   HandleGetWalletList,
@@ -335,7 +335,7 @@ async function refreshTransactionStatuses(transactions, chainId = null) {
     return transactions || [];
   }
 
-  const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
 
   for (const tx of pending) {
     try {

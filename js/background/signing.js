@@ -7,7 +7,7 @@ import { getWalletInstance } from './keyring.js';
 import { state } from './state.js';
 import { getNetworkByChainId, getNetworkConfigByKey } from '../storage/index.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
-import { ethers } from '../../lib/ethers-5.7.esm.min.js';
+import { ethers } from '../../lib/ethers-6.16.esm.min.js';
 
 /**
  * 签名交易
@@ -30,7 +30,7 @@ export async function signTransaction(accountId, transaction) {
     if (!rpcUrl) {
       throw new Error('RPC URL not configured');
     }
-    const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
     const connectedWallet = wallet.connect(provider);
 
     // 签名并发送交易
@@ -102,7 +102,7 @@ export async function signTypedData(accountId, domain, types, value) {
   try {
     const wallet = getWalletInstance(accountId);
     const normalized = normalizeTypedData(domain, types, value);
-    const signature = await wallet._signTypedData(
+    const signature = await wallet.signTypedData(
       normalized.domain,
       normalized.types,
       normalized.value
