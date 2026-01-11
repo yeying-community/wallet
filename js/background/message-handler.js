@@ -802,7 +802,7 @@ export function initMessageListeners() {
 
     const sender = port.sender;
     const tabId = sender.tab?.id;
-    const origin = new URL(sender.url).origin;
+    const origin = resolveOrigin(sender?.url);
 
     // 注册连接
     registerConnection(port, tabId, origin);
@@ -828,4 +828,25 @@ export function initMessageListeners() {
   });
 
   console.log('✅ Message listeners initialized');
+}
+
+function resolveOrigin(senderUrl) {
+  if (!senderUrl) return 'unknown';
+  try {
+    const url = new URL(senderUrl);
+    if (url.protocol === 'file:') {
+      return stripUrlHashAndQuery(url.href);
+    }
+    const origin = url.origin;
+    if (origin === 'null') {
+      return stripUrlHashAndQuery(url.href);
+    }
+    return origin;
+  } catch (error) {
+    return senderUrl;
+  }
+}
+
+function stripUrlHashAndQuery(url) {
+  return url.split('#')[0].split('?')[0];
 }

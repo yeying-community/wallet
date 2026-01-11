@@ -27,6 +27,7 @@
   "content_scripts": [
     {
       "matches": [
+        "file:///*",
         "https://*/*",
         "http://*/*"
       ],
@@ -48,6 +49,7 @@
     {
       "resources": ["inject.js", "js/protocol/dapp-protocol.js"],
       "matches": [
+        "file:///*",
         "https://*/*",
         "http://*/*"
       ]
