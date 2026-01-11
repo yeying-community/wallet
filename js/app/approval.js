@@ -7,7 +7,7 @@ import { WalletDomain } from '../domain/wallet-domain.js';
 import { TransactionDomain } from '../domain/transaction-domain.js';
 import { NetworkDomain } from '../domain/network-domain.js';
 import { TokenDomain } from '../domain/token-domain.js';
-import { ethers } from '../../lib/ethers-5.7.esm.min.js';
+import { ethers } from '../../lib/ethers-6.16.esm.min.js';
 import { showToast } from '../common/ui/index.js';
 import { ApprovalMessageType } from '../protocol/extension-protocol.js';
 class ApprovalApp {
@@ -118,10 +118,10 @@ class ApprovalApp {
     const tx = this.requestData.transaction;
     document.getElementById('txTo').textContent = tx.to || '合约创建';
     document.getElementById('txValue').textContent =
-      ethers.utils.formatEther(tx.value || '0') + ' ETH';
+      ethers.formatEther(tx.value || '0') + ' ETH';
     document.getElementById('txGasLimit').textContent = tx.gasLimit || '自动';
     document.getElementById('txGasPrice').textContent =
-      tx.gasPrice ? ethers.utils.formatUnits(tx.gasPrice, 'gwei') + ' Gwei' : '自动';
+      tx.gasPrice ? ethers.formatUnits(tx.gasPrice, 'gwei') + ' Gwei' : '自动';
 
     if (tx.data && tx.data !== '0x') {
       document.getElementById('txDataRow').style.display = 'flex';
@@ -137,7 +137,7 @@ class ApprovalApp {
     let message = this.requestData.message;
 
     // 处理TypedData签名
-    if (this.requestData.type === 'signTypedData' && this.requestData.typedData) {
+    if (this.requestData.typedData) {
       try {
         message = JSON.stringify(this.requestData.typedData, null, 2);
       } catch (e) {
@@ -147,7 +147,7 @@ class ApprovalApp {
     // 处理普通签名
     else if (message && message.startsWith('0x')) {
       try {
-        message = ethers.utils.toUtf8String(message);
+        message = ethers.toUtf8String(message);
       } catch (e) {
         // 保持原样
       }

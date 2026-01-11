@@ -1,2 +1,2 @@
-npm install express cors ethers@^5.7.2 jsonwebtoken
+npm install express cors ethers@^6.16.0 jsonwebtoken
 
