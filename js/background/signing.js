@@ -18,6 +18,7 @@ import { ethers } from '../../lib/ethers-5.7.esm.min.js';
 export async function signTransaction(accountId, transaction) {
   try {
     const wallet = getWalletInstance(accountId);
+    const normalizedTx = normalizeTransaction(transaction);
 
     // 连接到 provider
     const network = await getNetworkByChainId(state.currentChainId);
@@ -33,7 +34,7 @@ export async function signTransaction(accountId, transaction) {
     const connectedWallet = wallet.connect(provider);
 
     // 签名并发送交易
-    const tx = await connectedWallet.sendTransaction(transaction);
+    const tx = await connectedWallet.sendTransaction(normalizedTx);
 
     console.log('✅ Transaction signed:', tx.hash);
 
@@ -51,6 +52,21 @@ export async function signTransaction(accountId, transaction) {
     console.error('❌ Sign transaction failed:', error);
     throw error;
   }
+}
+
+function normalizeTransaction(transaction) {
+  if (!transaction || typeof transaction !== 'object') return transaction;
+  const tx = { ...transaction };
+
+  if (tx.gas && !tx.gasLimit) {
+    tx.gasLimit = tx.gas;
+  }
+
+  if ('gas' in tx) {
+    delete tx.gas;
+  }
+
+  return tx;
 }
 
 /**
@@ -85,7 +101,12 @@ export async function signMessage(accountId, message) {
 export async function signTypedData(accountId, domain, types, value) {
   try {
     const wallet = getWalletInstance(accountId);
-    const signature = await wallet.signTypedData(domain, types, value);
+    const normalized = normalizeTypedData(domain, types, value);
+    const signature = await wallet._signTypedData(
+      normalized.domain,
+      normalized.types,
+      normalized.value
+    );
 
     console.log('✅ Typed data signed');
 
@@ -95,4 +116,29 @@ export async function signTypedData(accountId, domain, types, value) {
     console.error('❌ Sign typed data failed:', error);
     throw error;
   }
+}
+
+function normalizeTypedData(domain, types, value) {
+  const normalizedDomain = { ...(domain || {}) };
+  if (normalizedDomain.chainId) {
+    if (typeof normalizedDomain.chainId === 'string') {
+      const parsed = normalizedDomain.chainId.startsWith('0x')
+        ? parseInt(normalizedDomain.chainId, 16)
+        : parseInt(normalizedDomain.chainId, 10);
+      if (!Number.isNaN(parsed)) {
+        normalizedDomain.chainId = parsed;
+      }
+    }
+  }
+
+  const normalizedTypes = { ...(types || {}) };
+  if (normalizedTypes.EIP712Domain) {
+    delete normalizedTypes.EIP712Domain;
+  }
+
+  return {
+    domain: normalizedDomain,
+    types: normalizedTypes,
+    value: value || {}
+  };
 }

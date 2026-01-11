@@ -137,7 +137,7 @@ class ApprovalApp {
     let message = this.requestData.message;
 
     // 处理TypedData签名
-    if (this.requestData.type === 'signTypedData' && this.requestData.typedData) {
+    if (this.requestData.typedData) {
       try {
         message = JSON.stringify(this.requestData.typedData, null, 2);
       } catch (e) {
