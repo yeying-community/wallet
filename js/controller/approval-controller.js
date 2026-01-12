@@ -102,8 +102,8 @@ export class ApprovalController {
   // ==================== 交易签名请求 ====================
 
   bindTransactionEvents() {
-    const approveBtn = document.getElementById('approveTransaction');
-    const rejectBtn = document.getElementById('rejectTransaction');
+    const approveBtn = document.getElementById('approveTx');
+    const rejectBtn = document.getElementById('rejectTx');
 
     if (approveBtn) {
       approveBtn.addEventListener('click', () => this.approveTransaction());
@@ -118,41 +118,64 @@ export class ApprovalController {
 
   loadTransactionDetails() {
     // 显示交易详情
-    const txData = this.requestData;
+    const txPayload = this.requestData?.transaction || this.requestData || {};
     
     // 更新 UI 显示
-    const siteOrigin = document.getElementById('txSiteOrigin');
+    const siteOrigin = document.getElementById('txOrigin');
     if (siteOrigin) {
-      siteOrigin.textContent = txData.origin || '未知网站';
-    }
-
-    const txFrom = document.getElementById('txFrom');
-    if (txFrom) {
-      txFrom.textContent = shortenAddress(txData.from);
+      siteOrigin.textContent = this.requestData?.origin || txPayload.origin || '未知网站';
     }
 
     const txTo = document.getElementById('txTo');
     if (txTo) {
-      txTo.textContent = shortenAddress(txData.to);
+      txTo.textContent = txPayload?.to ? shortenAddress(txPayload.to) : '合约创建';
     }
 
     const txValue = document.getElementById('txValue');
     if (txValue) {
-      const value = txData.value ? parseInt(txData.value, 16) / 1e18 : 0;
-      txValue.textContent = `${value.toFixed(6)} ETH`;
+      let value = 0;
+      if (txPayload?.value) {
+        const raw = txPayload.value;
+        if (typeof raw === 'string' && raw.startsWith('0x')) {
+          value = parseInt(raw, 16) / 1e18;
+        } else {
+          value = Number(raw) / 1e18;
+        }
+      }
+      txValue.textContent = `${Number.isFinite(value) ? value.toFixed(6) : '0.000000'} ETH`;
     }
 
-    const txGas = document.getElementById('txGas');
-    if (txGas) {
-      txGas.textContent = txData.gas ? parseInt(txData.gas, 16).toLocaleString() : '-';
+    const txGasLimit = document.getElementById('txGasLimit');
+    if (txGasLimit) {
+      const gasLimit = txPayload?.gasLimit || txPayload?.gas;
+      txGasLimit.textContent = gasLimit
+        ? parseInt(gasLimit, 16).toLocaleString()
+        : '自动';
+    }
+
+    const txGasPrice = document.getElementById('txGasPrice');
+    if (txGasPrice) {
+      let gasPriceGwei = null;
+      if (txPayload?.gasPrice) {
+        const raw = txPayload.gasPrice;
+        const wei = typeof raw === 'string' && raw.startsWith('0x') ? parseInt(raw, 16) : Number(raw);
+        gasPriceGwei = Number.isFinite(wei) ? (wei / 1e9) : null;
+      }
+      txGasPrice.textContent = gasPriceGwei !== null
+        ? `${gasPriceGwei.toFixed(2)} Gwei`
+        : '自动';
     }
 
     // 显示原始数据（可选）
-    const txRawData = document.getElementById('txRawData');
-    if (txRawData) {
-      txRawData.textContent = txData.data && txData.data !== '0x' 
-        ? txData.data.slice(0, 100) + (txData.data.length > 100 ? '...' : '')
-        : '无';
+    const txDataRow = document.getElementById('txDataRow');
+    const txData = document.getElementById('txData');
+    if (txDataRow && txData) {
+      if (txPayload?.data && txPayload.data !== '0x') {
+        txDataRow.style.display = 'flex';
+        txData.textContent = txPayload.data.slice(0, 100) + (txPayload.data.length > 100 ? '...' : '');
+      } else {
+        txDataRow.style.display = 'none';
+      }
     }
   }
 
@@ -188,7 +211,7 @@ export class ApprovalController {
       messageEl.textContent = this.requestData.message;
     }
 
-    const siteOrigin = document.getElementById('signSiteOrigin');
+    const siteOrigin = document.getElementById('signOrigin');
     if (siteOrigin) {
       siteOrigin.textContent = this.requestData.origin || '未知网站';
     }

@@ -21,7 +21,7 @@ import {
 } from '../common/crypto/index.js';
 import { generateId } from '../common/utils/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
-import { ethers } from '../../lib/ethers-5.7.esm.min.js';
+import { ethers } from '../../lib/ethers-6.16.esm.min.js';
 import {
   createInvalidAddressError,
   createInvalidPasswordError,
@@ -100,7 +100,7 @@ export async function createHDWallet(accountName, password) {
 
     // 派生第一个账户（主账户）
     const derivationPath = "m/44'/60'/0'/0/0";
-    const mainWallet = ethers.Wallet.fromMnemonic(mnemonic, derivationPath);
+    const mainWallet = ethers.HDNodeWallet.fromPhrase(mnemonic, undefined, derivationPath);
 
     // 加密助记词和私钥
     const encryptedMnemonic = await encryptString(mnemonic, password);
@@ -182,7 +182,7 @@ export async function importHDWallet(accountName, mnemonic, password) {
     let mainWallet;
 
     try {
-      mainWallet = ethers.Wallet.fromMnemonic(mnemonic.trim(), derivationPath);
+      mainWallet = ethers.HDNodeWallet.fromPhrase(mnemonic.trim(), undefined, derivationPath);
     } catch (error) {
       throw createMnemonicInvalidError('无法从助记词派生钱包：' + error.message);
     }
@@ -360,7 +360,7 @@ export async function deriveSubAccount(wallet, newIndex, accountName, password) 
     let ethersWallet;
 
     try {
-      ethersWallet = ethers.Wallet.fromMnemonic(mnemonic, derivationPath);
+      ethersWallet = ethers.HDNodeWallet.fromPhrase(mnemonic, undefined, derivationPath);
     } catch (error) {
       throw createInternalError('派生账户失败：' + error.message);
     }

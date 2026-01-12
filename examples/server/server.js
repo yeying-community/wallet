@@ -53,7 +53,7 @@ app.post('/api/auth/verify', (req, res) => {
 
   try {
     // 验证签名
-    const recoveredAddress = ethers.utils.verifyMessage(
+    const recoveredAddress = ethers.verifyMessage(
       challengeData.challenge,
       signature
     );
@@ -111,4 +111,3 @@ app.get('/api/user/profile', authenticate, (req, res) => {
 app.listen(4001, () => {
   console.log('后端服务运行在 http://localhost:4001');
 });
-
