@@ -31,11 +31,17 @@ export const TransactionStorageKeys = {
   TRANSACTIONS: 'transactions'            // 交易记录
 };
 
+// ==================== UCAN 相关 ====================
+export const UcanStorageKeys = {
+  UCAN_SESSIONS: 'ucan_sessions'          // UCAN 会话 Map<origin:address:sessionId, Session>
+};
+
 // ==================== 统一导出 ====================
 export const StorageKeys = {
   ...WalletStorageKeys,
   ...NetworkStorageKeys,
   ...PermissionStorageKeys,
   ...SettingsStorageKeys,
-  ...TransactionStorageKeys
+  ...TransactionStorageKeys,
+  ...UcanStorageKeys
 };
