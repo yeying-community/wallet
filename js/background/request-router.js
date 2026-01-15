@@ -12,19 +12,21 @@ import {
   createInternalError,
   createUserRejectedError,
   createTimeoutError,
-  createError
+  createError,
+  createUnauthorizedError
 } from '../common/errors/index.js';
 import { handleEthAccounts, handleEthRequestAccounts, handleWalletGetPermissions, handleWalletRequestPermissions, handleWalletRevokePermissions } from './account-handler.js';
 import { handleEthChainId, handleNetVersion, handleSwitchChain, handleAddEthereumChain } from './chain-handler.js';
 import { handleRpcMethod } from './rpc-handler.js';
 import { signTransaction, signMessage, signTypedData } from './signing.js';
-import { getSelectedAccount } from '../storage/index.js';
+import { getSelectedAccount, isAuthorized } from '../storage/index.js';
 import { resetLockTimer } from './keyring.js';
 import { refreshPasswordCache } from './password-cache.js';
 import { requestUnlock } from './unlock-flow.js';
 import { withPopupBoundsAsync } from './window-utils.js';
 import { POPUP_DIMENSIONS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
+import { handleUcanSession, handleUcanSign } from './ucan.js';
 
 function findPendingRequest(type, origin, tabId) {
   for (const [requestId, request] of state.pendingRequests.entries()) {
@@ -40,6 +42,16 @@ function focusPendingWindow(pending) {
   const windowId = pending?.request?.windowId;
   if (!windowId) return;
   chrome.windows.update(windowId, { focused: true }).catch(() => { });
+}
+
+async function ensureSiteAuthorized(origin) {
+  if (!origin) {
+    throw createUnauthorizedError('Unauthorized origin');
+  }
+  const authorized = state.connectedSites.has(origin) || await isAuthorized(origin);
+  if (!authorized) {
+    throw createUnauthorizedError('Site not connected');
+  }
 }
 
 /**
@@ -85,7 +97,9 @@ export async function routeRequest(method, params, metadata) {
     'personal_sign',
     'eth_sign',
     'eth_signTypedData',
-    'eth_signTypedData_v4'
+    'eth_signTypedData_v4',
+    'yeying_ucan_session',
+    'yeying_ucan_sign'
   ]);
 
   if (!state.keyring && unlockMethods.has(method)) {
@@ -117,6 +131,18 @@ export async function routeRequest(method, params, metadata) {
 
   if (method === 'wallet_requestPermissions') {
     return handleWalletRequestPermissions(origin, tabId, params);
+  }
+
+  // ==================== UCAN 相关 ====================
+
+  if (method === 'yeying_ucan_session') {
+    await ensureSiteAuthorized(origin);
+    return handleUcanSession(origin, account, params);
+  }
+
+  if (method === 'yeying_ucan_sign') {
+    await ensureSiteAuthorized(origin);
+    return handleUcanSign(origin, account, params);
   }
 
   // ==================== 链相关 ====================

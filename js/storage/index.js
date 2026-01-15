@@ -12,7 +12,8 @@ export {
   NetworkStorageKeys,
   PermissionStorageKeys,
   SettingsStorageKeys,
-  TransactionStorageKeys
+  TransactionStorageKeys,
+  UcanStorageKeys
 } from './storage-keys.js';
 
 // ==================== 基础存储 ====================
