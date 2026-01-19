@@ -20,7 +20,6 @@
 
   const MAX_RECONNECT_ATTEMPTS = 3;
   const RECONNECT_DELAY_BASE = 1000; // 基础延迟 1 秒
-  const DISCONNECT_NOTIFY_DELAY = 2000; // 延迟通知断开，避免短暂重连导致误判
   const QUEUE_MAX_AGE = 15000; // 请求排队超时
   const QUEUE_MAX_SIZE = 100; // 最大排队请求数
 
@@ -47,14 +46,15 @@
 
   let port = null;
   let reconnectAttempts = 0;
-  let disconnectTimer = null;
-  let pendingDisconnectReason = null;
   const requestQueue = new Map();
 
   function initConnection() {
     // 检查扩展上下文是否有效
     if (!chrome.runtime?.id) {
       console.error('❌ Extension context invalidated');
+      sendEventToPage(EventType.DISCONNECT, {
+        reason: 'extension_context_invalidated'
+      });
       return;
     }
 
@@ -66,15 +66,6 @@
       port.onDisconnect.addListener(handleDisconnect);
 
       console.log('✅ Bridge connected to background');
-
-      if (disconnectTimer) {
-        clearTimeout(disconnectTimer);
-        disconnectTimer = null;
-        pendingDisconnectReason = null;
-      }
-
-      // 通知页面已连接
-      sendEventToPage(EventType.CONNECT, {});
 
       flushQueuedRequests();
     } catch (error) {
@@ -108,17 +99,13 @@
 
     port = null;
 
-    pendingDisconnectReason = error?.message || 'port_disconnected';
-    if (disconnectTimer) {
-      clearTimeout(disconnectTimer);
+    const reason = error?.message || 'port_disconnected';
+    if (reason.includes('Extension context invalidated')) {
+      sendEventToPage(EventType.DISCONNECT, {
+        reason: 'extension_context_invalidated'
+      });
+      return;
     }
-    disconnectTimer = setTimeout(() => {
-      if (!port) {
-        sendEventToPage(EventType.DISCONNECT, {
-          reason: pendingDisconnectReason || 'port_disconnected'
-        });
-      }
-    }, DISCONNECT_NOTIFY_DELAY);
 
     // 重试连接
     if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
@@ -130,6 +117,9 @@
       setTimeout(initConnection, delay);
     } else {
       console.error('❌ Max reconnection attempts reached');
+      sendEventToPage(EventType.DISCONNECT, {
+        reason: 'max_reconnect_attempts'
+      });
     }
   }
 

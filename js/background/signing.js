@@ -58,6 +58,29 @@ function normalizeTransaction(transaction) {
   if (!transaction || typeof transaction !== 'object') return transaction;
   const tx = { ...transaction };
 
+  if (typeof tx.to === 'string') {
+    const trimmed = tx.to.trim();
+    if (trimmed) {
+      if (!ethers.isAddress(trimmed)) {
+        throw new Error('Invalid "to" address');
+      }
+      tx.to = ethers.getAddress(trimmed);
+    } else {
+      delete tx.to;
+    }
+  }
+
+  if (typeof tx.from === 'string') {
+    const trimmed = tx.from.trim();
+    if (!ethers.isAddress(trimmed)) {
+      throw new Error('Invalid "from" address');
+    }
+  }
+
+  if ('from' in tx) {
+    delete tx.from;
+  }
+
   if (tx.gas && !tx.gasLimit) {
     tx.gasLimit = tx.gas;
   }

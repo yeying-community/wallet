@@ -6,6 +6,7 @@
 import { initMessageListeners } from './message-handler.js';
 import { cleanupConnections } from './connection.js';
 import { state } from './state.js';
+import { updateKeepAlive } from './offscreen.js';
 import { NETWORKS, DEFAULT_NETWORK } from '../config/index.js';
 import { getSelectedNetworkName, getUserSetting, ensureDefaultNetworks, getNetworkConfigByKey } from '../storage/index.js';
 import { normalizeChainId } from '../common/chain/index.js';
@@ -21,6 +22,7 @@ async function init() {
   console.log('🚀 YeYing Wallet Background Script Starting...');
 
   try {
+    await updateKeepAlive();
     const seededNetworks = await ensureDefaultNetworks(NETWORKS);
 
     // 加载保存的网络选择

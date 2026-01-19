@@ -207,7 +207,7 @@ export class ApprovalController {
 
     // 显示签名消息
     const messageEl = document.getElementById('signMessage');
-    if (messageEl && this.requestData.message) {
+    if (messageEl && this.requestData.message && !messageEl.dataset.rendered) {
       messageEl.textContent = this.requestData.message;
     }
 
@@ -309,7 +309,7 @@ export class ApprovalController {
     }
 
     // 显示代币详情
-    const tokenInfo = this.requestData.tokenInfo;
+    const tokenInfo = this.requestData.tokenInfo || this.requestData.asset || {};
     
     const tokenName = document.getElementById('tokenName');
     if (tokenName) {

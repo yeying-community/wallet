@@ -8,6 +8,7 @@ body {
 
 body {
   overflow-x: hidden;
+  overflow-y: hidden;
 }
 
 .approval-container {
@@ -16,7 +17,41 @@ body {
   max-width: none;
   box-sizing: border-box;
   margin: 0 auto;
-  min-height: 100%;
+  height: 100vh;
+  max-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.request-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.request-header {
+  flex: 0 0 auto;
+}
+
+.request-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding-right: 4px;
+  min-height: 0;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.request-body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.request-footer {
+  flex: 0 0 auto;
 }
 
 .site-info {
@@ -130,8 +165,110 @@ body {
   word-break: break-all;
   font-family: monospace;
   font-size: 12px;
-  max-height: 200px;
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+.recap-meta {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 12px 15px;
+  margin: 15px 0;
+}
+
+.recap-list {
+  margin: 10px 0 15px;
+}
+
+.recap-resource {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.recap-resource-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #333;
+  word-break: break-all;
+  margin-bottom: 8px;
+}
+
+.recap-action-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.recap-action {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px dashed #e0e0e0;
+  font-size: 12px;
+}
+
+.recap-action:last-child {
+  border-bottom: none;
+}
+
+.recap-action-name {
+  font-family: monospace;
+  color: #333;
+}
+
+.recap-constraints {
+  color: #666;
+  text-align: right;
+  word-break: break-word;
+  max-width: 65%;
+  font-size: 11px;
+}
+
+.recap-raw summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: #666;
+}
+
+.siwe-meta {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 12px 15px;
+  margin: 15px 0;
+}
+
+.siwe-warnings {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 10px 0 15px;
+  font-size: 12px;
+  color: #856404;
+}
+
+.siwe-warning-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.siwe-warning-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.siwe-warning-list li {
+  margin: 4px 0;
+}
+
+.siwe-raw summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: #666;
 }
 
 /* 链详情 */

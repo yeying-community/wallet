@@ -20,13 +20,12 @@ import { handleEthChainId, handleNetVersion, handleSwitchChain, handleAddEthereu
 import { handleRpcMethod } from './rpc-handler.js';
 import { signTransaction, signMessage, signTypedData } from './signing.js';
 import { getSelectedAccount, isAuthorized } from '../storage/index.js';
-import { resetLockTimer } from './keyring.js';
-import { refreshPasswordCache } from './password-cache.js';
 import { requestUnlock } from './unlock-flow.js';
 import { withPopupBoundsAsync } from './window-utils.js';
 import { POPUP_DIMENSIONS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { handleUcanSession, handleUcanSign } from './ucan.js';
+import { updateKeepAlive } from './offscreen.js';
 
 function findPendingRequest(type, origin, tabId) {
   for (const [requestId, request] of state.pendingRequests.entries()) {
@@ -42,6 +41,17 @@ function focusPendingWindow(pending) {
   const windowId = pending?.request?.windowId;
   if (!windowId) return;
   chrome.windows.update(windowId, { focused: true }).catch(() => { });
+}
+
+function addPendingRequest(requestId, request) {
+  state.pendingRequests.set(requestId, request);
+  updateKeepAlive();
+}
+
+function removePendingRequest(requestId) {
+  if (state.pendingRequests.delete(requestId)) {
+    updateKeepAlive();
+  }
 }
 
 async function ensureSiteAuthorized(origin) {
@@ -63,6 +73,8 @@ async function ensureSiteAuthorized(origin) {
  */
 export async function routeRequest(method, params, metadata) {
   const { origin, tabId } = metadata;
+  const paramsArray = Array.isArray(params) ? params : (params == null ? [] : [params]);
+  const rpcParams = params == null ? [] : params;
 
   console.log(`📍 Routing request: ${method}`, { origin, params });
 
@@ -85,7 +97,7 @@ export async function routeRequest(method, params, metadata) {
   }
 
   if (method === 'wallet_revokePermissions') {
-    return handleWalletRevokePermissions(origin, params);
+    return handleWalletRevokePermissions(origin, paramsArray);
   }
 
   // ==================== 需要解锁的方法 ====================
@@ -111,12 +123,6 @@ export async function routeRequest(method, params, metadata) {
     throw createWalletLockedError();
   }
 
-  // 重置锁定计时器
-  resetLockTimer();
-
-  // 刷新密码缓存时间
-  refreshPasswordCache();
-
   // 获取当前账户
   const account = await getSelectedAccount();
   if (!account) {
@@ -130,7 +136,7 @@ export async function routeRequest(method, params, metadata) {
   }
 
   if (method === 'wallet_requestPermissions') {
-    return handleWalletRequestPermissions(origin, tabId, params);
+    return handleWalletRequestPermissions(origin, tabId, paramsArray);
   }
 
   // ==================== UCAN 相关 ====================
@@ -148,35 +154,166 @@ export async function routeRequest(method, params, metadata) {
   // ==================== 链相关 ====================
 
   if (method === 'wallet_switchEthereumChain') {
-    return handleSwitchChain(params);
+    return handleSwitchChain(paramsArray);
   }
 
   if (method === 'wallet_addEthereumChain') {
-    return handleAddEthereumChain(params);
+    return handleAddEthereumChain(paramsArray);
+  }
+
+  if (method === 'wallet_watchAsset') {
+    return handleWatchAsset(origin, paramsArray, tabId);
   }
 
   // ==================== 签名相关 ====================
 
   if (method === 'eth_sendTransaction') {
-    return handleSendTransaction(account.id, params, origin, tabId);
+    return handleSendTransaction(account.id, paramsArray, origin, tabId);
   }
 
   if (method === 'eth_signTransaction') {
-    return handleSignTransaction(account.id, params, origin, tabId);
+    return handleSignTransaction(account.id, paramsArray, origin, tabId);
   }
 
   if (method === 'personal_sign' || method === 'eth_sign') {
-    return handlePersonalSign(account.id, params, origin, tabId);
+    return handlePersonalSign(account.id, paramsArray, origin, tabId);
   }
 
   if (method === 'eth_signTypedData' || method === 'eth_signTypedData_v4') {
-    return handleSignTypedData(account.id, params, origin, tabId);
+    return handleSignTypedData(account.id, paramsArray, origin, tabId);
   }
 
   // ==================== RPC 转发 ====================
 
   // 其他方法转发到 RPC 节点
-  return handleRpcMethod(method, params);
+  return handleRpcMethod(method, rpcParams);
+}
+
+// ==================== 代币相关 ====================
+
+/**
+ * 处理 wallet_watchAsset
+ * @param {string} origin - 来源
+ * @param {Array} params - 参数 [{ type, options }]
+ * @param {number} tabId - 标签页 ID
+ * @returns {Promise<boolean>} 是否添加成功
+ */
+async function handleWatchAsset(origin, params, tabId) {
+  const [request] = params;
+
+  if (!request || typeof request !== 'object') {
+    throw createInvalidParams('Invalid watchAsset parameters');
+  }
+
+  const type = request.type || request.assetType || 'ERC20';
+  if (String(type).toUpperCase() !== 'ERC20') {
+    throw createInvalidParams('Only ERC20 assets are supported');
+  }
+
+  const options = request.options && typeof request.options === 'object'
+    ? request.options
+    : request;
+
+  const address = options.address;
+  const symbol = options.symbol;
+  const decimalsRaw = options.decimals;
+  const decimals = Number.isFinite(decimalsRaw) ? decimalsRaw : Number.parseInt(decimalsRaw, 10);
+
+  if (!address || !symbol) {
+    throw createInvalidParams('address and symbol are required');
+  }
+
+  const tokenInfo = {
+    address,
+    symbol,
+    decimals: Number.isFinite(decimals) ? decimals : 18,
+    image: options.image,
+    name: options.name
+  };
+
+  const pending = findPendingRequest('watchAsset', origin, tabId);
+  if (pending) {
+    focusPendingWindow(pending);
+    throw createError(-32002, 'Watch asset request already pending');
+  }
+
+  const requestId = `watch_asset_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  addPendingRequest(requestId, {
+    type: 'watchAsset',
+    origin,
+    tabId,
+    data: {
+      origin,
+      asset: tokenInfo,
+      tokenInfo
+    },
+    timestamp: getTimestamp()
+  });
+
+  return new Promise(async (resolve, reject) => {
+    const windowOptions = await withPopupBoundsAsync({
+      url: `html/approval.html?requestId=${requestId}&type=watchAsset`,
+      type: 'popup',
+      width: POPUP_DIMENSIONS.width,
+      height: POPUP_DIMENSIONS.height,
+      focused: true
+    });
+
+    chrome.windows.create(windowOptions, (window) => {
+      if (!window) {
+        removePendingRequest(requestId);
+        reject(createInternalError('Failed to open approval window'));
+        return;
+      }
+
+      const pendingRequest = state.pendingRequests.get(requestId);
+      if (pendingRequest) {
+        pendingRequest.windowId = window.id;
+      }
+
+      const windowRemovedListener = (windowId) => {
+        if (windowId === window.id) {
+          chrome.windows.onRemoved.removeListener(windowRemovedListener);
+          chrome.runtime.onMessage.removeListener(messageListener);
+
+          if (state.pendingRequests.has(requestId)) {
+            removePendingRequest(requestId);
+            reject(createUserRejectedError('User closed approval window'));
+          }
+        }
+      };
+
+      const messageListener = (message) => {
+        if (message.type === ApprovalMessageType.APPROVAL_RESPONSE && message.requestId === requestId) {
+          chrome.windows.onRemoved.removeListener(windowRemovedListener);
+          chrome.runtime.onMessage.removeListener(messageListener);
+
+          removePendingRequest(requestId);
+
+          if (message.approved) {
+            resolve(true);
+          } else {
+            resolve(false);
+          }
+        }
+      };
+
+      chrome.windows.onRemoved.addListener(windowRemovedListener);
+      chrome.runtime.onMessage.addListener(messageListener);
+
+      setTimeout(() => {
+        if (state.pendingRequests.has(requestId)) {
+          chrome.windows.onRemoved.removeListener(windowRemovedListener);
+          chrome.runtime.onMessage.removeListener(messageListener);
+
+          removePendingRequest(requestId);
+          chrome.windows.remove(window.id).catch(() => { });
+          reject(createTimeoutError('Approval request timeout'));
+        }
+      }, 300000);
+    });
+  });
 }
 
 // ==================== 签名方法处理器 ====================
@@ -205,7 +342,7 @@ async function handleSendTransaction(accountId, params, origin, tabId) {
   // 🔑 创建签名请求
   const requestId = `tx_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
 
-  state.pendingRequests.set(requestId, {
+  addPendingRequest(requestId, {
     type: 'transaction',
     origin,
     tabId,
@@ -231,7 +368,7 @@ async function handleSendTransaction(accountId, params, origin, tabId) {
 
     chrome.windows.create(windowOptions, (window) => {
       if (!window) {
-        state.pendingRequests.delete(requestId);
+        removePendingRequest(requestId);
         reject(createInternalError('Failed to open approval window'));
         return;
       }
@@ -252,7 +389,7 @@ async function handleSendTransaction(accountId, params, origin, tabId) {
           chrome.runtime.onMessage.removeListener(messageListener);
 
           if (state.pendingRequests.has(requestId)) {
-            state.pendingRequests.delete(requestId);
+            removePendingRequest(requestId);
             reject(createUserRejectedError('User closed approval window'));
           }
         }
@@ -266,7 +403,7 @@ async function handleSendTransaction(accountId, params, origin, tabId) {
           chrome.windows.onRemoved.removeListener(windowRemovedListener);
           chrome.runtime.onMessage.removeListener(messageListener);
 
-          state.pendingRequests.delete(requestId);
+          removePendingRequest(requestId);
 
           if (message.approved) {
             try {
@@ -295,7 +432,7 @@ async function handleSendTransaction(accountId, params, origin, tabId) {
           chrome.windows.onRemoved.removeListener(windowRemovedListener);
           chrome.runtime.onMessage.removeListener(messageListener);
 
-          state.pendingRequests.delete(requestId);
+          removePendingRequest(requestId);
 
           // 尝试关闭窗口
           chrome.windows.remove(window.id).catch(() => { });
@@ -332,7 +469,7 @@ async function handleSignTransaction(accountId, params, origin, tabId) {
   // 创建签名请求
   const requestId = `sign_tx_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
 
-  state.pendingRequests.set(requestId, {
+  addPendingRequest(requestId, {
     type: 'sign_transaction',
     origin,
     tabId,
@@ -356,7 +493,7 @@ async function handleSignTransaction(accountId, params, origin, tabId) {
 
     chrome.windows.create(windowOptions, (window) => {
       if (!window) {
-        state.pendingRequests.delete(requestId);
+        removePendingRequest(requestId);
         reject(createInternalError('Failed to open approval window'));
         return;
       }
@@ -372,7 +509,7 @@ async function handleSignTransaction(accountId, params, origin, tabId) {
           chrome.runtime.onMessage.removeListener(messageListener);
 
           if (state.pendingRequests.has(requestId)) {
-            state.pendingRequests.delete(requestId);
+            removePendingRequest(requestId);
             reject(createUserRejectedError('User closed approval window'));
           }
         }
@@ -383,7 +520,7 @@ async function handleSignTransaction(accountId, params, origin, tabId) {
           chrome.windows.onRemoved.removeListener(windowRemovedListener);
           chrome.runtime.onMessage.removeListener(messageListener);
 
-          state.pendingRequests.delete(requestId);
+          removePendingRequest(requestId);
 
           if (message.approved) {
             try {
@@ -405,7 +542,7 @@ async function handleSignTransaction(accountId, params, origin, tabId) {
         if (state.pendingRequests.has(requestId)) {
           chrome.windows.onRemoved.removeListener(windowRemovedListener);
           chrome.runtime.onMessage.removeListener(messageListener);
-          state.pendingRequests.delete(requestId);
+          removePendingRequest(requestId);
           chrome.windows.remove(window.id).catch(() => { });
           reject(createTimeoutError('Approval request timeout'));
         }
@@ -449,7 +586,7 @@ async function handlePersonalSign(accountId, params, origin, tabId) {
   // 创建签名请求
   const requestId = `sign_msg_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
 
-  state.pendingRequests.set(requestId, {
+  addPendingRequest(requestId, {
     type: 'sign_message',
     origin,
     tabId,
@@ -473,7 +610,7 @@ async function handlePersonalSign(accountId, params, origin, tabId) {
 
     chrome.windows.create(windowOptions, (window) => {
       if (!window) {
-        state.pendingRequests.delete(requestId);
+        removePendingRequest(requestId);
         reject(createInternalError('Failed to open approval window'));
         return;
       }
@@ -489,7 +626,7 @@ async function handlePersonalSign(accountId, params, origin, tabId) {
           chrome.runtime.onMessage.removeListener(messageListener);
 
           if (state.pendingRequests.has(requestId)) {
-            state.pendingRequests.delete(requestId);
+            removePendingRequest(requestId);
             reject(createUserRejectedError('User closed approval window'));
           }
         }
@@ -500,7 +637,7 @@ async function handlePersonalSign(accountId, params, origin, tabId) {
           chrome.windows.onRemoved.removeListener(windowRemovedListener);
           chrome.runtime.onMessage.removeListener(messageListener);
 
-          state.pendingRequests.delete(requestId);
+          removePendingRequest(requestId);
 
           if (responseMessage.approved) {
             try {
@@ -522,7 +659,7 @@ async function handlePersonalSign(accountId, params, origin, tabId) {
         if (state.pendingRequests.has(requestId)) {
           chrome.windows.onRemoved.removeListener(windowRemovedListener);
           chrome.runtime.onMessage.removeListener(messageListener);
-          state.pendingRequests.delete(requestId);
+          removePendingRequest(requestId);
           chrome.windows.remove(window.id).catch(() => { });
           reject(createTimeoutError('Approval request timeout'));
         }
@@ -563,7 +700,7 @@ async function handleSignTypedData(accountId, params, origin, tabId) {
   // 创建签名请求
   const requestId = `sign_typed_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
 
-  state.pendingRequests.set(requestId, {
+  addPendingRequest(requestId, {
     type: 'sign_typed_data',
     origin,
     tabId,
@@ -587,7 +724,7 @@ async function handleSignTypedData(accountId, params, origin, tabId) {
 
     chrome.windows.create(windowOptions, (window) => {
       if (!window) {
-        state.pendingRequests.delete(requestId);
+        removePendingRequest(requestId);
         reject(createInternalError('Failed to open approval window'));
         return;
       }
@@ -603,7 +740,7 @@ async function handleSignTypedData(accountId, params, origin, tabId) {
           chrome.runtime.onMessage.removeListener(messageListener);
 
           if (state.pendingRequests.has(requestId)) {
-            state.pendingRequests.delete(requestId);
+            removePendingRequest(requestId);
             reject(createUserRejectedError('User closed approval window'));
           }
         }
@@ -614,7 +751,7 @@ async function handleSignTypedData(accountId, params, origin, tabId) {
           chrome.windows.onRemoved.removeListener(windowRemovedListener);
           chrome.runtime.onMessage.removeListener(messageListener);
 
-          state.pendingRequests.delete(requestId);
+          removePendingRequest(requestId);
 
           if (message.approved) {
             try {
@@ -637,7 +774,7 @@ async function handleSignTypedData(accountId, params, origin, tabId) {
         if (state.pendingRequests.has(requestId)) {
           chrome.windows.onRemoved.removeListener(windowRemovedListener);
           chrome.runtime.onMessage.removeListener(messageListener);
-          state.pendingRequests.delete(requestId);
+          removePendingRequest(requestId);
           chrome.windows.remove(window.id).catch(() => { });
           reject(createTimeoutError('Approval request timeout'));
         }

@@ -153,7 +153,464 @@ class ApprovalApp {
       }
     }
 
-    document.getElementById('signMessage').textContent = message;
+    const siweInfo = this.parseSiweMessage(message);
+    const titleEl = document.querySelector('#signRequest h2');
+    if (titleEl) {
+      titleEl.textContent = siweInfo ? '登录请求' : '签名请求';
+    }
+    if (siweInfo) {
+      this.renderSiweRequest(siweInfo, message);
+    }
+
+    const recapInfo = this.parseRecapFromSiwe(message, siweInfo);
+    if (recapInfo && recapInfo.capabilities.length > 0) {
+      this.renderRecapRequest(recapInfo, message);
+    }
+
+    if (!siweInfo && (!recapInfo || recapInfo.capabilities.length === 0)) {
+      const messageEl = document.getElementById('signMessage');
+      messageEl.textContent = message;
+      messageEl.dataset.rendered = 'true';
+    }
+  }
+
+  parseRecapFromSiwe(message, siweInfo) {
+    const siwe = siweInfo || this.parseSiweMessage(message);
+    if (!siwe) return null;
+    if (!siwe.resources.length) return null;
+
+    const recapList = siwe.resources
+      .map((uri) => this.parseRecapResource(uri))
+      .filter((item) => item);
+
+    if (!recapList.length) return null;
+
+    const recap = this.mergeRecap(recapList);
+    const capabilities = this.flattenRecapCapabilities(recap);
+    return { ...siwe, recap, capabilities };
+  }
+
+  parseSiweMessage(message) {
+    if (!message || typeof message !== 'string') return null;
+    const firstLineMatch = message.match(
+      /^(.*) wants you to sign in with your Ethereum account:\s*$/im
+    );
+    if (!firstLineMatch) return null;
+
+    const lines = message.split(/\r?\n/);
+    const domain = firstLineMatch[1]?.trim() || '';
+
+    let address = '';
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line) {
+        address = line;
+        break;
+      }
+    }
+
+    const resources = this.extractSiweResources(lines);
+    const statement = this.extractSiweStatement(lines);
+    const fields = this.extractSiweFields(lines);
+
+    return {
+      domain,
+      address,
+      statement,
+      uri: fields.uri,
+      version: fields.version,
+      chainId: fields.chainId,
+      nonce: fields.nonce,
+      issuedAt: fields.issuedAt,
+      expirationTime: fields.expirationTime,
+      notBefore: fields.notBefore,
+      requestId: fields.requestId,
+      resources,
+    };
+  }
+
+  extractSiweResources(lines) {
+    const resources = [];
+    const index = lines.findIndex((line) => line.trim() === 'Resources:');
+    if (index === -1) return resources;
+    for (let i = index + 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line.startsWith('- ')) break;
+      resources.push(line.slice(2).trim());
+    }
+    return resources;
+  }
+
+  extractSiweFields(lines) {
+    const fields = {
+      uri: '',
+      version: '',
+      chainId: '',
+      nonce: '',
+      issuedAt: '',
+      expirationTime: '',
+      notBefore: '',
+      requestId: '',
+    };
+    const keyMap = [
+      { label: 'URI', key: 'uri' },
+      { label: 'Version', key: 'version' },
+      { label: 'Chain ID', key: 'chainId' },
+      { label: 'Nonce', key: 'nonce' },
+      { label: 'Issued At', key: 'issuedAt' },
+      { label: 'Expiration Time', key: 'expirationTime' },
+      { label: 'Not Before', key: 'notBefore' },
+      { label: 'Request ID', key: 'requestId' },
+    ];
+
+    lines.forEach((rawLine) => {
+      const line = rawLine.trim();
+      if (!line) return;
+      keyMap.forEach((entry) => {
+        const prefix = `${entry.label}:`;
+        if (line.toLowerCase().startsWith(prefix.toLowerCase())) {
+          fields[entry.key] = line.slice(prefix.length).trim();
+        }
+      });
+    });
+
+    return fields;
+  }
+
+  extractSiweStatement(lines) {
+    const addressIndex = lines.findIndex((line) =>
+      line.toLowerCase().includes('wants you to sign in with your ethereum account')
+    );
+    if (addressIndex === -1) return '';
+    let cursor = addressIndex + 1;
+    while (cursor < lines.length && lines[cursor].trim() === '') {
+      cursor++;
+    }
+    // skip address line
+    cursor++;
+    while (cursor < lines.length && lines[cursor].trim() === '') {
+      cursor++;
+    }
+
+    const statementLines = [];
+    for (; cursor < lines.length; cursor++) {
+      const line = lines[cursor];
+      if (line.trim() === '') break;
+      if (/^[A-Za-z].*:\s/.test(line)) break;
+      statementLines.push(line);
+    }
+    return statementLines.join('\n').trim();
+  }
+
+  parseRecapResource(uri) {
+    if (!uri || typeof uri !== 'string') return null;
+    if (!uri.startsWith('urn:recap:')) return null;
+    const encoded = uri.slice('urn:recap:'.length);
+    try {
+      const json = this.decodeBase64Url(encoded);
+      const recap = JSON.parse(json);
+      if (!recap || typeof recap !== 'object') return null;
+      return recap;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  decodeBase64Url(input) {
+    let base64 = input.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4 !== 0) {
+      base64 += '=';
+    }
+    return atob(base64);
+  }
+
+  mergeRecap(recaps) {
+    const merged = { att: {} };
+    recaps.forEach((recap) => {
+      const att = recap?.att;
+      if (!att || typeof att !== 'object') return;
+      Object.keys(att).forEach((resource) => {
+        if (!merged.att[resource]) {
+          merged.att[resource] = {};
+        }
+        const actions = att[resource] || {};
+        Object.keys(actions).forEach((action) => {
+          const raw = actions[action];
+          const constraints = Array.isArray(raw)
+            ? raw
+            : raw
+            ? [raw]
+            : [];
+          if (!merged.att[resource][action]) {
+            merged.att[resource][action] = [];
+          }
+          merged.att[resource][action].push(...constraints);
+        });
+      });
+    });
+    return merged;
+  }
+
+  flattenRecapCapabilities(recap) {
+    const items = [];
+    const att = recap?.att || {};
+    Object.keys(att).forEach((resource) => {
+      const actions = att[resource] || {};
+      const actionList = Object.keys(actions).map((action) => ({
+        action,
+        constraints: actions[action] || [],
+      }));
+      items.push({ resource, actions: actionList });
+    });
+    return items;
+  }
+
+  formatConstraints(constraints) {
+    if (!constraints) return '无约束';
+    const list = Array.isArray(constraints) ? constraints : [constraints];
+    const normalized = list
+      .map((item) => {
+        if (item == null) return '';
+        if (typeof item === 'string') return item;
+        if (typeof item === 'object') {
+          const keys = Object.keys(item);
+          if (!keys.length) return '';
+          try {
+            return JSON.stringify(item);
+          } catch (error) {
+            return String(item);
+          }
+        }
+        return String(item);
+      })
+      .filter((item) => item);
+    return normalized.length ? normalized.join('; ') : '无约束';
+  }
+
+  renderRecapRequest(recapInfo, rawMessage) {
+    const recapSection = document.getElementById('recapSection');
+    const messageSection = document.getElementById('signMessageSection');
+    const messageEl = document.getElementById('signMessage');
+    if (messageSection) {
+      messageSection.classList.add('hidden');
+    }
+    if (recapSection) {
+      recapSection.classList.remove('hidden');
+    }
+    if (messageEl) {
+      messageEl.textContent = rawMessage;
+      messageEl.dataset.rendered = 'true';
+    }
+
+    const domainEl = document.getElementById('recapDomain');
+    const addressEl = document.getElementById('recapAddress');
+    const statementEl = document.getElementById('recapStatement');
+    const statementRow = document.getElementById('recapStatementRow');
+    const rawEl = document.getElementById('recapRaw');
+
+    if (domainEl) {
+      domainEl.textContent = recapInfo.domain || this.requestData.origin || '-';
+    }
+    if (addressEl) {
+      addressEl.textContent = recapInfo.address || '-';
+    }
+    if (statementEl && statementRow) {
+      if (recapInfo.statement) {
+        statementEl.textContent = recapInfo.statement;
+        statementRow.style.display = 'flex';
+      } else {
+        statementRow.style.display = 'none';
+      }
+    }
+    if (rawEl) {
+      rawEl.textContent = rawMessage;
+    }
+
+    const listEl = document.getElementById('recapList');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+
+    recapInfo.capabilities.forEach((entry) => {
+      const resourceBox = document.createElement('div');
+      resourceBox.className = 'recap-resource';
+
+      const title = document.createElement('div');
+      title.className = 'recap-resource-title';
+      title.textContent = entry.resource;
+      resourceBox.appendChild(title);
+
+      const actionList = document.createElement('div');
+      actionList.className = 'recap-action-list';
+
+      entry.actions.forEach((actionEntry) => {
+        const row = document.createElement('div');
+        row.className = 'recap-action';
+
+        const actionName = document.createElement('span');
+        actionName.className = 'recap-action-name';
+        actionName.textContent = actionEntry.action;
+
+        const constraints = document.createElement('span');
+        constraints.className = 'recap-constraints';
+        constraints.textContent = this.formatConstraints(actionEntry.constraints);
+
+        row.appendChild(actionName);
+        row.appendChild(constraints);
+        actionList.appendChild(row);
+      });
+
+      resourceBox.appendChild(actionList);
+      listEl.appendChild(resourceBox);
+    });
+  }
+
+  renderSiweRequest(siweInfo, rawMessage) {
+    const siweSection = document.getElementById('siweSection');
+    const messageSection = document.getElementById('signMessageSection');
+    if (messageSection) {
+      messageSection.classList.add('hidden');
+    }
+    if (siweSection) {
+      siweSection.classList.remove('hidden');
+    }
+
+    const setText = (id, value, rowId) => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.textContent = value || '-';
+      }
+      if (rowId) {
+        const row = document.getElementById(rowId);
+        if (row) {
+          row.style.display = value ? 'flex' : 'none';
+        }
+      }
+    };
+
+    setText('siweDomain', siweInfo.domain);
+    setText('siweAddress', siweInfo.address);
+    setText('siweStatement', siweInfo.statement, 'siweStatementRow');
+    setText('siweUri', siweInfo.uri, 'siweUriRow');
+    setText('siweVersion', siweInfo.version, 'siweVersionRow');
+    setText('siweChainId', siweInfo.chainId, 'siweChainIdRow');
+    setText('siweNonce', siweInfo.nonce, 'siweNonceRow');
+    setText('siweIssuedAt', siweInfo.issuedAt, 'siweIssuedAtRow');
+    setText('siweExpiration', siweInfo.expirationTime, 'siweExpirationRow');
+    setText('siweNotBefore', siweInfo.notBefore, 'siweNotBeforeRow');
+    setText('siweRequestId', siweInfo.requestId, 'siweRequestIdRow');
+
+    let resourcesValue = '';
+    if (siweInfo.resources && siweInfo.resources.length > 0) {
+      if (siweInfo.resources.length <= 3) {
+        resourcesValue = siweInfo.resources.join(', ');
+      } else {
+        resourcesValue = `${siweInfo.resources.length} items`;
+      }
+    }
+    setText('siweResources', resourcesValue, 'siweResourcesRow');
+
+    const rawEl = document.getElementById('siweRaw');
+    if (rawEl) {
+      rawEl.textContent = rawMessage;
+    }
+
+    this.renderSiweWarnings(siweInfo);
+  }
+
+  renderSiweWarnings(siweInfo) {
+    const container = document.getElementById('siweWarnings');
+    const listEl = document.getElementById('siweWarningList');
+    if (!container || !listEl) return;
+    const warnings = this.buildSiweWarnings(siweInfo);
+    listEl.textContent = '';
+    if (!warnings.length) {
+      container.classList.add('hidden');
+      return;
+    }
+    warnings.forEach((warning) => {
+      const item = document.createElement('li');
+      item.textContent = warning;
+      listEl.appendChild(item);
+    });
+    container.classList.remove('hidden');
+  }
+
+  buildSiweWarnings(siweInfo) {
+    const warnings = [];
+    const origin = this.requestData?.origin || '';
+
+    if (!siweInfo.domain) {
+      warnings.push('缺少域名信息');
+    } else if (origin && !this.isDomainMatch(origin, siweInfo.domain)) {
+      warnings.push(`域名与当前站点不一致: ${siweInfo.domain}`);
+    }
+
+    if (!siweInfo.address) {
+      warnings.push('缺少签名地址');
+    }
+
+    if (!siweInfo.nonce) {
+      warnings.push('缺少随机数 (Nonce)');
+    }
+
+    if (!siweInfo.chainId) {
+      warnings.push('缺少 Chain ID');
+    }
+
+    if (siweInfo.uri && origin) {
+      const uriHost = this.safeGetHost(siweInfo.uri);
+      const originHost = this.safeGetHost(origin);
+      if (uriHost && originHost && uriHost !== originHost) {
+        warnings.push(`URI 与当前站点不一致: ${siweInfo.uri}`);
+      }
+    }
+
+    const now = Date.now();
+    const issuedAt = this.safeParseDate(siweInfo.issuedAt);
+    if (issuedAt && issuedAt.getTime() > now + 5 * 60 * 1000) {
+      warnings.push('Issued At 在未来时间');
+    }
+
+    const expiration = this.safeParseDate(siweInfo.expirationTime);
+    if (expiration && expiration.getTime() <= now) {
+      warnings.push('该签名请求已过期');
+    }
+
+    const notBefore = this.safeParseDate(siweInfo.notBefore);
+    if (notBefore && notBefore.getTime() > now) {
+      warnings.push('该签名请求尚未生效');
+    }
+
+    return warnings;
+  }
+
+  safeGetHost(value) {
+    if (!value) return '';
+    try {
+      if (value.startsWith('http://') || value.startsWith('https://')) {
+        return new URL(value).host;
+      }
+      return new URL(`https://${value}`).host;
+    } catch {
+      return '';
+    }
+  }
+
+  isDomainMatch(origin, domain) {
+    const originHost = this.safeGetHost(origin);
+    const domainHost = this.safeGetHost(domain);
+    if (!originHost || !domainHost) return false;
+    if (originHost === domainHost) return true;
+    if (originHost.endsWith(`.${domainHost}`)) return true;
+    if (domainHost.endsWith(`.${originHost}`)) return true;
+    return false;
+  }
+
+  safeParseDate(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date;
   }
 
   renderAddChainRequest() {
@@ -183,11 +640,11 @@ class ApprovalApp {
     document.getElementById('watchAssetRequest').classList.remove('hidden');
     document.getElementById('watchAssetOrigin').textContent = this.requestData.origin;
 
-    const asset = this.requestData.asset;
+    const asset = this.requestData.asset || this.requestData.tokenInfo || {};
 
     document.getElementById('assetSymbol').textContent = asset.symbol || '未知';
     document.getElementById('assetAddress').textContent = asset.address || '未知';
-    document.getElementById('assetDecimals').textContent = asset.decimals || '18';
+    document.getElementById('assetDecimals').textContent = asset.decimals ?? '18';
 
     // 显示代币图标
     if (asset.image) {

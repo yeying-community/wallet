@@ -823,6 +823,17 @@ export function initMessageListeners() {
 
   // 监听来自 popup 的一次性消息
   chrome.runtime.onMessage.addListener((message, sender, response) => {
+    if (message?.type === 'KEEP_ALIVE') {
+      const isExtensionSender = sender?.id === chrome.runtime.id;
+      const senderUrl = sender?.url || '';
+      const baseUrl = chrome.runtime.getURL('');
+      if (!isExtensionSender || (senderUrl && !senderUrl.startsWith(baseUrl))) {
+        response({ success: false });
+        return false;
+      }
+      response({ success: true });
+      return false;
+    }
     handlePopupMessage(message, response);
     return true; // 保持消息通道开启
   });
