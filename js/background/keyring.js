@@ -12,6 +12,7 @@ import { cachePassword, clearPasswordCache, refreshPasswordCache } from './passw
 import { broadcastEvent } from './connection.js';
 import { TIMEOUTS } from '../config/index.js';
 import { notifyUnlocked } from './unlock-flow.js';
+import { updateKeepAlive } from './offscreen.js';
 
 /**
  * 解锁钱包
@@ -62,6 +63,7 @@ export async function unlockWallet(password, accountId) {
 
     // 通知等待解锁的请求
     notifyUnlocked();
+    updateKeepAlive();
 
     console.log('✅ Wallet unlocked');
 
@@ -106,6 +108,7 @@ export async function lockWallet() {
 
     // 通知所有连接的页面
     broadcastEvent(EventType.ACCOUNTS_CHANGED, { accounts: [] });
+    updateKeepAlive();
 
     console.log('✅ Wallet locked');
 

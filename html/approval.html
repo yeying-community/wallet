@@ -12,184 +12,299 @@
   <body>
     <div class="approval-container">
       <!-- 连接请求 -->
-      <div id="connectRequest" class="hidden">
-        <h2>连接请求</h2>
-        <div class="site-info">
-          <div class="site-icon">🌐</div>
-          <div class="site-url" id="connectOrigin"></div>
-        </div>
-
-        <div class="permission-list">
-          <h3>此网站请求以下权限：</h3>
-          <div class="permission-item">
-            <span class="permission-icon">👁️</span>
-            <span>查看您的账户地址</span>
-          </div>
-          <div class="permission-item">
-            <span class="permission-icon">💰</span>
-            <span>查看账户余额</span>
-          </div>
-          <div class="permission-item">
-            <span class="permission-icon">📝</span>
-            <span>请求交易签名</span>
+      <div id="connectRequest" class="request-view hidden">
+        <div class="request-header">
+          <h2>连接请求</h2>
+          <div class="site-info">
+            <div class="site-icon">🌐</div>
+            <div class="site-url" id="connectOrigin"></div>
           </div>
         </div>
 
-        <div class="warning-box">⚠️ 只连接您信任的网站</div>
+        <div class="request-body">
+          <div class="permission-list">
+            <h3>此网站请求以下权限：</h3>
+            <div class="permission-item">
+              <span class="permission-icon">👁️</span>
+              <span>查看您的账户地址</span>
+            </div>
+            <div class="permission-item">
+              <span class="permission-icon">💰</span>
+              <span>查看账户余额</span>
+            </div>
+            <div class="permission-item">
+              <span class="permission-icon">📝</span>
+              <span>请求交易签名</span>
+            </div>
+          </div>
+        </div>
 
-        <div class="button-group">
-          <button id="rejectConnect" class="btn btn-secondary">拒绝</button>
-          <button id="approveConnect" class="btn btn-primary">连接</button>
+        <div class="request-footer">
+          <div class="warning-box">⚠️ 只连接您信任的网站</div>
+
+          <div class="button-group">
+            <button id="rejectConnect" class="btn btn-secondary">拒绝</button>
+            <button id="approveConnect" class="btn btn-primary">连接</button>
+          </div>
         </div>
       </div>
 
       <!-- 交易确认 -->
-      <div id="transactionRequest" class="hidden">
-        <h2>确认交易</h2>
-        <div class="site-info">
-          <div class="site-icon">🌐</div>
-          <div class="site-url" id="txOrigin"></div>
-        </div>
-
-        <div class="transaction-details">
-          <h3>交易详情</h3>
-          <div class="detail-row">
-            <span class="detail-label">发送到:</span>
-            <span class="detail-value" id="txTo"></span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">金额:</span>
-            <span class="detail-value" id="txValue"></span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Gas 限制:</span>
-            <span class="detail-value" id="txGasLimit"></span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Gas 价格:</span>
-            <span class="detail-value" id="txGasPrice"></span>
-          </div>
-          <div class="detail-row" id="txDataRow" style="display: none">
-            <span class="detail-label">数据:</span>
-            <span class="detail-value" id="txData"></span>
+      <div id="transactionRequest" class="request-view hidden">
+        <div class="request-header">
+          <h2>确认交易</h2>
+          <div class="site-info">
+            <div class="site-icon">🌐</div>
+            <div class="site-url" id="txOrigin"></div>
           </div>
         </div>
 
-        <div class="warning-box">⚠️ 请仔细检查交易详情，确认后将无法撤销</div>
+        <div class="request-body">
+          <div class="transaction-details">
+            <h3>交易详情</h3>
+            <div class="detail-row">
+              <span class="detail-label">发送到:</span>
+              <span class="detail-value" id="txTo"></span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">金额:</span>
+              <span class="detail-value" id="txValue"></span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Gas 限制:</span>
+              <span class="detail-value" id="txGasLimit"></span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Gas 价格:</span>
+              <span class="detail-value" id="txGasPrice"></span>
+            </div>
+            <div class="detail-row" id="txDataRow" style="display: none">
+              <span class="detail-label">数据:</span>
+              <span class="detail-value" id="txData"></span>
+            </div>
+          </div>
+        </div>
 
-        <div class="button-group">
-          <button id="rejectTx" class="btn btn-secondary">拒绝</button>
-          <button id="approveTx" class="btn btn-primary">确认</button>
+        <div class="request-footer">
+          <div class="warning-box">⚠️ 请仔细检查交易详情，确认后将无法撤销</div>
+
+          <div class="button-group">
+            <button id="rejectTx" class="btn btn-secondary">拒绝</button>
+            <button id="approveTx" class="btn btn-primary">确认</button>
+          </div>
         </div>
       </div>
 
       <!-- 签名请求 -->
-      <div id="signRequest" class="hidden">
-        <h2>签名请求</h2>
-        <div class="site-info">
-          <div class="site-icon">🌐</div>
-          <div class="site-url" id="signOrigin"></div>
+      <div id="signRequest" class="request-view hidden">
+        <div class="request-header">
+          <h2>签名请求</h2>
+          <div class="site-info">
+            <div class="site-icon">🌐</div>
+            <div class="site-url" id="signOrigin"></div>
+          </div>
         </div>
 
-        <div>
-          <h3>消息内容:</h3>
-          <div class="message-content" id="signMessage"></div>
+        <div class="request-body">
+          <div id="signMessageSection">
+            <h3>消息内容:</h3>
+            <div class="message-content" id="signMessage"></div>
+          </div>
+
+          <div id="siweSection" class="hidden">
+            <h3>SIWE 登录详情</h3>
+            <div class="siwe-meta">
+              <div class="detail-row">
+                <span class="detail-label">域名</span>
+                <span class="detail-value" id="siweDomain"></span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">签名地址</span>
+                <span class="detail-value" id="siweAddress"></span>
+              </div>
+              <div class="detail-row" id="siweStatementRow">
+                <span class="detail-label">声明</span>
+                <span class="detail-value" id="siweStatement"></span>
+              </div>
+              <div class="detail-row" id="siweUriRow">
+                <span class="detail-label">URI</span>
+                <span class="detail-value" id="siweUri"></span>
+              </div>
+              <div class="detail-row" id="siweVersionRow">
+                <span class="detail-label">Version</span>
+                <span class="detail-value" id="siweVersion"></span>
+              </div>
+              <div class="detail-row" id="siweChainIdRow">
+                <span class="detail-label">Chain ID</span>
+                <span class="detail-value" id="siweChainId"></span>
+              </div>
+              <div class="detail-row" id="siweNonceRow">
+                <span class="detail-label">Nonce</span>
+                <span class="detail-value" id="siweNonce"></span>
+              </div>
+              <div class="detail-row" id="siweIssuedAtRow">
+                <span class="detail-label">Issued At</span>
+                <span class="detail-value" id="siweIssuedAt"></span>
+              </div>
+              <div class="detail-row" id="siweExpirationRow">
+                <span class="detail-label">Expiration</span>
+                <span class="detail-value" id="siweExpiration"></span>
+              </div>
+              <div class="detail-row" id="siweNotBeforeRow">
+                <span class="detail-label">Not Before</span>
+                <span class="detail-value" id="siweNotBefore"></span>
+              </div>
+              <div class="detail-row" id="siweRequestIdRow">
+                <span class="detail-label">Request ID</span>
+                <span class="detail-value" id="siweRequestId"></span>
+              </div>
+              <div class="detail-row" id="siweResourcesRow">
+                <span class="detail-label">Resources</span>
+                <span class="detail-value" id="siweResources"></span>
+              </div>
+            </div>
+            <div id="siweWarnings" class="siwe-warnings hidden">
+              <div class="siwe-warning-title">注意</div>
+              <ul id="siweWarningList" class="siwe-warning-list"></ul>
+            </div>
+            <details class="siwe-raw">
+              <summary>查看原始消息</summary>
+              <div class="message-content" id="siweRaw"></div>
+            </details>
+          </div>
+
+          <div id="recapSection" class="hidden">
+            <h3>授权能力 (ReCap)</h3>
+            <div class="recap-meta">
+              <div class="detail-row">
+                <span class="detail-label">域名</span>
+                <span class="detail-value" id="recapDomain"></span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">签名地址</span>
+                <span class="detail-value" id="recapAddress"></span>
+              </div>
+              <div class="detail-row" id="recapStatementRow">
+                <span class="detail-label">声明</span>
+                <span class="detail-value" id="recapStatement"></span>
+              </div>
+            </div>
+            <div id="recapList" class="recap-list"></div>
+            <details class="recap-raw">
+              <summary>查看原始消息</summary>
+              <div class="message-content" id="recapRaw"></div>
+            </details>
+          </div>
         </div>
 
-        <div class="warning-box">
-          ⚠️ 签名可能授权网站执行操作，请确认消息内容
-        </div>
+        <div class="request-footer">
+          <div class="warning-box">
+            ⚠️ 签名可能授权网站执行操作，请确认消息内容
+          </div>
 
-        <div class="button-group">
-          <button id="rejectSign" class="btn btn-secondary">拒绝</button>
-          <button id="approveSign" class="btn btn-primary">签名</button>
+          <div class="button-group">
+            <button id="rejectSign" class="btn btn-secondary">拒绝</button>
+            <button id="approveSign" class="btn btn-primary">签名</button>
+          </div>
         </div>
       </div>
 
       <!-- 添加自定义链 -->
-      <div id="addChainRequest" class="hidden">
-        <h2>添加网络</h2>
-        <div class="site-info">
-          <div class="site-icon">🌐</div>
-          <div class="site-url" id="addChainOrigin"></div>
-        </div>
-
-        <div class="chain-details">
-          <h3>网络信息</h3>
-          <div class="detail-row">
-            <span class="detail-label">网络名称:</span>
-            <span class="detail-value" id="chainName"></span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">链 ID:</span>
-            <span class="detail-value" id="chainId"></span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">RPC URL:</span>
-            <span class="detail-value" id="chainRpcUrl"></span>
-          </div>
-          <div class="detail-row" id="chainSymbolRow">
-            <span class="detail-label">货币符号:</span>
-            <span class="detail-value" id="chainSymbol"></span>
-          </div>
-          <div class="detail-row" id="chainExplorerRow">
-            <span class="detail-label">区块浏览器:</span>
-            <span class="detail-value" id="chainExplorer"></span>
+      <div id="addChainRequest" class="request-view hidden">
+        <div class="request-header">
+          <h2>添加网络</h2>
+          <div class="site-info">
+            <div class="site-icon">🌐</div>
+            <div class="site-url" id="addChainOrigin"></div>
           </div>
         </div>
 
-        <div class="warning-box">
-          ⚠️ 请确认网络信息准确，恶意网络可能导致资产损失
+        <div class="request-body">
+          <div class="chain-details">
+            <h3>网络信息</h3>
+            <div class="detail-row">
+              <span class="detail-label">网络名称:</span>
+              <span class="detail-value" id="chainName"></span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">链 ID:</span>
+              <span class="detail-value" id="chainId"></span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">RPC URL:</span>
+              <span class="detail-value" id="chainRpcUrl"></span>
+            </div>
+            <div class="detail-row" id="chainSymbolRow">
+              <span class="detail-label">货币符号:</span>
+              <span class="detail-value" id="chainSymbol"></span>
+            </div>
+            <div class="detail-row" id="chainExplorerRow">
+              <span class="detail-label">区块浏览器:</span>
+              <span class="detail-value" id="chainExplorer"></span>
+            </div>
+          </div>
         </div>
 
-        <div class="button-group">
-          <button id="rejectAddChain" class="btn btn-secondary">拒绝</button>
-          <button id="approveAddChain" class="btn btn-primary">添加</button>
+        <div class="request-footer">
+          <div class="warning-box">
+            ⚠️ 请确认网络信息准确，恶意网络可能导致资产损失
+          </div>
+
+          <div class="button-group">
+            <button id="rejectAddChain" class="btn btn-secondary">拒绝</button>
+            <button id="approveAddChain" class="btn btn-primary">添加</button>
+          </div>
         </div>
       </div>
 
       <!-- 监听资产/代币 -->
-      <div id="watchAssetRequest" class="hidden">
-        <h2>添加代币</h2>
-        <div class="site-info">
-          <div class="site-icon">🌐</div>
-          <div class="site-url" id="watchAssetOrigin"></div>
+      <div id="watchAssetRequest" class="request-view hidden">
+        <div class="request-header">
+          <h2>添加代币</h2>
+          <div class="site-info">
+            <div class="site-icon">🌐</div>
+            <div class="site-url" id="watchAssetOrigin"></div>
+          </div>
         </div>
 
-        <div class="asset-details">
-          <h3>代币信息</h3>
-          <div class="asset-icon-container">
-            <img
-              id="assetImage"
-              class="asset-icon"
-              alt="Token Icon"
-              style="display: none"
-            />
-            <div id="assetIconPlaceholder" class="asset-icon-placeholder">
-              🪙
+        <div class="request-body">
+          <div class="asset-details">
+            <h3>代币信息</h3>
+            <div class="asset-icon-container">
+              <img
+                id="assetImage"
+                class="asset-icon"
+                alt="Token Icon"
+                style="display: none"
+              />
+              <div id="assetIconPlaceholder" class="asset-icon-placeholder">
+                🪙
+              </div>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">代币名称:</span>
+              <span class="detail-value" id="assetSymbol"></span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">合约地址:</span>
+              <span class="detail-value" id="assetAddress"></span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">精度:</span>
+              <span class="detail-value" id="assetDecimals"></span>
             </div>
           </div>
-          <div class="detail-row">
-            <span class="detail-label">代币名称:</span>
-            <span class="detail-value" id="assetSymbol"></span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">合约地址:</span>
-            <span class="detail-value" id="assetAddress"></span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">精度:</span>
-            <span class="detail-value" id="assetDecimals"></span>
-          </div>
         </div>
 
-        <div class="warning-box">
-          ⚠️ 任何人都可以创建代币，请确认代币合约地址
-        </div>
+        <div class="request-footer">
+          <div class="warning-box">
+            ⚠️ 任何人都可以创建代币，请确认代币合约地址
+          </div>
 
-        <div class="button-group">
-          <button id="rejectWatchAsset" class="btn btn-secondary">拒绝</button>
-          <button id="approveWatchAsset" class="btn btn-primary">添加</button>
+          <div class="button-group">
+            <button id="rejectWatchAsset" class="btn btn-secondary">拒绝</button>
+            <button id="approveWatchAsset" class="btn btn-primary">添加</button>
+          </div>
         </div>
       </div>
 

@@ -20,6 +20,7 @@ import { sendEvent } from './connection.js';
 import { POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
 import { withPopupBoundsAsync } from './window-utils.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
+import { updateKeepAlive } from './offscreen.js';
 
 const connectInFlight = new Map();
 
@@ -37,6 +38,21 @@ function focusPendingWindow(pending) {
   const windowId = pending?.request?.windowId;
   if (!windowId) return;
   chrome.windows.update(windowId, { focused: true }).catch(() => { });
+}
+
+function addPendingRequest(requestId, request) {
+  state.pendingRequests.set(requestId, request);
+  updateKeepAlive();
+}
+
+function removePendingRequest(requestId) {
+  if (state.pendingRequests.delete(requestId)) {
+    updateKeepAlive();
+  }
+}
+
+function updateConnectedSites() {
+  updateKeepAlive();
 }
 
 function buildEthAccountsPermission(accounts) {
@@ -71,12 +87,6 @@ export async function handleEthAccounts(origin) {
     if (!isConnected) {
       return [];
     }
-
-    // 重置锁的过期时间
-    resetLockTimer();
-
-    // 刷新密码缓存时间
-    refreshPasswordCache();
 
     // 获取选择的账户信息
     const account = await getSelectedAccount();
@@ -119,10 +129,6 @@ export async function handleEthRequestAccounts(origin, tabId) {
         throw createError(-32002, 'Connection request already pending');
       }
 
-      // 此时钱包一定已解锁（routeRequest 已检查）
-      resetLockTimer();
-      refreshPasswordCache();
-
       // 获取当前账户
       const account = await getSelectedAccount();
       if (!account) {
@@ -140,7 +146,7 @@ export async function handleEthRequestAccounts(origin, tabId) {
       // 🔑 创建授权请求
       const requestId = `connect_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      state.pendingRequests.set(requestId, {
+      addPendingRequest(requestId, {
         type: EventType.CONNECT,
         origin,
         tabId,
@@ -165,7 +171,7 @@ export async function handleEthRequestAccounts(origin, tabId) {
 
         chrome.windows.create(windowOptions, (window) => {
           if (!window) {
-            state.pendingRequests.delete(requestId);
+            removePendingRequest(requestId);
             reject(createInternalError('Failed to open approval window'));
             return;
           }
@@ -186,7 +192,7 @@ export async function handleEthRequestAccounts(origin, tabId) {
               chrome.runtime.onMessage.removeListener(messageListener);
 
               if (state.pendingRequests.has(requestId)) {
-                state.pendingRequests.delete(requestId);
+                removePendingRequest(requestId);
                 reject(createUserRejectedError('User closed approval window'));
               }
             }
@@ -200,7 +206,7 @@ export async function handleEthRequestAccounts(origin, tabId) {
               chrome.windows.onRemoved.removeListener(windowRemovedListener);
               chrome.runtime.onMessage.removeListener(messageListener);
 
-              state.pendingRequests.delete(requestId);
+              removePendingRequest(requestId);
 
               if (message.approved) {
                 // 保存连接信息
@@ -209,11 +215,16 @@ export async function handleEthRequestAccounts(origin, tabId) {
                   chainId: state.currentChainId,
                   connectedAt: getTimestamp()
                 });
+                updateConnectedSites();
 
                 // 持久化授权
                 saveAuthorization(origin, address).catch(err => {
                   console.error('Failed to save authorization:', err);
                 });
+
+                // 用户授权后才刷新锁定计时
+                resetLockTimer();
+                refreshPasswordCache();
 
                 console.log('✅ Connection approved:', origin);
                 resolve([address]);
@@ -235,7 +246,7 @@ export async function handleEthRequestAccounts(origin, tabId) {
               chrome.windows.onRemoved.removeListener(windowRemovedListener);
               chrome.runtime.onMessage.removeListener(messageListener);
 
-              state.pendingRequests.delete(requestId);
+              removePendingRequest(requestId);
 
               // 尝试关闭窗口
               chrome.windows.remove(window.id).catch(() => { });
@@ -327,6 +338,7 @@ export async function handleWalletRevokePermissions(origin, params) {
     const accounts = stored?.address ? [stored.address] : [];
 
     state.connectedSites.delete(origin);
+    updateConnectedSites();
     await deleteAuthorization(origin).catch(() => { });
 
     // 通知该站点断开连接

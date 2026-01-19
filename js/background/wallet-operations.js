@@ -43,6 +43,7 @@ import { resetLockTimer } from './keyring.js';
 import { broadcastEvent, sendEvent } from './connection.js';
 import { TIMEOUTS, LIMITS } from '../config/index.js';
 import { notifyUnlocked } from './unlock-flow.js';
+import { updateKeepAlive } from './offscreen.js';
 
 const CUSTOM_TOKENS_KEY = 'custom_tokens';
 const MIN_PASSWORD_LENGTH = 8;
@@ -794,6 +795,7 @@ export async function handleRevokeSite(origin) {
   try {
     await deleteAuthorization(origin);
     state.connectedSites.delete(origin);
+    updateKeepAlive();
 
     state.connections.forEach(({ port, origin: connOrigin }) => {
       if (connOrigin === origin) {
@@ -815,6 +817,7 @@ export async function handleClearAllAuthorizations() {
   try {
     await clearAllAuthorizations();
     state.connectedSites.clear();
+    updateKeepAlive();
 
     state.connections.forEach(({ port }) => {
       sendEvent(port, EventType.ACCOUNTS_CHANGED, { accounts: [] });

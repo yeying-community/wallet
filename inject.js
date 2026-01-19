@@ -60,6 +60,10 @@ import {
       return this;
     }
 
+    addListener(event, listener) {
+      return this.on(event, listener);
+    }
+
     once(event, listener) {
       const onceWrapper = (...args) => {
         listener(...args);
@@ -81,6 +85,10 @@ import {
         this._events[event].splice(index, 1);
       }
       return this;
+    }
+
+    removeListener(event, listener) {
+      return this.off(event, listener);
     }
 
     emit(event, ...args) {
@@ -125,6 +133,8 @@ import {
         chainId: null,
         isConnected: false
       };
+
+      this._connectEmitted = false;
 
       // 待处理的请求
       this._pendingRequests = new Map();
@@ -243,6 +253,11 @@ import {
         const chainId = await this.request({ method: 'eth_chainId' });
         if (chainId) {
           this._state.chainId = chainId;
+          this._state.isConnected = true;
+          if (!this._connectEmitted) {
+            this._connectEmitted = true;
+            this.emit(EventType.CONNECT, { chainId: this._state.chainId });
+          }
         }
 
         console.log('📊 Initial state:', this._state);
@@ -266,6 +281,59 @@ import {
       console.log('📤 Request:', method, params);
 
       return this._sendRequest(method, params);
+    }
+
+    send(methodOrPayload, paramsOrCallback) {
+      if (typeof methodOrPayload === 'string') {
+        if (typeof paramsOrCallback === 'function') {
+          return this._sendAsync({ method: methodOrPayload, params: [] }, paramsOrCallback);
+        }
+        const params = paramsOrCallback ?? [];
+        return this.request({ method: methodOrPayload, params });
+      }
+
+      if (methodOrPayload && typeof methodOrPayload === 'object') {
+        if (typeof paramsOrCallback === 'function') {
+          return this._sendAsync(methodOrPayload, paramsOrCallback);
+        }
+        if (methodOrPayload.method) {
+          return this.request(methodOrPayload);
+        }
+      }
+
+      throw new ProviderRpcError(-32600, 'Invalid request arguments');
+    }
+
+    sendAsync(payload, callback) {
+      return this._sendAsync(payload, callback);
+    }
+
+    _sendAsync(payload, callback) {
+      if (typeof callback !== 'function') {
+        throw new ProviderRpcError(-32600, 'Callback is required');
+      }
+
+      const request = {
+        method: payload?.method,
+        params: payload?.params
+      };
+      const id = payload?.id;
+      const jsonrpc = payload?.jsonrpc || '2.0';
+
+      this.request(request)
+        .then((result) => {
+          callback(null, { id, jsonrpc, result });
+        })
+        .catch((error) => {
+          const code = typeof error?.code === 'number' ? error.code : -32603;
+          const message = error?.message || 'Internal error';
+          const data = error?.data;
+          callback(error, {
+            id,
+            jsonrpc,
+            error: data !== undefined ? { code, message, data } : { code, message }
+          });
+        });
     }
 
     async _sendRequest(method, params) {
@@ -313,16 +381,12 @@ import {
 
       console.log('👤 Accounts changed:', accountsArray);
 
-      const wasConnected = this._state.isConnected;
       this._state.accounts = accountsArray;
-      this._state.isConnected = accountsArray.length > 0;
+      if (accountsArray.length > 0) {
+        this._state.isConnected = true;
+      }
 
       this.emit(EventType.ACCOUNTS_CHANGED, accountsArray);
-
-      // 如果从已连接变为未连接，触发 disconnect
-      if (wasConnected && !this._state.isConnected) {
-        this._handleDisconnect({ reason: 'accounts_empty' });
-      }
     }
 
     _handleChainChanged(chainId) {
@@ -339,13 +403,16 @@ import {
       console.log('⛓️ Chain changed:', newChainId);
 
       this._state.chainId = newChainId;
+      this._state.isConnected = true;
       this.emit(EventType.CHAIN_CHANGED, newChainId);
     }
 
     _handleConnect(data) {
       console.log('🔗 Connected:', data);
 
+      const shouldEmit = !this._connectEmitted;
       this._state.isConnected = true;
+      this._connectEmitted = true;
 
       if (data?.chainId) {
         this._state.chainId = data.chainId;
@@ -355,7 +422,9 @@ import {
         this._state.accounts = data.accounts;
       }
 
-      this.emit(EventType.CONNECT, { chainId: this._state.chainId });
+      if (shouldEmit) {
+        this.emit(EventType.CONNECT, { chainId: this._state.chainId });
+      }
     }
 
     _handleDisconnect(data) {
@@ -364,6 +433,7 @@ import {
       const wasConnected = this._state.isConnected;
       this._state.isConnected = false;
       this._state.accounts = [];
+      this._connectEmitted = false;
 
       if (wasConnected) {
         this.emit(
@@ -429,19 +499,26 @@ import {
   window.web3.currentProvider = provider;
 
   // EIP-6963: 多钱包发现标准
-  window.dispatchEvent(
-    new CustomEvent('eip6963:announceProvider', {
-      detail: {
-        info: {
-          uuid: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-          name: 'YeYing Wallet',
-          icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNiIgZmlsbD0iIzYzNjZGMSIvPjwvc3ZnPg==',
-          rdns: 'io.github.yeying'
-        },
-        provider
-      }
-    })
-  );
+  const EIP6963_INFO = {
+    uuid: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    name: 'YeYing Wallet',
+    icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNiIgZmlsbD0iIzYzNjZGMSIvPjwvc3ZnPg==',
+    rdns: 'io.github.yeying'
+  };
+
+  function announceProvider() {
+    window.dispatchEvent(
+      new CustomEvent('eip6963:announceProvider', {
+        detail: {
+          info: EIP6963_INFO,
+          provider
+        }
+      })
+    );
+  }
+
+  window.addEventListener('eip6963:requestProvider', announceProvider);
+  announceProvider();
 
   // 调试接口
   window.__YEYING_PROVIDER__ = provider;

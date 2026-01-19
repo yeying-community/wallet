@@ -5,85 +5,156 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>YeYing Wallet - 完整测试</title>
     <style>
+      @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+      :root {
+        --ink: #1d2b2f;
+        --muted: #5f6b6f;
+        --paper: #ffffff;
+        --card: #f7f2ea;
+        --stroke: #e1ddd5;
+        --accent: #0b7285;
+        --accent-2: #f08c00;
+        --success: #2b8a3e;
+        --warn: #f59f00;
+        --danger: #e03131;
+        --info: #1971c2;
+        --shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
+      }
+
       * {
         margin: 0;
         padding: 0;
         box-sizing: border-box;
       }
 
+      html,
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          sans-serif;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        height: 100%;
+      }
+
+      body {
+        font-family: "Space Grotesk", "IBM Plex Sans", "Segoe UI", sans-serif;
+        background:
+          radial-gradient(900px circle at 15% 10%, rgba(255, 255, 255, 0.9), transparent 55%),
+          linear-gradient(120deg, #f2efe6 0%, #dfeef2 100%);
         min-height: 100vh;
-        padding: 20px;
+        padding: 24px;
+        color: var(--ink);
+        overflow: hidden;
+        overscroll-behavior: none;
       }
 
       .container {
-        max-width: 800px;
+        max-width: 980px;
         margin: 0 auto;
-        background: white;
-        border-radius: 16px;
-        padding: 30px;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        background: rgba(255, 255, 255, 0.96);
+        border-radius: 20px;
+        padding: 28px;
+        box-shadow: var(--shadow);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        backdrop-filter: blur(6px);
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
       }
 
-      h1 {
-        color: #333;
+      .page-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+        gap: 24px;
+        align-items: start;
+        height: 100%;
+      }
+
+      .page-layout .container {
+        max-width: none;
+        margin: 0;
+        width: 100%;
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        flex-wrap: wrap;
         margin-bottom: 10px;
       }
 
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      h1 {
+        color: var(--ink);
+        font-size: 20px;
+        margin-top: 0;
+      }
+
       .status {
-        padding: 15px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        font-size: 14px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 11px;
+        border: 1px solid transparent;
+        background: rgba(255, 255, 255, 0.7);
       }
 
       .status.connected {
-        background: #e8f5e9;
-        color: #2e7d32;
-        border: 1px solid #4caf50;
+        background: rgba(43, 138, 62, 0.12);
+        color: var(--success);
+        border-color: rgba(43, 138, 62, 0.3);
       }
 
       .status.disconnected {
-        background: #ffebee;
-        color: #c62828;
-        border: 1px solid #f44336;
+        background: rgba(224, 49, 49, 0.12);
+        color: var(--danger);
+        border-color: rgba(224, 49, 49, 0.3);
+      }
+
+      .status.locked {
+        background: rgba(245, 159, 0, 0.14);
+        color: #8d5a00;
+        border-color: rgba(245, 159, 0, 0.35);
       }
 
       .section {
-        margin-bottom: 30px;
+        margin-bottom: 24px;
         padding: 20px;
-        background: #f5f5f5;
-        border-radius: 8px;
+        background: var(--card);
+        border-radius: 16px;
+        border: 1px solid var(--stroke);
       }
 
       .section h2 {
         font-size: 18px;
         margin-bottom: 15px;
-        color: #555;
+        color: var(--ink);
       }
 
       .button-group {
         display: flex;
         gap: 10px;
         flex-wrap: wrap;
+        margin-top: 8px;
       }
 
       button {
-        padding: 12px 24px;
+        padding: 11px 20px;
         border: none;
-        border-radius: 8px;
-        font-size: 14px;
+        border-radius: 12px;
+        font-size: 13px;
         font-weight: 600;
         cursor: pointer;
-        transition: all 0.3s;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
       }
 
       button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.15);
       }
 
       button:disabled {
@@ -93,204 +164,521 @@
       }
 
       .btn-primary {
-        background: #667eea;
+        background: var(--accent);
         color: white;
       }
 
       .btn-secondary {
-        background: #48bb78;
+        background: var(--accent-2);
         color: white;
       }
 
       .btn-danger {
-        background: #f56565;
+        background: var(--danger);
         color: white;
       }
 
       .btn-info {
-        background: #4299e1;
+        background: var(--info);
         color: white;
       }
 
+      .btn-ghost {
+        background: transparent;
+        border: 1px dashed var(--stroke);
+        color: var(--muted);
+      }
+
+      .btn-compact {
+        padding: 6px 10px;
+        font-size: 11px;
+      }
+
+      .tab-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 18px 0 6px;
+      }
+
+      .tab-btn {
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--stroke);
+        background: #fff;
+        color: var(--muted);
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .tab-btn.active {
+        background: var(--accent);
+        border-color: transparent;
+        color: #fff;
+        box-shadow: 0 6px 16px rgba(11, 114, 133, 0.25);
+      }
+
+      .tab-panel {
+        display: none;
+      }
+
+      .tab-panel.active {
+        display: block;
+      }
+
+      .tab-content {
+        flex: 1;
+        overflow-y: auto;
+        padding-right: 6px;
+        min-height: 0;
+        overscroll-behavior: contain;
+      }
+
       .info-box {
-        background: white;
-        padding: 15px;
-        border-radius: 8px;
-        margin-top: 15px;
-        font-family: "Courier New", monospace;
-        font-size: 13px;
+        background: var(--paper);
+        padding: 14px;
+        border-radius: 12px;
+        margin-top: 14px;
+        border: 1px solid var(--stroke);
+        font-family: "JetBrains Mono", "Courier New", monospace;
+        font-size: 12px;
         word-break: break-all;
       }
 
-      .info-box strong {
-        color: #667eea;
+      .info-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 6px 0;
+        border-bottom: 1px dashed var(--stroke);
+      }
+
+      .info-row:last-child {
+        border-bottom: none;
+      }
+
+      .info-row .label {
+        color: var(--muted);
+        min-width: 110px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 11px;
+      }
+
+      .info-row .value {
+        text-align: right;
+      }
+
+      .form-grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        margin-top: 12px;
+      }
+
+      .field label {
+        display: block;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+
+      .field input {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--stroke);
+        background: #fff;
+        font-family: "JetBrains Mono", "Courier New", monospace;
+        font-size: 12px;
+      }
+
+      .note {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 8px;
       }
 
       .log {
-        background: #1a202c;
-        color: #68d391;
+        background: #101415;
+        color: #a7f3d0;
         padding: 15px;
-        border-radius: 8px;
-        max-height: 300px;
+        border-radius: 12px;
+        flex: 1;
         overflow-y: auto;
-        font-family: "Courier New", monospace;
+        font-family: "JetBrains Mono", "Courier New", monospace;
         font-size: 12px;
-        margin-top: 20px;
+        margin-top: 18px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        overscroll-behavior: contain;
+      }
+
+      .log-panel {
+        align-self: stretch;
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        margin-bottom: 0;
+      }
+
+      .log-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .log-header .button-group {
+        margin-top: 0;
+      }
+
+      @media (max-width: 1100px) {
+        .page-layout {
+          grid-template-columns: 1fr;
+        }
+
+        .log-panel {
+          box-shadow: none;
+        }
+      }
+
+      .footer {
+        margin-top: 12px;
+        font-size: 11px;
+        color: var(--muted);
+        text-align: center;
       }
 
       .log-entry {
-        margin-bottom: 5px;
-        padding: 5px;
-        border-left: 3px solid #667eea;
+        margin-bottom: 6px;
+        padding: 6px 8px;
+        border-left: 3px solid var(--accent);
         padding-left: 10px;
+        white-space: pre-wrap;
+        word-break: break-word;
       }
 
       .log-entry.error {
-        border-left-color: #f56565;
-        color: #fc8181;
+        border-left-color: var(--danger);
+        color: #fca5a5;
       }
 
       .log-entry.success {
-        border-left-color: #48bb78;
-        color: #68d391;
+        border-left-color: var(--success);
+        color: #86efac;
       }
     </style>
   </head>
 
   <body>
-    <div class="container">
-      <h1>🦅 YeYing Wallet - EIP-1193 完整测试</h1>
-
-      <div id="status" class="status disconnected">未连接</div>
+    <div class="page-layout">
+      <div class="container">
+      <div class="header">
+        <div>
+          <h1>🦅 YeYing Wallet 功能验证台</h1>
+        </div>
+        <div class="header-actions">
+          <div id="status" class="status disconnected">未连接</div>
+        </div>
+      </div>
 
       <div class="info-box" id="accountInfo" style="display: none">
-        <strong>账户:</strong> <span id="account">-</span><br />
-        <strong>链 ID:</strong> <span id="chainId">-</span><br />
-        <strong>余额:</strong> <span id="balance">-</span><br />
-        <strong>连接状态:</strong> <span id="isConnected">-</span>
-      </div>
-
-      <!-- 1. 连接测试 -->
-      <div class="section">
-        <h2>1️⃣ 连接与账户</h2>
-        <div class="button-group">
-          <button class="btn-primary" onclick="testConnect()">连接钱包</button>
-          <button class="btn-secondary" onclick="testGetAccounts()">
-            获取账户
-          </button>
-          <button class="btn-info" onclick="testIsConnected()">
-            检查连接状态
-          </button>
-          <button class="btn-danger" onclick="testDisconnect()">
-            断开连接
-          </button>
+        <div class="info-row">
+          <span class="label">账户</span>
+          <span class="value" id="account">-</span>
+        </div>
+        <div class="info-row">
+          <span class="label">链 ID</span>
+          <span class="value" id="chainId">-</span>
+        </div>
+        <div class="info-row">
+          <span class="label">网络</span>
+          <span class="value" id="networkName">-</span>
+        </div>
+        <div class="info-row">
+          <span class="label">余额</span>
+          <span class="value" id="balance">-</span>
+        </div>
+        <div class="info-row">
+          <span class="label">权限</span>
+          <span class="value" id="permissions">-</span>
+        </div>
+        <div class="info-row">
+          <span class="label">链/节点的连接状态</span>
+          <span class="value" id="isConnected">-</span>
         </div>
       </div>
 
-      <!-- 2. 网络测试 -->
-      <div class="section">
-        <h2>2️⃣ 网络管理</h2>
-        <div class="button-group">
-          <button class="btn-primary" onclick="testGetChainId()">
-            获取链 ID
-          </button>
-          <button class="btn-secondary" onclick="testSwitchToSepolia()">
-            切换到 Sepolia
-          </button>
-          <button class="btn-secondary" onclick="testSwitchToMainnet()">
-            切换到主网
-          </button>
-          <button class="btn-info" onclick="testAddPolygon()">
-            添加 Polygon
-          </button>
-          <button class="btn-info" onclick="testAddBSC()">添加 BSC</button>
+      <div class="tab-nav" role="tablist" aria-label="YeYing DApp Tabs">
+        <button class="tab-btn active" data-tab="accounts" type="button">
+          连接与账户
+        </button>
+            <button class="tab-btn" data-tab="network" type="button">
+              网络管理
+            </button>
+            <button class="tab-btn" data-tab="tx" type="button">交易</button>
+            <button class="tab-btn" data-tab="sign" type="button">签名</button>
+            <button class="tab-btn" data-tab="token" type="button">
+              代币管理
+            </button>
+            <button class="tab-btn" data-tab="permissions" type="button">
+              权限管理
+            </button>
+        <button class="tab-btn" data-tab="events" type="button">
+          事件监听
+        </button>
+      </div>
+
+      <div class="tab-content">
+      <div class="tab-panel active" data-tab="accounts">
+        <!-- 1. 连接测试 -->
+        <div class="section">
+          <div class="button-group">
+            <button class="btn-primary" onclick="testConnect()">连接钱包</button>
+            <button class="btn-secondary" onclick="testGetAccounts()">
+              获取账户
+            </button>
+            <button class="btn-info" onclick="testIsConnected()">
+              检查连接状态
+            </button>
+            <button class="btn-danger" onclick="testDisconnect()">
+              断开连接
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- 3. 交易测试 -->
-      <div class="section">
-        <h2>3️⃣ 交易</h2>
-        <div class="button-group">
-          <button class="btn-primary" onclick="testSendTransaction()">
-            发送 0.001 ETH
-          </button>
-          <button class="btn-secondary" onclick="testSendWithData()">
-            发送带数据的交易
-          </button>
+      <div class="tab-panel" data-tab="network">
+        <!-- 2. 网络测试 -->
+        <div class="section">
+          <div class="button-group">
+            <button class="btn-primary" onclick="testGetChainId()">
+              获取链 ID
+            </button>
+            <button class="btn-secondary" onclick="ensureYeYing()">
+              切换/确保 YeYing 主网
+            </button>
+            <button class="btn-info" onclick="testSwitchCustomChain()">
+              切换到 Chain ID
+            </button>
+          </div>
+
+          <div class="form-grid">
+            <div class="field">
+              <label for="customChainId">Chain ID (hex)</label>
+              <input id="customChainId" value="0x1538" />
+            </div>
+            <div class="field">
+              <label for="customChainName">Chain Name</label>
+              <input id="customChainName" value="YeYing Mainnet" />
+            </div>
+            <div class="field">
+              <label for="customRpcUrl">RPC URL</label>
+              <input id="customRpcUrl" value="https://blockchain.yeying.pub" />
+            </div>
+            <div class="field">
+              <label for="customSymbol">Symbol</label>
+              <input id="customSymbol" value="YYT" />
+            </div>
+            <div class="field">
+              <label for="customExplorer">Explorer URL</label>
+              <input id="customExplorer" value="https://blockscout.yeying.pub" />
+            </div>
+          </div>
+
+          <div class="button-group">
+            <button class="btn-primary" onclick="testAddCustomChain()">
+              添加自定义网络
+            </button>
+            <button class="btn-ghost" onclick="fillChainPreset('yeying')">
+              预设：YeYing
+            </button>
+            <button class="btn-ghost" onclick="fillChainPreset('ethereum')">
+              预设：Ethereum
+            </button>
+            <button class="btn-ghost" onclick="fillChainPreset('sepolia')">
+              预设：Sepolia
+            </button>
+          </div>
+          <div class="note">
+            默认支持 YeYing 主网；其它网络需通过“添加自定义网络”完成注册。
+          </div>
         </div>
       </div>
 
-      <!-- 4. 签名测试 -->
-      <div class="section">
-        <h2>4️⃣ 签名</h2>
-        <div class="button-group">
-          <button class="btn-primary" onclick="testPersonalSign()">
-            个人签名
-          </button>
-          <button class="btn-secondary" onclick="testSignTypedData()">
-            TypedData 签名
-          </button>
+      <div class="tab-panel" data-tab="tx">
+        <!-- 3. 交易测试 -->
+        <div class="section">
+          <div class="button-group">
+            <button class="btn-primary" onclick="testSendTransaction()">
+              发送 0.001 原生币
+            </button>
+            <button class="btn-secondary" onclick="testSendWithData()">
+              发送带数据的交易
+            </button>
+          </div>
+          <div class="note">
+            交易会真实广播到当前链，请确保账户有余额且收款地址正确。
+          </div>
         </div>
       </div>
 
-      <!-- 5. 代币测试 -->
-      <div class="section">
-        <h2>5️⃣ 代币管理</h2>
-        <div class="button-group">
-          <button class="btn-primary" onclick="testWatchUSDC()">
-            添加 USDC
-          </button>
-          <button class="btn-secondary" onclick="testWatchDAI()">
-            添加 DAI
-          </button>
+      <div class="tab-panel" data-tab="sign">
+        <!-- 4. 签名测试 -->
+        <div class="section">
+          <div class="button-group">
+            <button class="btn-primary" onclick="testPersonalSign()">
+              个人签名
+            </button>
+            <button class="btn-secondary" onclick="testSignTypedData()">
+              TypedData 签名
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- 6. 权限测试 -->
-      <div class="section">
-        <h2>6️⃣ 权限管理</h2>
-        <div class="button-group">
-          <button class="btn-primary" onclick="testGetPermissions()">
-            获取权限
-          </button>
-          <button class="btn-secondary" onclick="testRequestPermissions()">
-            请求权限
-          </button>
-          <button class="btn-danger" onclick="testRevokePermissions()">
-            撤销权限
-          </button>
+      <div class="tab-panel" data-tab="token">
+        <!-- 5. 代币测试 -->
+        <div class="section">
+          <div class="form-grid">
+            <div class="field">
+              <label for="tokenAddress">Token Address</label>
+              <input id="tokenAddress" placeholder="0x..." />
+            </div>
+            <div class="field">
+              <label for="tokenSymbol">Token Symbol</label>
+              <input id="tokenSymbol" placeholder="YYT" />
+            </div>
+            <div class="field">
+              <label for="tokenDecimals">Decimals</label>
+              <input id="tokenDecimals" value="18" />
+            </div>
+            <div class="field">
+              <label for="tokenImage">Token Image URL</label>
+              <input id="tokenImage" placeholder="https://..." />
+            </div>
+          </div>
+          <div class="button-group">
+            <button class="btn-primary" onclick="testWatchCustomToken()">
+              添加自定义代币
+            </button>
+            <button class="btn-ghost" onclick="fillTokenPreset('usdc')">
+              预设 USDC (ETH 主网)
+            </button>
+            <button class="btn-ghost" onclick="fillTokenPreset('dai')">
+              预设 DAI (ETH 主网)
+            </button>
+          </div>
+          <div class="note">
+            主网代币示例仅用于验证流程，需确保当前链支持对应资产。
+          </div>
         </div>
       </div>
 
-      <!-- 7. 事件测试 -->
-      <div class="section">
-        <h2>7️⃣ 事件监听</h2>
-        <div class="button-group">
-          <button class="btn-primary" onclick="testListenEvents()">
-            开始监听事件
-          </button>
-          <button class="btn-danger" onclick="testRemoveListeners()">
-            移除监听
-          </button>
+      <div class="tab-panel" data-tab="permissions">
+        <!-- 6. 权限测试 -->
+        <div class="section">
+          <div class="button-group">
+            <button class="btn-primary" onclick="testGetPermissions()">
+              获取权限
+            </button>
+            <button class="btn-secondary" onclick="testRequestPermissions()">
+              请求权限
+            </button>
+            <button class="btn-danger" onclick="testRevokePermissions()">
+              撤销权限
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- 日志 -->
+      <div class="tab-panel" data-tab="events">
+        <!-- 7. 事件测试 -->
+        <div class="section">
+          <div class="button-group">
+            <button class="btn-primary" onclick="testListenEvents()">
+              开始监听事件
+            </button>
+            <button class="btn-danger" onclick="testRemoveListeners()">
+              移除监听
+            </button>
+          </div>
+        </div>
+      </div>
+      </div>
+      <div class="footer">YeYing Wallet Test Console · DApp 功能验证</div>
+    </div>
+    <div class="section log-panel">
+      <div class="log-header">
+        <h2>🧾 测试日志</h2>
+        <div class="button-group">
+          <button class="btn-ghost btn-compact" onclick="refreshDiagnostics()">
+            刷新诊断
+          </button>
+          <button class="btn-danger btn-compact" onclick="clearLog()">清空日志</button>
+        </div>
+      </div>
       <div class="log" id="log">
         <div class="log-entry">📋 测试日志将显示在这里...</div>
       </div>
     </div>
+  </div>
 
     <script>
-      let ethereum = null;
+      let walletProvider = null;
       let providerPromise = null;
       let currentAccount = null;
       let eventListeners = {};
+      let lastKnownChainId = null;
+      const LOG_LIMIT = 200;
+
+      const CHAIN_PRESETS = {
+        yeying: {
+          chainId: "0x1538",
+          chainName: "YeYing Mainnet",
+          rpcUrls: ["https://blockchain.yeying.pub"],
+          nativeCurrency: { name: "YeYing", symbol: "YYT", decimals: 18 },
+          blockExplorerUrls: ["https://blockscout.yeying.pub"],
+        },
+        ethereum: {
+          chainId: "0x1",
+          chainName: "Ethereum Mainnet",
+          rpcUrls: ["https://cloudflare-eth.com"],
+          nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+          blockExplorerUrls: ["https://etherscan.io"],
+        },
+        sepolia: {
+          chainId: "0xaa36a7",
+          chainName: "Sepolia",
+          rpcUrls: ["https://rpc.sepolia.org"],
+          nativeCurrency: { name: "SepoliaETH", symbol: "ETH", decimals: 18 },
+          blockExplorerUrls: ["https://sepolia.etherscan.io"],
+        },
+      };
+
+      const TOKEN_PRESETS = {
+        usdc: {
+          address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          symbol: "USDC",
+          decimals: 6,
+          image: "https://cryptologos.cc/logos/usd-coin-usdc-logo.png",
+        },
+        dai: {
+          address: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+          symbol: "DAI",
+          decimals: 18,
+          image: "https://cryptologos.cc/logos/multi-collateral-dai-dai-logo.png",
+        },
+      };
 
       function waitForEthereum(timeout = 3000) {
         if (window.ethereum) {
-          ethereum = window.ethereum;
-          return Promise.resolve(ethereum);
+          walletProvider = window.ethereum;
+          return Promise.resolve(walletProvider);
         }
 
         if (!providerPromise) {
@@ -301,9 +689,9 @@
 
             const handler = () => {
               if (window.ethereum) {
-                ethereum = window.ethereum;
+                walletProvider = window.ethereum;
                 clearTimeout(timer);
-                resolve(ethereum);
+                resolve(walletProvider);
               }
             };
 
@@ -321,16 +709,110 @@
         entry.className = `log-entry ${type}`;
         entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
         logDiv.appendChild(entry);
+        while (logDiv.children.length > LOG_LIMIT) {
+          logDiv.removeChild(logDiv.firstChild);
+        }
         logDiv.scrollTop = logDiv.scrollHeight;
         console.log(message);
       }
 
+      function clearLog() {
+        const logDiv = document.getElementById("log");
+        logDiv.innerHTML = "<div class=\"log-entry\">📋 日志已清空</div>";
+      }
+
+      function setActiveTab(tabId) {
+        const buttons = document.querySelectorAll(".tab-btn");
+        const panels = document.querySelectorAll(".tab-panel");
+        buttons.forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.tab === tabId);
+        });
+        panels.forEach((panel) => {
+          panel.classList.toggle("active", panel.dataset.tab === tabId);
+        });
+      }
+
+      function getChainLabel(chainId) {
+        if (!chainId) return "-";
+        const normalized = String(chainId).toLowerCase();
+        const preset = Object.values(CHAIN_PRESETS).find(
+          (item) => item.chainId.toLowerCase() === normalized
+        );
+        if (preset) {
+          const symbol = preset.nativeCurrency?.symbol || "-";
+          return `${preset.chainName} (${symbol})`;
+        }
+        return `未知网络 (${chainId})`;
+      }
+
+      function getChainSymbol(chainId) {
+        if (!chainId) return "NATIVE";
+        const normalized = String(chainId).toLowerCase();
+        const preset = Object.values(CHAIN_PRESETS).find(
+          (item) => item.chainId.toLowerCase() === normalized
+        );
+        return preset?.nativeCurrency?.symbol || "NATIVE";
+      }
+
+      function base64UrlEncode(text) {
+        const base64 = btoa(text);
+        return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+      }
+
+      function buildSiweMessage({
+        domain,
+        address,
+        uri,
+        chainId,
+        statement,
+        resources = [],
+      }) {
+        const nonce = Math.random().toString(36).slice(2, 10);
+        const issuedAt = new Date().toISOString();
+        const lines = [];
+        lines.push(`${domain} wants you to sign in with your Ethereum account:`);
+        lines.push(address);
+        lines.push("");
+        if (statement) {
+          lines.push(statement);
+          lines.push("");
+        }
+        lines.push(`URI: ${uri}`);
+        lines.push("Version: 1");
+        lines.push(`Chain ID: ${chainId}`);
+        lines.push(`Nonce: ${nonce}`);
+        lines.push(`Issued At: ${issuedAt}`);
+        if (resources.length) {
+          lines.push("Resources:");
+          resources.forEach((resource) => {
+            lines.push(`- ${resource}`);
+          });
+        }
+        return lines.join("\n");
+      }
+
+      function setPermissionStatus(hasPermission) {
+        const el = document.getElementById("permissions");
+        if (!el) return;
+        if (hasPermission === true) {
+          el.textContent = "已授权";
+        } else if (hasPermission === false) {
+          el.textContent = "未授权";
+        } else {
+          el.textContent = "-";
+        }
+      }
+
       // 更新状态显示
-      function updateStatus(connected, account = null, chainId = null) {
+      function setStatus(status, account = null, chainId = null, permissionState = null) {
         const statusDiv = document.getElementById("status");
         const accountInfo = document.getElementById("accountInfo");
+        const connectedFlag =
+          walletProvider && walletProvider.isConnected
+            ? walletProvider.isConnected()
+            : false;
 
-        if (connected && account) {
+        if (status === "connected" && account) {
           statusDiv.className = "status connected";
           statusDiv.textContent = `✅ 已连接: ${account.substring(
             0,
@@ -339,18 +821,144 @@
           accountInfo.style.display = "block";
           document.getElementById("account").textContent = account;
           document.getElementById("chainId").textContent = chainId || "-";
+          document.getElementById("networkName").textContent =
+            getChainLabel(chainId);
           document.getElementById("isConnected").textContent =
-            ethereum && ethereum.isConnected() ? "✅ 是" : "❌ 否";
+            connectedFlag ? "✅ 是" : "❌ 否";
+          setPermissionStatus(permissionState ?? true);
           currentAccount = account;
           updateBalance(account);
+        } else if (status === "locked") {
+          statusDiv.className = "status locked";
+          statusDiv.textContent = "🔒 钱包已锁定（已授权）";
+          accountInfo.style.display = "block";
+          document.getElementById("account").textContent = "已锁定";
+          document.getElementById("chainId").textContent = chainId || "-";
+          document.getElementById("networkName").textContent =
+            getChainLabel(chainId);
+          document.getElementById("balance").textContent = "-";
+          document.getElementById("isConnected").textContent =
+            connectedFlag ? "✅ 是" : "❌ 否";
+          setPermissionStatus(permissionState ?? true);
+          currentAccount = null;
         } else {
           statusDiv.className = "status disconnected";
           statusDiv.textContent = "❌ 未连接";
-          accountInfo.style.display = "none";
+          accountInfo.style.display = "block";
+          document.getElementById("account").textContent = "-";
+          const chainToShow =
+            chainId || lastKnownChainId || walletProvider?.chainId || null;
+          document.getElementById("chainId").textContent = chainToShow || "-";
+          document.getElementById("networkName").textContent = chainToShow
+            ? getChainLabel(chainToShow)
+            : "-";
+          document.getElementById("balance").textContent = "-";
+          document.getElementById("isConnected").textContent = "❌ 否";
+          setPermissionStatus(permissionState);
           currentAccount = null;
         }
       }
 
+      function updateStatus(connected, account = null, chainId = null, permissionState = null) {
+        if (chainId) {
+          lastKnownChainId = chainId;
+        }
+        if (
+          connected === "connected" ||
+          connected === "locked" ||
+          connected === "disconnected"
+        ) {
+          setStatus(connected, account, chainId, permissionState);
+          return;
+        }
+        setStatus(
+          connected ? "connected" : "disconnected",
+          account,
+          chainId,
+          permissionState
+        );
+      }
+
+      async function resolveEmptyAccountsState(provider, accounts, permissions) {
+        let accountList = Array.isArray(accounts) ? accounts : null;
+        let permissionList = Array.isArray(permissions) ? permissions : null;
+
+        if (!accountList) {
+          try {
+            accountList = await provider.request({ method: "eth_accounts" });
+          } catch (error) {
+            accountList = [];
+          }
+        }
+
+        if (!permissionList) {
+          try {
+            permissionList = await provider.request({
+              method: "wallet_getPermissions",
+            });
+          } catch (error) {
+            permissionList = [];
+          }
+        }
+
+        const hasEthAccounts = Array.isArray(permissionList)
+          ? permissionList.some(
+              (perm) => perm && perm.parentCapability === "eth_accounts"
+            )
+          : false;
+
+        if (accountList.length > 0) {
+          return { status: "connected", hasPermission: true };
+        }
+
+        if (hasEthAccounts) {
+          return { status: "locked", hasPermission: true };
+        }
+
+        return {
+          status: "disconnected",
+          hasPermission: false,
+        };
+      }
+
+      async function refreshDiagnostics() {
+        try {
+          const provider = await waitForEthereum();
+          const [accounts, chainId, permissions] = await Promise.all([
+            provider.request({ method: "eth_accounts" }).catch(() => []),
+            provider.request({ method: "eth_chainId" }).catch(() => null),
+            provider.request({ method: "wallet_getPermissions" }).catch(() => []),
+          ]);
+          if (chainId) {
+            lastKnownChainId = chainId;
+          }
+          const state = await resolveEmptyAccountsState(
+            provider,
+            accounts,
+            permissions
+          );
+
+          const report = {
+            provider: {
+              isYeYing: Boolean(provider?.isYeYing),
+              isMetaMask: Boolean(provider?.isMetaMask),
+              isConnected: provider?.isConnected ? provider.isConnected() : false,
+              selectedAddress: provider?.selectedAddress || null,
+            },
+            chainId,
+            network: getChainLabel(chainId),
+            accounts,
+            permissions,
+            connectState: state.status,
+          };
+
+          setPermissionStatus(state.hasPermission);
+          const diagnosticsText = JSON.stringify(report, null, 2);
+          log(`🧪 诊断信息\n${diagnosticsText}`);
+        } catch (error) {
+          log(`❌ 诊断失败: ${error.message}`, "error");
+        }
+      }
       // 更新余额
       async function updateBalance(account) {
         try {
@@ -359,9 +967,16 @@
             method: "eth_getBalance",
             params: [account, "latest"],
           });
+          const chainId = await provider
+            .request({ method: "eth_chainId" })
+            .catch(() => null);
+          if (chainId) {
+            lastKnownChainId = chainId;
+          }
+          const symbol = getChainSymbol(chainId);
           const ethBalance = parseInt(balance, 16) / 1e18;
           document.getElementById("balance").textContent =
-            ethBalance.toFixed(4) + " ETH";
+            ethBalance.toFixed(4) + " " + symbol;
         } catch (error) {
           document.getElementById("balance").textContent = "获取失败";
         }
@@ -377,7 +992,8 @@
           });
           const chainId = await provider.request({ method: "eth_chainId" });
           log(`✅ 连接成功! 账户: ${accounts[0]}`, "success");
-          updateStatus(true, accounts[0], chainId);
+          updateStatus("connected", accounts[0], chainId, true);
+          refreshDiagnostics();
         } catch (error) {
           log(`❌ 连接失败: ${error.message}`, "error");
         }
@@ -391,9 +1007,27 @@
           if (accounts.length > 0) {
             log(`✅ 账户: ${accounts[0]}`, "success");
             const chainId = await provider.request({ method: "eth_chainId" });
-            updateStatus(true, accounts[0], chainId);
+            updateStatus("connected", accounts[0], chainId, true);
+            refreshDiagnostics();
           } else {
-            log("⚠️ 未授权，请先连接钱包");
+            const emptyState = await resolveEmptyAccountsState(provider, accounts);
+            let chainId = null;
+            if (emptyState.status === "locked") {
+              try {
+                chainId = await provider.request({ method: "eth_chainId" });
+              } catch (error) {
+                chainId = null;
+              }
+              log("🔒 钱包已授权但处于锁定状态", "info");
+            } else {
+              log("⚠️ 未授权，请先连接钱包");
+            }
+            updateStatus(
+              emptyState.status,
+              null,
+              chainId,
+              emptyState.hasPermission
+            );
           }
         } catch (error) {
           log(`❌ 获取账户失败: ${error.message}`, "error");
@@ -418,102 +1052,146 @@
             method: "wallet_revokePermissions",
             params: [{ eth_accounts: {} }],
           });
-          log("✅ 已断开连接", "success");
-          updateStatus(false);
+          const accounts = await provider
+            .request({ method: "eth_accounts" })
+            .catch(() => []);
+          const state = await resolveEmptyAccountsState(provider, accounts);
+          let chainId = null;
+          if (state.status === "locked") {
+            try {
+              chainId = await provider.request({ method: "eth_chainId" });
+            } catch (error) {
+              chainId = null;
+            }
+          }
+          if (state.status === "disconnected") {
+            log("✅ 已断开连接", "success");
+          } else {
+            log("⚠️ 权限仍存在，可能未撤销", "error");
+          }
+          updateStatus(state.status, null, chainId, state.hasPermission);
+          refreshDiagnostics();
         } catch (error) {
           log(`❌ 断开失败: ${error.message}`, "error");
         }
       }
 
       // ========== 2. 网络测试 ==========
+      function fillChainPreset(key) {
+        const preset = CHAIN_PRESETS[key];
+        if (!preset) return;
+
+        document.getElementById("customChainId").value = preset.chainId;
+        document.getElementById("customChainName").value = preset.chainName;
+        document.getElementById("customRpcUrl").value = preset.rpcUrls?.[0] || "";
+        document.getElementById("customSymbol").value =
+          preset.nativeCurrency?.symbol || "";
+        document.getElementById("customExplorer").value =
+          preset.blockExplorerUrls?.[0] || "";
+      }
+
+      function getCustomChainConfig() {
+        const chainId = document.getElementById("customChainId").value.trim();
+        const chainName = document.getElementById("customChainName").value.trim();
+        const rpcUrl = document.getElementById("customRpcUrl").value.trim();
+        const symbol = document.getElementById("customSymbol").value.trim();
+        const explorer = document.getElementById("customExplorer").value.trim();
+
+        return {
+          chainId,
+          chainName,
+          rpcUrls: [rpcUrl],
+          nativeCurrency: {
+            name: chainName || symbol || "Native",
+            symbol: symbol || "NATIVE",
+            decimals: 18,
+          },
+          blockExplorerUrls: explorer ? [explorer] : [],
+        };
+      }
+
       async function testGetChainId() {
         try {
           const provider = await waitForEthereum();
           log("🔵 获取链 ID...");
           const chainId = await provider.request({ method: "eth_chainId" });
-          log(`✅ 当前链 ID: ${chainId} (${parseInt(chainId, 16)})`, "success");
+          if (chainId) {
+            lastKnownChainId = chainId;
+          }
+          log(
+            `✅ 当前链: ${chainId} (${parseInt(chainId, 16)}) ${getChainLabel(
+              chainId
+            )}`,
+            "success"
+          );
         } catch (error) {
           log(`❌ 获取失败: ${error.message}`, "error");
         }
       }
 
-      async function testSwitchToSepolia() {
+      async function switchOrAddChain(provider, chainConfig) {
         try {
-          const provider = await waitForEthereum();
-          log("🔵 切换到 Sepolia 测试网...");
           await provider.request({
             method: "wallet_switchEthereumChain",
-            params: [{ chainId: "0xaa36a7" }],
+            params: [{ chainId: chainConfig.chainId }],
           });
-          log("✅ 切换成功!", "success");
+          return "switched";
+        } catch (error) {
+          const message = String(error?.message || "");
+          if (error?.code === 4902 || /unrecognized|not found/i.test(message)) {
+            await provider.request({
+              method: "wallet_addEthereumChain",
+              params: [chainConfig],
+            });
+            return "added";
+          }
+          throw error;
+        }
+      }
+
+      async function ensureYeYing() {
+        try {
+          const provider = await waitForEthereum();
+          log("🔵 切换/确保 YeYing 主网...");
+          const result = await switchOrAddChain(provider, CHAIN_PRESETS.yeying);
+          log(
+            result === "added"
+              ? "✅ 已添加并切换到 YeYing 主网"
+              : "✅ 已切换到 YeYing 主网",
+            "success"
+          );
         } catch (error) {
           log(`❌ 切换失败: ${error.message}`, "error");
         }
       }
 
-      async function testSwitchToMainnet() {
+      async function testAddCustomChain() {
         try {
           const provider = await waitForEthereum();
-          log("🔵 切换到以太坊主网...");
+          const chainConfig = getCustomChainConfig();
+          log(`🔵 添加网络: ${chainConfig.chainName}...`);
+          await provider.request({
+            method: "wallet_addEthereumChain",
+            params: [chainConfig],
+          });
+          log("✅ 网络添加成功!", "success");
+        } catch (error) {
+          log(`❌ 添加失败: ${error.message}`, "error");
+        }
+      }
+
+      async function testSwitchCustomChain() {
+        try {
+          const provider = await waitForEthereum();
+          const chainConfig = getCustomChainConfig();
+          log(`🔵 切换到链 ${chainConfig.chainId}...`);
           await provider.request({
             method: "wallet_switchEthereumChain",
-            params: [{ chainId: "0x1" }],
+            params: [{ chainId: chainConfig.chainId }],
           });
           log("✅ 切换成功!", "success");
         } catch (error) {
           log(`❌ 切换失败: ${error.message}`, "error");
-        }
-      }
-
-      async function testAddPolygon() {
-        try {
-          const provider = await waitForEthereum();
-          log("🔵 添加 Polygon 网络...");
-          await provider.request({
-            method: "wallet_addEthereumChain",
-            params: [
-              {
-                chainId: "0x89",
-                chainName: "Polygon Mainnet",
-                rpcUrls: ["https://polygon-rpc.com"],
-                nativeCurrency: {
-                  name: "MATIC",
-                  symbol: "MATIC",
-                  decimals: 18,
-                },
-                blockExplorerUrls: ["https://polygonscan.com"],
-              },
-            ],
-          });
-          log("✅ Polygon 网络添加成功!", "success");
-        } catch (error) {
-          log(`❌ 添加失败: ${error.message}`, "error");
-        }
-      }
-
-      async function testAddBSC() {
-        try {
-          const provider = await waitForEthereum();
-          log("🔵 添加 BSC 网络...");
-          await provider.request({
-            method: "wallet_addEthereumChain",
-            params: [
-              {
-                chainId: "0x38",
-                chainName: "BNB Smart Chain",
-                rpcUrls: ["https://bsc-dataseed.binance.org"],
-                nativeCurrency: {
-                  name: "BNB",
-                  symbol: "BNB",
-                  decimals: 18,
-                },
-                blockExplorerUrls: ["https://bscscan.com"],
-              },
-            ],
-          });
-          log("✅ BSC 网络添加成功!", "success");
-        } catch (error) {
-          log(`❌ 添加失败: ${error.message}`, "error");
         }
       }
 
@@ -526,14 +1204,14 @@
 
         try {
           const provider = await waitForEthereum();
-          log("🔵 发送 0.001 ETH...");
+          log("🔵 发送 0.001 原生币...");
           const txHash = await provider.request({
             method: "eth_sendTransaction",
             params: [
               {
                 from: currentAccount,
                 to: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
-                value: "0x38D7EA4C68000", // 0.001 ETH
+                value: "0x38D7EA4C68000", // 0.001 native
                 gas: "0x5208",
               },
             ],
@@ -580,7 +1258,35 @@
         try {
           const provider = await waitForEthereum();
           log("🔵 请求个人签名...");
-          const message = "Hello from YeYing Wallet Test!";
+          const chainIdHex = await provider.request({ method: "eth_chainId" });
+          const chainId = parseInt(chainIdHex, 16);
+          const origin = window.location.origin || "https://example.org";
+          const recap = {
+            att: {
+              [origin]: {
+                "read:profile": [{}],
+                "write:profile": [{ limit: 1 }],
+              },
+              "yeying:tx": {
+                "sign:transaction": [{}],
+              },
+            },
+          };
+          const recapResource = `urn:recap:${base64UrlEncode(
+            JSON.stringify(recap)
+          )}`;
+          const message = buildSiweMessage({
+            domain: window.location.host || "example.org",
+            address: currentAccount,
+            uri: origin,
+            chainId,
+            statement: "Sign in to YeYing Wallet Test.",
+            resources: [
+              "https://login.xyz",
+              "https://docs.login.xyz",
+              recapResource,
+            ],
+          });
           const signature = await provider.request({
             method: "personal_sign",
             params: [message, currentAccount],
@@ -656,50 +1362,48 @@
       }
 
       // ========== 5. 代币测试 ==========
-      async function testWatchUSDC() {
-        try {
-          const provider = await waitForEthereum();
-          log("🔵 添加 USDC 代币...");
-          const result = await provider.request({
-            method: "wallet_watchAsset",
-            params: {
-              type: "ERC20",
-              options: {
-                address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-                symbol: "USDC",
-                decimals: 6,
-                image: "https://cryptologos.cc/logos/usd-coin-usdc-logo.png",
-              },
-            },
-          });
-          log(
-            result ? "✅ USDC 添加成功!" : "⚠️ 用户取消",
-            result ? "success" : "info"
-          );
-        } catch (error) {
-          log(`❌ 添加失败: ${error.message}`, "error");
-        }
+      function fillTokenPreset(key) {
+        const preset = TOKEN_PRESETS[key];
+        if (!preset) return;
+        document.getElementById("tokenAddress").value = preset.address;
+        document.getElementById("tokenSymbol").value = preset.symbol;
+        document.getElementById("tokenDecimals").value = String(
+          preset.decimals ?? 18
+        );
+        document.getElementById("tokenImage").value = preset.image || "";
       }
 
-      async function testWatchDAI() {
+      async function testWatchCustomToken() {
         try {
           const provider = await waitForEthereum();
-          log("🔵 添加 DAI 代币...");
+          const address = document.getElementById("tokenAddress").value.trim();
+          const symbol = document.getElementById("tokenSymbol").value.trim();
+          const decimals = parseInt(
+            document.getElementById("tokenDecimals").value.trim() || "18",
+            10
+          );
+          const image = document.getElementById("tokenImage").value.trim();
+
+          if (!address || !symbol) {
+            log("⚠️ 请输入代币地址与符号", "error");
+            return;
+          }
+
+          log(`🔵 添加代币: ${symbol}...`);
           const result = await provider.request({
             method: "wallet_watchAsset",
             params: {
               type: "ERC20",
               options: {
-                address: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-                symbol: "DAI",
-                decimals: 18,
-                image:
-                  "https://cryptologos.cc/logos/multi-collateral-dai-dai-logo.png",
+                address,
+                symbol,
+                decimals: Number.isFinite(decimals) ? decimals : 18,
+                image: image || undefined,
               },
             },
           });
           log(
-            result ? "✅ DAI 添加成功!" : "⚠️ 用户取消",
+            result ? "✅ 代币添加成功!" : "⚠️ 用户取消",
             result ? "success" : "info"
           );
         } catch (error) {
@@ -715,6 +1419,12 @@
           const permissions = await provider.request({
             method: "wallet_getPermissions",
           });
+          const hasAccounts = Array.isArray(permissions)
+            ? permissions.some(
+                (perm) => perm && perm.parentCapability === "eth_accounts"
+              )
+            : false;
+          setPermissionStatus(hasAccounts);
           log(`✅ 权限: ${JSON.stringify(permissions, null, 2)}`, "success");
         } catch (error) {
           log(`❌ 获取失败: ${error.message}`, "error");
@@ -729,6 +1439,7 @@
             method: "wallet_requestPermissions",
             params: [{ eth_accounts: {} }],
           });
+          setPermissionStatus(true);
           log(
             `✅ 权限已授予: ${JSON.stringify(permissions, null, 2)}`,
             "success"
@@ -747,7 +1458,8 @@
             params: [{ eth_accounts: {} }],
           });
           log("✅ 权限已撤销", "success");
-          updateStatus(false);
+          setPermissionStatus(false);
+          updateStatus("disconnected", null, null, false);
         } catch (error) {
           log(`❌ 撤销失败: ${error.message}`, "error");
         }
@@ -768,7 +1480,7 @@
           // disconnect 事件
           eventListeners.disconnect = (error) => {
             log(`📢 disconnect 事件: ${error.message}`, "error");
-            updateStatus(false);
+            updateStatus("disconnected", null, null, false);
           };
           provider.on("disconnect", eventListeners.disconnect);
 
@@ -777,10 +1489,20 @@
             log(`📢 accountsChanged 事件: ${accounts[0] || "无账户"}`, "success");
             if (accounts.length > 0) {
               provider.request({ method: "eth_chainId" }).then((chainId) => {
-                updateStatus(true, accounts[0], chainId);
+                updateStatus("connected", accounts[0], chainId, true);
               });
             } else {
-              updateStatus(false);
+              resolveEmptyAccountsState(provider, accounts).then(async (state) => {
+                let chainId = null;
+                if (state.status === "locked") {
+                  try {
+                    chainId = await provider.request({ method: "eth_chainId" });
+                  } catch (error) {
+                    chainId = null;
+                  }
+                }
+                updateStatus(state.status, null, chainId, state.hasPermission);
+              });
             }
           };
           provider.on("accountsChanged", eventListeners.accountsChanged);
@@ -792,7 +1514,7 @@
               "success"
             );
             if (currentAccount) {
-              updateStatus(true, currentAccount, chainId);
+              updateStatus("connected", currentAccount, chainId, true);
             }
           };
           provider.on("chainChanged", eventListeners.chainChanged);
@@ -806,21 +1528,24 @@
       function testRemoveListeners() {
         log("🔵 移除事件监听...");
 
-        if (ethereum) {
+        if (walletProvider) {
           if (eventListeners.connect) {
-            ethereum.removeListener("connect", eventListeners.connect);
+            walletProvider.removeListener("connect", eventListeners.connect);
           }
           if (eventListeners.disconnect) {
-            ethereum.removeListener("disconnect", eventListeners.disconnect);
+            walletProvider.removeListener("disconnect", eventListeners.disconnect);
           }
           if (eventListeners.accountsChanged) {
-            ethereum.removeListener(
+            walletProvider.removeListener(
               "accountsChanged",
               eventListeners.accountsChanged
             );
           }
           if (eventListeners.chainChanged) {
-            ethereum.removeListener("chainChanged", eventListeners.chainChanged);
+            walletProvider.removeListener(
+              "chainChanged",
+              eventListeners.chainChanged
+            );
           }
         }
 
@@ -828,26 +1553,57 @@
         log("✅ 事件监听已移除", "success");
       }
 
+      document.querySelectorAll(".tab-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          setActiveTab(btn.dataset.tab);
+        });
+      });
+      setActiveTab("accounts");
+
       // 页面加载时自动检查连接状态
       window.addEventListener("load", async () => {
         try {
           await waitForEthereum();
           log("✅ YeYing Wallet 已检测到", "success");
+          fillChainPreset("yeying");
           await testListenEvents();
+          refreshDiagnostics();
 
           try {
-            const accounts = await ethereum.request({ method: "eth_accounts" });
+            const accounts = await walletProvider.request({ method: "eth_accounts" });
             if (accounts.length > 0) {
-              const chainId = await ethereum.request({ method: "eth_chainId" });
-              updateStatus(true, accounts[0], chainId);
+              const chainId = await walletProvider.request({ method: "eth_chainId" });
+              updateStatus("connected", accounts[0], chainId, true);
               log("✅ 自动恢复连接状态", "success");
+            } else {
+              const emptyState = await resolveEmptyAccountsState(
+                walletProvider,
+                accounts
+              );
+              let chainId = null;
+              if (emptyState.status === "locked") {
+                try {
+                  chainId = await walletProvider.request({
+                    method: "eth_chainId",
+                  });
+                } catch (error) {
+                  chainId = null;
+                }
+                log("🔒 检测到钱包已授权但处于锁定状态", "info");
+              }
+              updateStatus(
+                emptyState.status,
+                null,
+                chainId,
+                emptyState.hasPermission
+              );
             }
           } catch (error) {
             log("⚠️ 无法恢复连接状态");
           }
         } catch (error) {
           log("❌ 未检测到 YeYing Wallet", "error");
-          ethereum = undefined;
+          walletProvider = undefined;
         }
       });
     </script>

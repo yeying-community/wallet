@@ -176,8 +176,9 @@ export const MessageValidator = {
       return { valid: false, error: 'Invalid method' };
     }
 
-    if (!Array.isArray(message.payload.params)) {
-      return { valid: false, error: 'Params must be an array' };
+    const params = message.payload.params;
+    if (params !== undefined && params !== null && !Array.isArray(params) && typeof params !== 'object') {
+      return { valid: false, error: 'Params must be an array or object' };
     }
 
     return { valid: true };
