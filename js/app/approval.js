@@ -387,6 +387,225 @@ class ApprovalApp {
     return normalized.length ? normalized.join('; ') : '无约束';
   }
 
+  renderStatementValue(container, statement) {
+    if (!container) return;
+    container.textContent = '';
+    const payloadInfo = this.extractStatementPayload(statement);
+    if (payloadInfo) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'statement-structured';
+      if (payloadInfo.prefix) {
+        const prefixEl = document.createElement('div');
+        prefixEl.className = 'statement-prefix';
+        prefixEl.textContent = payloadInfo.prefix;
+        wrapper.appendChild(prefixEl);
+      }
+      wrapper.appendChild(this.buildStatementNode(payloadInfo.payload, 0));
+      container.appendChild(wrapper);
+      return;
+    }
+    const textEl = document.createElement('div');
+    textEl.className = 'statement-text';
+    textEl.textContent = statement;
+    container.appendChild(textEl);
+  }
+
+  extractStatementPayload(statement) {
+    if (!statement || typeof statement !== 'string') return null;
+    const trimmed = statement.trim();
+    if (!trimmed) return null;
+    const direct = this.tryParseStatementJson(trimmed);
+    if (direct) {
+      return { prefix: '', payload: direct };
+    }
+    const objectMatch = this.extractJsonWithPrefix(trimmed, '{', '}');
+    if (objectMatch) return objectMatch;
+    const arrayMatch = this.extractJsonWithPrefix(trimmed, '[', ']');
+    if (arrayMatch) return arrayMatch;
+    return null;
+  }
+
+  extractJsonWithPrefix(text, open, close) {
+    const start = text.indexOf(open);
+    const end = text.lastIndexOf(close);
+    if (start === -1 || end === -1 || end <= start) return null;
+    const prefix = text.slice(0, start).trim();
+    const jsonPart = text.slice(start, end + 1);
+    const parsed = this.tryParseStatementJson(jsonPart);
+    if (!parsed) return null;
+    return { prefix, payload: parsed };
+  }
+
+  tryParseStatementJson(statement) {
+    if (!statement || typeof statement !== 'string') return null;
+    const trimmed = statement.trim();
+    if (!trimmed) return null;
+    const looksLikeJson =
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'));
+    if (!looksLikeJson) return null;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch (error) {
+      return null;
+    }
+    return null;
+  }
+
+  buildStatementNode(value, depth, key) {
+    if (Array.isArray(value)) {
+      return this.buildStatementList(value, depth, key);
+    }
+    if (value && typeof value === 'object') {
+      return this.buildStatementTable(value, depth);
+    }
+    const textEl = document.createElement('div');
+    textEl.className = 'statement-text';
+    const formatted = this.formatStatementScalar(key, value);
+    textEl.textContent = formatted ?? (value == null ? '-' : String(value));
+    return textEl;
+  }
+
+  buildStatementTable(obj, depth) {
+    const table = document.createElement('div');
+    table.className = depth === 0 ? 'statement-table' : 'statement-table statement-table-nested';
+    const entries = Object.entries(obj || {});
+    if (!entries.length) {
+      const empty = document.createElement('div');
+      empty.className = 'statement-text';
+      empty.textContent = '(空)';
+      table.appendChild(empty);
+      return table;
+    }
+    entries.forEach(([key, value]) => {
+      const row = document.createElement('div');
+      row.className = 'statement-item';
+      if (this.isWideStatementKey(key)) {
+        row.classList.add('statement-item-wide-key');
+      }
+
+      const keyEl = document.createElement('div');
+      keyEl.className = 'statement-key';
+      keyEl.textContent = key;
+
+      const valueEl = document.createElement('div');
+      valueEl.className = 'statement-val';
+      const formatted = this.formatStatementScalar(key, value);
+      if (formatted != null) {
+        valueEl.textContent = formatted;
+      } else if (value && typeof value === 'object') {
+        valueEl.appendChild(this.buildStatementNode(value, depth + 1, key));
+      } else {
+        valueEl.textContent = value == null ? '-' : String(value);
+      }
+
+      row.appendChild(keyEl);
+      row.appendChild(valueEl);
+      table.appendChild(row);
+    });
+    return table;
+  }
+
+  buildStatementList(list, depth, key) {
+    const items = Array.isArray(list) ? list : [];
+    const isPrimitiveList = items.every((item) => item == null || typeof item !== 'object');
+    if (isPrimitiveList) {
+      const ul = document.createElement('ul');
+      ul.className = depth === 0 ? 'statement-list' : 'statement-list statement-list-nested';
+      items.forEach((item) => {
+        const li = document.createElement('li');
+        const formatted = this.formatStatementScalar(key, item);
+        li.textContent = formatted ?? (item == null ? '-' : String(item));
+        ul.appendChild(li);
+      });
+      return ul;
+    }
+
+    const table = document.createElement('div');
+    table.className = depth === 0 ? 'statement-table' : 'statement-table statement-table-nested';
+    items.forEach((item, index) => {
+      const row = document.createElement('div');
+      row.className = 'statement-item';
+
+      const keyEl = document.createElement('div');
+      keyEl.className = 'statement-key';
+      keyEl.textContent = `#${index + 1}`;
+
+      const valueEl = document.createElement('div');
+      valueEl.className = 'statement-val';
+      if (item && typeof item === 'object') {
+        valueEl.appendChild(this.buildStatementNode(item, depth + 1));
+      } else {
+        valueEl.textContent = item == null ? '-' : String(item);
+      }
+
+      row.appendChild(keyEl);
+      row.appendChild(valueEl);
+      table.appendChild(row);
+    });
+    return table;
+  }
+
+  isWideStatementKey(key) {
+    const normalized = String(key || '').toLowerCase();
+    return normalized === 'resource' || normalized === 'action';
+  }
+
+  formatStatementScalar(key, value) {
+    if (!key) return null;
+    const normalizedKey = String(key).toLowerCase();
+    const timeKeys = new Set([
+      'exp',
+      'iat',
+      'nbf',
+      'issuedat',
+      'expirationtime',
+      'notbefore',
+      'expires',
+      'expiresat',
+    ]);
+    if (!timeKeys.has(normalizedKey)) return null;
+    return this.formatTimestamp(value);
+  }
+
+  formatTimestamp(value) {
+    if (value == null) return null;
+    if (value instanceof Date) {
+      return this.formatDate(value);
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      if (/^\d{10,13}$/.test(trimmed)) {
+        const num = Number(trimmed);
+        if (!Number.isFinite(num)) return null;
+        return this.formatDate(this.normalizeEpoch(num));
+      }
+      const date = new Date(trimmed);
+      if (!Number.isNaN(date.getTime())) {
+        return this.formatDate(date);
+      }
+      return null;
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return this.formatDate(this.normalizeEpoch(value));
+    }
+    return null;
+  }
+
+  normalizeEpoch(value) {
+    const ms = value < 1e12 ? value * 1000 : value;
+    return new Date(ms);
+  }
+
+  formatDate(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+      return null;
+    }
+    return date.toISOString();
+  }
+
   renderRecapRequest(recapInfo, rawMessage) {
     const recapSection = document.getElementById('recapSection');
     const messageSection = document.getElementById('signMessageSection');
@@ -416,7 +635,7 @@ class ApprovalApp {
     }
     if (statementEl && statementRow) {
       if (recapInfo.statement) {
-        statementEl.textContent = recapInfo.statement;
+        this.renderStatementValue(statementEl, recapInfo.statement);
         statementRow.style.display = 'flex';
       } else {
         statementRow.style.display = 'none';
@@ -489,7 +708,6 @@ class ApprovalApp {
 
     setText('siweDomain', siweInfo.domain);
     setText('siweAddress', siweInfo.address);
-    setText('siweStatement', siweInfo.statement, 'siweStatementRow');
     setText('siweUri', siweInfo.uri, 'siweUriRow');
     setText('siweVersion', siweInfo.version, 'siweVersionRow');
     setText('siweChainId', siweInfo.chainId, 'siweChainIdRow');
@@ -498,6 +716,17 @@ class ApprovalApp {
     setText('siweExpiration', siweInfo.expirationTime, 'siweExpirationRow');
     setText('siweNotBefore', siweInfo.notBefore, 'siweNotBeforeRow');
     setText('siweRequestId', siweInfo.requestId, 'siweRequestIdRow');
+
+    const statementRow = document.getElementById('siweStatementRow');
+    const statementEl = document.getElementById('siweStatement');
+    if (statementRow && statementEl) {
+      if (siweInfo.statement) {
+        this.renderStatementValue(statementEl, siweInfo.statement);
+        statementRow.style.display = 'flex';
+      } else {
+        statementRow.style.display = 'none';
+      }
+    }
 
     let resourcesValue = '';
     if (siweInfo.resources && siweInfo.resources.length > 0) {
