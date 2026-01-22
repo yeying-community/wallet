@@ -137,6 +137,117 @@ body {
   max-width: 60%;
 }
 
+.detail-row.statement-row {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.detail-row.statement-row .detail-value {
+  text-align: left;
+  max-width: none;
+  flex: 1 1 auto;
+  font-weight: 400;
+  width: 100%;
+}
+
+.statement-value {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #e6e8ec;
+  border-radius: 8px;
+  background: #f8f9fa;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
+}
+
+.statement-structured {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.statement-prefix {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1f3a6f;
+  background: #e8f0ff;
+  border: 1px solid #c7d9ff;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.statement-text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #333;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.statement-table {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.statement-table-nested {
+  margin-top: 6px;
+  padding-left: 10px;
+  border-left: 2px solid #f0f0f0;
+}
+
+.statement-item {
+  display: grid;
+  grid-template-columns: 3ch minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.statement-item-wide-key {
+  grid-template-columns: 8ch minmax(0, 1fr);
+}
+
+.statement-key {
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  white-space: nowrap;
+}
+
+.statement-val {
+  font-size: 12px;
+  color: #333;
+  word-break: break-word;
+  white-space: pre-wrap;
+  min-width: 0;
+}
+
+.statement-item {
+  padding: 2px 0;
+}
+
+.statement-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: #333;
+  min-width: 0;
+}
+
+.statement-list li {
+  margin: 1px 0;
+}
+
+.statement-list-nested {
+  margin-top: 6px;
+}
+
 .button-group {
   display: flex;
   gap: 10px;
@@ -192,7 +303,9 @@ body {
   font-weight: 600;
   font-size: 13px;
   color: #333;
-  word-break: break-all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   margin-bottom: 8px;
 }
 
@@ -218,6 +331,7 @@ body {
 .recap-action-name {
   font-family: monospace;
   color: #333;
+  white-space: nowrap;
 }
 
 .recap-constraints {
