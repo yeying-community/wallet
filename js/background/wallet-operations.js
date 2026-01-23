@@ -30,13 +30,19 @@ import {
   deleteAccount,
   deleteWallet,
   clearSelectedAccount,
+  getMap,
   getAuthorizationList,
   deleteAuthorization,
   clearAllAuthorizations,
   getUserSetting,
-  updateUserSetting
+  updateUserSetting,
+  getContactList,
+  getContact,
+  saveContact,
+  deleteContact,
+  UcanStorageKeys
 } from '../storage/index.js';
-import { validateAccountName, validateEthereumAddress, validateTokenConfig } from '../config/validation-rules.js';
+import { validateAccountName, validateContactName, validateEthereumAddress, validateTokenConfig } from '../config/validation-rules.js';
 import { handleRpcMethod } from './rpc-handler.js';
 import { getCachedPassword, cachePassword, refreshPasswordCache, clearPasswordCache } from './password-cache.js';
 import { resetLockTimer } from './keyring.js';
@@ -783,6 +789,57 @@ export async function handleGetAuthorizedSites() {
 }
 
 /**
+ * 获取指定网站的 UCAN 会话信息（当前有效优先，否则最近一次）
+ * @param {string} origin
+ * @param {string} address
+ * @returns {Promise<Object>} { success, session }
+ */
+export async function handleGetSiteUcanSession(origin, address) {
+  if (!origin) {
+    return { success: false, error: 'origin is required' };
+  }
+
+  try {
+    const sessionsMap = await getMap(UcanStorageKeys.UCAN_SESSIONS);
+    const records = Object.values(sessionsMap || {});
+    const filtered = records.filter(record => {
+      if (!record) return false;
+      if (origin && record.origin !== origin) return false;
+      if (address && record.address !== address) return false;
+      return true;
+    });
+
+    if (!filtered.length) {
+      return { success: true, session: null };
+    }
+
+    const now = Date.now();
+    const active = filtered.filter(record => record.expiresAt && record.expiresAt > now);
+    const pickFrom = active.length ? active : filtered;
+    pickFrom.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const selected = pickFrom[0];
+    if (!selected) {
+      return { success: true, session: null };
+    }
+
+    const isActive = selected.expiresAt ? selected.expiresAt > now : true;
+
+    return {
+      success: true,
+      session: {
+        id: selected.id,
+        did: selected.did,
+        createdAt: selected.createdAt,
+        expiresAt: selected.expiresAt,
+        isActive
+      }
+    };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to get UCAN session' };
+  }
+}
+
+/**
  * 撤销指定网站授权
  * @param {string} origin
  * @returns {Promise<Object>} { success }
@@ -826,6 +883,136 @@ export async function handleClearAllAuthorizations() {
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to clear authorizations' };
+  }
+}
+
+// ==================== 联系人管理 ====================
+
+function normalizeContactAddress(address) {
+  return String(address || '').trim();
+}
+
+function createContactId() {
+  const random = Math.random().toString(36).slice(2, 8);
+  return `contact_${Date.now()}_${random}`;
+}
+
+function findDuplicateContact(contacts, address, excludeId = null) {
+  const normalized = String(address || '').toLowerCase();
+  if (!normalized) return null;
+  return contacts.find(contact => {
+    if (!contact) return false;
+    if (excludeId && contact.id === excludeId) return false;
+    const existing = String(contact.address || '').toLowerCase();
+    return existing === normalized;
+  });
+}
+
+export async function handleGetContacts() {
+  try {
+    const contacts = await getContactList();
+    contacts.sort((a, b) => (a?.name || '').localeCompare(b?.name || '', 'zh-CN'));
+    return { success: true, contacts };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to get contacts' };
+  }
+}
+
+export async function handleAddContact(data = {}) {
+  const name = String(data?.name || '').trim();
+  const address = normalizeContactAddress(data?.address);
+  const note = String(data?.note || '').trim();
+
+  const nameValidation = validateContactName(name);
+  if (!nameValidation.valid) {
+    return { success: false, error: nameValidation.error || 'Invalid contact name' };
+  }
+
+  const addressValidation = validateEthereumAddress(address);
+  if (!addressValidation.valid) {
+    return { success: false, error: addressValidation.error || 'Invalid address' };
+  }
+
+  try {
+    const contacts = await getContactList();
+    const duplicate = findDuplicateContact(contacts, address);
+    if (duplicate) {
+      return { success: false, error: '该地址已存在于联系人中' };
+    }
+
+    const now = Date.now();
+    const contact = {
+      id: createContactId(),
+      name,
+      address,
+      note,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    await saveContact(contact);
+    return { success: true, contact };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to add contact' };
+  }
+}
+
+export async function handleUpdateContact(data = {}) {
+  const contactId = String(data?.id || '').trim();
+  if (!contactId) {
+    return { success: false, error: 'contactId is required' };
+  }
+
+  const existing = await getContact(contactId);
+  if (!existing) {
+    return { success: false, error: 'Contact not found' };
+  }
+
+  const name = data?.name != null ? String(data.name).trim() : existing.name;
+  const address = data?.address != null ? normalizeContactAddress(data.address) : existing.address;
+  const note = data?.note != null ? String(data.note).trim() : existing.note || '';
+
+  const nameValidation = validateContactName(name);
+  if (!nameValidation.valid) {
+    return { success: false, error: nameValidation.error || 'Invalid contact name' };
+  }
+
+  const addressValidation = validateEthereumAddress(address);
+  if (!addressValidation.valid) {
+    return { success: false, error: addressValidation.error || 'Invalid address' };
+  }
+
+  try {
+    const contacts = await getContactList();
+    const duplicate = findDuplicateContact(contacts, address, contactId);
+    if (duplicate) {
+      return { success: false, error: '该地址已存在于联系人中' };
+    }
+
+    const updated = {
+      ...existing,
+      name,
+      address,
+      note,
+      updatedAt: Date.now()
+    };
+
+    await saveContact(updated);
+    return { success: true, contact: updated };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to update contact' };
+  }
+}
+
+export async function handleDeleteContact(contactId) {
+  if (!contactId) {
+    return { success: false, error: 'contactId is required' };
+  }
+  try {
+    await deleteContact(contactId);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to delete contact' };
   }
 }
 

@@ -13,6 +13,7 @@ export {
   PermissionStorageKeys,
   SettingsStorageKeys,
   TransactionStorageKeys,
+  ContactsStorageKeys,
   UcanStorageKeys
 } from './storage-keys.js';
 
@@ -117,6 +118,15 @@ export {
   getTransactionsByAddress,
   clearTransactionsByAddress
 } from './transaction-storage.js';
+
+// ==================== 联系人存储 ====================
+export {
+  getContactsMap,
+  getContactList,
+  getContact,
+  saveContact,
+  deleteContact
+} from './contact-storage.js';
 
 // ==================== 工具方法 ====================
 

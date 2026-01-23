@@ -428,6 +428,42 @@ body {
   right: -2px;
 }
 
+/* 联系人选择器（转账页） */
+.contact-selector {
+  position: relative;
+  width: 100%;
+}
+
+.contact-input-with-menu {
+  padding-right: 44px;
+}
+
+.contact-trigger-overlay {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #374151;
+}
+
+.contact-trigger-overlay:hover {
+  background: transparent;
+}
+
+.contact-selector .network-menu {
+  left: 0;
+  right: 0;
+}
+
 .token-selector {
   display: inline-flex;
   align-items: center;

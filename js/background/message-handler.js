@@ -28,8 +28,13 @@ import {
   handleExportPrivateKey,
   handleExportMnemonic,
   handleGetAuthorizedSites,
+  handleGetSiteUcanSession,
   handleRevokeSite,
   handleClearAllAuthorizations,
+  handleGetContacts,
+  handleAddContact,
+  handleUpdateContact,
+  handleDeleteContact,
   changePassword
 } from './wallet-operations.js';
 import { state } from './state.js';
@@ -675,12 +680,32 @@ export async function handlePopupMessage(message, response) {
         response(await handleGetAuthorizedSites());
         break;
 
+      case WalletMessageType.GET_SITE_UCAN_SESSION:
+        response(await handleGetSiteUcanSession(data?.origin, data?.address));
+        break;
+
       case WalletMessageType.REVOKE_SITE:
         response(await handleRevokeSite(data?.origin));
         break;
 
       case WalletMessageType.CLEAR_ALL_AUTHORIZATIONS:
         response(await handleClearAllAuthorizations());
+        break;
+
+      case WalletMessageType.GET_CONTACTS:
+        response(await handleGetContacts());
+        break;
+
+      case WalletMessageType.ADD_CONTACT:
+        response(await handleAddContact(data));
+        break;
+
+      case WalletMessageType.UPDATE_CONTACT:
+        response(await handleUpdateContact(data));
+        break;
+
+      case WalletMessageType.DELETE_CONTACT:
+        response(await handleDeleteContact(data?.id));
         break;
 
       // ==================== 交易 ====================

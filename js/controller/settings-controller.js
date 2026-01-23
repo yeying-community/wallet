@@ -1,8 +1,13 @@
 import { showPage, showSuccess, showError, showWaiting } from '../common/ui/index.js';
+import { formatLocaleDateTime, formatIsoTimestamp } from '../common/utils/time-utils.js';
+import { shortenAddress } from '../common/chain/index.js';
+import { escapeHtml } from '../common/ui/html-ui.js';
 
 export class SettingsController {
   constructor({ wallet }) {
     this.wallet = wallet;
+    this.cachedSites = [];
+    this.activeSiteDetail = null;
   }
 
   bindEvents() {
@@ -26,29 +31,95 @@ export class SettingsController {
         await this.handleResetWallet();
       });
     }
+
+    const searchInput = document.getElementById('siteSearchInput');
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        this.filterAuthorizedSites(searchInput.value);
+      });
+    }
+
+    const sitesList = document.getElementById('authorizedSitesList');
+    if (sitesList) {
+      sitesList.addEventListener('click', (event) => {
+        const revokeBtn = event.target.closest('.btn-revoke');
+        if (revokeBtn) {
+          event.preventDefault();
+          event.stopPropagation();
+          const origin = revokeBtn.dataset.origin ? decodeURIComponent(revokeBtn.dataset.origin) : '';
+          this.handleRevokeSite(origin);
+          return;
+        }
+
+        const item = event.target.closest('.authorized-site-item');
+        if (!item) return;
+
+        const origin = item.dataset.origin ? decodeURIComponent(item.dataset.origin) : '';
+        if (!origin) return;
+        const address = item.dataset.address ? decodeURIComponent(item.dataset.address) : '';
+        const timestamp = item.dataset.timestamp ? Number(item.dataset.timestamp) : null;
+        this.openSiteDetailModal({ origin, address, timestamp });
+      });
+    }
+
+    const closeDetailBtn = document.getElementById('closeSiteDetailBtn');
+    if (closeDetailBtn) {
+      closeDetailBtn.addEventListener('click', () => this.closeSiteDetailModal());
+    }
+
+    const closeDetailIcon = document.getElementById('closeSiteDetailModal');
+    if (closeDetailIcon) {
+      closeDetailIcon.addEventListener('click', () => this.closeSiteDetailModal());
+    }
+
+    const detailModal = document.getElementById('siteDetailModal');
+    const detailOverlay = detailModal?.querySelector('.modal-overlay');
+    if (detailOverlay) {
+      detailOverlay.addEventListener('click', () => this.closeSiteDetailModal());
+    }
+
+    const revokeDetailBtn = document.getElementById('revokeSiteDetailBtn');
+    if (revokeDetailBtn) {
+      revokeDetailBtn.addEventListener('click', () => {
+        const origin = this.activeSiteDetail?.origin;
+        if (origin) {
+          this.handleRevokeSite(origin);
+        }
+      });
+    }
   }
 
   async loadAuthorizedSites() {
     try {
       const sites = await this.wallet.getAuthorizedSites();
-
-      this.renderAuthorizedSites(
-        sites,
-        (origin) => this.handleRevokeSite(origin)
-      );
+      this.cachedSites = sites || [];
+      const searchInput = document.getElementById('siteSearchInput');
+      const keyword = searchInput?.value || '';
+      if (keyword) {
+        this.filterAuthorizedSites(keyword);
+      } else {
+        this.renderAuthorizedSites(this.cachedSites);
+      }
     } catch (error) {
       console.error('[SettingsController] 加载授权网站失败:', error);
+      this.cachedSites = [];
       this.renderAuthorizedSites([]);
     }
   }
 
-  async handleRevokeSite(origin) {
-    if (!confirm(`确定要撤销 "${origin}" 的授权吗？`)) {
+  async handleRevokeSite(origin, options = {}) {
+    const { skipConfirm = false } = options;
+    if (!origin) {
+      return;
+    }
+
+    if (!skipConfirm && !confirm(`确定要撤销 "${origin}" 的授权吗？`)) {
       return;
     }
 
     try {
       await this.wallet.revokeSite(origin);
+      this.closeSiteDetailModal();
       this.loadAuthorizedSites();
       showSuccess('授权已撤销');
     } catch (error) {
@@ -64,6 +135,7 @@ export class SettingsController {
 
     try {
       await this.wallet.clearAllAuthorizations();
+      this.closeSiteDetailModal();
       this.loadAuthorizedSites();
       showSuccess('所有授权已清除');
     } catch (error) {
@@ -144,7 +216,7 @@ export class SettingsController {
     if (confirmInput) confirmInput.value = '';
   }
 
-  renderAuthorizedSites(sites, onRevoke) {
+  renderAuthorizedSites(sites) {
     const container = document.getElementById('authorizedSitesList');
     if (!container) return;
 
@@ -153,18 +225,136 @@ export class SettingsController {
       return;
     }
 
-    container.innerHTML = sites.map(site => `
-      <div class="authorized-site-item">
-        <span class="site-origin">${site.origin}</span>
-        <button class="btn btn-danger btn-small btn-revoke" data-origin="${site.origin}">撤销</button>
-      </div>
-    `).join('');
+    container.innerHTML = sites.map(site => {
+      const originRaw = String(site?.origin || '');
+      const addressRaw = String(site?.address || '');
+      const originDisplay = escapeHtml(originRaw);
+      const addressDisplay = escapeHtml(addressRaw);
+      const shortAddress = escapeHtml(shortenAddress(addressRaw));
+      const timestamp = site?.timestamp ? formatLocaleDateTime(site.timestamp) : '';
+      const timeText = escapeHtml(timestamp);
+      const timestampValue = site?.timestamp ? String(site.timestamp) : '';
+      const originData = encodeURIComponent(originRaw);
+      const addressData = encodeURIComponent(addressRaw);
 
-    container.querySelectorAll('.btn-danger').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const origin = btn.dataset.origin;
-        onRevoke?.(origin);
-      });
+      return `
+        <div class="authorized-site-item" data-origin="${originData}" data-address="${addressData}" data-timestamp="${timestampValue}">
+          <div class="site-details">
+            <div class="site-origin">${originDisplay}</div>
+            ${addressDisplay ? `<div class="site-address">${shortAddress}</div>` : ''}
+            ${timeText ? `<div class="site-time">${timeText}</div>` : ''}
+          </div>
+          <button class="btn btn-danger btn-small btn-revoke" data-origin="${originData}">撤销</button>
+        </div>
+      `;
+    }).join('');
+  }
+
+  filterAuthorizedSites(query) {
+    const keyword = String(query || '').trim().toLowerCase();
+    if (!keyword) {
+      this.renderAuthorizedSites(this.cachedSites);
+      return;
+    }
+    const filtered = (this.cachedSites || []).filter((site) => {
+      const origin = String(site?.origin || '').toLowerCase();
+      const address = String(site?.address || '').toLowerCase();
+      return origin.includes(keyword) || address.includes(keyword);
     });
+    this.renderAuthorizedSites(filtered);
+  }
+
+  openSiteDetailModal(site = {}) {
+    const modal = document.getElementById('siteDetailModal');
+    if (!modal) return;
+
+    const origin = site?.origin || '';
+    const address = site?.address || '';
+    const timestampValue = site?.timestamp;
+    const timeText = timestampValue ? formatLocaleDateTime(timestampValue) : '-';
+
+    const originEl = document.getElementById('siteDetailOrigin');
+    const addressEl = document.getElementById('siteDetailAddress');
+    const timeEl = document.getElementById('siteDetailTime');
+
+    if (originEl) originEl.textContent = origin;
+    if (addressEl) addressEl.textContent = address || '-';
+    if (timeEl) timeEl.textContent = timeText;
+
+    this.activeSiteDetail = { origin, address, timestamp: timestampValue };
+    modal.classList.remove('hidden');
+    this.renderSiteUcanSession({ loading: true });
+    void this.loadSiteUcanSession(origin, address);
+  }
+
+  closeSiteDetailModal() {
+    const modal = document.getElementById('siteDetailModal');
+    if (modal) {
+      modal.classList.add('hidden');
+    }
+    this.activeSiteDetail = null;
+  }
+
+  async loadSiteUcanSession(origin, address) {
+    try {
+      const session = await this.wallet.getSiteUcanSession(origin, address);
+      if (!this.activeSiteDetail || this.activeSiteDetail.origin !== origin || this.activeSiteDetail.address !== address) {
+        return;
+      }
+      this.renderSiteUcanSession({ session });
+    } catch (error) {
+      console.error('[SettingsController] 获取 UCAN 会话失败:', error);
+      if (!this.activeSiteDetail || this.activeSiteDetail.origin !== origin || this.activeSiteDetail.address !== address) {
+        return;
+      }
+      this.renderSiteUcanSession({ error: true });
+    }
+  }
+
+  renderSiteUcanSession({ session, loading, error } = {}) {
+    const emptyEl = document.getElementById('siteDetailUcanEmpty');
+    const rowsEl = document.getElementById('siteDetailUcanRows');
+    const statusEl = document.getElementById('siteDetailUcanStatus');
+    const sessionEl = document.getElementById('siteDetailUcanSession');
+    const didEl = document.getElementById('siteDetailUcanDid');
+    const createdEl = document.getElementById('siteDetailUcanCreated');
+    const expiresEl = document.getElementById('siteDetailUcanExpires');
+
+    if (!emptyEl || !rowsEl) return;
+
+    if (loading) {
+      emptyEl.textContent = '加载中...';
+      emptyEl.classList.remove('hidden');
+      rowsEl.classList.add('hidden');
+      return;
+    }
+
+    if (error) {
+      emptyEl.textContent = '获取失败';
+      emptyEl.classList.remove('hidden');
+      rowsEl.classList.add('hidden');
+      return;
+    }
+
+    if (!session) {
+      emptyEl.textContent = '暂无 UCAN 会话';
+      emptyEl.classList.remove('hidden');
+      rowsEl.classList.add('hidden');
+      return;
+    }
+
+    const isActive = Boolean(session.isActive);
+    const createdAt = session.createdAt ? formatIsoTimestamp(session.createdAt) : '-';
+    const expiresAt = session.expiresAt ? formatIsoTimestamp(session.expiresAt) : '-';
+    const statusText = isActive ? '当前有效' : '最近一次 (已过期)';
+
+    if (statusEl) statusEl.textContent = statusText;
+    if (sessionEl) sessionEl.textContent = session.id || '-';
+    if (didEl) didEl.textContent = session.did || '-';
+    if (createdEl) createdEl.textContent = createdAt;
+    if (expiresEl) expiresEl.textContent = expiresAt;
+
+    emptyEl.classList.add('hidden');
+    rowsEl.classList.remove('hidden');
   }
 }

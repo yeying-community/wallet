@@ -54,6 +54,51 @@ export class NetworkController {
       });
     }
 
+    const networkMenuBtn = document.getElementById('networkMenuBtn');
+    const networkMenu = document.getElementById('networkMenu');
+    if (networkMenuBtn && networkMenu) {
+      networkMenuBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.toggleNetworkManageMenu();
+      });
+
+      networkMenu.addEventListener('click', async (event) => {
+        const target = event.target.closest('button');
+        if (!target) return;
+        const action = target.dataset.action;
+        if (action === 'import') {
+          const input = document.getElementById('networkImportInput');
+          input?.click();
+        }
+        if (action === 'export') {
+          await this.handleExportNetworks();
+        }
+        this.closeNetworkManageMenu();
+      });
+    }
+
+    document.addEventListener('click', (event) => {
+      if (!networkMenu || !networkMenuBtn) return;
+      if (networkMenu.classList.contains('hidden')) return;
+      const target = event.target;
+      if (networkMenu.contains(target) || networkMenuBtn.contains(target)) {
+        return;
+      }
+      this.closeNetworkManageMenu();
+    });
+
+    const networkImportInput = document.getElementById('networkImportInput');
+    if (networkImportInput) {
+      networkImportInput.addEventListener('change', async (event) => {
+        const file = event.target.files?.[0];
+        if (file) {
+          await this.handleImportNetworks(file);
+        }
+        event.target.value = '';
+      });
+    }
+
     const saveNetworkBtn = document.getElementById('saveNetworkBtn');
     if (saveNetworkBtn) {
       saveNetworkBtn.addEventListener('click', async () => {
@@ -274,6 +319,7 @@ export class NetworkController {
 
   handleDocumentClick() {
     this.closeAllMenus();
+    this.closeNetworkManageMenu();
   }
 
   async handleOpenNetworkManage() {
@@ -324,6 +370,167 @@ export class NetworkController {
       console.error('[NetworkController] 加载网络列表失败:', error);
       this.renderNetworkList([], null);
     }
+  }
+
+  toggleNetworkManageMenu() {
+    const menu = document.getElementById('networkMenu');
+    if (!menu) return;
+    if (menu.classList.contains('hidden')) {
+      this.openNetworkManageMenu();
+    } else {
+      this.closeNetworkManageMenu();
+    }
+  }
+
+  openNetworkManageMenu() {
+    const menu = document.getElementById('networkMenu');
+    const trigger = document.getElementById('networkMenuBtn');
+    if (!menu || !trigger) return;
+    menu.classList.remove('hidden');
+    trigger.setAttribute('aria-expanded', 'true');
+  }
+
+  closeNetworkManageMenu() {
+    const menu = document.getElementById('networkMenu');
+    const trigger = document.getElementById('networkMenuBtn');
+    if (!menu || !trigger) return;
+    menu.classList.add('hidden');
+    trigger.setAttribute('aria-expanded', 'false');
+  }
+
+  async handleExportNetworks() {
+    try {
+      const networks = await this.network.getNetworks();
+      const payload = {
+        version: '1.0.0',
+        exportedAt: new Date().toISOString(),
+        networks: networks || []
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `yeying-networks-${Date.now()}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showSuccess('网络已导出');
+    } catch (error) {
+      console.error('[NetworkController] 导出网络失败:', error);
+      showError('导出失败: ' + error.message);
+    }
+  }
+
+  async handleImportNetworks(file) {
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const networks = this.normalizeImportedNetworks(data);
+      if (!networks.length) {
+        showError('未找到有效网络数据');
+        return;
+      }
+
+      const existing = await this.network.getNetworks();
+      const existingMap = new Map();
+      (existing || []).forEach((item) => {
+        const id = item?.chainIdHex || item?.chainId;
+        if (!id) return;
+        try {
+          existingMap.set(normalizeChainId(id), item);
+        } catch {
+          existingMap.set(String(id), item);
+        }
+      });
+
+      let added = 0;
+      let updated = 0;
+      let failed = 0;
+
+      for (const raw of networks) {
+        const normalized = this.normalizeImportedNetwork(raw);
+        if (!normalized) {
+          failed += 1;
+          continue;
+        }
+
+        const { chainId, chainName, rpcUrl, explorer, symbol, decimals } = normalized;
+        let key = null;
+        try {
+          key = normalizeChainId(chainId);
+        } catch {
+          key = String(chainId);
+        }
+
+        try {
+          const exists = existingMap.get(key);
+          if (exists) {
+            await this.network.updateNetwork(chainId, {
+              chainName,
+              rpcUrl,
+              explorer,
+              symbol,
+              decimals
+            });
+            updated += 1;
+          } else {
+            await this.network.addNetwork({
+              chainName,
+              chainId,
+              rpcUrls: [rpcUrl],
+              blockExplorerUrls: explorer ? [explorer] : [],
+              nativeCurrency: {
+                symbol: symbol || 'ETH',
+                decimals: Number.isFinite(decimals) ? decimals : 18
+              }
+            });
+            added += 1;
+          }
+        } catch (error) {
+          failed += 1;
+        }
+      }
+
+      await this.loadNetworkList();
+      await this.refreshNetworkOptions();
+      showSuccess(`导入完成：新增 ${added}，更新 ${updated}，失败 ${failed}`);
+    } catch (error) {
+      console.error('[NetworkController] 导入网络失败:', error);
+      showError('导入失败: ' + error.message);
+    }
+  }
+
+  normalizeImportedNetworks(data) {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data.networks)) return data.networks;
+    if (data.networks && typeof data.networks === 'object') {
+      return Object.values(data.networks);
+    }
+    if (data.data?.networks) {
+      if (Array.isArray(data.data.networks)) return data.data.networks;
+      if (typeof data.data.networks === 'object') {
+        return Object.values(data.data.networks);
+      }
+    }
+    return [];
+  }
+
+  normalizeImportedNetwork(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    const chainId = entry.chainIdHex || entry.chainId || entry.id || entry.key;
+    const chainName = entry.chainName || entry.name || entry.networkName;
+    const rpcUrl = entry.rpcUrl || entry.rpc || entry.rpcUrls?.[0];
+    if (!chainId || !chainName || !rpcUrl) return null;
+    return {
+      chainId,
+      chainName,
+      rpcUrl,
+      explorer: entry.explorer || entry.blockExplorerUrls?.[0] || '',
+      symbol: entry.symbol || entry.nativeCurrency?.symbol || 'ETH',
+      decimals: Number.isFinite(entry.decimals) ? entry.decimals : entry.nativeCurrency?.decimals
+    };
   }
 
   renderNetworkList(networks, currentChainId) {

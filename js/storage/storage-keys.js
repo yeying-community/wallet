@@ -31,6 +31,11 @@ export const TransactionStorageKeys = {
   TRANSACTIONS: 'transactions'            // 交易记录
 };
 
+// ==================== 联系人相关 ====================
+export const ContactsStorageKeys = {
+  CONTACTS: 'contacts'                    // 联系人 Map<contactId, Contact>
+};
+
 // ==================== UCAN 相关 ====================
 export const UcanStorageKeys = {
   UCAN_SESSIONS: 'ucan_sessions'          // UCAN 会话 Map<origin:address:sessionId, Session>
@@ -43,5 +48,6 @@ export const StorageKeys = {
   ...PermissionStorageKeys,
   ...SettingsStorageKeys,
   ...TransactionStorageKeys,
+  ...ContactsStorageKeys,
   ...UcanStorageKeys
 };
