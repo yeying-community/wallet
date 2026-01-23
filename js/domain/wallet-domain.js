@@ -395,6 +395,25 @@ export class WalletDomain extends BaseDomain {
   }
 
   /**
+   * 获取指定网站的 UCAN 会话信息
+   * @param {string} origin - 网站 origin
+   * @param {string} address - 地址
+   * @returns {Promise<Object|null>} UCAN 会话
+   */
+  async getSiteUcanSession(origin, address) {
+    try {
+      const result = await this._sendMessage(WalletMessageType.GET_SITE_UCAN_SESSION, {
+        origin,
+        address
+      });
+      return result.session || null;
+    } catch (error) {
+      console.error('[WalletDomain] 获取 UCAN 会话失败:', error);
+      return null;
+    }
+  }
+
+  /**
    * 撤销网站授权
    * @param {string} origin - 网站 origin
    * @returns {Promise<Object>} 撤销结果
@@ -409,6 +428,44 @@ export class WalletDomain extends BaseDomain {
    */
   async clearAllAuthorizations() {
     return await this._sendMessage(WalletMessageType.CLEAR_ALL_AUTHORIZATIONS);
+  }
+
+  // ==================== 联系人管理 ====================
+
+  /**
+   * 获取联系人列表
+   * @returns {Promise<Array>}
+   */
+  async getContacts() {
+    const result = await this._sendMessage(WalletMessageType.GET_CONTACTS);
+    return result.contacts || [];
+  }
+
+  /**
+   * 添加联系人
+   * @param {Object} contact - { name, address, note }
+   * @returns {Promise<Object>}
+   */
+  async addContact(contact) {
+    return await this._sendMessage(WalletMessageType.ADD_CONTACT, contact);
+  }
+
+  /**
+   * 更新联系人
+   * @param {Object} contact - { id, name?, address?, note? }
+   * @returns {Promise<Object>}
+   */
+  async updateContact(contact) {
+    return await this._sendMessage(WalletMessageType.UPDATE_CONTACT, contact);
+  }
+
+  /**
+   * 删除联系人
+   * @param {string} id
+   * @returns {Promise<Object>}
+   */
+  async deleteContact(id) {
+    return await this._sendMessage(WalletMessageType.DELETE_CONTACT, { id });
   }
 
   // ==================== 重置 ====================

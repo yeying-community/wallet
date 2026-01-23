@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="css/wallet.css" />
     <link rel="stylesheet" href="css/accounts.css" />
     <link rel="stylesheet" href="css/network.css" />
+    <link rel="stylesheet" href="css/contacts.css" />
   </head>
 
   <body>
@@ -61,6 +62,34 @@
               >
                 <path d="M22 2L11 13"></path>
                 <path d="M22 2L15 22l-4-9-9-4 20-7z"></path>
+              </svg>
+            </button>
+            <button class="header-icon-btn" id="contactsBtn" title="联系人">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="12" cy="7" r="4"></circle>
+                <path d="M5.5 21a6.5 6.5 0 0 1 13 0"></path>
+              </svg>
+            </button>
+            <button class="header-icon-btn" id="sitesManageBtn" title="网站管理">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M2 12h20"></path>
+                <path d="M12 2a15 15 0 0 1 0 20"></path>
+                <path d="M12 2a15 15 0 0 0 0 20"></path>
               </svg>
             </button>
             <button class="header-icon-btn" id="networkManageBtn" title="网络管理">
@@ -319,12 +348,25 @@
           </div>
           <div class="form-group">
             <label>接收地址</label>
-            <input
-              type="text"
-              id="recipientAddress"
-              placeholder="0x..."
-              class="input"
-            />
+            <div class="contact-selector">
+              <input
+                type="text"
+                id="recipientAddress"
+                class="input contact-input-with-menu"
+                placeholder="0x..."
+              />
+              <button
+                type="button"
+                id="contactSelectorBtn"
+                class="contact-trigger-overlay"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                aria-label="选择联系人"
+              >
+                <span class="network-chevron">▾</span>
+              </button>
+              <div id="contactMenu" class="network-menu hidden" role="listbox"></div>
+            </div>
           </div>
           <div class="form-group">
             <label>数量 <span id="transferTokenSymbol">(ETH)</span></label>
@@ -514,6 +556,21 @@
             <button id="networkAddBtn" class="btn btn-primary btn-small">
               新增网络
             </button>
+            <div class="page-menu">
+              <button id="networkMenuBtn" class="btn btn-secondary btn-small btn-icon" aria-haspopup="menu" aria-expanded="false" title="更多">
+                ⋯
+              </button>
+              <div id="networkMenu" class="network-menu hidden" role="menu">
+                <button type="button" class="network-option" data-action="import">导入 JSON</button>
+                <button type="button" class="network-option" data-action="export">导出 JSON</button>
+              </div>
+            </div>
+            <input
+              type="file"
+              id="networkImportInput"
+              class="hidden"
+              accept="application/json"
+            />
           </div>
         </div>
 
@@ -733,21 +790,6 @@
         </div>
 
         <div class="settings-body">
-          <!-- 已授权网站 -->
-          <div class="settings-section">
-            <h3>🌐 已授权网站</h3>
-            <div id="authorizedSitesList">
-              <div class="empty-message">正在加载...</div>
-            </div>
-            <button
-              id="clearAllAuthBtn"
-              class="btn btn-danger"
-              style="margin-top: 10px"
-            >
-              清除所有授权
-            </button>
-          </div>
-
           <!-- 安全设置 -->
           <div class="settings-section">
             <h3>🔐 安全设置</h3>
@@ -785,6 +827,162 @@
             <p style="font-size: 12px; color: #999; margin-top: 8px">
               ⚠️ 重置后将清除所有数据，请确保已备份私钥
             </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 网站管理页面 -->
+      <div id="sitesPage" class="page hidden">
+        <div class="page-header">
+          <button class="back-btn">←</button>
+          <h2>网站管理</h2>
+          <div class="page-actions">
+            <button id="clearAllAuthBtn" class="btn btn-danger btn-small">
+              清除所有授权
+            </button>
+          </div>
+        </div>
+        <div class="sites-body">
+          <div class="sites-search">
+            <input
+              type="text"
+              id="siteSearchInput"
+              class="input"
+              placeholder="搜索网站（域名或地址）"
+            />
+          </div>
+          <div id="authorizedSitesList">
+            <div class="empty-message">正在加载...</div>
+          </div>
+          <p class="settings-hint">只保留你信任的网站授权。</p>
+        </div>
+      </div>
+
+      <!-- 网站授权详情 -->
+      <div id="siteDetailModal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>授权详情</h3>
+            <button class="btn-close" id="closeSiteDetailModal">✕</button>
+          </div>
+          <div class="modal-body site-detail-body">
+            <div class="detail-row">
+              <div class="detail-label">网站</div>
+              <div class="detail-value" id="siteDetailOrigin"></div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-label">地址</div>
+              <div class="detail-value mono" id="siteDetailAddress"></div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-label">授权时间</div>
+              <div class="detail-value" id="siteDetailTime"></div>
+            </div>
+            <div class="site-detail-section-title">UCAN 会话</div>
+            <div id="siteDetailUcanEmpty" class="site-detail-empty">暂无 UCAN 会话</div>
+            <div id="siteDetailUcanRows" class="site-detail-ucan hidden">
+              <div class="detail-row">
+                <div class="detail-label">状态</div>
+                <div class="detail-value" id="siteDetailUcanStatus"></div>
+              </div>
+              <div class="detail-row">
+                <div class="detail-label">Session</div>
+                <div class="detail-value mono" id="siteDetailUcanSession"></div>
+              </div>
+              <div class="detail-row">
+                <div class="detail-label">DID</div>
+                <div class="detail-value mono" id="siteDetailUcanDid"></div>
+              </div>
+              <div class="detail-row">
+                <div class="detail-label">创建时间</div>
+                <div class="detail-value" id="siteDetailUcanCreated"></div>
+              </div>
+              <div class="detail-row">
+                <div class="detail-label">过期时间</div>
+                <div class="detail-value" id="siteDetailUcanExpires"></div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="revokeSiteDetailBtn" class="btn btn-danger">撤销授权</button>
+            <button id="closeSiteDetailBtn" class="btn btn-secondary">关闭</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 联系人页面 -->
+      <div id="contactsPage" class="page hidden">
+        <div class="page-header">
+          <button class="back-btn">←</button>
+          <h2>联系人</h2>
+          <div class="contacts-header-actions">
+            <button id="openAddContactBtn" class="btn btn-primary btn-small">添加联系人</button>
+            <div class="contacts-menu">
+              <button id="contactsMenuBtn" class="btn btn-secondary btn-small btn-icon" aria-haspopup="menu" aria-expanded="false" title="更多">
+                ⋯
+              </button>
+              <div id="contactsMenu" class="network-menu hidden" role="menu">
+                <button type="button" class="network-option" data-action="import">导入 JSON</button>
+                <button type="button" class="network-option" data-action="export">导出 JSON</button>
+              </div>
+            </div>
+            <input
+              type="file"
+              id="contactsImportInput"
+              class="hidden"
+              accept="application/json"
+            />
+          </div>
+        </div>
+        <div class="contacts-body">
+          <div id="contactsList" class="contacts-list">
+            <div class="empty-message">正在加载...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 添加/编辑联系人模态框 -->
+      <div id="contactEditorModal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content contact-editor-modal">
+          <div class="modal-header">
+            <h3 id="contactModalTitle">添加联系人</h3>
+            <button class="btn-close" id="closeContactEditorModal">✕</button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="contactIdInput" />
+            <div class="form-group">
+              <label>联系人名称</label>
+              <input
+                type="text"
+                id="contactNameInput"
+                class="input"
+                placeholder="例如：Alice"
+              />
+            </div>
+            <div class="form-group">
+              <label>联系人地址</label>
+              <input
+                type="text"
+                id="contactAddressInput"
+                class="input"
+                placeholder="0x..."
+              />
+            </div>
+            <div class="form-group">
+              <label>备注（可选）</label>
+              <input
+                type="text"
+                id="contactNoteInput"
+                class="input"
+                placeholder="备注信息"
+              />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="cancelEditContactBtn" class="btn btn-secondary">取消</button>
+            <button id="addContactBtn" class="btn btn-primary">添加联系人</button>
           </div>
         </div>
       </div>

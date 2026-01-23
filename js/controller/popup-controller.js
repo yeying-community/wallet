@@ -13,6 +13,7 @@ import {
 } from './accounts/index.js';
 import { TokenBalanceController } from './tokens/index.js';
 import { SettingsController } from './settings-controller.js';
+import { ContactsController } from './contacts-controller.js';
 import { ImportWalletController } from './wallet/import-wallet-controller.js';
 import { CreateWalletController } from './wallet/create-wallet-controller.js';
 import {
@@ -37,6 +38,7 @@ export class PopupController {
       onUnlocked: () => this.refreshWalletData()
     });
     this.settingsController = new SettingsController({ wallet: this.wallet });
+    this.contactsController = new ContactsController({ wallet: this.wallet });
     this.transactionDetailController = new TransactionDetailController({
       transaction: this.transaction,
       network: this.network
@@ -149,6 +151,7 @@ export class PopupController {
     this.accountDetailController.bindEvents();
     this.accountModalsController.bindEvents();
     this.settingsController.bindEvents();
+    this.contactsController.bindEvents();
     this.importWalletController.bindEvents();
     this.createWalletController.bindEvents();
   }
@@ -200,6 +203,8 @@ export class PopupController {
       tokenAddPage: 'walletPage',
       accountDetailPage: 'accountsPage',
       settingsPage: 'walletPage',
+      contactsPage: 'walletPage',
+      sitesPage: 'walletPage',
     };
 
     const targetPage = backMap[currentPage];
@@ -232,13 +237,29 @@ export class PopupController {
   async openSettingsPage() {
     this.stopTransactionPolling();
     showPage('settingsPage');
+  }
+
+  async openSitesPage() {
+    this.stopTransactionPolling();
+    showPage('sitesPage');
+    const searchInput = document.getElementById('siteSearchInput');
+    if (searchInput) {
+      searchInput.value = '';
+    }
     await this.settingsController.loadAuthorizedSites();
+  }
+
+  async openContactsPage() {
+    this.stopTransactionPolling();
+    showPage('contactsPage');
+    await this.contactsController.loadContacts();
   }
 
   async openTransferPage() {
     this.stopTransactionPolling();
     showPage('transferPage');
     await this.tokensListController?.prepareTransferSelectors?.();
+    await this.contactsController?.loadContacts?.();
   }
 
   async refreshWalletData() {
@@ -297,6 +318,20 @@ export class PopupController {
     if (settingsBtn) {
       settingsBtn.addEventListener('click', async () => {
         await this.openSettingsPage();
+      });
+    }
+
+    const sitesManageBtn = document.getElementById('sitesManageBtn');
+    if (sitesManageBtn) {
+      sitesManageBtn.addEventListener('click', async () => {
+        await this.openSitesPage();
+      });
+    }
+
+    const contactsBtn = document.getElementById('contactsBtn');
+    if (contactsBtn) {
+      contactsBtn.addEventListener('click', async () => {
+        await this.openContactsPage();
       });
     }
 
