@@ -4,6 +4,7 @@
  */
 
 import { getTimestamp } from '../common/utils/time-utils.js';
+import { clearStorage, getAllStorage, setStorage } from './storage-base.js';
 
 // ==================== 存储键 ====================
 export {
@@ -136,7 +137,6 @@ export {
  */
 export async function exportAllData() {
   try {
-    const { getAllStorage } = await import('./storage-base.js');
     const data = await getAllStorage();
 
     return {
@@ -161,8 +161,6 @@ export async function importAllData(backup) {
       throw new Error('Invalid backup data');
     }
 
-    const { clearStorage, setStorage } = await import('./storage-base.js');
-
     // 清空现有数据
     await clearStorage();
 
@@ -182,7 +180,6 @@ export async function importAllData(backup) {
  */
 export async function clearAllData() {
   try {
-    const { clearStorage } = await import('./storage-base.js');
     await clearStorage();
     console.log('✅ All data cleared');
   } catch (error) {

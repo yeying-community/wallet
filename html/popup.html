@@ -1074,6 +1074,50 @@
       </div>
     </div>
 
+    <!-- 重置钱包模态框 -->
+    <div id="resetWalletModal" class="modal hidden">
+      <div class="modal-overlay"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>重置钱包</h3>
+          <button class="btn-close" id="closeResetWalletModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="warning-box">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+              ></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            <p>重置后将删除所有钱包数据，且无法恢复，请确保已备份私钥。</p>
+          </div>
+          <div class="form-group">
+            <label>确认重置</label>
+            <input
+              type="text"
+              id="resetWalletConfirmInput"
+              class="input"
+              placeholder='请输入 "RESET"'
+              autocomplete="off"
+            />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="cancelResetWalletBtn">取消</button>
+          <button class="btn btn-danger" id="confirmResetWalletBtn" disabled>确认重置</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 显示密钥模态框 -->
     <div id="secretDisplayModal" class="modal hidden">
       <div class="modal-overlay"></div>
