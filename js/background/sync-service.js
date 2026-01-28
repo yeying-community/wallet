@@ -1,0 +1,646 @@
+/**
+ * Backup & Sync Service (WebDAV)
+ * Builds/merges payloads and syncs encrypted data via WebDAV.
+ */
+
+import { encryptObject, decryptObject, hashHex } from '../common/crypto/index.js';
+import { getTimestamp } from '../common/utils/time-utils.js';
+import {
+  getWallets,
+  getWalletAccounts,
+  saveAccount,
+  updateAccount,
+  saveWallet,
+  getNetworks,
+  getUserSetting,
+  updateUserSetting,
+  onStorageChanged,
+  getContactList,
+  saveContact,
+  WalletStorageKeys,
+  NetworkStorageKeys,
+  ContactsStorageKeys
+} from '../storage/index.js';
+import { WALLET_TYPE, deriveSubAccount, getWalletMnemonic } from './vault.js';
+
+const SYNC_PAYLOAD_VERSION = 1;
+const SYNC_DIR = 'wallet-sync';
+const SYNC_FILENAME = 'payload.json.enc';
+const SYNC_DEBOUNCE_MS = 1500;
+const DEFAULT_SYNC_ENDPOINT = 'https://webdav.yeying.pub';
+
+const SETTINGS_KEYS = {
+  enabled: 'backupSyncEnabled',
+  endpoint: 'backupSyncEndpoint',
+  authMode: 'backupSyncAuthMode',
+  authToken: 'backupSyncAuthToken',
+  authTokenExpiresAt: 'backupSyncAuthTokenExpiresAt',
+  ucanToken: 'backupSyncUcanToken',
+  ucanResource: 'backupSyncUcanResource',
+  ucanAction: 'backupSyncUcanAction',
+  ucanAudience: 'backupSyncUcanAudience',
+  basicAuth: 'backupSyncBasicAuth',
+  dirty: 'backupSyncDirty',
+  lastPullAt: 'backupSyncLastPullAt',
+  lastPushAt: 'backupSyncLastPushAt',
+  pendingDelete: 'backupSyncPendingDelete',
+  networkIds: 'backupSyncNetworkIds',
+  conflicts: 'backupSyncConflicts'
+};
+
+class BackupSyncService {
+  constructor() {
+    this._initialized = false;
+    this._contexts = new Map(); // walletId => { fingerprint, syncKey }
+    this._syncInFlight = false;
+    this._dirty = false;
+    this._debounceTimer = null;
+    this._unsubscribeStorage = null;
+    this._suppressStorageEvents = false;
+  }
+
+  async init() {
+    if (this._initialized) return;
+    this._initialized = true;
+
+    this._dirty = await getUserSetting(SETTINGS_KEYS.dirty, false);
+    await this._ensureDefaults();
+    this._attachStorageListener();
+  }
+
+  async onUnlocked(password) {
+    await this._prepareContexts(password);
+    await this._handlePendingDelete();
+    await this.syncAll('unlock');
+  }
+
+  async onLocked() {
+    try {
+      await this.pushAll('lock');
+    } catch (error) {
+      console.warn('[BackupSync] push on lock failed:', error?.message || error);
+    } finally {
+      this._contexts.clear();
+      this._dirty = false;
+      await updateUserSetting(SETTINGS_KEYS.dirty, false).catch(() => {});
+    }
+  }
+
+  markDirty(reason = 'change') {
+    this._dirty = true;
+    updateUserSetting(SETTINGS_KEYS.dirty, true).catch(() => {});
+    this._schedulePush(reason);
+  }
+
+  async syncAll(reason = 'manual') {
+    if (!(await this._isEnabled())) return;
+    if (this._syncInFlight) return;
+    this._syncInFlight = true;
+
+    try {
+      const walletIds = Array.from(this._contexts.keys());
+      for (const walletId of walletIds) {
+        await this._syncWallet(walletId, reason);
+      }
+    } finally {
+      this._syncInFlight = false;
+    }
+  }
+
+  async pushAll(reason = 'manual') {
+    if (!(await this._isEnabled())) return;
+    if (!this._dirty) return;
+
+    const walletIds = Array.from(this._contexts.keys());
+    for (const walletId of walletIds) {
+      await this._pushWallet(walletId, reason);
+    }
+
+    this._dirty = false;
+    await updateUserSetting(SETTINGS_KEYS.dirty, false).catch(() => {});
+  }
+
+  async disableSync() {
+    const hasContexts = this._contexts.size > 0;
+    if (hasContexts) {
+      await this._deleteRemoteAll().catch(() => {});
+      await updateUserSetting(SETTINGS_KEYS.pendingDelete, false).catch(() => {});
+    } else {
+      await updateUserSetting(SETTINGS_KEYS.pendingDelete, true).catch(() => {});
+    }
+  }
+
+  async clearRemoteNow() {
+    await this._deleteRemoteAll().catch(() => {});
+  }
+
+  // ==================== Internal helpers ====================
+
+  async _prepareContexts(password) {
+    const walletsMap = await getWallets();
+    const wallets = Object.values(walletsMap || {});
+
+    for (const wallet of wallets) {
+      if (!wallet || wallet.type !== WALLET_TYPE.HD) continue;
+
+      try {
+        const mnemonic = await getWalletMnemonic(wallet, password);
+        const fingerprint = await hashHex(`yeying-sync-id:${mnemonic}`);
+        const syncKey = await hashHex(`yeying-sync-key:${mnemonic}`);
+
+        this._contexts.set(wallet.id, { fingerprint, syncKey });
+      } catch (error) {
+        console.warn('[BackupSync] failed to prepare sync context:', error?.message || error);
+      }
+    }
+  }
+
+  async _syncWallet(walletId, reason) {
+    const context = this._contexts.get(walletId);
+    if (!context) return;
+
+    const remotePayload = await this._pullRemote(context).catch(() => null);
+    if (remotePayload) {
+      await this._applyRemotePayload(walletId, remotePayload, reason);
+    }
+
+    await this._pushWallet(walletId, reason);
+  }
+
+  async _pushWallet(walletId, reason) {
+    const context = this._contexts.get(walletId);
+    if (!context) return;
+
+    const payload = await this._buildPayload(walletId, reason);
+    if (!payload) return;
+
+    await this._writeRemote(context, payload);
+    await updateUserSetting(SETTINGS_KEYS.lastPushAt, getTimestamp()).catch(() => {});
+  }
+
+  async _pullRemote(context) {
+    const response = await this._webdavRequest('GET', this._payloadPath(context.fingerprint));
+    if (!response || response.status === 404) {
+      return null;
+    }
+
+    if (!response.ok) {
+      throw new Error(`WebDAV GET failed: ${response.status}`);
+    }
+
+    const text = await response.text();
+    if (!text) return null;
+
+    let ciphertext = text;
+    try {
+      const envelope = JSON.parse(text);
+      if (envelope && typeof envelope === 'object' && envelope.ciphertext) {
+        ciphertext = envelope.ciphertext;
+      }
+    } catch {
+      // keep raw text as ciphertext
+    }
+
+    const payload = await decryptObject(ciphertext, context.syncKey);
+    await updateUserSetting(SETTINGS_KEYS.lastPullAt, getTimestamp()).catch(() => {});
+    return payload;
+  }
+
+  async _writeRemote(context, payload) {
+    await this._ensureDirectory(context.fingerprint);
+
+    const ciphertext = await encryptObject(payload, context.syncKey);
+    const envelope = {
+      version: SYNC_PAYLOAD_VERSION,
+      cipher: 'AES-GCM',
+      kdf: 'PBKDF2',
+      ciphertext
+    };
+
+    const body = JSON.stringify(envelope);
+    const response = await this._webdavRequest('PUT', this._payloadPath(context.fingerprint), {
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body
+    });
+
+    if (!response.ok) {
+      throw new Error(`WebDAV PUT failed: ${response.status}`);
+    }
+  }
+
+  async _buildPayload(walletId, reason) {
+    const walletsMap = await getWallets();
+    const wallet = walletsMap?.[walletId];
+    if (!wallet || wallet.type !== WALLET_TYPE.HD) return null;
+
+    const accounts = await getWalletAccounts(walletId);
+    const accountEntries = accounts.map(account => {
+      const index = Number.isFinite(account.index) ? account.index : 0;
+      const nameUpdatedAt = account.nameUpdatedAt || account.updatedAt || account.createdAt || 0;
+      return {
+        index,
+        address: account.address,
+        name: account.name,
+        nameUpdatedAt
+      };
+    });
+
+    const networks = await getNetworks();
+    const storedNetworkIds = await getUserSetting(SETTINGS_KEYS.networkIds, []);
+    const networkIds = Array.from(new Set([
+      ...(Array.isArray(storedNetworkIds) ? storedNetworkIds : []),
+      ...(networks || [])
+        .map(network => network?.chainIdHex || network?.chainId)
+        .filter(Boolean)
+        .map(String)
+    ]));
+
+    const contacts = await getContactList();
+    const contactEntries = (contacts || []).map(contact => ({
+      id: contact.id,
+      name: contact.name,
+      note: contact.note || '',
+      address: contact.address,
+      updatedAt: contact.updatedAt || contact.createdAt || 0
+    }));
+
+    return {
+      version: SYNC_PAYLOAD_VERSION,
+      updatedAt: getTimestamp(),
+      reason,
+      accountCount: wallet.accountCount || accounts.length,
+      accounts: accountEntries,
+      contacts: contactEntries,
+      networkIds,
+      networksUpdatedAt: getTimestamp()
+    };
+  }
+
+  async _applyRemotePayload(walletId, remotePayload, reason) {
+    if (!remotePayload || !Array.isArray(remotePayload.accounts)) return;
+
+    const walletsMap = await getWallets();
+    const wallet = walletsMap?.[walletId];
+    if (!wallet || wallet.type !== WALLET_TYPE.HD) return;
+
+    const localAccounts = await getWalletAccounts(walletId);
+    const localByIndex = new Map();
+    localAccounts.forEach(account => {
+      const index = Number.isFinite(account.index) ? account.index : 0;
+      localByIndex.set(index, account);
+    });
+
+    const remoteByIndex = new Map();
+    remotePayload.accounts.forEach(account => {
+      if (!account || !Number.isFinite(account.index)) return;
+      remoteByIndex.set(account.index, account);
+    });
+
+    let changed = false;
+
+    this._suppressStorageEvents = true;
+    try {
+      const remoteAccountCount = Number.isFinite(remotePayload.accountCount)
+        ? remotePayload.accountCount
+        : null;
+
+      for (const [index, remote] of remoteByIndex.entries()) {
+        const local = localByIndex.get(index);
+        const remoteUpdatedAt = remote.nameUpdatedAt || remote.updatedAt || remote.createdAt || 0;
+
+        if (local) {
+          if (remote.address && local.address && remote.address.toLowerCase() !== local.address.toLowerCase()) {
+            continue;
+          }
+
+          const localUpdatedAt = local.nameUpdatedAt || local.updatedAt || local.createdAt || 0;
+          if (remoteUpdatedAt > localUpdatedAt && remote.name && remote.name !== local.name) {
+            await updateAccount({
+              ...local,
+              name: remote.name,
+              nameUpdatedAt: remoteUpdatedAt
+            });
+            changed = true;
+          } else if (remoteUpdatedAt === localUpdatedAt && remote.name && remote.name !== local.name) {
+            await this._recordConflict({
+              id: `account:${walletId}:${index}`,
+              type: 'account',
+              accountId: local.id,
+              walletId,
+              index,
+              localName: local.name || '',
+              remoteName: remote.name || '',
+              timestamp: remoteUpdatedAt
+            });
+          }
+        } else {
+          // missing account, try to derive
+          const password = await this._getCachedPassword();
+          if (!password) {
+            continue;
+          }
+
+          try {
+            const derived = await deriveSubAccount(wallet, index, remote.name, password);
+            if (remoteUpdatedAt) {
+              derived.nameUpdatedAt = remoteUpdatedAt;
+            }
+            await saveAccount(derived);
+            wallet.accountCount = Math.max(wallet.accountCount || 0, index + 1);
+            await saveWallet(wallet);
+            changed = true;
+          } catch (error) {
+            console.warn('[BackupSync] derive account failed:', error?.message || error);
+          }
+        }
+      }
+
+      if (remoteAccountCount != null) {
+        const nextCount = Math.max(wallet.accountCount || 0, remoteAccountCount);
+        if (nextCount !== wallet.accountCount) {
+          wallet.accountCount = nextCount;
+          await saveWallet(wallet);
+          changed = true;
+        }
+      }
+
+      await this._mergeContacts(remotePayload.contacts || []);
+      await this._mergeNetworkIds(remotePayload.networkIds || []);
+    } finally {
+      this._suppressStorageEvents = false;
+    }
+
+    if (changed) {
+      this._dirty = true;
+      updateUserSetting(SETTINGS_KEYS.dirty, true).catch(() => {});
+    }
+  }
+
+  _attachStorageListener() {
+    if (this._unsubscribeStorage) return;
+
+    this._unsubscribeStorage = onStorageChanged((changes, areaName) => {
+      if (areaName !== 'local') return;
+      if (this._suppressStorageEvents) return;
+
+      const keys = Object.keys(changes || {});
+      const relevant = keys.some(key => [
+        WalletStorageKeys.ACCOUNTS,
+        WalletStorageKeys.WALLETS,
+        NetworkStorageKeys.NETWORKS,
+        ContactsStorageKeys.CONTACTS
+      ].includes(key));
+
+      if (relevant) {
+        this.markDirty('storage-change');
+      }
+    });
+  }
+
+  _schedulePush(reason) {
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+    }
+
+    this._debounceTimer = setTimeout(() => {
+      this._debounceTimer = null;
+      this.pushAll(`debounced:${reason}`).catch(error => {
+        console.warn('[BackupSync] debounced push failed:', error?.message || error);
+      });
+    }, SYNC_DEBOUNCE_MS);
+  }
+
+  async _ensureDirectory(fingerprint) {
+    await this._mkcol(this._dirPath(SYNC_DIR));
+    await this._mkcol(this._dirPath(`${SYNC_DIR}/${fingerprint}`));
+  }
+
+  async _mkcol(path) {
+    const response = await this._webdavRequest('MKCOL', path);
+    if (!response) return;
+    if (response.ok) return;
+    if ([405, 409].includes(response.status)) return;
+    throw new Error(`MKCOL failed: ${response.status}`);
+  }
+
+  async _webdavRequest(method, path, options = {}) {
+    const endpoint = await getUserSetting(SETTINGS_KEYS.endpoint, '');
+    if (!endpoint) {
+      return null;
+    }
+
+    const url = joinUrl(endpoint, path);
+    const headers = new Headers(options.headers || {});
+
+    const authHeader = await this._getAuthHeader();
+    if (authHeader) {
+      headers.set('Authorization', authHeader);
+    }
+
+    return fetch(url, {
+      method,
+      headers,
+      body: options.body
+    });
+  }
+
+  async _getAuthHeader() {
+    const mode = await getUserSetting(SETTINGS_KEYS.authMode, 'siwe');
+
+    if (mode === 'basic') {
+      const basic = await getUserSetting(SETTINGS_KEYS.basicAuth, '');
+      if (basic) {
+        return basic.startsWith('Basic ') ? basic : `Basic ${basic}`;
+      }
+      return '';
+    }
+
+    if (mode === 'ucan') {
+      const token = await getUserSetting(SETTINGS_KEYS.ucanToken, '');
+      return token ? `Bearer ${token}` : '';
+    }
+
+    const token = await getUserSetting(SETTINGS_KEYS.authToken, '');
+    return token ? `Bearer ${token}` : '';
+  }
+
+  async _isEnabled() {
+    const enabled = await getUserSetting(SETTINGS_KEYS.enabled, true);
+    const endpoint = await getUserSetting(SETTINGS_KEYS.endpoint, '');
+    return Boolean(enabled && endpoint);
+  }
+
+  async _ensureDefaults() {
+    const endpoint = await getUserSetting(SETTINGS_KEYS.endpoint, '');
+    if (!endpoint) {
+      await updateUserSetting(SETTINGS_KEYS.endpoint, DEFAULT_SYNC_ENDPOINT).catch(() => {});
+    }
+
+    const mode = await getUserSetting(SETTINGS_KEYS.authMode, '');
+    if (!mode) {
+      await updateUserSetting(SETTINGS_KEYS.authMode, 'siwe').catch(() => {});
+    }
+
+    const enabled = await getUserSetting(SETTINGS_KEYS.enabled, null);
+    if (enabled === null) {
+      await updateUserSetting(SETTINGS_KEYS.enabled, true).catch(() => {});
+    }
+  }
+
+  async _handlePendingDelete() {
+    const pending = await getUserSetting(SETTINGS_KEYS.pendingDelete, false);
+    if (!pending) return;
+    await this._deleteRemoteAll().catch(() => {});
+    await updateUserSetting(SETTINGS_KEYS.pendingDelete, false).catch(() => {});
+  }
+
+  async _deleteRemoteAll() {
+    const contexts = Array.from(this._contexts.values());
+    for (const context of contexts) {
+      await this._deleteRemote(context).catch(() => {});
+    }
+  }
+
+  async _deleteRemote(context) {
+    const response = await this._webdavRequest('DELETE', this._payloadPath(context.fingerprint));
+    if (!response) return;
+    if (response.ok || response.status === 404) return;
+    throw new Error(`WebDAV DELETE failed: ${response.status}`);
+  }
+
+  async _mergeContacts(remoteContacts) {
+    if (!Array.isArray(remoteContacts) || remoteContacts.length === 0) return;
+
+    const localContacts = await getContactList();
+    const localById = new Map();
+    const localByAddress = new Map();
+
+    (localContacts || []).forEach(contact => {
+      if (!contact) return;
+      if (contact.id) {
+        localById.set(contact.id, contact);
+      }
+      const addr = String(contact.address || '').toLowerCase();
+      if (addr) {
+        localByAddress.set(addr, contact);
+      }
+    });
+
+    let changed = false;
+
+    for (const remote of remoteContacts) {
+      if (!remote) continue;
+      const remoteAddr = String(remote.address || '').toLowerCase();
+      if (!remoteAddr) continue;
+
+      const remoteUpdatedAt = remote.updatedAt || remote.createdAt || 0;
+      const byId = remote.id ? localById.get(remote.id) : null;
+      const byAddr = localByAddress.get(remoteAddr);
+      const local = byId || byAddr;
+
+      if (local) {
+        const localUpdatedAt = local.updatedAt || local.createdAt || 0;
+        if (remoteUpdatedAt > localUpdatedAt) {
+          const updated = {
+            ...local,
+            id: local.id,
+            name: remote.name || local.name,
+            note: remote.note || '',
+            address: remote.address || local.address,
+            updatedAt: remoteUpdatedAt
+          };
+          await saveContact(updated);
+          changed = true;
+        } else if (remoteUpdatedAt === localUpdatedAt && (remote.name || '') !== (local.name || '')) {
+          await this._recordConflict({
+            id: `contact:${local.id}`,
+            type: 'contact',
+            contactId: local.id,
+            address: local.address,
+            localName: local.name || '',
+            localNote: local.note || '',
+            remoteName: remote.name || '',
+            remoteNote: remote.note || '',
+            timestamp: remoteUpdatedAt
+          });
+        }
+        continue;
+      }
+
+      const newId = this._resolveContactId(remote.id, localById);
+      const contact = {
+        id: newId,
+        name: remote.name || '',
+        note: remote.note || '',
+        address: remote.address,
+        createdAt: remoteUpdatedAt || Date.now(),
+        updatedAt: remoteUpdatedAt || Date.now()
+      };
+      await saveContact(contact);
+      localById.set(contact.id, contact);
+      localByAddress.set(remoteAddr, contact);
+      changed = true;
+    }
+
+    if (changed) {
+      this._dirty = true;
+      updateUserSetting(SETTINGS_KEYS.dirty, true).catch(() => {});
+    }
+  }
+
+  async _mergeNetworkIds(remoteNetworkIds) {
+    if (!Array.isArray(remoteNetworkIds) || remoteNetworkIds.length === 0) return;
+    const storedNetworkIds = await getUserSetting(SETTINGS_KEYS.networkIds, []);
+    const union = Array.from(new Set([
+      ...(Array.isArray(storedNetworkIds) ? storedNetworkIds : []),
+      ...remoteNetworkIds.map(String)
+    ]));
+    if (JSON.stringify(union) !== JSON.stringify(storedNetworkIds || [])) {
+      await updateUserSetting(SETTINGS_KEYS.networkIds, union).catch(() => {});
+      this._dirty = true;
+      updateUserSetting(SETTINGS_KEYS.dirty, true).catch(() => {});
+    }
+  }
+
+  async _recordConflict(conflict) {
+    if (!conflict || !conflict.id) return;
+    const conflicts = await getUserSetting(SETTINGS_KEYS.conflicts, []);
+    const list = Array.isArray(conflicts) ? [...conflicts] : [];
+    if (!list.some(item => item?.id === conflict.id)) {
+      list.push(conflict);
+      await updateUserSetting(SETTINGS_KEYS.conflicts, list).catch(() => {});
+    }
+  }
+
+  _resolveContactId(remoteId, localById) {
+    if (remoteId && !localById.has(remoteId)) {
+      return remoteId;
+    }
+    const random = Math.random().toString(36).slice(2, 8);
+    return `contact_${Date.now()}_${random}`;
+  }
+
+  async _getCachedPassword() {
+    const { getCachedPassword } = await import('./password-cache.js');
+    return getCachedPassword();
+  }
+
+  _payloadPath(fingerprint) {
+    return `${SYNC_DIR}/${fingerprint}/${SYNC_FILENAME}`;
+  }
+
+  _dirPath(path) {
+    return path.endsWith('/') ? path : `${path}/`;
+  }
+}
+
+function joinUrl(base, path) {
+  if (!base) return path;
+  const normalizedBase = base.endsWith('/') ? base : `${base}/`;
+  const normalizedPath = path.replace(/^\/+/, '');
+  return new URL(normalizedPath, normalizedBase).toString();
+}
+
+export const backupSyncService = new BackupSyncService();

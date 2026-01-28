@@ -1,4 +1,5 @@
 import { showPage, getCurrentPage, getPageOrigin, showError } from '../common/ui/index.js';
+import { formatLocaleDateTime } from '../common/utils/time-utils.js';
 import { POLLING_CONFIG } from '../config/index.js';
 import { WelcomeController } from './welcome-controller.js';
 import { UnlockWalletController } from './wallet/unlock-wallet-controller.js';
@@ -21,7 +22,7 @@ import {
   TransactionDetailController,
   TransactionSendController
 } from './transaction/index.js';
-import { NetworkStorageKeys, onStorageChanged } from '../storage/index.js';
+import { NetworkStorageKeys, SettingsStorageKeys, onStorageChanged } from '../storage/index.js';
 
 export class PopupController {
   constructor({ wallet, transaction, network, token }) {
@@ -37,7 +38,11 @@ export class PopupController {
       wallet: this.wallet,
       onUnlocked: () => this.refreshWalletData()
     });
-    this.settingsController = new SettingsController({ wallet: this.wallet });
+    this.settingsController = new SettingsController({
+      wallet: this.wallet,
+      transaction: this.transaction,
+      requestPassword: () => this.promptWalletPassword()
+    });
     this.contactsController = new ContactsController({ wallet: this.wallet });
     this.transactionDetailController = new TransactionDetailController({
       transaction: this.transaction,
@@ -160,10 +165,15 @@ export class PopupController {
     if (this.storageUnsubscribe) return;
     this.storageUnsubscribe = onStorageChanged(async (changes, areaName) => {
       if (areaName && areaName !== 'local') return;
-      if (!changes || !changes[NetworkStorageKeys.SELECTED_NETWORK]) return;
-      await this.networkController?.syncSelectedNetwork?.();
-      await this.networkController?.refreshNetworkState?.();
-      await this.handleNetworkChanged();
+      if (!changes) return;
+      if (changes[NetworkStorageKeys.SELECTED_NETWORK]) {
+        await this.networkController?.syncSelectedNetwork?.();
+        await this.networkController?.refreshNetworkState?.();
+        await this.handleNetworkChanged();
+      }
+      if (changes[SettingsStorageKeys.USER_SETTINGS]) {
+        await this.updateBackupSyncStatus();
+      }
       if (getCurrentPage() === 'walletPage') {
         const activityContent = document.getElementById('activityContent');
         if (activityContent && !activityContent.classList.contains('hidden')) {
@@ -171,6 +181,44 @@ export class PopupController {
         }
       }
     });
+  }
+
+  async updateBackupSyncStatus() {
+    const badge = document.getElementById('backupSyncStatusBadge');
+    if (!badge) return;
+
+    try {
+      const settings = await this.wallet.getBackupSyncSettings();
+      const enabled = Boolean(settings?.enabled);
+      const conflicts = Array.isArray(settings?.conflicts) ? settings.conflicts : [];
+      const authMode = settings?.authMode || 'siwe';
+      const hasAuth = authMode === 'basic'
+        ? Boolean(settings?.basicAuth)
+        : authMode === 'ucan'
+          ? Boolean(settings?.ucanToken)
+          : Boolean(settings?.authToken);
+
+      if (!enabled) {
+        badge.textContent = '同步已关闭';
+        badge.className = 'sync-status-badge disabled';
+      } else if (conflicts.length > 0) {
+        badge.textContent = `同步冲突 ${conflicts.length}`;
+        badge.className = 'sync-status-badge danger';
+      } else if (!hasAuth) {
+        badge.textContent = '同步未登录';
+        badge.className = 'sync-status-badge warning';
+      } else {
+        badge.textContent = '同步已开启';
+        badge.className = 'sync-status-badge success';
+      }
+
+      const pullText = settings?.lastPullAt ? formatLocaleDateTime(settings.lastPullAt) : '-';
+      const pushText = settings?.lastPushAt ? formatLocaleDateTime(settings.lastPushAt) : '-';
+      badge.title = `最近拉取: ${pullText} · 最近推送: ${pushText}`;
+    } catch (error) {
+      badge.textContent = '同步状态未知';
+      badge.className = 'sync-status-badge';
+    }
   }
 
   bindBackEvents() {
@@ -237,6 +285,7 @@ export class PopupController {
   async openSettingsPage() {
     this.stopTransactionPolling();
     showPage('settingsPage');
+    await this.settingsController.loadBackupSyncSettings();
   }
 
   async openSitesPage() {
@@ -269,6 +318,8 @@ export class PopupController {
     if (this.networkController) {
       await this.networkController.refreshNetworkState();
     }
+
+    await this.updateBackupSyncStatus();
 
     const tokensContent = document.getElementById('tokensContent');
     if (tokensContent && !tokensContent.classList.contains('hidden')) {

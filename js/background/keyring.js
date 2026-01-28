@@ -13,6 +13,7 @@ import { broadcastEvent } from './connection.js';
 import { TIMEOUTS } from '../config/index.js';
 import { notifyUnlocked } from './unlock-flow.js';
 import { updateKeepAlive } from './offscreen.js';
+import { backupSyncService } from './sync-service.js';
 
 /**
  * 解锁钱包
@@ -65,6 +66,10 @@ export async function unlockWallet(password, accountId) {
     notifyUnlocked();
     updateKeepAlive();
 
+    backupSyncService.onUnlocked(password).catch((error) => {
+      console.warn('[BackupSync] unlock hook failed:', error?.message || error);
+    });
+
     console.log('✅ Wallet unlocked');
 
     return {
@@ -109,6 +114,10 @@ export async function lockWallet() {
     // 通知所有连接的页面
     broadcastEvent(EventType.ACCOUNTS_CHANGED, { accounts: [] });
     updateKeepAlive();
+
+    backupSyncService.onLocked().catch((error) => {
+      console.warn('[BackupSync] lock hook failed:', error?.message || error);
+    });
 
     console.log('✅ Wallet locked');
 

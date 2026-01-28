@@ -45,6 +45,9 @@
             <div class="account-avatar" id="walletAvatar"></div>
             <div class="account-info">
               <div class="account-name" id="accountName">主账户</div>
+              <div class="account-subline">
+                <span id="backupSyncStatusBadge" class="sync-status-badge">同步状态</span>
+              </div>
             </div>
             <span class="dropdown-arrow">▼</span>
           </div>
@@ -827,6 +830,124 @@
             <p style="font-size: 12px; color: #999; margin-top: 8px">
               ⚠️ 重置后将清除所有数据，请确保已备份私钥
             </p>
+          </div>
+
+          <!-- Backup & Sync -->
+          <div class="settings-section">
+            <h3>☁️ Backup & Sync</h3>
+            <div class="settings-row">
+              <label class="settings-toggle">
+                <input type="checkbox" id="backupSyncEnabledToggle" />
+                <span>启用 Backup & Sync</span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label>WebDAV 地址</label>
+              <input
+                type="url"
+                id="backupSyncEndpointInput"
+                placeholder="https://webdav.yeying.pub"
+              />
+            </div>
+            <div class="form-group">
+              <label>认证方式</label>
+              <select id="backupSyncAuthModeSelect" class="input">
+                <option value="siwe">SIWE (钱包签名)</option>
+                <option value="ucan">UCAN</option>
+                <option value="basic">Basic</option>
+              </select>
+            </div>
+
+            <div id="backupSyncSiwePanel" class="sync-auth-panel">
+              <div class="form-group">
+                <label>当前地址</label>
+                <div class="sync-address" id="backupSyncAccountAddress">-</div>
+              </div>
+              <div class="settings-row">
+                <button id="backupSyncSiweLoginBtn" class="btn btn-primary btn-small">SIWE 登录</button>
+                <button id="backupSyncSiweRefreshBtn" class="btn btn-secondary btn-small">刷新 Token</button>
+              </div>
+              <p class="settings-hint" id="backupSyncTokenStatus">未登录</p>
+            </div>
+
+            <div id="backupSyncUcanPanel" class="sync-auth-panel hidden">
+              <div class="form-group">
+                <label>UCAN Token</label>
+                <textarea
+                  id="backupSyncUcanTokenInput"
+                  rows="3"
+                  placeholder="粘贴 UCAN Token"
+                ></textarea>
+              </div>
+              <div class="form-group">
+                <label>Audience (did:web)</label>
+                <input
+                  type="text"
+                  id="backupSyncUcanAudienceInput"
+                  placeholder="did:web:webdav.yeying.pub"
+                />
+              </div>
+              <div class="form-group">
+                <label>Capability Resource</label>
+                <input
+                  type="text"
+                  id="backupSyncUcanResourceInput"
+                  placeholder="webdav/*"
+                />
+              </div>
+              <div class="form-group">
+                <label>Capability Action</label>
+                <input
+                  type="text"
+                  id="backupSyncUcanActionInput"
+                  placeholder="read | write | *"
+                />
+              </div>
+              <div class="form-group">
+                <label>有效期 (小时)</label>
+                <input
+                  type="number"
+                  id="backupSyncUcanTtlInput"
+                  min="1"
+                  max="168"
+                  step="1"
+                  value="24"
+                />
+              </div>
+              <div class="settings-row">
+                <button id="backupSyncUcanGenerateBtn" class="btn btn-secondary btn-small">生成 UCAN</button>
+                <button id="backupSyncUcanSaveBtn" class="btn btn-primary btn-small">保存 UCAN</button>
+              </div>
+            </div>
+
+            <div id="backupSyncBasicPanel" class="sync-auth-panel hidden">
+              <div class="form-group">
+                <label>Basic 凭证</label>
+                <input
+                  type="text"
+                  id="backupSyncBasicInput"
+                  placeholder="username:password 或 Basic base64"
+                />
+              </div>
+              <button id="backupSyncBasicSaveBtn" class="btn btn-primary btn-small">保存凭证</button>
+            </div>
+
+            <div class="settings-divider"></div>
+
+            <div class="settings-row">
+              <button id="backupSyncNowBtn" class="btn btn-secondary">立即同步</button>
+              <button id="backupSyncClearRemoteBtn" class="btn btn-danger btn-small">清除远端备份</button>
+            </div>
+            <p class="settings-hint" id="backupSyncLastStatus">最近拉取: - · 最近推送: -</p>
+
+            <div class="settings-divider"></div>
+            <h4 class="sync-conflict-title">同步冲突</h4>
+            <div id="backupSyncDebugRow" class="settings-row hidden">
+              <button id="backupSyncSimulateConflictBtn" class="btn btn-secondary btn-small">模拟冲突</button>
+            </div>
+            <div id="backupSyncConflictsList" class="sync-conflicts-list">
+              <div class="empty-message">暂无冲突</div>
+            </div>
           </div>
         </div>
       </div>

@@ -37,6 +37,7 @@ import {
   clearAllData,
   getUserSetting,
   updateUserSetting,
+  updateUserSettings,
   getContactList,
   getContact,
   saveContact,
@@ -53,9 +54,11 @@ import { getCachedPassword, cachePassword, refreshPasswordCache, clearPasswordCa
 import { resetLockTimer, lockWallet } from './keyring.js';
 import { normalizeChainId } from '../common/chain/index.js';
 import { broadcastEvent, sendEvent } from './connection.js';
-import { TIMEOUTS, LIMITS, NETWORKS, DEFAULT_NETWORK } from '../config/index.js';
+import { TIMEOUTS, LIMITS, NETWORKS, DEFAULT_NETWORK, isDeveloperFeatureEnabled } from '../config/index.js';
 import { notifyUnlocked } from './unlock-flow.js';
 import { updateKeepAlive } from './offscreen.js';
+import { getTimestamp } from '../common/utils/time-utils.js';
+import { backupSyncService } from './sync-service.js';
 
 const CUSTOM_TOKENS_KEY = 'custom_tokens';
 const MIN_PASSWORD_LENGTH = 8;
@@ -480,7 +483,8 @@ export async function handleUpdateAccountName(accountId, newName) {
 
     const updatedAccount = {
       ...account,
-      name: newName.trim()
+      name: newName.trim(),
+      nameUpdatedAt: getTimestamp()
     };
 
     await updateAccount(updatedAccount);
@@ -1076,6 +1080,184 @@ export async function handleDeleteContact(contactId) {
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to delete contact' };
+  }
+}
+
+// ==================== Backup & Sync ====================
+
+const DEFAULT_BACKUP_SYNC_ENDPOINT = 'https://webdav.yeying.pub';
+const BACKUP_SYNC_MODES = new Set(['siwe', 'ucan', 'basic']);
+
+function normalizeBackupSyncEndpoint(value) {
+  const trimmed = String(value || '').trim();
+  return trimmed || DEFAULT_BACKUP_SYNC_ENDPOINT;
+}
+
+export async function handleGetBackupSyncSettings() {
+  try {
+    const settings = {
+      enabled: await getUserSetting('backupSyncEnabled', true),
+      endpoint: await getUserSetting('backupSyncEndpoint', DEFAULT_BACKUP_SYNC_ENDPOINT),
+      authMode: await getUserSetting('backupSyncAuthMode', 'siwe'),
+      authToken: await getUserSetting('backupSyncAuthToken', ''),
+      authTokenExpiresAt: await getUserSetting('backupSyncAuthTokenExpiresAt', null),
+      ucanToken: await getUserSetting('backupSyncUcanToken', ''),
+      ucanResource: await getUserSetting('backupSyncUcanResource', ''),
+      ucanAction: await getUserSetting('backupSyncUcanAction', ''),
+      ucanAudience: await getUserSetting('backupSyncUcanAudience', ''),
+      basicAuth: await getUserSetting('backupSyncBasicAuth', ''),
+      lastPullAt: await getUserSetting('backupSyncLastPullAt', null),
+      lastPushAt: await getUserSetting('backupSyncLastPushAt', null),
+      pendingDelete: await getUserSetting('backupSyncPendingDelete', false),
+      networkIds: await getUserSetting('backupSyncNetworkIds', []),
+      conflicts: await getUserSetting('backupSyncConflicts', [])
+    };
+
+    return { success: true, settings };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to get backup sync settings' };
+  }
+}
+
+export async function handleUpdateBackupSyncSettings(updates = {}) {
+  try {
+    const sanitized = {};
+
+    if ('enabled' in updates) {
+      sanitized.backupSyncEnabled = Boolean(updates.enabled);
+    }
+
+    if ('endpoint' in updates) {
+      sanitized.backupSyncEndpoint = normalizeBackupSyncEndpoint(updates.endpoint);
+    }
+
+    if ('authMode' in updates) {
+      const mode = String(updates.authMode || '').toLowerCase();
+      if (BACKUP_SYNC_MODES.has(mode)) {
+        sanitized.backupSyncAuthMode = mode;
+      }
+    }
+
+    if ('authToken' in updates) {
+      sanitized.backupSyncAuthToken = String(updates.authToken || '');
+    }
+
+    if ('authTokenExpiresAt' in updates) {
+      sanitized.backupSyncAuthTokenExpiresAt = updates.authTokenExpiresAt ?? null;
+    }
+
+    if ('ucanToken' in updates) {
+      sanitized.backupSyncUcanToken = String(updates.ucanToken || '');
+    }
+
+    if ('ucanResource' in updates) {
+      sanitized.backupSyncUcanResource = String(updates.ucanResource || '');
+    }
+
+    if ('ucanAction' in updates) {
+      sanitized.backupSyncUcanAction = String(updates.ucanAction || '');
+    }
+
+    if ('ucanAudience' in updates) {
+      sanitized.backupSyncUcanAudience = String(updates.ucanAudience || '');
+    }
+
+    if ('basicAuth' in updates) {
+      sanitized.backupSyncBasicAuth = String(updates.basicAuth || '');
+    }
+
+    if ('conflicts' in updates) {
+      if (isDeveloperFeatureEnabled('ENABLE_DEBUG_MODE')) {
+        sanitized.backupSyncConflicts = Array.isArray(updates.conflicts) ? updates.conflicts : [];
+      }
+    }
+
+    if (Object.keys(sanitized).length > 0) {
+      await updateUserSettings(sanitized);
+    }
+
+    if (sanitized.backupSyncEnabled === false) {
+      await backupSyncService.disableSync();
+    }
+
+    return await handleGetBackupSyncSettings();
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to update backup sync settings' };
+  }
+}
+
+export async function handleBackupSyncNow() {
+  try {
+    await backupSyncService.syncAll('manual');
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to sync now' };
+  }
+}
+
+export async function handleBackupSyncClearRemote() {
+  try {
+    await backupSyncService.clearRemoteNow();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to clear remote backup' };
+  }
+}
+
+export async function handleResolveBackupSyncConflict(options = {}) {
+  const conflictId = String(options?.id || '').trim();
+  const action = String(options?.action || '').trim();
+  if (!conflictId || !action) {
+    return { success: false, error: 'conflict id and action are required' };
+  }
+
+  try {
+    const conflicts = await getUserSetting('backupSyncConflicts', []);
+    const list = Array.isArray(conflicts) ? conflicts : [];
+    const target = list.find(item => item?.id === conflictId);
+    if (!target) {
+      return { success: false, error: 'conflict not found' };
+    }
+
+    if (target.type === 'account' && target.accountId) {
+      const account = await getAccount(target.accountId);
+      if (!account) {
+        return { success: false, error: 'account not found' };
+      }
+      const nextName = action === 'remote' ? target.remoteName : target.localName;
+      const nextTimestamp = action === 'remote'
+        ? (target.timestamp || getTimestamp())
+        : getTimestamp();
+      await updateAccount({
+        ...account,
+        name: nextName,
+        nameUpdatedAt: nextTimestamp
+      });
+    } else if (target.type === 'contact' && target.contactId) {
+      const contact = await getContact(target.contactId);
+      if (!contact) {
+        return { success: false, error: 'contact not found' };
+      }
+      const nextName = action === 'remote' ? target.remoteName : target.localName;
+      const nextNote = action === 'remote' ? (target.remoteNote || '') : (target.localNote || '');
+      const nextTimestamp = action === 'remote'
+        ? (target.timestamp || Date.now())
+        : Date.now();
+      await saveContact({
+        ...contact,
+        name: nextName,
+        note: nextNote,
+        updatedAt: nextTimestamp
+      });
+    }
+
+    const nextConflicts = list.filter(item => item?.id !== conflictId);
+    await updateUserSetting('backupSyncConflicts', nextConflicts);
+    backupSyncService.markDirty('conflict-resolved');
+
+    return { success: true, conflicts: nextConflicts };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to resolve conflict' };
   }
 }
 

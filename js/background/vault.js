@@ -109,13 +109,15 @@ export async function createHDWallet(accountName, password) {
     // 生成钱包 ID
     const walletId = generateId('wallet');
 
+    const createdAt = getTimestamp();
+
     // 创建钱包对象
     const wallet = {
       id: walletId,
       name: 'HD Wallet',
       type: WALLET_TYPE.HD,
       encryptedMnemonic: encryptedMnemonic,
-      createdAt: getTimestamp(),
+      createdAt,
       accountCount: 1 // 初始有 1 个账户
     };
 
@@ -129,7 +131,8 @@ export async function createHDWallet(accountName, password) {
       derivationPath: derivationPath,
       address: mainWallet.address,
       encryptedPrivateKey: encryptedPrivateKey,
-      createdAt: getTimestamp()
+      createdAt,
+      nameUpdatedAt: createdAt
     };
 
     console.log('✅ HD Wallet created:', {
@@ -194,13 +197,15 @@ export async function importHDWallet(accountName, mnemonic, password) {
     // 生成钱包 ID
     const walletId = generateId('wallet');
 
+    const createdAt = getTimestamp();
+
     // 创建钱包对象
     const wallet = {
       id: walletId,
       name: 'HD Wallet',
       type: WALLET_TYPE.HD,
       encryptedMnemonic: encryptedMnemonic,
-      createdAt: getTimestamp(),
+      createdAt,
       accountCount: 1
     };
 
@@ -214,7 +219,8 @@ export async function importHDWallet(accountName, mnemonic, password) {
       derivationPath: derivationPath,
       address: mainWallet.address,
       encryptedPrivateKey: encryptedPrivateKey,
-      createdAt: getTimestamp()
+      createdAt,
+      nameUpdatedAt: createdAt
     };
 
     console.log('✅ HD Wallet imported:', {
@@ -281,12 +287,14 @@ export async function importPrivateKeyWallet(accountName, privateKey, password) 
     // 生成钱包 ID
     const walletId = generateId('wallet');
 
+    const createdAt = getTimestamp();
+
     // 创建钱包对象（无助记词）
     const wallet = {
       id: walletId,
       name: 'Imported Wallet',
       type: WALLET_TYPE.IMPORTED,
-      createdAt: getTimestamp(),
+      createdAt,
       accountCount: 1
     };
 
@@ -299,7 +307,8 @@ export async function importPrivateKeyWallet(accountName, privateKey, password) 
       index: 0,
       address: ethersWallet.address,
       encryptedPrivateKey: encryptedPrivateKey,
-      createdAt: getTimestamp()
+      createdAt,
+      nameUpdatedAt: createdAt
     };
 
     console.log('✅ Private key wallet imported:', {
@@ -368,6 +377,8 @@ export async function deriveSubAccount(wallet, newIndex, accountName, password) 
     // 加密私钥
     const encryptedPrivateKey = await encryptString(ethersWallet.privateKey, password);
 
+    const createdAt = getTimestamp();
+
     // 创建子账户对象
     const subAccount = {
       id: generateAccountId(wallet.id, newIndex),
@@ -378,7 +389,8 @@ export async function deriveSubAccount(wallet, newIndex, accountName, password) 
       derivationPath: derivationPath,
       address: ethersWallet.address,
       encryptedPrivateKey: encryptedPrivateKey,
-      createdAt: getTimestamp()
+      createdAt,
+      nameUpdatedAt: createdAt
     };
 
     console.log('✅ Sub account derived:', {

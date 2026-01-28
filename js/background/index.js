@@ -11,6 +11,7 @@ import { NETWORKS, DEFAULT_NETWORK } from '../config/index.js';
 import { getSelectedNetworkName, getUserSetting, ensureDefaultNetworks, getNetworkConfigByKey } from '../storage/index.js';
 import { normalizeChainId } from '../common/chain/index.js';
 import { normalizePopupBounds } from './window-utils.js';
+import { backupSyncService } from './sync-service.js';
 
 /**
  * 初始化 Background Script
@@ -23,6 +24,7 @@ async function init() {
 
   try {
     await updateKeepAlive();
+    await backupSyncService.init();
     const seededNetworks = await ensureDefaultNetworks(NETWORKS);
 
     // 加载保存的网络选择

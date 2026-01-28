@@ -1,17 +1,111 @@
-import { showPage, showSuccess, showError, showWaiting } from '../common/ui/index.js';
+import { showPage, showSuccess, showError, showWaiting, hideWaiting } from '../common/ui/index.js';
 import { formatLocaleDateTime, formatIsoTimestamp } from '../common/utils/time-utils.js';
 import { shortenAddress } from '../common/chain/index.js';
 import { escapeHtml } from '../common/ui/html-ui.js';
+import { isDeveloperFeatureEnabled } from '../config/index.js';
 
 export class SettingsController {
-  constructor({ wallet }) {
+  constructor({ wallet, transaction, requestPassword }) {
     this.wallet = wallet;
+    this.transaction = transaction;
+    this.requestPassword = requestPassword;
     this.cachedSites = [];
     this.activeSiteDetail = null;
     this.resetConfirmKeyword = 'RESET';
+    this.syncSettings = null;
   }
 
   bindEvents() {
+    const backupSyncEnabledToggle = document.getElementById('backupSyncEnabledToggle');
+    if (backupSyncEnabledToggle) {
+      backupSyncEnabledToggle.addEventListener('change', async () => {
+        await this.handleBackupSyncToggle(backupSyncEnabledToggle.checked);
+      });
+    }
+
+    const backupSyncEndpointInput = document.getElementById('backupSyncEndpointInput');
+    if (backupSyncEndpointInput) {
+      backupSyncEndpointInput.addEventListener('blur', async () => {
+        await this.handleBackupSyncEndpointUpdate(backupSyncEndpointInput.value);
+      });
+    }
+
+    const backupSyncAuthModeSelect = document.getElementById('backupSyncAuthModeSelect');
+    if (backupSyncAuthModeSelect) {
+      backupSyncAuthModeSelect.addEventListener('change', async () => {
+        const mode = backupSyncAuthModeSelect.value;
+        await this.handleBackupSyncAuthModeChange(mode);
+      });
+    }
+
+    const backupSyncSiweLoginBtn = document.getElementById('backupSyncSiweLoginBtn');
+    if (backupSyncSiweLoginBtn) {
+      backupSyncSiweLoginBtn.addEventListener('click', async () => {
+        await this.handleBackupSyncSiweLogin();
+      });
+    }
+
+    const backupSyncSiweRefreshBtn = document.getElementById('backupSyncSiweRefreshBtn');
+    if (backupSyncSiweRefreshBtn) {
+      backupSyncSiweRefreshBtn.addEventListener('click', async () => {
+        await this.handleBackupSyncSiweRefresh();
+      });
+    }
+
+    const backupSyncUcanSaveBtn = document.getElementById('backupSyncUcanSaveBtn');
+    if (backupSyncUcanSaveBtn) {
+      backupSyncUcanSaveBtn.addEventListener('click', async () => {
+        await this.handleBackupSyncUcanSave();
+      });
+    }
+
+    const backupSyncUcanGenerateBtn = document.getElementById('backupSyncUcanGenerateBtn');
+    if (backupSyncUcanGenerateBtn) {
+      backupSyncUcanGenerateBtn.addEventListener('click', async () => {
+        await this.handleBackupSyncUcanGenerate();
+      });
+    }
+
+    const backupSyncBasicSaveBtn = document.getElementById('backupSyncBasicSaveBtn');
+    if (backupSyncBasicSaveBtn) {
+      backupSyncBasicSaveBtn.addEventListener('click', async () => {
+        await this.handleBackupSyncBasicSave();
+      });
+    }
+
+    const backupSyncNowBtn = document.getElementById('backupSyncNowBtn');
+    if (backupSyncNowBtn) {
+      backupSyncNowBtn.addEventListener('click', async () => {
+        await this.handleBackupSyncNow();
+      });
+    }
+
+    const backupSyncClearRemoteBtn = document.getElementById('backupSyncClearRemoteBtn');
+    if (backupSyncClearRemoteBtn) {
+      backupSyncClearRemoteBtn.addEventListener('click', async () => {
+        await this.handleBackupSyncClearRemote();
+      });
+    }
+
+    const backupSyncSimulateBtn = document.getElementById('backupSyncSimulateConflictBtn');
+    if (backupSyncSimulateBtn) {
+      backupSyncSimulateBtn.addEventListener('click', async () => {
+        await this.handleBackupSyncSimulateConflict();
+      });
+    }
+
+    const conflictsList = document.getElementById('backupSyncConflictsList');
+    if (conflictsList) {
+      conflictsList.addEventListener('click', async (event) => {
+        const actionBtn = event.target.closest('[data-conflict-action]');
+        if (!actionBtn) return;
+        const conflictId = actionBtn.dataset.conflictId;
+        const action = actionBtn.dataset.conflictAction;
+        if (!conflictId || !action) return;
+        await this.handleResolveBackupSyncConflict(conflictId, action);
+      });
+    }
+
     const changePasswordBtn = document.getElementById('changePasswordBtn');
     if (changePasswordBtn) {
       changePasswordBtn.addEventListener('click', async () => {
@@ -145,6 +239,645 @@ export class SettingsController {
       this.cachedSites = [];
       this.renderAuthorizedSites([]);
     }
+  }
+
+  async loadBackupSyncSettings() {
+    try {
+      const settings = await this.wallet.getBackupSyncSettings();
+      this.syncSettings = settings || {};
+      this.renderBackupSyncSettings(settings);
+    } catch (error) {
+      console.error('[SettingsController] 获取 Backup & Sync 设置失败:', error);
+    }
+  }
+
+  renderBackupSyncSettings(settings = {}) {
+    const enabledToggle = document.getElementById('backupSyncEnabledToggle');
+    const endpointInput = document.getElementById('backupSyncEndpointInput');
+    const authModeSelect = document.getElementById('backupSyncAuthModeSelect');
+    const ucanTokenInput = document.getElementById('backupSyncUcanTokenInput');
+    const ucanResourceInput = document.getElementById('backupSyncUcanResourceInput');
+    const ucanActionInput = document.getElementById('backupSyncUcanActionInput');
+    const ucanAudienceInput = document.getElementById('backupSyncUcanAudienceInput');
+    const ucanTtlInput = document.getElementById('backupSyncUcanTtlInput');
+    const basicInput = document.getElementById('backupSyncBasicInput');
+    const tokenStatus = document.getElementById('backupSyncTokenStatus');
+    const lastStatus = document.getElementById('backupSyncLastStatus');
+
+    if (enabledToggle) enabledToggle.checked = Boolean(settings.enabled);
+    if (endpointInput) endpointInput.value = settings.endpoint || 'https://webdav.yeying.pub';
+    if (authModeSelect) authModeSelect.value = settings.authMode || 'siwe';
+    if (ucanTokenInput) ucanTokenInput.value = settings.ucanToken || '';
+    if (ucanResourceInput) ucanResourceInput.value = settings.ucanResource || '';
+    if (ucanActionInput) ucanActionInput.value = settings.ucanAction || '';
+    if (ucanAudienceInput) {
+      ucanAudienceInput.value = settings.ucanAudience || this.deriveUcanAudience(settings.endpoint || '');
+    }
+    if (ucanTtlInput && !ucanTtlInput.value) {
+      ucanTtlInput.value = '24';
+    }
+    if (basicInput) basicInput.value = settings.basicAuth || '';
+
+    this.updateBackupSyncAuthPanel(settings.authMode || 'siwe');
+    this.updateBackupSyncTokenStatus(settings, tokenStatus);
+    this.updateBackupSyncLastStatus(settings, lastStatus);
+    this.updateBackupSyncEnabledState(Boolean(settings.enabled));
+
+    this.renderBackupSyncAccountAddress();
+    this.renderBackupSyncConflicts(settings.conflicts || []);
+    this.toggleBackupSyncDebug();
+  }
+
+  updateBackupSyncAuthPanel(mode) {
+    const siwePanel = document.getElementById('backupSyncSiwePanel');
+    const ucanPanel = document.getElementById('backupSyncUcanPanel');
+    const basicPanel = document.getElementById('backupSyncBasicPanel');
+
+    if (siwePanel) siwePanel.classList.toggle('hidden', mode !== 'siwe');
+    if (ucanPanel) ucanPanel.classList.toggle('hidden', mode !== 'ucan');
+    if (basicPanel) basicPanel.classList.toggle('hidden', mode !== 'basic');
+  }
+
+  updateBackupSyncEnabledState(enabled) {
+    const endpointInput = document.getElementById('backupSyncEndpointInput');
+    const authModeSelect = document.getElementById('backupSyncAuthModeSelect');
+    const nowBtn = document.getElementById('backupSyncNowBtn');
+
+    if (endpointInput) endpointInput.disabled = !enabled;
+    if (authModeSelect) authModeSelect.disabled = !enabled;
+    if (nowBtn) nowBtn.disabled = !enabled;
+
+    const panelControls = document.querySelectorAll(
+      '#backupSyncSiwePanel button, #backupSyncUcanPanel button, #backupSyncUcanPanel input, #backupSyncUcanPanel textarea, #backupSyncBasicPanel button, #backupSyncBasicPanel input'
+    );
+    panelControls.forEach(el => {
+      el.disabled = !enabled;
+    });
+  }
+
+  updateBackupSyncTokenStatus(settings, element) {
+    if (!element) return;
+    const token = settings?.authToken || '';
+    const expiresAt = settings?.authTokenExpiresAt;
+    if (!token) {
+      element.textContent = '未登录';
+      return;
+    }
+    const expiresText = expiresAt ? formatLocaleDateTime(expiresAt) : '未知';
+    element.textContent = `已登录 · 过期时间 ${expiresText}`;
+  }
+
+  updateBackupSyncLastStatus(settings, element) {
+    if (!element) return;
+    const pullText = settings?.lastPullAt ? formatLocaleDateTime(settings.lastPullAt) : '-';
+    const pushText = settings?.lastPushAt ? formatLocaleDateTime(settings.lastPushAt) : '-';
+    element.textContent = `最近拉取: ${pullText} · 最近推送: ${pushText}`;
+  }
+
+  renderBackupSyncConflicts(conflicts = []) {
+    const container = document.getElementById('backupSyncConflictsList');
+    if (!container) return;
+    const list = Array.isArray(conflicts) ? conflicts : [];
+
+    if (list.length === 0) {
+      container.innerHTML = '<div class="empty-message">暂无冲突</div>';
+      return;
+    }
+
+    container.innerHTML = list.map(conflict => {
+      const title = conflict.type === 'contact'
+        ? `联系人 ${conflict.address ? shortenAddress(conflict.address) : ''}`
+        : `账户 #${conflict.index ?? '-'}`;
+      const localName = escapeHtml(conflict.localName || '');
+      const remoteName = escapeHtml(conflict.remoteName || '');
+      const timeText = conflict.timestamp ? formatLocaleDateTime(conflict.timestamp) : '-';
+
+      return `
+        <div class="sync-conflict-item">
+          <div class="sync-conflict-info">
+            <div class="sync-conflict-title">${escapeHtml(title)}</div>
+            <div class="sync-conflict-meta">时间: ${escapeHtml(timeText)}</div>
+            <div class="sync-conflict-names">
+              <span class="sync-conflict-local">本地: ${localName || '-'}</span>
+              <span class="sync-conflict-remote">远端: ${remoteName || '-'}</span>
+            </div>
+          </div>
+          <div class="sync-conflict-actions">
+            <button class="btn btn-secondary btn-small" data-conflict-action="local" data-conflict-id="${escapeHtml(conflict.id)}">用本地</button>
+            <button class="btn btn-primary btn-small" data-conflict-action="remote" data-conflict-id="${escapeHtml(conflict.id)}">用远端</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  toggleBackupSyncDebug() {
+    const debugRow = document.getElementById('backupSyncDebugRow');
+    if (!debugRow) return;
+    const enabled = isDeveloperFeatureEnabled('ENABLE_DEBUG_MODE');
+    debugRow.classList.toggle('hidden', !enabled);
+  }
+
+  async handleResolveBackupSyncConflict(conflictId, action) {
+    try {
+      const result = await this.wallet.resolveBackupSyncConflict({ id: conflictId, action });
+      if (!result?.success) {
+        throw new Error(result?.error || '处理失败');
+      }
+      await this.loadBackupSyncSettings();
+      showSuccess('已处理冲突');
+    } catch (error) {
+      console.error('[SettingsController] 处理同步冲突失败:', error);
+      showError('处理失败: ' + error.message);
+    }
+  }
+
+  async handleBackupSyncSimulateConflict() {
+    try {
+      if (!isDeveloperFeatureEnabled('ENABLE_DEBUG_MODE')) {
+        showError('调试模式未开启');
+        return;
+      }
+
+      const current = await this.wallet.getCurrentAccount();
+      if (!current?.id) {
+        showError('未找到当前账户');
+        return;
+      }
+
+      const contacts = await this.wallet.getContacts();
+      const timestamp = Date.now();
+      const conflicts = Array.isArray(this.syncSettings?.conflicts)
+        ? [...this.syncSettings.conflicts]
+        : [];
+
+      conflicts.push({
+        id: `account:${current.id}:${timestamp}`,
+        type: 'account',
+        accountId: current.id,
+        walletId: current.walletId || '',
+        index: Number.isFinite(current.index) ? current.index : 0,
+        localName: current.name || '',
+        remoteName: `${current.name || 'Account'} (Remote)`,
+        timestamp
+      });
+
+      if (Array.isArray(contacts) && contacts.length > 0) {
+        const contact = contacts[0];
+        conflicts.push({
+          id: `contact:${contact.id}:${timestamp}`,
+          type: 'contact',
+          contactId: contact.id,
+          address: contact.address,
+          localName: contact.name || '',
+          localNote: contact.note || '',
+          remoteName: `${contact.name || 'Contact'} (Remote)`,
+          remoteNote: `${contact.note || ''}`.trim(),
+          timestamp
+        });
+      }
+
+      const result = await this.wallet.updateBackupSyncSettings({ conflicts });
+      if (result?.settings) {
+        this.syncSettings = result.settings;
+        this.renderBackupSyncSettings(result.settings);
+      }
+      showSuccess('已生成测试冲突');
+    } catch (error) {
+      console.error('[SettingsController] 生成测试冲突失败:', error);
+      showError('生成失败: ' + error.message);
+    }
+  }
+
+  deriveUcanAudience(endpoint) {
+    try {
+      const url = new URL(endpoint);
+      const host = url.hostname;
+      const port = url.port ? `:${url.port}` : '';
+      return host ? `did:web:${host}${port}` : '';
+    } catch {
+      return '';
+    }
+  }
+
+  async renderBackupSyncAccountAddress() {
+    const addressEl = document.getElementById('backupSyncAccountAddress');
+    if (!addressEl) return;
+    try {
+      const account = await this.wallet.getCurrentAccount();
+      addressEl.textContent = account?.address ? shortenAddress(account.address) : '-';
+      addressEl.title = account?.address || '';
+    } catch (error) {
+      addressEl.textContent = '-';
+    }
+  }
+
+  async handleBackupSyncToggle(enabled) {
+    try {
+      const result = await this.wallet.updateBackupSyncSettings({ enabled });
+      if (result?.settings) {
+        this.syncSettings = result.settings;
+        this.renderBackupSyncSettings(result.settings);
+      }
+      showSuccess(enabled ? '已启用 Backup & Sync' : '已关闭 Backup & Sync');
+    } catch (error) {
+      console.error('[SettingsController] 更新 Backup & Sync 开关失败:', error);
+      showError('更新失败: ' + error.message);
+    }
+  }
+
+  async handleBackupSyncEndpointUpdate(endpoint) {
+    const trimmed = String(endpoint || '').trim();
+    if (!trimmed) {
+      showError('请输入 WebDAV 地址');
+      return;
+    }
+    try {
+      new URL(trimmed);
+    } catch {
+      showError('WebDAV 地址格式不正确');
+      return;
+    }
+    try {
+      const result = await this.wallet.updateBackupSyncSettings({ endpoint: trimmed });
+      if (result?.settings) {
+        this.syncSettings = result.settings;
+        this.renderBackupSyncSettings(result.settings);
+      }
+      showSuccess('WebDAV 地址已保存');
+    } catch (error) {
+      console.error('[SettingsController] 更新 WebDAV 地址失败:', error);
+      showError('保存失败: ' + error.message);
+    }
+  }
+
+  async handleBackupSyncAuthModeChange(mode) {
+    try {
+      const result = await this.wallet.updateBackupSyncSettings({ authMode: mode });
+      if (result?.settings) {
+        this.syncSettings = result.settings;
+        this.renderBackupSyncSettings(result.settings);
+      }
+    } catch (error) {
+      console.error('[SettingsController] 更新认证方式失败:', error);
+      showError('更新失败: ' + error.message);
+    }
+  }
+
+  async handleBackupSyncSiweLogin() {
+    try {
+      const endpoint = (document.getElementById('backupSyncEndpointInput')?.value || '').trim();
+      if (!endpoint) {
+        showError('请输入 WebDAV 地址');
+        return;
+      }
+      try {
+        new URL(endpoint);
+      } catch {
+        showError('WebDAV 地址格式不正确');
+        return;
+      }
+
+      const account = await this.wallet.getCurrentAccount();
+      if (!account?.address) {
+        showError('未找到当前账户');
+        return;
+      }
+
+      if (!this.transaction) {
+        showError('签名模块未初始化');
+        return;
+      }
+
+      showWaiting();
+      const challenge = await this.fetchSiweChallenge(endpoint, account.address);
+      if (!challenge) {
+        showError('无法获取挑战信息');
+        return;
+      }
+      hideWaiting();
+
+      const password = await this.requestPassword?.();
+      if (!password) {
+        return;
+      }
+
+      showWaiting();
+      const signature = await this.transaction.signMessage(challenge, password);
+      const verifyResult = await this.fetchSiweVerify(endpoint, account.address, signature);
+      const token = verifyResult?.token;
+      const expiresAt = verifyResult?.expiresAt || null;
+
+      if (!token) {
+        showError('登录失败：未返回 Token');
+        return;
+      }
+
+      const result = await this.wallet.updateBackupSyncSettings({
+        authMode: 'siwe',
+        authToken: token,
+        authTokenExpiresAt: expiresAt
+      });
+
+      if (result?.settings) {
+        this.syncSettings = result.settings;
+        this.renderBackupSyncSettings(result.settings);
+      }
+
+      showSuccess('SIWE 登录成功');
+    } catch (error) {
+      console.error('[SettingsController] SIWE 登录失败:', error);
+      showError('登录失败: ' + error.message);
+    }
+  }
+
+  async handleBackupSyncSiweRefresh() {
+    try {
+      const endpoint = (document.getElementById('backupSyncEndpointInput')?.value || '').trim();
+      if (!endpoint) {
+        showError('请输入 WebDAV 地址');
+        return;
+      }
+      try {
+        new URL(endpoint);
+      } catch {
+        showError('WebDAV 地址格式不正确');
+        return;
+      }
+
+      showWaiting();
+      const refreshResult = await this.fetchSiweRefresh(endpoint);
+      const token = refreshResult?.token;
+      const expiresAt = refreshResult?.expiresAt || null;
+
+      if (!token) {
+        showError('刷新失败：未返回 Token');
+        return;
+      }
+
+      const result = await this.wallet.updateBackupSyncSettings({
+        authMode: 'siwe',
+        authToken: token,
+        authTokenExpiresAt: expiresAt
+      });
+
+      if (result?.settings) {
+        this.syncSettings = result.settings;
+        this.renderBackupSyncSettings(result.settings);
+      }
+
+      showSuccess('Token 已刷新');
+    } catch (error) {
+      console.error('[SettingsController] 刷新 Token 失败:', error);
+      showError('刷新失败: ' + error.message);
+    }
+  }
+
+  async handleBackupSyncUcanSave() {
+    const tokenInput = document.getElementById('backupSyncUcanTokenInput');
+    const resourceInput = document.getElementById('backupSyncUcanResourceInput');
+    const actionInput = document.getElementById('backupSyncUcanActionInput');
+    const audienceInput = document.getElementById('backupSyncUcanAudienceInput');
+
+    const token = String(tokenInput?.value || '').trim();
+    if (!token) {
+      showError('请输入 UCAN Token');
+      return;
+    }
+
+    try {
+      const result = await this.wallet.updateBackupSyncSettings({
+        authMode: 'ucan',
+        ucanToken: token,
+        ucanResource: String(resourceInput?.value || '').trim(),
+        ucanAction: String(actionInput?.value || '').trim(),
+        ucanAudience: String(audienceInput?.value || '').trim()
+      });
+      if (result?.settings) {
+        this.syncSettings = result.settings;
+        this.renderBackupSyncSettings(result.settings);
+      }
+      showSuccess('UCAN 已保存');
+    } catch (error) {
+      console.error('[SettingsController] 保存 UCAN 失败:', error);
+      showError('保存失败: ' + error.message);
+    }
+  }
+
+  async handleBackupSyncUcanGenerate() {
+    try {
+      const endpoint = (document.getElementById('backupSyncEndpointInput')?.value || '').trim();
+      if (!endpoint) {
+        showError('请输入 WebDAV 地址');
+        return;
+      }
+      try {
+        new URL(endpoint);
+      } catch {
+        showError('WebDAV 地址格式不正确');
+        return;
+      }
+
+      const account = await this.wallet.getCurrentAccount();
+      if (!account?.address) {
+        showError('未找到当前账户');
+        return;
+      }
+
+      if (!this.transaction) {
+        showError('签名模块未初始化');
+        return;
+      }
+
+      const resourceInput = document.getElementById('backupSyncUcanResourceInput');
+      const actionInput = document.getElementById('backupSyncUcanActionInput');
+      const audienceInput = document.getElementById('backupSyncUcanAudienceInput');
+      const ttlInput = document.getElementById('backupSyncUcanTtlInput');
+
+      const resource = String(resourceInput?.value || '').trim() || 'webdav/*';
+      const action = String(actionInput?.value || '').trim() || '*';
+      const audience = String(audienceInput?.value || '').trim() || this.deriveUcanAudience(endpoint);
+      const ttlHours = Number(ttlInput?.value || '24');
+      const ttlMs = Number.isFinite(ttlHours) ? ttlHours * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+
+      if (!audience) {
+        showError('请填写 Audience');
+        return;
+      }
+
+      const now = Date.now();
+      const expiresAt = now + ttlMs;
+      const { did, keys } = await createUcanInvocationKey();
+      const statement = {
+        aud: did,
+        cap: [{ resource, action }],
+        exp: expiresAt,
+        nbf: now
+      };
+      const message = buildSiweMessage(endpoint, account.address, statement);
+
+      const password = await this.requestPassword?.();
+      if (!password) {
+        return;
+      }
+
+      showWaiting();
+      const signature = await this.transaction.signMessage(message, password);
+      const rootProof = {
+        type: 'siwe',
+        iss: `did:pkh:eth:${account.address.toLowerCase()}`,
+        aud: did,
+        cap: [{ resource, action }],
+        exp: expiresAt,
+        nbf: now,
+        siwe: {
+          message,
+          signature
+        }
+      };
+
+      const { token } = await createUcanInvocationToken({
+        audience,
+        capability: { resource, action },
+        proof: rootProof,
+        expiresAt,
+        notBefore: now,
+        keys,
+        did
+      });
+
+      const tokenInput = document.getElementById('backupSyncUcanTokenInput');
+      if (tokenInput) tokenInput.value = token;
+      if (audienceInput) audienceInput.value = audience;
+      if (resourceInput) resourceInput.value = resource;
+      if (actionInput) actionInput.value = action;
+
+      const result = await this.wallet.updateBackupSyncSettings({
+        authMode: 'ucan',
+        ucanToken: token,
+        ucanResource: resource,
+        ucanAction: action,
+        ucanAudience: audience
+      });
+      if (result?.settings) {
+        this.syncSettings = result.settings;
+        this.renderBackupSyncSettings(result.settings);
+      }
+
+      showSuccess('UCAN 已生成');
+    } catch (error) {
+      console.error('[SettingsController] 生成 UCAN 失败:', error);
+      showError('生成失败: ' + error.message);
+    }
+  }
+
+  async handleBackupSyncBasicSave() {
+    const basicInput = document.getElementById('backupSyncBasicInput');
+    const raw = String(basicInput?.value || '').trim();
+    if (!raw) {
+      showError('请输入 Basic 凭证');
+      return;
+    }
+
+    try {
+      const header = this.normalizeBasicAuth(raw);
+      const result = await this.wallet.updateBackupSyncSettings({
+        authMode: 'basic',
+        basicAuth: header
+      });
+      if (result?.settings) {
+        this.syncSettings = result.settings;
+        this.renderBackupSyncSettings(result.settings);
+      }
+      showSuccess('Basic 凭证已保存');
+    } catch (error) {
+      console.error('[SettingsController] 保存 Basic 凭证失败:', error);
+      showError('保存失败: ' + error.message);
+    }
+  }
+
+  async handleBackupSyncNow() {
+    try {
+      showWaiting();
+      const result = await this.wallet.backupSyncNow();
+      if (!result?.success) {
+        throw new Error(result?.error || '同步失败');
+      }
+      await this.loadBackupSyncSettings();
+      showSuccess('同步完成');
+    } catch (error) {
+      console.error('[SettingsController] 立即同步失败:', error);
+      showError('同步失败: ' + error.message);
+    }
+  }
+
+  async handleBackupSyncClearRemote() {
+    if (!confirm('确定要清除远端备份吗？此操作会删除 WebDAV 上的备份文件。')) {
+      return;
+    }
+
+    try {
+      showWaiting();
+      const result = await this.wallet.backupSyncClearRemote();
+      if (!result?.success) {
+        throw new Error(result?.error || '清理失败');
+      }
+      showSuccess('远端备份已清除');
+    } catch (error) {
+      console.error('[SettingsController] 清除远端备份失败:', error);
+      showError('清理失败: ' + error.message);
+    }
+  }
+
+  normalizeBasicAuth(value) {
+    if (!value) return '';
+    if (value.startsWith('Basic ')) return value;
+    if (value.includes(':')) {
+      return `Basic ${btoa(value)}`;
+    }
+    return `Basic ${value}`;
+  }
+
+  async fetchSiweChallenge(endpoint, address) {
+    const url = new URL('/api/v1/public/auth/challenge', endpoint);
+    url.searchParams.set('address', address);
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      credentials: 'include'
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || json.code !== 0) {
+      throw new Error(json.message || 'Challenge failed');
+    }
+    return json.data?.challenge;
+  }
+
+  async fetchSiweVerify(endpoint, address, signature) {
+    const url = new URL('/api/v1/public/auth/verify', endpoint);
+    const response = await fetch(url.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ address, signature })
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || json.code !== 0) {
+      throw new Error(json.message || 'Verify failed');
+    }
+    return json.data || {};
+  }
+
+  async fetchSiweRefresh(endpoint) {
+    const url = new URL('/api/v1/public/auth/refresh', endpoint);
+    const response = await fetch(url.toString(), {
+      method: 'POST',
+      credentials: 'include'
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || json.code !== 0) {
+      throw new Error(json.message || 'Refresh failed');
+    }
+    return json.data || {};
   }
 
   async handleRevokeSite(origin, options = {}) {
@@ -430,4 +1163,109 @@ export class SettingsController {
     emptyEl.classList.add('hidden');
     rowsEl.classList.remove('hidden');
   }
+}
+
+function buildSiweMessage(endpoint, address, statement) {
+  const url = new URL(endpoint);
+  const domain = url.host || url.hostname;
+  const nonce = Math.random().toString(36).slice(2, 10);
+  const issuedAt = new Date().toISOString();
+  const statementLine = `UCAN-AUTH: ${JSON.stringify(statement)}`;
+
+  return [
+    `${domain} wants you to sign in with your Ethereum account:`,
+    address,
+    '',
+    `URI: ${url.origin}`,
+    'Version: 1',
+    'Chain ID: 1',
+    `Nonce: ${nonce}`,
+    `Issued At: ${issuedAt}`,
+    '',
+    statementLine
+  ].join('\\n');
+}
+
+async function createUcanInvocationKey() {
+  if (!crypto?.subtle) {
+    throw new Error('WebCrypto not available');
+  }
+  const keys = await crypto.subtle.generateKey(
+    { name: 'Ed25519' },
+    true,
+    ['sign', 'verify']
+  );
+  const publicRaw = new Uint8Array(await crypto.subtle.exportKey('raw', keys.publicKey));
+  const did = toDidKey(publicRaw);
+  return { keys, did };
+}
+
+async function createUcanInvocationToken({ audience, capability, proof, expiresAt, notBefore, keys, did }) {
+  if (!crypto?.subtle) {
+    throw new Error('WebCrypto not available');
+  }
+  if (!keys?.privateKey || !did) {
+    throw new Error('Missing UCAN key');
+  }
+  const payload = {
+    iss: did,
+    aud: audience,
+    cap: [capability],
+    exp: expiresAt,
+    nbf: notBefore,
+    prf: [proof]
+  };
+  const header = { alg: 'EdDSA', typ: 'UCAN' };
+  const signingInput = `${base64UrlEncode(JSON.stringify(header))}.${base64UrlEncode(JSON.stringify(payload))}`;
+  const signature = await crypto.subtle.sign(
+    'Ed25519',
+    keys.privateKey,
+    new TextEncoder().encode(signingInput)
+  );
+  const token = `${signingInput}.${base64UrlEncode(new Uint8Array(signature))}`;
+  return { token, did };
+}
+
+function base64UrlEncode(input) {
+  const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : input;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
+}
+
+function base58Encode(bytes) {
+  const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  let zeros = 0;
+  while (zeros < bytes.length && bytes[zeros] === 0) zeros += 1;
+
+  const encoded = [];
+  for (let i = zeros; i < bytes.length; i += 1) {
+    let carry = bytes[i];
+    for (let j = 0; j < encoded.length; j += 1) {
+      carry += encoded[j] << 8;
+      encoded[j] = carry % 58;
+      carry = (carry / 58) | 0;
+    }
+    while (carry > 0) {
+      encoded.push(carry % 58);
+      carry = (carry / 58) | 0;
+    }
+  }
+
+  let output = '';
+  for (let i = 0; i < zeros; i += 1) output += '1';
+  for (let i = encoded.length - 1; i >= 0; i -= 1) {
+    output += alphabet[encoded[i]];
+  }
+  return output;
+}
+
+function toDidKey(publicKeyRaw) {
+  const prefix = new Uint8Array([0xed, 0x01]);
+  const combined = new Uint8Array(prefix.length + publicKeyRaw.length);
+  combined.set(prefix, 0);
+  combined.set(publicKeyRaw, prefix.length);
+  return `did:key:z${base58Encode(combined)}`;
 }

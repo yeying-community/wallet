@@ -470,6 +470,51 @@ export class WalletDomain extends BaseDomain {
     return await this._sendMessage(WalletMessageType.DELETE_CONTACT, { id });
   }
 
+  // ==================== Backup & Sync ====================
+
+  /**
+   * 获取 Backup & Sync 配置
+   * @returns {Promise<Object>}
+   */
+  async getBackupSyncSettings() {
+    const result = await this._sendMessage(WalletMessageType.GET_BACKUP_SYNC_SETTINGS);
+    return result.settings || {};
+  }
+
+  /**
+   * 更新 Backup & Sync 配置
+   * @param {Object} updates
+   * @returns {Promise<Object>}
+   */
+  async updateBackupSyncSettings(updates) {
+    return await this._sendMessage(WalletMessageType.UPDATE_BACKUP_SYNC_SETTINGS, { updates });
+  }
+
+  /**
+   * 立即触发同步
+   * @returns {Promise<Object>}
+   */
+  async backupSyncNow() {
+    return await this._sendMessage(WalletMessageType.BACKUP_SYNC_NOW);
+  }
+
+  /**
+   * 清除远端备份
+   * @returns {Promise<Object>}
+   */
+  async backupSyncClearRemote() {
+    return await this._sendMessage(WalletMessageType.BACKUP_SYNC_CLEAR_REMOTE);
+  }
+
+  /**
+   * 解决同步冲突
+   * @param {Object} options - { id, action }
+   * @returns {Promise<Object>}
+   */
+  async resolveBackupSyncConflict(options = {}) {
+    return await this._sendMessage(WalletMessageType.RESOLVE_BACKUP_SYNC_CONFLICT, options);
+  }
+
   // ==================== 重置 ====================
 
   /**

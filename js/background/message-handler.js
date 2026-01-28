@@ -36,6 +36,11 @@ import {
   handleAddContact,
   handleUpdateContact,
   handleDeleteContact,
+  handleGetBackupSyncSettings,
+  handleUpdateBackupSyncSettings,
+  handleBackupSyncNow,
+  handleBackupSyncClearRemote,
+  handleResolveBackupSyncConflict,
   changePassword
 } from './wallet-operations.js';
 import { state } from './state.js';
@@ -711,6 +716,26 @@ export async function handlePopupMessage(message, response) {
 
       case WalletMessageType.DELETE_CONTACT:
         response(await handleDeleteContact(data?.id));
+        break;
+
+      case WalletMessageType.GET_BACKUP_SYNC_SETTINGS:
+        response(await handleGetBackupSyncSettings());
+        break;
+
+      case WalletMessageType.UPDATE_BACKUP_SYNC_SETTINGS:
+        response(await handleUpdateBackupSyncSettings(data?.updates));
+        break;
+
+      case WalletMessageType.BACKUP_SYNC_NOW:
+        response(await handleBackupSyncNow());
+        break;
+
+      case WalletMessageType.BACKUP_SYNC_CLEAR_REMOTE:
+        response(await handleBackupSyncClearRemote());
+        break;
+
+      case WalletMessageType.RESOLVE_BACKUP_SYNC_CONFLICT:
+        response(await handleResolveBackupSyncConflict(data));
         break;
 
       // ==================== 交易 ====================
