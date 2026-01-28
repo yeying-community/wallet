@@ -31,6 +31,7 @@ import {
   handleGetSiteUcanSession,
   handleRevokeSite,
   handleClearAllAuthorizations,
+  handleResetWallet,
   handleGetContacts,
   handleAddContact,
   handleUpdateContact,
@@ -547,7 +548,7 @@ export async function handlePopupMessage(message, response) {
         break;
 
       case 'CREATE_SUB_ACCOUNT':
-        const subAccountResult = await handleCreateSubAccount(data.walletId, data.accountName);
+        const subAccountResult = await handleCreateSubAccount(data.walletId, data.accountName, data.password);
         response(subAccountResult);
         break;
 
@@ -690,6 +691,10 @@ export async function handlePopupMessage(message, response) {
 
       case WalletMessageType.CLEAR_ALL_AUTHORIZATIONS:
         response(await handleClearAllAuthorizations());
+        break;
+
+      case WalletMessageType.RESET_WALLET:
+        response(await handleResetWallet());
         break;
 
       case WalletMessageType.GET_CONTACTS:

@@ -8,6 +8,7 @@ export class SettingsController {
     this.wallet = wallet;
     this.cachedSites = [];
     this.activeSiteDetail = null;
+    this.resetConfirmKeyword = 'RESET';
   }
 
   bindEvents() {
@@ -28,7 +29,46 @@ export class SettingsController {
     const resetBtn = document.getElementById('resetWalletBtn');
     if (resetBtn) {
       resetBtn.addEventListener('click', async () => {
+        this.openResetWalletModal();
+      });
+    }
+
+    const resetModal = document.getElementById('resetWalletModal');
+    const resetOverlay = resetModal?.querySelector('.modal-overlay');
+    if (resetOverlay) {
+      resetOverlay.addEventListener('click', () => this.closeResetWalletModal());
+    }
+
+    const closeResetBtn = document.getElementById('closeResetWalletModal');
+    if (closeResetBtn) {
+      closeResetBtn.addEventListener('click', () => this.closeResetWalletModal());
+    }
+
+    const cancelResetBtn = document.getElementById('cancelResetWalletBtn');
+    if (cancelResetBtn) {
+      cancelResetBtn.addEventListener('click', () => this.closeResetWalletModal());
+    }
+
+    const confirmResetBtn = document.getElementById('confirmResetWalletBtn');
+    if (confirmResetBtn) {
+      confirmResetBtn.addEventListener('click', async () => {
         await this.handleResetWallet();
+      });
+    }
+
+    const resetInput = document.getElementById('resetWalletConfirmInput');
+    if (resetInput) {
+      resetInput.addEventListener('input', () => {
+        this.updateResetWalletConfirmState();
+      });
+      resetInput.addEventListener('keydown', async (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          await this.handleResetWallet();
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          this.closeResetWalletModal();
+        }
       });
     }
 
@@ -145,18 +185,19 @@ export class SettingsController {
   }
 
   async handleResetWallet() {
-    const confirmText = prompt('警告：此操作将删除所有钱包数据，且无法恢复！\n\n请输入 "RESET" 以确认:');
-
-    if (confirmText !== 'RESET') {
-      if (confirmText !== null) {
-        showError('输入不正确，取消操作');
-      }
+    const confirmInput = document.getElementById('resetWalletConfirmInput');
+    const confirmText = confirmInput?.value.trim() || '';
+    if (confirmText !== this.resetConfirmKeyword) {
+      showError(`请输入 "${this.resetConfirmKeyword}" 以确认`);
+      confirmInput?.focus();
       return;
     }
 
     try {
+      showWaiting();
       await this.wallet.resetWallet();
       showSuccess('钱包已重置');
+      this.closeResetWalletModal();
 
       setTimeout(() => {
         showPage('welcomePage');
@@ -165,6 +206,38 @@ export class SettingsController {
       console.error('[SettingsController] 重置钱包失败:', error);
       showError('重置失败: ' + error.message);
     }
+  }
+
+  openResetWalletModal() {
+    const modal = document.getElementById('resetWalletModal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    const input = document.getElementById('resetWalletConfirmInput');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+    this.updateResetWalletConfirmState();
+  }
+
+  closeResetWalletModal() {
+    const modal = document.getElementById('resetWalletModal');
+    if (modal) {
+      modal.classList.add('hidden');
+    }
+    const input = document.getElementById('resetWalletConfirmInput');
+    if (input) {
+      input.value = '';
+    }
+    this.updateResetWalletConfirmState();
+  }
+
+  updateResetWalletConfirmState() {
+    const input = document.getElementById('resetWalletConfirmInput');
+    const confirmBtn = document.getElementById('confirmResetWalletBtn');
+    if (!confirmBtn) return;
+    const value = input?.value.trim() || '';
+    confirmBtn.disabled = value !== this.resetConfirmKeyword;
   }
 
   async handleChangePassword() {

@@ -148,12 +148,14 @@ export class WalletDomain extends BaseDomain {
    * 创建子账户
    * @param {string} walletId - 钱包 ID
    * @param {string} accountName - 账户名称
+   * @param {string} password - 密码
    * @returns {Promise<Object>} 创建结果
    */
-  async createSubAccount(walletId, accountName) {
+  async createSubAccount(walletId, accountName, password) {
     const result = await this._sendMessage(WalletMessageType.CREATE_SUB_ACCOUNT, {
       walletId,
-      accountName: accountName || `账户 ${getTimestamp()}`
+      accountName: accountName || `账户 ${getTimestamp()}`,
+      password
     });
 
     return result;

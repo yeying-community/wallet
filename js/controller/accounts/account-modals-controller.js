@@ -107,8 +107,38 @@ export class AccountModalsController {
         await this.onAccountSelected(newAccount.id);
       }
     } catch (error) {
-      console.error('[AccountModalsController] 创建账户失败:', error);
-      showError('创建失败: ' + error.message);
+     if (error?.requirePassword && this.promptPassword) {
+       const password = await this.promptPassword({
+         title: '创建账户',
+         confirmText: '确认创建',
+         placeholder: '输入密码',
+         onConfirm: async (input) => {
+           if (!input || input.length < 8) {
+             throw new Error('密码至少需要8位字符');
+           }
+         }
+       });
+       if (!password) {
+         return;
+       }
+       try {
+         const result = await this.wallet.createSubAccount(walletId, name, password);
+         const newAccount = result?.account || result;
+
+         closeModal('createAccountModal');
+         await this.onWalletListRefresh?.();
+         showSuccess(`账户 "${name}" 创建成功`);
+
+         if (newAccount?.id && this.onAccountSelected) {
+           await this.onAccountSelected(newAccount.id);
+         }
+       } catch (err) {
+         console.error('[AccountModalsController] 创建账户失败:', err);
+         const message = err?.message || '创建失败';
+         showError('创建失败: ' + message);
+       }
+       return;
+     }
     }
   }
 

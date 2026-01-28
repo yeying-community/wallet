@@ -34,20 +34,26 @@ import {
   getAuthorizationList,
   deleteAuthorization,
   clearAllAuthorizations,
+  clearAllData,
   getUserSetting,
   updateUserSetting,
   getContactList,
   getContact,
   saveContact,
   deleteContact,
+  clearTransactionsByAddress,
+  ensureDefaultNetworks,
+  saveSelectedNetworkName,
+  getNetworkConfigByKey,
   UcanStorageKeys
 } from '../storage/index.js';
 import { validateAccountName, validateContactName, validateEthereumAddress, validateTokenConfig } from '../config/validation-rules.js';
 import { handleRpcMethod } from './rpc-handler.js';
 import { getCachedPassword, cachePassword, refreshPasswordCache, clearPasswordCache } from './password-cache.js';
-import { resetLockTimer } from './keyring.js';
+import { resetLockTimer, lockWallet } from './keyring.js';
+import { normalizeChainId } from '../common/chain/index.js';
 import { broadcastEvent, sendEvent } from './connection.js';
-import { TIMEOUTS, LIMITS } from '../config/index.js';
+import { TIMEOUTS, LIMITS, NETWORKS, DEFAULT_NETWORK } from '../config/index.js';
 import { notifyUnlocked } from './unlock-flow.js';
 import { updateKeepAlive } from './offscreen.js';
 
@@ -230,15 +236,18 @@ export async function handleImportPrivateKeyWallet(accountName, privateKey, pass
  * 创建子账户
  * @param {string} walletId - 钱包 ID
  * @param {string} accountName - 账户名称
+ * @param {string} password - 密码
  * @returns {Promise<Object>} { success, account }
  */
-export async function handleCreateSubAccount(walletId, accountName) {
+export async function handleCreateSubAccount(walletId, accountName, password) {
   try {
     // 检查是否已解锁
-    if (!state.keyring || !state.passwordCache) {
+    const passwordToUse = password || state.passwordCache;
+    if (!passwordToUse) {
       return {
         success: false,
-        error: '钱包未解锁，请先解锁'
+        error: '需要密码以继续创建',
+        requirePassword: true
       };
     }
 
@@ -263,7 +272,7 @@ export async function handleCreateSubAccount(walletId, accountName) {
       wallet,
       newIndex,
       accountName,
-      state.passwordCache
+      passwordToUse,
     );
 
     // 保存账户
@@ -274,6 +283,14 @@ export async function handleCreateSubAccount(walletId, accountName) {
     await saveWallet(wallet);
 
     console.log('✅ Sub account created and saved:', subAccount.name);
+
+    if (password) {
+      cachePassword(password, TIMEOUTS.PASSWORD);
+    } else {
+      refreshPasswordCache();
+    }
+
+    resetLockTimer();
 
     return {
       success: true,
@@ -883,6 +900,52 @@ export async function handleClearAllAuthorizations() {
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to clear authorizations' };
+  }
+}
+
+/**
+ * 重置钱包（清空所有数据）
+ * @returns {Promise<Object>} { success }
+ */
+export async function handleResetWallet() {
+  try {
+    const pendingWindowIds = new Set();
+    state.pendingRequests.forEach((request) => {
+      if (request?.windowId) {
+        pendingWindowIds.add(request.windowId);
+      }
+    });
+    pendingWindowIds.forEach((windowId) => {
+      chrome.windows.remove(windowId).catch(() => { });
+    });
+
+    state.connectedSites.clear();
+
+    await lockWallet();
+    await clearAllData();
+    await clearTransactionsByAddress();
+
+    state.popupBounds = null;
+
+    await ensureDefaultNetworks(NETWORKS);
+    await saveSelectedNetworkName(DEFAULT_NETWORK);
+
+    const defaultConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+    if (defaultConfig) {
+      const chainIdHex = defaultConfig.chainIdHex || normalizeChainId(defaultConfig.chainId);
+      state.currentChainId = chainIdHex;
+      state.currentRpcUrl = defaultConfig.rpcUrl || defaultConfig.rpc || null;
+    } else {
+      state.currentChainId = null;
+      state.currentRpcUrl = null;
+    }
+
+    await updateKeepAlive();
+
+    return { success: true };
+  } catch (error) {
+    console.error('❌ Reset wallet failed:', error);
+    return { success: false, error: error.message || 'Failed to reset wallet' };
   }
 }
 
