@@ -202,7 +202,7 @@ body {
   padding: 12px 16px;
   background: white;
   border-radius: 12px;
-  cursor: pointer;
+  cursor: default;
   transition: all 0.2s;
   border: 2px solid transparent;
   margin-bottom: 0;
@@ -242,16 +242,21 @@ body {
 }
 
 .account-selector .account-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.account-name-text {
   font-weight: 600;
   color: #212529;
   font-size: 15px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.account-selector .account-subline {
-  margin-top: 4px;
+  flex: 1;
+  min-width: 0;
 }
 
 .sync-status-badge {
@@ -263,6 +268,30 @@ body {
   font-weight: 500;
   background: #e5e7eb;
   color: #374151;
+}
+
+.account-selector .sync-status-badge {
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  border: none;
+  cursor: pointer;
+  justify-content: center;
+  line-height: 1;
+  font-size: 0;
+}
+
+.account-selector .sync-status-badge svg {
+  width: 12px;
+  height: 12px;
+}
+
+.dropdown-arrow {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
 }
 
 .sync-status-badge.success {

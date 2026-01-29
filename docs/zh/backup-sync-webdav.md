@@ -1,4 +1,4 @@
-# Backup & Sync（WebDAV 版）设计草案
+# Backup & Sync（WebDAV 版）实现说明
 
 > 目标：在**同一 SRP（助记词）**的多设备间同步账号名称、账号数量、联系人、Network IDs 与更新时间戳。
 > 数据以**客户端加密文件**形式保存到 WebDAV；服务端不可读；支持 SIWE / UCAN 登录。
@@ -26,9 +26,11 @@
 - 本地存储使用 `chrome.storage.local`；可在 `settings` 内新增 `backupSyncEnabled`。
 - 加密能力已存在：`encryptObject` / `decryptObject`（AES-GCM + PBKDF2）。
 
-## 3. WebDAV 对接约束（来自 /root/code/webdav）
+## 3. WebDAV 对接约束（服务端能力）
 
-- WebDAV 前缀来自 `webdav.prefix`（默认 `/`）。
+- WebDAV 服务通常有前缀（常见 `/api`、`/dav`、`/webdav`）。
+- 钱包侧默认 endpoint：`https://webdav.yeying.pub/api`（末尾 `/` 可选）。
+- 当用户仅填写域名或 `/` 时，钱包会用 `OPTIONS` 自动探测前缀：`/`、`/dav`、`/webdav`、`/api`，选择首个非 404 的前缀。
 - WebDAV 支持 **Bearer Token** 与 **Basic Auth**。
 - Web3 认证流程：`/api/v1/public/auth/challenge` → `/verify` → 拿到 `token`。
 - UCAN 直接用 `Authorization: Bearer <UCAN>` 访问 WebDAV。
@@ -96,6 +98,7 @@
 - **锁定**：尝试 `push`（若 dirty）
 - **启动/关闭**：`pull` / 尝试 `push`
 - **本地变更**：账户命名、创建子账户、联系人变更、网络变更 → 标记 dirty，延迟合并上传
+- **自动同步**：定期检测远端变化（见 7.4）
 
 ### 7.2 Pull
 1. `GET payload.json.enc`（不存在则跳过）
@@ -107,6 +110,14 @@
 1. 本地构建 payload
 2. `encryptObject(payload, syncKey)`
 3. `PUT payload.json.enc`（可附 `If-Match`/`If-None-Match` 做并发保护）
+
+### 7.4 自动同步与远端变化检测（已实现）
+- **前置条件**：`backupSyncEnabled` + endpoint 已配置 + 有有效授权（SIWE/UCAN/Basic）+ 钱包已解锁（同步密钥可用）。若存在冲突则暂停自动同步。
+- **调度策略**：每 ~5 分钟运行一次，带 ±30s 抖动；失败后指数退避，最长 15 分钟，最小间隔 30 秒。
+- **执行逻辑**：
+  - 若本地 dirty：执行 `syncAll('auto')`（pull → merge → push）。
+  - 若本地无 dirty：对远端 `payload.json.enc` 发起 `HEAD`，对比 `ETag`/`Last-Modified` 与本地缓存，仅在变化时 `GET` + merge。
+  - 若 `HEAD` 不支持（405/501），直接 `GET`；远端 404 则跳过并清理缓存。
 
 ## 8. 冲突合并规则
 
@@ -138,11 +149,13 @@
 ## 11. 本地存储与配置（建议新增）
 
 - `settings.backupSyncEnabled`（默认 true）
-- `settings.backupSyncEndpoint`（WebDAV Base URL，默认 `https://webdav.yeying.pub`）
+- `settings.backupSyncEndpoint`（WebDAV Base URL，默认 `https://webdav.yeying.pub/api`，末尾 `/` 可选）
 - `settings.backupSyncAuthMode`（siwe | ucan | basic）
 - `settings.backupSyncLastPullAt` / `LastPushAt`
 - `settings.backupSyncDirty`（是否有待推送变更）
 - `settings.backupSyncConflicts`（冲突记录，可选）
+- `settings.backupSyncRemoteMeta`（远端 `ETag` / `Last-Modified` 缓存）
+- `settings.backupSyncLogs`（同步日志）
 
 ## 12. UI 建议
 
@@ -150,23 +163,9 @@
 - 显示最近同步时间
 - “立即同步”按钮
 - 冲突提示入口（若存在）
+- 同步日志（可清空）
 
-## 13. 落地实现拆解（建议阶段）
-
-### 阶段 A：最小可用（仅账号名+数量）
-- 加入同步服务模块（background）
-- 支持 SIWE 登录获取 token
-- 实现 WebDAV PUT/GET
-- 完成账号名称与 accountCount 同步
-
-### 阶段 B：联系人 + Network IDs
-- 新增联系人存储与 UI
-- Network IDs 同步并集
-
-### 阶段 C：冲突 UI 与操作日志
-- 可视化冲突并允许用户选择
-
-#### 调试说明（本地）
+## 13. 调试说明（本地）
 - 若需快速验证冲突 UI，可在 `js/config/feature-flags.js` 中启用：
   - `FEATURES.ENABLE_DEVELOPER_MODE = true`
   - `DEVELOPER_FEATURES.ENABLE_DEBUG_MODE = true`
@@ -182,5 +181,3 @@
 6) 是否需要对 payload 进行版本化迁移（v1 → v2）？
 
 ---
-
-如果你确认上述决策，我可以按阶段 A 开始落地到代码里（先最小可用）。

@@ -291,3 +291,75 @@
   flex-direction: column;
   gap: 6px;
 }
+
+.sync-activity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 8px;
+}
+
+.sync-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sync-activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.sync-activity-time {
+  font-size: 11px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.sync-activity-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.sync-activity-message {
+  font-size: 12px;
+  color: #111827;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.sync-activity-meta {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.sync-activity-tag {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.sync-activity-tag.level-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.sync-activity-tag.level-warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.sync-activity-tag.level-info {
+  background: #e0f2fe;
+  color: #075985;
+}

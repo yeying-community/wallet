@@ -27,7 +27,11 @@ const SYNC_PAYLOAD_VERSION = 1;
 const SYNC_DIR = 'wallet-sync';
 const SYNC_FILENAME = 'payload.json.enc';
 const SYNC_DEBOUNCE_MS = 1500;
-const DEFAULT_SYNC_ENDPOINT = 'https://webdav.yeying.pub';
+const DEFAULT_SYNC_ENDPOINT = 'https://webdav.yeying.pub/api';
+const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const AUTO_SYNC_JITTER_MS = 30 * 1000;
+const AUTO_SYNC_MAX_BACKOFF_MS = 15 * 60 * 1000;
+const MAX_ACTIVITY_LOGS = 200;
 
 const SETTINGS_KEYS = {
   enabled: 'backupSyncEnabled',
@@ -45,7 +49,9 @@ const SETTINGS_KEYS = {
   lastPushAt: 'backupSyncLastPushAt',
   pendingDelete: 'backupSyncPendingDelete',
   networkIds: 'backupSyncNetworkIds',
-  conflicts: 'backupSyncConflicts'
+  conflicts: 'backupSyncConflicts',
+  remoteMeta: 'backupSyncRemoteMeta',
+  logs: 'backupSyncLogs'
 };
 
 class BackupSyncService {
@@ -57,6 +63,10 @@ class BackupSyncService {
     this._debounceTimer = null;
     this._unsubscribeStorage = null;
     this._suppressStorageEvents = false;
+    this._autoSyncTimer = null;
+    this._autoSyncFailures = 0;
+    this._remoteMeta = {};
+    this._activityLogs = [];
   }
 
   async init() {
@@ -64,6 +74,11 @@ class BackupSyncService {
     this._initialized = true;
 
     this._dirty = await getUserSetting(SETTINGS_KEYS.dirty, false);
+    this._remoteMeta = await getUserSetting(SETTINGS_KEYS.remoteMeta, {});
+    this._activityLogs = await getUserSetting(SETTINGS_KEYS.logs, []);
+    if (!Array.isArray(this._activityLogs)) {
+      this._activityLogs = [];
+    }
     await this._ensureDefaults();
     this._attachStorageListener();
   }
@@ -72,6 +87,7 @@ class BackupSyncService {
     await this._prepareContexts(password);
     await this._handlePendingDelete();
     await this.syncAll('unlock');
+    this.startAutoSync();
   }
 
   async onLocked() {
@@ -83,6 +99,7 @@ class BackupSyncService {
       this._contexts.clear();
       this._dirty = false;
       await updateUserSetting(SETTINGS_KEYS.dirty, false).catch(() => {});
+      this.stopAutoSync();
     }
   }
 
@@ -96,12 +113,34 @@ class BackupSyncService {
     if (!(await this._isEnabled())) return;
     if (this._syncInFlight) return;
     this._syncInFlight = true;
+    const startedAt = getTimestamp();
+    await this._appendActivityLog(this._buildLogEntry({
+      level: 'info',
+      action: 'sync-start',
+      reason,
+      message: this._formatSyncMessage('开始', reason)
+    }));
 
     try {
       const walletIds = Array.from(this._contexts.keys());
       for (const walletId of walletIds) {
         await this._syncWallet(walletId, reason);
       }
+      await this._appendActivityLog(this._buildLogEntry({
+        level: 'info',
+        action: 'sync-complete',
+        reason,
+        message: this._formatSyncMessage('完成', reason),
+        durationMs: Math.max(0, getTimestamp() - startedAt)
+      }));
+    } catch (error) {
+      await this._appendActivityLog(this._buildLogEntry({
+        level: 'error',
+        action: 'sync-error',
+        reason,
+        message: this._formatSyncErrorMessage(reason, error)
+      }));
+      throw error;
     } finally {
       this._syncInFlight = false;
     }
@@ -128,10 +167,121 @@ class BackupSyncService {
     } else {
       await updateUserSetting(SETTINGS_KEYS.pendingDelete, true).catch(() => {});
     }
+    this.stopAutoSync();
   }
 
   async clearRemoteNow() {
     await this._deleteRemoteAll().catch(() => {});
+    await this._appendActivityLog(this._buildLogEntry({
+      level: 'info',
+      action: 'clear-remote',
+      reason: 'manual',
+      message: '已清除远端备份'
+    }));
+  }
+
+  async clearActivityLogs() {
+    this._activityLogs = [];
+    await updateUserSetting(SETTINGS_KEYS.logs, []).catch(() => {});
+  }
+
+  startAutoSync() {
+    if (this._autoSyncTimer) return;
+    this._autoSyncFailures = 0;
+    this._scheduleAutoSync();
+  }
+
+  stopAutoSync() {
+    if (this._autoSyncTimer) {
+      clearTimeout(this._autoSyncTimer);
+      this._autoSyncTimer = null;
+    }
+    this._autoSyncFailures = 0;
+  }
+
+  async tryStartAutoSync() {
+    if (!(await this._isEnabled())) return;
+    if (this._autoSyncTimer) return;
+    if (this._contexts.size === 0) {
+      const password = await this._getCachedPassword();
+      if (password) {
+        await this._prepareContexts(password);
+      }
+    }
+    this.startAutoSync();
+  }
+
+  _scheduleAutoSync() {
+    const base = AUTO_SYNC_INTERVAL_MS;
+    const backoff = Math.min(base * Math.pow(2, this._autoSyncFailures), AUTO_SYNC_MAX_BACKOFF_MS);
+    const jitter = (Math.random() * 2 - 1) * AUTO_SYNC_JITTER_MS;
+    const delay = Math.max(30000, backoff + jitter);
+    this._autoSyncTimer = setTimeout(() => {
+      this._autoSyncTimer = null;
+      this._runAutoSync().catch(error => {
+        console.warn('[BackupSync] auto sync failed:', error?.message || error);
+      });
+    }, delay);
+  }
+
+  async _runAutoSync() {
+    if (!(await this._isEnabled())) {
+      this.stopAutoSync();
+      return;
+    }
+
+    if (this._syncInFlight) {
+      this._scheduleAutoSync();
+      return;
+    }
+
+    const hasAuth = await this._hasAuth();
+    if (!hasAuth) {
+      this._scheduleAutoSync();
+      return;
+    }
+
+    const conflicts = await getUserSetting(SETTINGS_KEYS.conflicts, []);
+    if (Array.isArray(conflicts) && conflicts.length > 0) {
+      this._scheduleAutoSync();
+      return;
+    }
+
+    if (this._contexts.size === 0) {
+      const password = await this._getCachedPassword();
+      if (password) {
+        await this._prepareContexts(password);
+      }
+    }
+
+    if (this._contexts.size === 0) {
+      this._scheduleAutoSync();
+      return;
+    }
+
+    try {
+      if (this._dirty) {
+        await this.syncAll('auto');
+      } else {
+        await this._pullRemoteIfChanged('auto');
+      }
+      this._autoSyncFailures = 0;
+    } catch (error) {
+      this._autoSyncFailures += 1;
+      console.warn('[BackupSync] auto sync run failed:', error?.message || error);
+      await this._appendActivityLog(this._buildLogEntry({
+        level: 'error',
+        action: 'auto-sync-error',
+        reason: 'auto',
+        message: this._formatSyncErrorMessage('auto', error)
+      }));
+    } finally {
+      if (await this._isEnabled()) {
+        this._scheduleAutoSync();
+      } else {
+        this.stopAutoSync();
+      }
+    }
   }
 
   // ==================== Internal helpers ====================
@@ -159,12 +309,46 @@ class BackupSyncService {
     const context = this._contexts.get(walletId);
     if (!context) return;
 
-    const remotePayload = await this._pullRemote(context).catch(() => null);
+    const remotePayload = await this._pullRemote(context, reason).catch(() => null);
     if (remotePayload) {
       await this._applyRemotePayload(walletId, remotePayload, reason);
     }
 
     await this._pushWallet(walletId, reason);
+  }
+
+  async _pullRemoteIfChanged(reason) {
+    const walletIds = Array.from(this._contexts.keys());
+    for (const walletId of walletIds) {
+      const context = this._contexts.get(walletId);
+      if (!context) continue;
+
+      const shouldPull = await this._shouldPullRemote(context);
+      if (!shouldPull) continue;
+
+      const remotePayload = await this._pullRemote(context, reason).catch(() => null);
+      if (remotePayload) {
+        await this._applyRemotePayload(walletId, remotePayload, reason);
+      }
+    }
+  }
+
+  async _shouldPullRemote(context) {
+    const probe = await this._probeRemote(context).catch(() => null);
+    if (!probe) return true;
+    if (!probe.exists) {
+      this._clearRemoteMetaEntry(context.fingerprint);
+      return false;
+    }
+    if (probe.bypass) return true;
+
+    const cached = this._getRemoteMetaEntry(context.fingerprint);
+    if (!cached) return true;
+    if (probe.etag && cached.etag && probe.etag === cached.etag) return false;
+    if (!probe.etag && probe.lastModified && cached.lastModified && probe.lastModified === cached.lastModified) {
+      return false;
+    }
+    return true;
   }
 
   async _pushWallet(walletId, reason) {
@@ -174,13 +358,33 @@ class BackupSyncService {
     const payload = await this._buildPayload(walletId, reason);
     if (!payload) return;
 
-    await this._writeRemote(context, payload);
-    await updateUserSetting(SETTINGS_KEYS.lastPushAt, getTimestamp()).catch(() => {});
+    try {
+      await this._writeRemote(context, payload);
+      await updateUserSetting(SETTINGS_KEYS.lastPushAt, getTimestamp()).catch(() => {});
+      await this._appendActivityLog(this._buildLogEntry({
+        level: 'info',
+        action: 'push',
+        reason,
+        message: '推送远端备份'
+      }));
+    } catch (error) {
+      await this._appendActivityLog(this._buildLogEntry({
+        level: 'error',
+        action: 'push-error',
+        reason,
+        message: this._formatSyncErrorMessage(reason, error)
+      }));
+      throw error;
+    }
   }
 
-  async _pullRemote(context) {
+  async _pullRemote(context, reason = '') {
     const response = await this._webdavRequest('GET', this._payloadPath(context.fingerprint));
-    if (!response || response.status === 404) {
+    if (!response) {
+      return null;
+    }
+    if (response.status === 404) {
+      this._clearRemoteMetaEntry(context.fingerprint);
       return null;
     }
 
@@ -202,7 +406,22 @@ class BackupSyncService {
     }
 
     const payload = await decryptObject(ciphertext, context.syncKey);
+    const etag = response.headers.get('ETag') || '';
+    const lastModified = response.headers.get('Last-Modified') || '';
+    if (etag || lastModified) {
+      this._setRemoteMetaEntry(context.fingerprint, {
+        etag: etag || undefined,
+        lastModified: lastModified || undefined,
+        updatedAt: getTimestamp()
+      });
+    }
     await updateUserSetting(SETTINGS_KEYS.lastPullAt, getTimestamp()).catch(() => {});
+    await this._appendActivityLog(this._buildLogEntry({
+      level: 'info',
+      action: 'pull',
+      reason,
+      message: '拉取远端备份'
+    }));
     return payload;
   }
 
@@ -227,6 +446,16 @@ class BackupSyncService {
 
     if (!response.ok) {
       throw new Error(`WebDAV PUT failed: ${response.status}`);
+    }
+
+    const etag = response.headers.get('ETag') || '';
+    const lastModified = response.headers.get('Last-Modified') || '';
+    if (etag || lastModified) {
+      this._setRemoteMetaEntry(context.fingerprint, {
+        etag: etag || undefined,
+        lastModified: lastModified || undefined,
+        updatedAt: getTimestamp()
+      });
     }
   }
 
@@ -406,8 +635,14 @@ class BackupSyncService {
 
     this._debounceTimer = setTimeout(() => {
       this._debounceTimer = null;
-      this.pushAll(`debounced:${reason}`).catch(error => {
+      this.pushAll(`debounced:${reason}`).catch(async error => {
         console.warn('[BackupSync] debounced push failed:', error?.message || error);
+        await this._appendActivityLog(this._buildLogEntry({
+          level: 'error',
+          action: 'push-error',
+          reason: `debounced:${reason}`,
+          message: this._formatSyncErrorMessage(`debounced:${reason}`, error)
+        }));
       });
     }, SYNC_DEBOUNCE_MS);
   }
@@ -423,6 +658,25 @@ class BackupSyncService {
     if (response.ok) return;
     if ([405, 409].includes(response.status)) return;
     throw new Error(`MKCOL failed: ${response.status}`);
+  }
+
+  async _probeRemote(context) {
+    const response = await this._webdavRequest('HEAD', this._payloadPath(context.fingerprint), {
+      headers: {
+        'Cache-Control': 'no-cache'
+      }
+    });
+    if (!response) return null;
+    if (response.status === 404) return { exists: false };
+    if ([405, 501].includes(response.status)) {
+      return { exists: true, bypass: true };
+    }
+    if (!response.ok) {
+      throw new Error(`WebDAV HEAD failed: ${response.status}`);
+    }
+    const etag = response.headers.get('ETag') || '';
+    const lastModified = response.headers.get('Last-Modified') || '';
+    return { exists: true, etag, lastModified };
   }
 
   async _webdavRequest(method, path, options = {}) {
@@ -466,10 +720,51 @@ class BackupSyncService {
     return token ? `Bearer ${token}` : '';
   }
 
+  async _hasAuth() {
+    const mode = await getUserSetting(SETTINGS_KEYS.authMode, 'siwe');
+    if (mode === 'basic') {
+      const basic = await getUserSetting(SETTINGS_KEYS.basicAuth, '');
+      return Boolean(basic);
+    }
+    if (mode === 'ucan') {
+      const token = await getUserSetting(SETTINGS_KEYS.ucanToken, '');
+      return Boolean(token);
+    }
+    const token = await getUserSetting(SETTINGS_KEYS.authToken, '');
+    return Boolean(token);
+  }
+
   async _isEnabled() {
     const enabled = await getUserSetting(SETTINGS_KEYS.enabled, true);
     const endpoint = await getUserSetting(SETTINGS_KEYS.endpoint, '');
     return Boolean(enabled && endpoint);
+  }
+
+  _getRemoteMetaEntry(fingerprint) {
+    const meta = this._remoteMeta || {};
+    const entry = meta[fingerprint];
+    if (!entry || typeof entry !== 'object') return null;
+    return entry;
+  }
+
+  _setRemoteMetaEntry(fingerprint, entry) {
+    if (!fingerprint) return;
+    const meta = this._remoteMeta && typeof this._remoteMeta === 'object' ? this._remoteMeta : {};
+    meta[fingerprint] = {
+      ...(meta[fingerprint] || {}),
+      ...entry
+    };
+    this._remoteMeta = meta;
+    updateUserSetting(SETTINGS_KEYS.remoteMeta, meta).catch(() => {});
+  }
+
+  _clearRemoteMetaEntry(fingerprint) {
+    if (!fingerprint) return;
+    const meta = this._remoteMeta && typeof this._remoteMeta === 'object' ? this._remoteMeta : {};
+    if (!(fingerprint in meta)) return;
+    delete meta[fingerprint];
+    this._remoteMeta = meta;
+    updateUserSetting(SETTINGS_KEYS.remoteMeta, meta).catch(() => {});
   }
 
   async _ensureDefaults() {
@@ -506,7 +801,10 @@ class BackupSyncService {
   async _deleteRemote(context) {
     const response = await this._webdavRequest('DELETE', this._payloadPath(context.fingerprint));
     if (!response) return;
-    if (response.ok || response.status === 404) return;
+    if (response.ok || response.status === 404) {
+      this._clearRemoteMetaEntry(context.fingerprint);
+      return;
+    }
     throw new Error(`WebDAV DELETE failed: ${response.status}`);
   }
 
@@ -611,6 +909,81 @@ class BackupSyncService {
     if (!list.some(item => item?.id === conflict.id)) {
       list.push(conflict);
       await updateUserSetting(SETTINGS_KEYS.conflicts, list).catch(() => {});
+      const summary = conflict.type === 'contact'
+        ? '发现联系人冲突'
+        : '发现账户冲突';
+      await this._appendActivityLog(this._buildLogEntry({
+        level: 'warn',
+        action: 'conflict',
+        reason: '',
+        message: summary
+      }));
+    }
+  }
+
+  _formatSyncMessage(action, reason = '') {
+    const label = this._formatSyncReason(reason);
+    if (label) {
+      return `${label}同步${action}`;
+    }
+    return `同步${action}`;
+  }
+
+  _formatSyncErrorMessage(reason, error) {
+    const base = this._formatSyncMessage('失败', reason);
+    const message = error?.message || error;
+    if (!message) return base;
+    return `${base}: ${message}`;
+  }
+
+  _formatSyncReason(reason = '') {
+    if (!reason) return '';
+    if (reason.startsWith('debounced:')) {
+      const detail = reason.slice('debounced:'.length);
+      return detail ? `本地变更(${detail})` : '本地变更';
+    }
+    switch (reason) {
+      case 'manual':
+        return '手动';
+      case 'auto':
+        return '自动';
+      case 'unlock':
+        return '解锁';
+      case 'lock':
+        return '锁定';
+      default:
+        return reason;
+    }
+  }
+
+  _buildLogEntry({ level = 'info', action = '', reason = '', message = '', durationMs = null } = {}) {
+    const random = Math.random().toString(36).slice(2, 8);
+    const entry = {
+      id: `sync_${Date.now()}_${random}`,
+      time: getTimestamp(),
+      level,
+      action,
+      reason,
+      message
+    };
+    if (Number.isFinite(durationMs)) {
+      entry.durationMs = durationMs;
+    }
+    return entry;
+  }
+
+  async _appendActivityLog(entry) {
+    if (!entry) return;
+    try {
+      const logs = Array.isArray(this._activityLogs) ? [...this._activityLogs] : [];
+      logs.unshift(entry);
+      if (logs.length > MAX_ACTIVITY_LOGS) {
+        logs.length = MAX_ACTIVITY_LOGS;
+      }
+      this._activityLogs = logs;
+      await updateUserSetting(SETTINGS_KEYS.logs, logs);
+    } catch (error) {
+      console.warn('[BackupSync] append activity log failed:', error?.message || error);
     }
   }
 

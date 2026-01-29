@@ -1085,7 +1085,7 @@ export async function handleDeleteContact(contactId) {
 
 // ==================== Backup & Sync ====================
 
-const DEFAULT_BACKUP_SYNC_ENDPOINT = 'https://webdav.yeying.pub';
+const DEFAULT_BACKUP_SYNC_ENDPOINT = 'https://webdav.yeying.pub/api';
 const BACKUP_SYNC_MODES = new Set(['siwe', 'ucan', 'basic']);
 
 function normalizeBackupSyncEndpoint(value) {
@@ -1110,7 +1110,8 @@ export async function handleGetBackupSyncSettings() {
       lastPushAt: await getUserSetting('backupSyncLastPushAt', null),
       pendingDelete: await getUserSetting('backupSyncPendingDelete', false),
       networkIds: await getUserSetting('backupSyncNetworkIds', []),
-      conflicts: await getUserSetting('backupSyncConflicts', [])
+      conflicts: await getUserSetting('backupSyncConflicts', []),
+      logs: await getUserSetting('backupSyncLogs', [])
     };
 
     return { success: true, settings };
@@ -1180,6 +1181,15 @@ export async function handleUpdateBackupSyncSettings(updates = {}) {
       await backupSyncService.disableSync();
     }
 
+    if (
+      sanitized.backupSyncEnabled === true ||
+      'backupSyncAuthToken' in sanitized ||
+      'backupSyncUcanToken' in sanitized ||
+      'backupSyncBasicAuth' in sanitized
+    ) {
+      await backupSyncService.tryStartAutoSync();
+    }
+
     return await handleGetBackupSyncSettings();
   } catch (error) {
     return { success: false, error: error.message || 'Failed to update backup sync settings' };
@@ -1201,6 +1211,15 @@ export async function handleBackupSyncClearRemote() {
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to clear remote backup' };
+  }
+}
+
+export async function handleBackupSyncClearLogs() {
+  try {
+    await backupSyncService.clearActivityLogs();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to clear sync logs' };
   }
 }
 

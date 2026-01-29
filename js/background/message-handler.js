@@ -40,6 +40,7 @@ import {
   handleUpdateBackupSyncSettings,
   handleBackupSyncNow,
   handleBackupSyncClearRemote,
+  handleBackupSyncClearLogs,
   handleResolveBackupSyncConflict,
   changePassword
 } from './wallet-operations.js';
@@ -57,6 +58,7 @@ import {
   getNetworkByChainId as getStoredNetworkByChainId,
   getNetworkConfigByKey,
   getAccountList,
+  getSelectedAccount,
   addTransaction,
   updateTransaction,
   getTransactionsByAddress,
@@ -734,6 +736,10 @@ export async function handlePopupMessage(message, response) {
         response(await handleBackupSyncClearRemote());
         break;
 
+      case WalletMessageType.BACKUP_SYNC_CLEAR_LOGS:
+        response(await handleBackupSyncClearLogs());
+        break;
+
       case WalletMessageType.RESOLVE_BACKUP_SYNC_CONFLICT:
         response(await handleResolveBackupSyncConflict(data));
         break;
@@ -798,7 +804,22 @@ export async function handlePopupMessage(message, response) {
 
       case 'SIGN_MESSAGE':
         try {
-          const signature = await signMessage(data.message);
+          const account = await getSelectedAccount();
+          if (!account?.id) {
+            throw new Error('Account not found');
+          }
+          if (!state.keyring || !state.keyring.has(account.id)) {
+            if (!data?.password) {
+              response({
+                success: false,
+                error: 'Wallet is locked',
+                requirePassword: true
+              });
+              break;
+            }
+            await unlockWallet(data.password, account.id);
+          }
+          const signature = await signMessage(account.id, data.message);
           response({
             success: true,
             signature
@@ -813,7 +834,22 @@ export async function handlePopupMessage(message, response) {
 
       case 'SIGN_TRANSACTION':
         try {
-          const signedTransaction = await signTransaction(data.transaction);
+          const account = await getSelectedAccount();
+          if (!account?.id) {
+            throw new Error('Account not found');
+          }
+          if (!state.keyring || !state.keyring.has(account.id)) {
+            if (!data?.password) {
+              response({
+                success: false,
+                error: 'Wallet is locked',
+                requirePassword: true
+              });
+              break;
+            }
+            await unlockWallet(data.password, account.id);
+          }
+          const signedTransaction = await signTransaction(account.id, data.transaction);
           response({
             success: true,
             signedTransaction
