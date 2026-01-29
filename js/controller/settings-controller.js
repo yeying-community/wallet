@@ -87,6 +87,13 @@ export class SettingsController {
       });
     }
 
+    const backupSyncClearLogsBtn = document.getElementById('backupSyncClearLogsBtn');
+    if (backupSyncClearLogsBtn) {
+      backupSyncClearLogsBtn.addEventListener('click', async () => {
+        await this.handleBackupSyncClearLogs();
+      });
+    }
+
     const backupSyncSimulateBtn = document.getElementById('backupSyncSimulateConflictBtn');
     if (backupSyncSimulateBtn) {
       backupSyncSimulateBtn.addEventListener('click', async () => {
@@ -108,8 +115,37 @@ export class SettingsController {
 
     const changePasswordBtn = document.getElementById('changePasswordBtn');
     if (changePasswordBtn) {
-      changePasswordBtn.addEventListener('click', async () => {
+      changePasswordBtn.addEventListener('click', () => {
+        this.openChangePasswordModal();
+      });
+    }
+
+    const confirmChangePasswordBtn = document.getElementById('confirmChangePasswordBtn');
+    if (confirmChangePasswordBtn) {
+      confirmChangePasswordBtn.addEventListener('click', async () => {
         await this.handleChangePassword();
+      });
+    }
+
+    const cancelChangePasswordBtn = document.getElementById('cancelChangePasswordBtn');
+    if (cancelChangePasswordBtn) {
+      cancelChangePasswordBtn.addEventListener('click', () => {
+        this.closeChangePasswordModal();
+      });
+    }
+
+    const closeChangePasswordModal = document.getElementById('closeChangePasswordModal');
+    if (closeChangePasswordModal) {
+      closeChangePasswordModal.addEventListener('click', () => {
+        this.closeChangePasswordModal();
+      });
+    }
+
+    const changePasswordModal = document.getElementById('changePasswordModal');
+    const changePasswordOverlay = changePasswordModal?.querySelector('.modal-overlay');
+    if (changePasswordOverlay) {
+      changePasswordOverlay.addEventListener('click', () => {
+        this.closeChangePasswordModal();
       });
     }
 
@@ -285,6 +321,7 @@ export class SettingsController {
 
     this.renderBackupSyncAccountAddress();
     this.renderBackupSyncConflicts(settings.conflicts || []);
+    this.renderBackupSyncActivity(settings.logs || []);
     this.toggleBackupSyncDebug();
   }
 
@@ -369,6 +406,63 @@ export class SettingsController {
         </div>
       `;
     }).join('');
+  }
+
+  renderBackupSyncActivity(logs = []) {
+    const container = document.getElementById('backupSyncActivityList');
+    if (!container) return;
+    const list = Array.isArray(logs) ? logs : [];
+
+    if (list.length === 0) {
+      container.innerHTML = '<div class="empty-message">暂无日志</div>';
+      return;
+    }
+
+    container.innerHTML = list.map(entry => {
+      const timeText = entry?.time ? formatLocaleDateTime(entry.time) : '-';
+      const message = escapeHtml(entry?.message || '-');
+      const level = String(entry?.level || 'info').toLowerCase();
+      const levelClass = level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'info';
+      const levelLabel = levelClass === 'error' ? '错误' : levelClass === 'warn' ? '警告' : '信息';
+      const reasonLabel = this.formatBackupSyncReason(entry?.reason || '');
+      const durationText = Number.isFinite(entry?.durationMs)
+        ? `${Math.max(0, Math.round(entry.durationMs / 1000))}s`
+        : '';
+
+      return `
+        <div class="sync-activity-item">
+          <div class="sync-activity-time">${escapeHtml(timeText)}</div>
+          <div class="sync-activity-main">
+            <div class="sync-activity-message">${message}</div>
+            <div class="sync-activity-meta">
+              <span class="sync-activity-tag level-${levelClass}">${escapeHtml(levelLabel)}</span>
+              ${reasonLabel ? `<span class="sync-activity-tag">${escapeHtml(reasonLabel)}</span>` : ''}
+              ${durationText ? `<span class="sync-activity-tag">耗时 ${escapeHtml(durationText)}</span>` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  formatBackupSyncReason(reason = '') {
+    if (!reason) return '';
+    if (reason.startsWith('debounced:')) {
+      const detail = reason.slice('debounced:'.length);
+      return detail ? `本地变更(${detail})` : '本地变更';
+    }
+    switch (reason) {
+      case 'manual':
+        return '手动';
+      case 'auto':
+        return '自动';
+      case 'unlock':
+        return '解锁';
+      case 'lock':
+        return '锁定';
+      default:
+        return reason;
+    }
   }
 
   toggleBackupSyncDebug() {
@@ -499,12 +593,17 @@ export class SettingsController {
       return;
     }
     try {
-      const result = await this.wallet.updateBackupSyncSettings({ endpoint: trimmed });
+      const resolved = await this.detectBackupSyncEndpoint(trimmed);
+      const result = await this.wallet.updateBackupSyncSettings({ endpoint: resolved });
       if (result?.settings) {
         this.syncSettings = result.settings;
         this.renderBackupSyncSettings(result.settings);
       }
-      showSuccess('WebDAV 地址已保存');
+      if (resolved !== trimmed) {
+        showSuccess(`WebDAV 地址已保存（自动识别为 ${resolved}）`);
+      } else {
+        showSuccess('WebDAV 地址已保存');
+      }
     } catch (error) {
       console.error('[SettingsController] 更新 WebDAV 地址失败:', error);
       showError('保存失败: ' + error.message);
@@ -798,6 +897,7 @@ export class SettingsController {
 
   async handleBackupSyncNow() {
     try {
+      await this.ensureBackupSyncEndpoint();
       showWaiting();
       const result = await this.wallet.backupSyncNow();
       if (!result?.success) {
@@ -807,7 +907,7 @@ export class SettingsController {
       showSuccess('同步完成');
     } catch (error) {
       console.error('[SettingsController] 立即同步失败:', error);
-      showError('同步失败: ' + error.message);
+      showError(this.formatBackupSyncError(error, '同步失败'));
     }
   }
 
@@ -822,9 +922,28 @@ export class SettingsController {
       if (!result?.success) {
         throw new Error(result?.error || '清理失败');
       }
+      await this.loadBackupSyncSettings();
       showSuccess('远端备份已清除');
     } catch (error) {
       console.error('[SettingsController] 清除远端备份失败:', error);
+      showError(this.formatBackupSyncError(error, '清理失败'));
+    }
+  }
+
+  async handleBackupSyncClearLogs() {
+    if (!confirm('确定要清空同步日志吗？')) {
+      return;
+    }
+
+    try {
+      const result = await this.wallet.backupSyncClearLogs();
+      if (!result?.success) {
+        throw new Error(result?.error || '清理失败');
+      }
+      await this.loadBackupSyncSettings();
+      showSuccess('同步日志已清空');
+    } catch (error) {
+      console.error('[SettingsController] 清空同步日志失败:', error);
       showError('清理失败: ' + error.message);
     }
   }
@@ -836,6 +955,82 @@ export class SettingsController {
       return `Basic ${btoa(value)}`;
     }
     return `Basic ${value}`;
+  }
+
+  async ensureBackupSyncEndpoint() {
+    const input = document.getElementById('backupSyncEndpointInput');
+    const current = String(input?.value || '').trim();
+    if (!current) return '';
+    try {
+      new URL(current);
+    } catch {
+      return current;
+    }
+
+    const resolved = await this.detectBackupSyncEndpoint(current);
+    if (resolved && resolved !== current) {
+      const result = await this.wallet.updateBackupSyncSettings({ endpoint: resolved });
+      if (result?.settings) {
+        this.syncSettings = result.settings;
+        this.renderBackupSyncSettings(result.settings);
+      }
+      if (input) {
+        input.value = resolved;
+      }
+    }
+    return resolved || current;
+  }
+
+  async detectBackupSyncEndpoint(endpoint) {
+    let url;
+    try {
+      url = new URL(endpoint);
+    } catch {
+      return endpoint;
+    }
+
+    const path = url.pathname || '';
+    if (path && path !== '/' && path !== '') {
+      return endpoint;
+    }
+
+    const origin = url.origin;
+    const candidates = ['/', '/dav', '/webdav', '/api'];
+    for (const prefix of candidates) {
+      const ok = await this.probeWebdavPrefix(origin, prefix);
+      if (ok) {
+        return prefix === '/' ? origin : `${origin}${prefix}`;
+      }
+    }
+
+    return endpoint;
+  }
+
+  async probeWebdavPrefix(origin, prefix) {
+    const normalized = prefix === '/' ? '/' : `${prefix.replace(/\/+$/, '')}/`;
+    const url = new URL(normalized, origin);
+    try {
+      const response = await fetch(url.toString(), {
+        method: 'OPTIONS',
+        credentials: 'omit'
+      });
+      if (!response) return false;
+      if (response.status === 404) return false;
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  formatBackupSyncError(error, prefix = '同步失败') {
+    const raw = error?.message || '';
+    if (/MKCOL failed:\s*404/i.test(raw)) {
+      return `${prefix}: WebDAV 路径不存在，请检查 WebDAV 地址是否包含正确前缀（如 /dav 或 /api）`;
+    }
+    if (!raw) {
+      return prefix;
+    }
+    return `${prefix}: ${raw}`;
   }
 
   async fetchSiweChallenge(endpoint, address) {
@@ -973,6 +1168,25 @@ export class SettingsController {
     confirmBtn.disabled = value !== this.resetConfirmKeyword;
   }
 
+  openChangePasswordModal() {
+    const modal = document.getElementById('changePasswordModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+    }
+    const input = document.getElementById('oldPasswordInput');
+    if (input) {
+      input.focus();
+    }
+  }
+
+  closeChangePasswordModal() {
+    const modal = document.getElementById('changePasswordModal');
+    if (modal) {
+      modal.classList.add('hidden');
+    }
+    this.resetChangePasswordForm();
+  }
+
   async handleChangePassword() {
     const oldInput = document.getElementById('oldPasswordInput');
     const newInput = document.getElementById('newPasswordInput');
@@ -1005,7 +1219,7 @@ export class SettingsController {
     try {
       showWaiting();
       await this.wallet.changePassword(oldPassword, newPassword);
-      this.resetChangePasswordForm();
+      this.closeChangePasswordModal();
       showSuccess('密码已更新');
     } catch (error) {
       console.error('[SettingsController] 修改密码失败:', error);

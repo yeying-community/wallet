@@ -507,6 +507,14 @@ export class WalletDomain extends BaseDomain {
   }
 
   /**
+   * 清空同步日志
+   * @returns {Promise<Object>}
+   */
+  async backupSyncClearLogs() {
+    return await this._sendMessage(WalletMessageType.BACKUP_SYNC_CLEAR_LOGS);
+  }
+
+  /**
    * 解决同步冲突
    * @param {Object} options - { id, action }
    * @returns {Promise<Object>}

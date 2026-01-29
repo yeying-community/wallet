@@ -198,26 +198,29 @@ export class PopupController {
           ? Boolean(settings?.ucanToken)
           : Boolean(settings?.authToken);
 
+      let statusText = '同步状态未知';
       if (!enabled) {
-        badge.textContent = '同步已关闭';
+        statusText = '同步已关闭';
         badge.className = 'sync-status-badge disabled';
       } else if (conflicts.length > 0) {
-        badge.textContent = `同步冲突 ${conflicts.length}`;
+        statusText = `同步冲突 ${conflicts.length}`;
         badge.className = 'sync-status-badge danger';
       } else if (!hasAuth) {
-        badge.textContent = '同步未登录';
+        statusText = '同步未登录';
         badge.className = 'sync-status-badge warning';
       } else {
-        badge.textContent = '同步已开启';
+        statusText = '同步已开启';
         badge.className = 'sync-status-badge success';
       }
 
       const pullText = settings?.lastPullAt ? formatLocaleDateTime(settings.lastPullAt) : '-';
       const pushText = settings?.lastPushAt ? formatLocaleDateTime(settings.lastPushAt) : '-';
-      badge.title = `最近拉取: ${pullText} · 最近推送: ${pushText}`;
+      badge.title = `${statusText} · 最近拉取: ${pullText} · 最近推送: ${pushText}`;
+      badge.setAttribute('aria-label', statusText);
     } catch (error) {
-      badge.textContent = '同步状态未知';
       badge.className = 'sync-status-badge';
+      badge.title = '同步状态未知';
+      badge.setAttribute('aria-label', '同步状态未知');
     }
   }
 
@@ -288,6 +291,16 @@ export class PopupController {
     await this.settingsController.loadBackupSyncSettings();
   }
 
+  async openBackupSyncSettings() {
+    await this.openSettingsPage();
+    requestAnimationFrame(() => {
+      const section = document.getElementById('backupSyncSection');
+      if (section?.scrollIntoView) {
+        section.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    });
+  }
+
   async openSitesPage() {
     this.stopTransactionPolling();
     showPage('sitesPage');
@@ -351,10 +364,19 @@ export class PopupController {
   }
 
   bindWalletPageEvents() {
-    const accountHeader = document.getElementById('accountHeader');
-    if (accountHeader) {
-      accountHeader.addEventListener('click', async () => {
+    const accountDropdownBtn = document.getElementById('accountDropdownBtn');
+    if (accountDropdownBtn) {
+      accountDropdownBtn.addEventListener('click', async (event) => {
+        event.preventDefault();
         await this.openAccountsPage();
+      });
+    }
+
+    const syncBadge = document.getElementById('backupSyncStatusBadge');
+    if (syncBadge) {
+      syncBadge.addEventListener('click', async (event) => {
+        event.preventDefault();
+        await this.openBackupSyncSettings();
       });
     }
 
