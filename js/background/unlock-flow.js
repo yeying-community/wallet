@@ -8,6 +8,7 @@ import { TIMEOUTS } from '../config/index.js';
 import { createInternalError, createUserRejectedError, createTimeoutError } from '../common/errors/index.js';
 import { POPUP_DIMENSIONS } from '../config/index.js';
 import { withPopupBoundsAsync } from './window-utils.js';
+import { WalletMessageType } from '../protocol/extension-protocol.js';
 
 const unlockWaiters = new Set();
 let unlockPromise = null;
@@ -21,9 +22,9 @@ function findExistingPopupWindow() {
       const list = Array.isArray(windows) ? windows : [];
       for (const win of list) {
         const tabs = Array.isArray(win.tabs) ? win.tabs : [];
-        const hasPopup = tabs.some(tab => typeof tab.url === 'string' && tab.url.startsWith(popupUrl));
-        if (hasPopup) {
-          resolve(win);
+        const popupTab = tabs.find(tab => typeof tab.url === 'string' && tab.url.startsWith(popupUrl));
+        if (popupTab) {
+          resolve({ window: win, tabId: popupTab.id });
           return;
         }
       }
@@ -73,9 +74,10 @@ export function requestUnlock() {
   unlockPromise = (async () => {
     const existingWindow = await findExistingPopupWindow();
     if (existingWindow) {
-      unlockWindowId = existingWindow.id;
+      unlockWindowId = existingWindow.window.id;
       unlockWindowCreated = false;
       chrome.windows.update(unlockWindowId, { focused: true }).catch(() => { });
+      chrome.runtime.sendMessage({ type: WalletMessageType.SHOW_UNLOCK_PAGE }).catch(() => { });
       return waitForUnlockWithWindow();
     }
 

@@ -29,12 +29,27 @@ class PopupApp {
       });
 
       await this.controller.init();
+      this.bindRuntimeEvents();
 
       this.reportPopupBounds();
     } catch (error) {
       console.error('初始化失败:', error);
       showToast('初始化失败: ' + error.message, 'error');
     }
+  }
+
+  bindRuntimeEvents() {
+    if (!chrome?.runtime?.onMessage) return;
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (message?.type === WalletMessageType.SHOW_UNLOCK_PAGE) {
+        this.controller?.showInitialPage?.();
+        if (typeof sendResponse === 'function') {
+          sendResponse({ success: true });
+        }
+        return false;
+      }
+      return false;
+    });
   }
 
   reportPopupBounds(attempt = 0) {
