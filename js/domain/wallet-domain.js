@@ -47,7 +47,8 @@ export class WalletDomain extends BaseDomain {
     const result = await this._sendMessage(WalletMessageType.GET_WALLET_STATE);
     return {
       unlocked: result.unlocked,
-      chainId: result.chainId
+      chainId: result.chainId,
+      lastUnlockRequest: result.lastUnlockRequest || null
     };
   }
 

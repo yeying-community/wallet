@@ -458,6 +458,21 @@
       <div id="unlockPage" class="page hidden">
         <h2>解锁钱包</h2>
         <p class="info-text">会话已过期，请输入密码解锁</p>
+        <div id="unlockReason" class="unlock-reason hidden">
+          <div class="unlock-reason-title">触发来源</div>
+          <div class="unlock-reason-row">
+            <span class="unlock-reason-label">网站</span>
+            <span class="unlock-reason-value" id="unlockReasonOrigin">-</span>
+          </div>
+          <div class="unlock-reason-row">
+            <span class="unlock-reason-label">请求</span>
+            <span class="unlock-reason-value" id="unlockReasonMethod">-</span>
+          </div>
+          <div class="unlock-reason-row">
+            <span class="unlock-reason-label">时间</span>
+            <span class="unlock-reason-value" id="unlockReasonTime">-</span>
+          </div>
+        </div>
         <div class="form-group">
           <label>密码:</label>
           <input type="password" id="unlockPassword" placeholder="输入密码" />
@@ -877,14 +892,6 @@
 
             <div id="backupSyncUcanPanel" class="sync-auth-panel hidden">
               <div class="form-group">
-                <label>UCAN Token</label>
-                <textarea
-                  id="backupSyncUcanTokenInput"
-                  rows="3"
-                  placeholder="粘贴 UCAN Token"
-                ></textarea>
-              </div>
-              <div class="form-group">
                 <label>Audience (did:web)</label>
                 <input
                   type="text"
@@ -921,7 +928,6 @@
               </div>
               <div class="settings-row">
                 <button id="backupSyncUcanGenerateBtn" class="btn btn-secondary btn-small">生成 UCAN</button>
-                <button id="backupSyncUcanSaveBtn" class="btn btn-primary btn-small">保存 UCAN</button>
               </div>
             </div>
 
