@@ -712,11 +712,11 @@ class BackupSyncService {
     }
 
     if (mode === 'ucan') {
-      const token = await getUserSetting(SETTINGS_KEYS.ucanToken, '');
+      const token = normalizeBearerToken(await getUserSetting(SETTINGS_KEYS.ucanToken, ''));
       return token ? `Bearer ${token}` : '';
     }
 
-    const token = await getUserSetting(SETTINGS_KEYS.authToken, '');
+    const token = normalizeBearerToken(await getUserSetting(SETTINGS_KEYS.authToken, ''));
     return token ? `Bearer ${token}` : '';
   }
 
@@ -1014,6 +1014,15 @@ function joinUrl(base, path) {
   const normalizedBase = base.endsWith('/') ? base : `${base}/`;
   const normalizedPath = path.replace(/^\/+/, '');
   return new URL(normalizedPath, normalizedBase).toString();
+}
+
+function normalizeBearerToken(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  return trimmed
+    .replace(/^Bearer\s+/i, '')
+    .replace(/^UCAN\s+/i, '')
+    .trim();
 }
 
 export const backupSyncService = new BackupSyncService();

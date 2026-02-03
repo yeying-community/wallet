@@ -792,3 +792,38 @@ body {
   color: #667eea;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
+
+/* ==================== 解锁提示 ==================== */
+
+.unlock-reason {
+  margin: 12px 0 16px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f8fafc;
+  font-size: 12px;
+  color: #374151;
+}
+
+.unlock-reason-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #111827;
+}
+
+.unlock-reason-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  line-height: 1.4;
+}
+
+.unlock-reason-label {
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.unlock-reason-value {
+  text-align: right;
+  word-break: break-all;
+}

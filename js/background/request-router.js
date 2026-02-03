@@ -19,7 +19,7 @@ import { handleEthAccounts, handleEthRequestAccounts, handleWalletGetPermissions
 import { handleEthChainId, handleNetVersion, handleSwitchChain, handleAddEthereumChain } from './chain-handler.js';
 import { handleRpcMethod } from './rpc-handler.js';
 import { signTransaction, signMessage, signTypedData } from './signing.js';
-import { getSelectedAccount, isAuthorized } from '../storage/index.js';
+import { getSelectedAccount, isAuthorized, updateUserSetting } from '../storage/index.js';
 import { requestUnlock } from './unlock-flow.js';
 import { withPopupBoundsAsync } from './window-utils.js';
 import { POPUP_DIMENSIONS } from '../config/index.js';
@@ -51,6 +51,29 @@ function addPendingRequest(requestId, request) {
 function removePendingRequest(requestId) {
   if (state.pendingRequests.delete(requestId)) {
     updateKeepAlive();
+  }
+}
+
+async function isActiveTab(tabId) {
+  if (!Number.isFinite(tabId)) return false;
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab || !tab.active) return false;
+    if (!Number.isFinite(tab.windowId)) return Boolean(tab.active);
+    const win = await chrome.windows.get(tab.windowId);
+    if (win && win.focused === false) return false;
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+async function recordUnlockRequest(info) {
+  if (!info) return;
+  try {
+    await updateUserSetting('lastUnlockRequest', info);
+  } catch (error) {
+    console.warn('[RequestRouter] Failed to record unlock request:', error?.message || error);
   }
 }
 
@@ -115,6 +138,16 @@ export async function routeRequest(method, params, metadata) {
   ]);
 
   if (!state.keyring && unlockMethods.has(method)) {
+    const active = await isActiveTab(tabId);
+    if (!active) {
+      throw createUserRejectedError('Unlock requires active tab');
+    }
+    await recordUnlockRequest({
+      origin: origin || '',
+      method,
+      tabId: Number.isFinite(tabId) ? tabId : null,
+      timestamp: getTimestamp()
+    });
     await requestUnlock();
   }
 

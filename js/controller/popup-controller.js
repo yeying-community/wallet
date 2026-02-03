@@ -138,6 +138,28 @@ export class PopupController {
     }
 
     showPage('unlockPage');
+    this.renderUnlockReason(state?.lastUnlockRequest || null);
+  }
+
+  renderUnlockReason(info) {
+    const container = document.getElementById('unlockReason');
+    if (!container) return;
+
+    const originEl = document.getElementById('unlockReasonOrigin');
+    const methodEl = document.getElementById('unlockReasonMethod');
+    const timeEl = document.getElementById('unlockReasonTime');
+
+    if (!info || (!info.origin && !info.method && !info.timestamp)) {
+      container.classList.add('hidden');
+      return;
+    }
+
+    if (originEl) originEl.textContent = info.origin || '-';
+    if (methodEl) methodEl.textContent = info.method || '-';
+    if (timeEl) {
+      timeEl.textContent = info.timestamp ? formatLocaleDateTime(info.timestamp) : '-';
+    }
+    container.classList.remove('hidden');
   }
 
   bindEvents() {
