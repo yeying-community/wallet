@@ -1,4 +1,4 @@
-# Backup & Sync（WebDAV 版）实现说明
+# 备份与同步（WebDAV 版）实现说明
 
 > 目标：在**同一 SRP（助记词）**的多设备间同步账号名称、账号数量、联系人、Network IDs 与更新时间戳。
 > 数据以**客户端加密文件**形式保存到 WebDAV；服务端不可读；默认 UCAN，支持 SIWE / Basic 备用。
@@ -29,7 +29,7 @@
 ## 3. WebDAV 对接约束（服务端能力）
 
 - WebDAV 服务通常有前缀（常见 `/api`、`/dav`、`/webdav`）。
-- 钱包侧默认 endpoint：`https://webdav.yeying.pub/api`（末尾 `/` 可选）。
+- 钱包侧默认 endpoint：`https://webdav.yeying.pub`（末尾 `/` 可选）。
 - 当用户仅填写域名或 `/` 时，钱包会用 `OPTIONS` 自动探测前缀：`/`、`/dav`、`/webdav`、`/api`，选择首个非 404 的前缀。
 - 若启用 UCAN 的 **app scope**（服务端 `required_resource=app:*`），钱包会把同步路径放入 `/apps/<appId>/...` 目录下。
   默认 appId 为插件域名（扩展 ID，例如 `chrome-extension://<id>/` 的 `<id>`）。
@@ -153,7 +153,7 @@
 ## 11. 本地存储与配置（建议新增）
 
 - `settings.backupSyncEnabled`（默认 true）
-- `settings.backupSyncEndpoint`（WebDAV Base URL，默认 `https://webdav.yeying.pub/api`，末尾 `/` 可选）
+- `settings.backupSyncEndpoint`（WebDAV Base URL，默认 `https://webdav.yeying.pub`，末尾 `/` 可选）
 - `settings.backupSyncAuthMode`（ucan | siwe | basic，默认 ucan）
 - `settings.backupSyncLastPullAt` / `LastPushAt`
 - `settings.backupSyncDirty`（是否有待推送变更）
@@ -163,11 +163,11 @@
 
 ## 12. UI 建议
 
-- 设置页开关：Backup & Sync
+- 设置页开关：备份与同步
 - 显示最近同步时间
 - “立即同步”按钮
 - 冲突提示入口（若存在）
-- 同步日志（可清空）
+- 设置 → 日志审计（独立页面，支持搜索/翻页，展示最近拉取/推送与日志统计，可清空）
 
 ## 13. 调试说明（本地）
 - 若需快速验证冲突 UI，可在 `js/config/feature-flags.js` 中启用：

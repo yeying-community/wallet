@@ -21,7 +21,7 @@
 - No server-side decryption or merge.
 
 ## 2. WebDAV endpoint and auth
-- Default endpoint: `https://webdav.yeying.pub/api` (trailing slash optional).
+- Default endpoint: `https://webdav.yeying.pub` (trailing slash optional).
 - If the user only provides an origin or `/`, the wallet probes these prefixes via `OPTIONS`:
   `/`, `/dav`, `/webdav`, `/api` and picks the first non-404.
 - With UCAN **app scope** enabled (`required_resource=app:*`), the wallet stores sync data under `/apps/<appId>/...`.
@@ -87,7 +87,7 @@
 
 ## 9. Local settings (selected keys)
 - `backupSyncEnabled` (default true)
-- `backupSyncEndpoint` (default `https://webdav.yeying.pub/api`)
+- `backupSyncEndpoint` (default `https://webdav.yeying.pub`)
 - `backupSyncAuthMode` (`ucan` | `siwe` | `basic`, default `ucan`)
 - `backupSyncAuthToken` / `backupSyncUcanToken` / `backupSyncBasicAuth`
 - `backupSyncLastPullAt` / `backupSyncLastPushAt`

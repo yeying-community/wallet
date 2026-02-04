@@ -363,3 +363,52 @@
   background: #e0f2fe;
   color: #075985;
 }
+
+.sync-log-toolbar {
+  margin-bottom: 12px;
+}
+
+.sync-log-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.sync-log-metric {
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.sync-log-label {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.sync-log-value {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #111827;
+  word-break: break-word;
+}
+
+.sync-log-title {
+  margin: 4px 0 10px;
+  font-size: 15px;
+  color: #374151;
+}
+
+.sync-log-list {
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.sync-log-footer {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 12px;
+  color: #6b7280;
+}
