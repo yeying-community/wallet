@@ -22,6 +22,7 @@ import {
   ContactsStorageKeys
 } from '../storage/index.js';
 import { WALLET_TYPE, deriveSubAccount, getWalletMnemonic } from './vault.js';
+import { getCachedPassword } from './password-cache.js';
 
 const SYNC_PAYLOAD_VERSION = 1;
 const SYNC_FILENAME = 'payload.json.enc';
@@ -660,12 +661,7 @@ class BackupSyncService {
   async _ensureDirectory() {
     const prefix = await this._getAppScopePrefix();
     if (!prefix) return;
-    const parts = prefix.split('/').filter(Boolean);
-    let current = '';
-    for (const part of parts) {
-      current += `${part}/`;
-      await this._mkcol(this._dirPath(current));
-    }
+    await this._mkcol(this._dirPath(prefix));
   }
 
   async _mkcol(path) {
@@ -1073,7 +1069,6 @@ class BackupSyncService {
   }
 
   async _getCachedPassword() {
-    const { getCachedPassword } = await import('./password-cache.js');
     return getCachedPassword();
   }
 
