@@ -1098,7 +1098,7 @@ export async function handleGetBackupSyncSettings() {
     const settings = {
       enabled: await getUserSetting('backupSyncEnabled', true),
       endpoint: await getUserSetting('backupSyncEndpoint', DEFAULT_BACKUP_SYNC_ENDPOINT),
-      authMode: await getUserSetting('backupSyncAuthMode', 'siwe'),
+      authMode: await getUserSetting('backupSyncAuthMode', 'ucan'),
       authToken: await getUserSetting('backupSyncAuthToken', ''),
       authTokenExpiresAt: await getUserSetting('backupSyncAuthTokenExpiresAt', null),
       ucanToken: await getUserSetting('backupSyncUcanToken', ''),
