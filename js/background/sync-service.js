@@ -24,10 +24,19 @@ import {
 import { WALLET_TYPE, deriveSubAccount, getWalletMnemonic } from './vault.js';
 
 const SYNC_PAYLOAD_VERSION = 1;
-const SYNC_DIR = 'wallet-sync';
 const SYNC_FILENAME = 'payload.json.enc';
 const SYNC_DEBOUNCE_MS = 1500;
 const DEFAULT_SYNC_ENDPOINT = 'https://webdav.yeying.pub/api';
+const LEGACY_DEFAULT_APP_ID = 'yeying-wallet';
+const DEFAULT_UCAN_ACTION = 'write';
+const APP_SCOPE_PREFIX = 'apps';
+const LEGACY_UCAN_RESOURCES = new Set([
+  'profile',
+  'webdav/*',
+  'webdav#access',
+  'webdav/access',
+  'webdav'
+]);
 const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 const AUTO_SYNC_JITTER_MS = 30 * 1000;
 const AUTO_SYNC_MAX_BACKOFF_MS = 15 * 60 * 1000;
@@ -379,7 +388,8 @@ class BackupSyncService {
   }
 
   async _pullRemote(context, reason = '') {
-    const response = await this._webdavRequest('GET', this._payloadPath(context.fingerprint));
+    const primaryPath = await this._payloadPath(context.fingerprint);
+    const response = await this._webdavRequest('GET', primaryPath);
     if (!response) {
       return null;
     }
@@ -426,7 +436,7 @@ class BackupSyncService {
   }
 
   async _writeRemote(context, payload) {
-    await this._ensureDirectory(context.fingerprint);
+    await this._ensureDirectory();
 
     const ciphertext = await encryptObject(payload, context.syncKey);
     const envelope = {
@@ -437,7 +447,7 @@ class BackupSyncService {
     };
 
     const body = JSON.stringify(envelope);
-    const response = await this._webdavRequest('PUT', this._payloadPath(context.fingerprint), {
+    const response = await this._webdavRequest('PUT', await this._payloadPath(context.fingerprint), {
       headers: {
         'Content-Type': 'application/json'
       },
@@ -647,9 +657,15 @@ class BackupSyncService {
     }, SYNC_DEBOUNCE_MS);
   }
 
-  async _ensureDirectory(fingerprint) {
-    await this._mkcol(this._dirPath(SYNC_DIR));
-    await this._mkcol(this._dirPath(`${SYNC_DIR}/${fingerprint}`));
+  async _ensureDirectory() {
+    const prefix = await this._getAppScopePrefix();
+    if (!prefix) return;
+    const parts = prefix.split('/').filter(Boolean);
+    let current = '';
+    for (const part of parts) {
+      current += `${part}/`;
+      await this._mkcol(this._dirPath(current));
+    }
   }
 
   async _mkcol(path) {
@@ -661,7 +677,19 @@ class BackupSyncService {
   }
 
   async _probeRemote(context) {
-    const response = await this._webdavRequest('HEAD', this._payloadPath(context.fingerprint), {
+    const primaryPath = await this._payloadPath(context.fingerprint);
+    const primaryProbe = await this._probePath(primaryPath);
+    if (primaryProbe?.exists || primaryProbe?.bypass) {
+      return { ...primaryProbe, path: primaryPath };
+    }
+    if (primaryProbe && !primaryProbe.exists) {
+      return { exists: false };
+    }
+    return null;
+  }
+
+  async _probePath(path) {
+    const response = await this._webdavRequest('HEAD', path, {
       headers: {
         'Cache-Control': 'no-cache'
       }
@@ -680,7 +708,7 @@ class BackupSyncService {
   }
 
   async _webdavRequest(method, path, options = {}) {
-    const endpoint = await getUserSetting(SETTINGS_KEYS.endpoint, '');
+    const endpoint = await this._resolveBaseEndpoint();
     if (!endpoint) {
       return null;
     }
@@ -701,7 +729,7 @@ class BackupSyncService {
   }
 
   async _getAuthHeader() {
-    const mode = await getUserSetting(SETTINGS_KEYS.authMode, 'siwe');
+    const mode = await getUserSetting(SETTINGS_KEYS.authMode, 'ucan');
 
     if (mode === 'basic') {
       const basic = await getUserSetting(SETTINGS_KEYS.basicAuth, '');
@@ -712,16 +740,16 @@ class BackupSyncService {
     }
 
     if (mode === 'ucan') {
-      const token = await getUserSetting(SETTINGS_KEYS.ucanToken, '');
+      const token = normalizeBearerToken(await getUserSetting(SETTINGS_KEYS.ucanToken, ''));
       return token ? `Bearer ${token}` : '';
     }
 
-    const token = await getUserSetting(SETTINGS_KEYS.authToken, '');
+    const token = normalizeBearerToken(await getUserSetting(SETTINGS_KEYS.authToken, ''));
     return token ? `Bearer ${token}` : '';
   }
 
   async _hasAuth() {
-    const mode = await getUserSetting(SETTINGS_KEYS.authMode, 'siwe');
+    const mode = await getUserSetting(SETTINGS_KEYS.authMode, 'ucan');
     if (mode === 'basic') {
       const basic = await getUserSetting(SETTINGS_KEYS.basicAuth, '');
       return Boolean(basic);
@@ -775,13 +803,62 @@ class BackupSyncService {
 
     const mode = await getUserSetting(SETTINGS_KEYS.authMode, '');
     if (!mode) {
-      await updateUserSetting(SETTINGS_KEYS.authMode, 'siwe').catch(() => {});
+      await updateUserSetting(SETTINGS_KEYS.authMode, 'ucan').catch(() => {});
+    }
+
+    const rawResource = await getUserSetting(SETTINGS_KEYS.ucanResource, '');
+    const legacyResource = isLegacyUcanResource(rawResource);
+    const normalizedResource = normalizeUcanResource(rawResource);
+    if (normalizedResource !== rawResource) {
+      await updateUserSetting(SETTINGS_KEYS.ucanResource, normalizedResource).catch(() => {});
+    }
+
+    const rawAction = await getUserSetting(SETTINGS_KEYS.ucanAction, '');
+    const normalizedAction = normalizeUcanAction(rawAction, { forceDefault: legacyResource });
+    if (normalizedAction !== rawAction) {
+      await updateUserSetting(SETTINGS_KEYS.ucanAction, normalizedAction).catch(() => {});
+    }
+
+    if (legacyResource) {
+      const existingToken = await getUserSetting(SETTINGS_KEYS.ucanToken, '');
+      if (existingToken) {
+        await updateUserSetting(SETTINGS_KEYS.ucanToken, '').catch(() => {});
+      }
     }
 
     const enabled = await getUserSetting(SETTINGS_KEYS.enabled, null);
     if (enabled === null) {
       await updateUserSetting(SETTINGS_KEYS.enabled, true).catch(() => {});
     }
+  }
+
+  async _resolveBaseEndpoint() {
+    const endpoint = await getUserSetting(SETTINGS_KEYS.endpoint, '');
+    if (!endpoint) return '';
+
+    const appId = await this._getAppScopeAppId();
+    if (!appId) return endpoint;
+    try {
+      const url = new URL(endpoint);
+      const pathname = url.pathname || '';
+      const marker = `/${APP_SCOPE_PREFIX}/`;
+      const idx = pathname.indexOf(marker);
+      if (idx >= 0) {
+        const rest = pathname.slice(idx + marker.length);
+        const appSegment = rest.split('/')[0];
+        if (appSegment === appId) {
+          const basePath = pathname.slice(0, idx) || '/';
+          url.pathname = basePath;
+          url.search = '';
+          url.hash = '';
+          return url.toString();
+        }
+      }
+    } catch {
+      return endpoint;
+    }
+
+    return endpoint;
   }
 
   async _handlePendingDelete() {
@@ -799,13 +876,13 @@ class BackupSyncService {
   }
 
   async _deleteRemote(context) {
-    const response = await this._webdavRequest('DELETE', this._payloadPath(context.fingerprint));
+    const primaryPath = await this._payloadPath(context.fingerprint);
+    const response = await this._webdavRequest('DELETE', primaryPath);
     if (!response) return;
-    if (response.ok || response.status === 404) {
-      this._clearRemoteMetaEntry(context.fingerprint);
-      return;
+    if (!response.ok && response.status !== 404) {
+      throw new Error(`WebDAV DELETE failed: ${response.status}`);
     }
-    throw new Error(`WebDAV DELETE failed: ${response.status}`);
+    this._clearRemoteMetaEntry(context.fingerprint);
   }
 
   async _mergeContacts(remoteContacts) {
@@ -1000,8 +1077,22 @@ class BackupSyncService {
     return getCachedPassword();
   }
 
-  _payloadPath(fingerprint) {
-    return `${SYNC_DIR}/${fingerprint}/${SYNC_FILENAME}`;
+  async _payloadPath(fingerprint) {
+    const prefix = await this._getAppScopePrefix();
+    const filename = buildPayloadFilename(fingerprint);
+    return `${prefix}${filename}`;
+  }
+
+  async _getAppScopeAppId() {
+    const rawResource = await getUserSetting(SETTINGS_KEYS.ucanResource, '');
+    const resource = normalizeUcanResource(rawResource);
+    return extractAppIdFromResource(resource);
+  }
+
+  async _getAppScopePrefix() {
+    const appId = await this._getAppScopeAppId();
+    if (!appId) return '';
+    return `${APP_SCOPE_PREFIX}/${appId}/`;
   }
 
   _dirPath(path) {
@@ -1014,6 +1105,71 @@ function joinUrl(base, path) {
   const normalizedBase = base.endsWith('/') ? base : `${base}/`;
   const normalizedPath = path.replace(/^\/+/, '');
   return new URL(normalizedPath, normalizedBase).toString();
+}
+
+function buildPayloadFilename(fingerprint) {
+  const safe = String(fingerprint || '').trim();
+  if (!safe) return SYNC_FILENAME;
+  return `payload.${safe}.json.enc`;
+}
+
+function isLegacyUcanResource(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return true;
+  const normalized = trimmed.toLowerCase();
+  if (LEGACY_UCAN_RESOURCES.has(normalized)) return true;
+  const legacyResource = `app:${LEGACY_DEFAULT_APP_ID}`;
+  if (normalized === legacyResource) {
+    return normalized !== getDefaultUcanResource().toLowerCase();
+  }
+  return false;
+}
+
+function normalizeUcanResource(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed || isLegacyUcanResource(trimmed)) {
+    return getDefaultUcanResource();
+  }
+  return trimmed;
+}
+
+function normalizeUcanAction(value, { forceDefault = false } = {}) {
+  const trimmed = String(value || '').trim();
+  if (forceDefault || !trimmed || trimmed === '*') {
+    return DEFAULT_UCAN_ACTION;
+  }
+  return trimmed;
+}
+
+function extractAppIdFromResource(resource) {
+  const trimmed = String(resource || '').trim();
+  if (!trimmed.toLowerCase().startsWith('app:')) return '';
+  const appId = trimmed.slice(4).trim();
+  if (!appId || appId.includes('*')) return '';
+  return appId;
+}
+
+function getDefaultUcanAppId() {
+  try {
+    const id = typeof chrome !== 'undefined' ? chrome?.runtime?.id : '';
+    if (id) return String(id).toLowerCase();
+  } catch {
+    // ignore
+  }
+  return LEGACY_DEFAULT_APP_ID;
+}
+
+function getDefaultUcanResource() {
+  return `app:${getDefaultUcanAppId()}`;
+}
+
+function normalizeBearerToken(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  return trimmed
+    .replace(/^Bearer\s+/i, '')
+    .replace(/^UCAN\s+/i, '')
+    .trim();
 }
 
 export const backupSyncService = new BackupSyncService();

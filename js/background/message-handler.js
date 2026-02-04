@@ -51,6 +51,7 @@ import { getTimestamp } from '../common/utils/time-utils.js';
 import {
   saveSelectedNetworkName,
   updateUserSetting,
+  getUserSetting,
   addNetwork,
   getNetworks,
   deleteNetwork,
@@ -579,10 +580,12 @@ export async function handlePopupMessage(message, response) {
       // ==================== 状态查询 ====================
 
       case 'GET_WALLET_STATE':
+        const lastUnlockRequest = await getUserSetting('lastUnlockRequest', null);
         response({
           success: true,
           unlocked: state.keyring !== null,
-          chainId: state.currentChainId
+          chainId: state.currentChainId,
+          lastUnlockRequest
         });
         break;
 

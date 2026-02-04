@@ -1,7 +1,7 @@
 # Backup & Sync (WebDAV)
 
 > Goal: sync account names/count, contacts, and network IDs across devices that share the same mnemonic (SRP).
-> Data is encrypted client-side and stored as a WebDAV file; the server cannot read it. Supports SIWE / UCAN login.
+> Data is encrypted client-side and stored as a WebDAV file; the server cannot read it. UCAN is default, SIWE/Basic are supported as fallback.
 
 ## 1. Scope and non-goals
 
@@ -13,7 +13,7 @@
   - Network IDs (chain IDs)
 - Triggers: unlock, lock, startup/disable, local changes, and periodic auto sync.
 - Storage: WebDAV (PUT/GET/HEAD/MKCOL/DELETE).
-- Auth: SIWE token, UCAN bearer token, or Basic Auth.
+- Auth: UCAN bearer token (default), SIWE token, or Basic Auth.
 
 ### Non-goals
 - No private keys, mnemonic, hardware accounts, or imported accounts.
@@ -24,9 +24,12 @@
 - Default endpoint: `https://webdav.yeying.pub/api` (trailing slash optional).
 - If the user only provides an origin or `/`, the wallet probes these prefixes via `OPTIONS`:
   `/`, `/dav`, `/webdav`, `/api` and picks the first non-404.
+- With UCAN **app scope** enabled (`required_resource=app:*`), the wallet stores sync data under `/apps/<appId>/...`.
+  The default appId is the extension domain (the `<id>` part of `chrome-extension://<id>/`).
 - Auth headers:
   - SIWE / UCAN: `Authorization: Bearer <token>`
   - Basic Auth: `Authorization: Basic <base64>`
+- UCAN default capability: `app:<extension-id>#write`
 
 ## 3. Namespace and key derivation
 - Fingerprint: `srpFingerprint = sha256("yeying-sync-id:" + mnemonic)`
@@ -35,10 +38,10 @@
 
 ## 4. WebDAV file layout
 ```
-{endpoint}/wallet-sync/{srpFingerprint}/payload.json.enc
+{endpoint}/apps/<appId>/payload.<srpFingerprint>.json.enc
 ```
-- The `wallet-sync/` directory is created via `MKCOL` when missing.
-- `payload.json.enc` is a fully encrypted envelope.
+- The `/apps/<appId>/` directory is created via `MKCOL` when missing (create `/apps` first).
+- `payload.<srpFingerprint>.json.enc` is a fully encrypted envelope.
 
 ## 5. Payload (v1)
 ```json
@@ -64,13 +67,13 @@
 - **Manual**: "Sync now" runs a full sync.
 
 ## 7. Auto sync and remote change detection (implemented)
-- **Prerequisites**: enabled + endpoint set + valid auth (SIWE/UCAN/Basic) + wallet unlocked.
+- **Prerequisites**: enabled + endpoint set + valid auth (UCAN/SIWE/Basic) + wallet unlocked.
   Auto sync pauses if there are unresolved conflicts.
 - **Schedule**: runs every ~5 minutes with ±30s jitter. On failure, exponential backoff up to 15 minutes
   (minimum interval 30 seconds).
 - **Behavior**:
   - If local state is dirty: `syncAll('auto')` (pull → merge → push).
-  - If clean: send `HEAD` to `payload.json.enc` and compare `ETag` / `Last-Modified` with cached values.
+  - If clean: send `HEAD` to `payload.<srpFingerprint>.json.enc` and compare `ETag` / `Last-Modified` with cached values.
     Only pull when changed.
   - If `HEAD` is not supported (405/501), fall back to `GET`.
   - If remote returns 404, skip and clear the cache.
@@ -85,7 +88,7 @@
 ## 9. Local settings (selected keys)
 - `backupSyncEnabled` (default true)
 - `backupSyncEndpoint` (default `https://webdav.yeying.pub/api`)
-- `backupSyncAuthMode` (`siwe` | `ucan` | `basic`)
+- `backupSyncAuthMode` (`ucan` | `siwe` | `basic`, default `ucan`)
 - `backupSyncAuthToken` / `backupSyncUcanToken` / `backupSyncBasicAuth`
 - `backupSyncLastPullAt` / `backupSyncLastPushAt`
 - `backupSyncDirty`
