@@ -1,7 +1,7 @@
 # Backup & Sync（WebDAV 版）实现说明
 
 > 目标：在**同一 SRP（助记词）**的多设备间同步账号名称、账号数量、联系人、Network IDs 与更新时间戳。
-> 数据以**客户端加密文件**形式保存到 WebDAV；服务端不可读；支持 SIWE / UCAN 登录。
+> 数据以**客户端加密文件**形式保存到 WebDAV；服务端不可读；默认 UCAN，支持 SIWE / Basic 备用。
 
 ## 1. 范围与非目标
 
@@ -13,7 +13,7 @@
   - Network IDs（链 ID）
 - **同步触发**：解锁、锁定、启动/关闭、关键本地变更。
 - **存储介质**：WebDAV（PUT/GET/PROPFIND/DELETE）。
-- **认证方式**：SIWE（challenge/verify）或 UCAN Bearer Token。
+- **认证方式**：UCAN Bearer Token（默认），SIWE（challenge/verify）或 Basic。
 
 ### 非目标
 - 不同步私钥、助记词、硬件钱包账户、私钥导入账户。
@@ -31,9 +31,12 @@
 - WebDAV 服务通常有前缀（常见 `/api`、`/dav`、`/webdav`）。
 - 钱包侧默认 endpoint：`https://webdav.yeying.pub/api`（末尾 `/` 可选）。
 - 当用户仅填写域名或 `/` 时，钱包会用 `OPTIONS` 自动探测前缀：`/`、`/dav`、`/webdav`、`/api`，选择首个非 404 的前缀。
+- 若启用 UCAN 的 **app scope**（服务端 `required_resource=app:*`），钱包会把同步路径放入 `/apps/<appId>/...` 目录下。
+  默认 appId 为插件域名（扩展 ID，例如 `chrome-extension://<id>/` 的 `<id>`）。
 - WebDAV 支持 **Bearer Token** 与 **Basic Auth**。
 - Web3 认证流程：`/api/v1/public/auth/challenge` → `/verify` → 拿到 `token`。
 - UCAN 直接用 `Authorization: Bearer <UCAN>` 访问 WebDAV。
+- UCAN 默认能力：`app:<extension-id>#write`。
 
 ## 4. 命名空间与密钥派生
 
@@ -48,12 +51,12 @@
 
 ## 5. WebDAV 文件布局
 
-**路径建议：**
+**路径建议（UCAN app scope）：**
 ```
-{webdav.prefix}/wallet-sync/{srpFingerprint}/payload.json.enc
+{webdav.prefix}/apps/<appId>/payload.<srpFingerprint>.json.enc
 ```
-- `wallet-sync/` 目录若不存在，用 `MKCOL` 创建。
-- `payload.json.enc` 为**完整加密文件**。
+- `/apps/<appId>/` 目录若不存在，用 `MKCOL` 创建（先建 `/apps` 再建应用目录）。
+- `payload.<srpFingerprint>.json.enc` 为**完整加密文件**。
 
 **文件内容（建议 JSON envelope）：**
 ```json
@@ -101,7 +104,7 @@
 - **自动同步**：定期检测远端变化（见 7.4）
 
 ### 7.2 Pull
-1. `GET payload.json.enc`（不存在则跳过）
+1. `GET payload.<srpFingerprint>.json.enc`（不存在则跳过）
 2. `decryptObject(ciphertext, syncKey)`
 3. `mergePayload(remote, local)`
 4. 如果合并后本地变化 → 更新本地存储
@@ -109,14 +112,14 @@
 ### 7.3 Push
 1. 本地构建 payload
 2. `encryptObject(payload, syncKey)`
-3. `PUT payload.json.enc`（可附 `If-Match`/`If-None-Match` 做并发保护）
+3. `PUT payload.<srpFingerprint>.json.enc`（可附 `If-Match`/`If-None-Match` 做并发保护）
 
 ### 7.4 自动同步与远端变化检测（已实现）
-- **前置条件**：`backupSyncEnabled` + endpoint 已配置 + 有有效授权（SIWE/UCAN/Basic）+ 钱包已解锁（同步密钥可用）。若存在冲突则暂停自动同步。
+- **前置条件**：`backupSyncEnabled` + endpoint 已配置 + 有有效授权（UCAN/SIWE/Basic）+ 钱包已解锁（同步密钥可用）。若存在冲突则暂停自动同步。
 - **调度策略**：每 ~5 分钟运行一次，带 ±30s 抖动；失败后指数退避，最长 15 分钟，最小间隔 30 秒。
 - **执行逻辑**：
   - 若本地 dirty：执行 `syncAll('auto')`（pull → merge → push）。
-  - 若本地无 dirty：对远端 `payload.json.enc` 发起 `HEAD`，对比 `ETag`/`Last-Modified` 与本地缓存，仅在变化时 `GET` + merge。
+  - 若本地无 dirty：对远端 `payload.<srpFingerprint>.json.enc` 发起 `HEAD`，对比 `ETag`/`Last-Modified` 与本地缓存，仅在变化时 `GET` + merge。
   - 若 `HEAD` 不支持（405/501），直接 `GET`；远端 404 则跳过并清理缓存。
 
 ## 8. 冲突合并规则
@@ -141,8 +144,9 @@
 - 拿到 `token` 后作为 `Authorization: Bearer <token>` 访问 WebDAV
 - 过期用 `/auth/refresh` 刷新
 
-### 10.2 UCAN（高级/去中心化授权）
+### 10.2 UCAN（默认/去中心化授权）
 - 客户端生成 UCAN，携带 `cap` 满足服务器 `required_resource/action`
+- 默认能力：`app:<extension-id>#write`
 - 直接 `Authorization: Bearer <UCAN>` 访问 WebDAV
  - 钱包内可生成 UCAN（基于 SIWE 根证明 + Ed25519 UCAN invocation）
 
@@ -150,7 +154,7 @@
 
 - `settings.backupSyncEnabled`（默认 true）
 - `settings.backupSyncEndpoint`（WebDAV Base URL，默认 `https://webdav.yeying.pub/api`，末尾 `/` 可选）
-- `settings.backupSyncAuthMode`（siwe | ucan | basic）
+- `settings.backupSyncAuthMode`（ucan | siwe | basic，默认 ucan）
 - `settings.backupSyncLastPullAt` / `LastPushAt`
 - `settings.backupSyncDirty`（是否有待推送变更）
 - `settings.backupSyncConflicts`（冲突记录，可选）
@@ -173,8 +177,8 @@
 
 ## 14. 待确认清单（请逐项确认）
 
-1) WebDAV 路径：是否采用 `wallet-sync/{srpFingerprint}/payload.json.enc`？
-2) 认证优先级：默认 SIWE 还是 UCAN？是否保留 Basic 作为备用？
+1) WebDAV 路径：是否采用 `/apps/<appId>/payload.<srpFingerprint>.json.enc`？
+2) 认证优先级：默认 UCAN，SIWE 作为备用，是否保留 Basic？
 3) Payload 字段：是否需要同步联系人与 Network IDs 在 MVP？
 4) 冲突策略：是否允许“保留双版本”还是只记录冲突供用户处理？
 5) 多钱包场景：同一设备多个 HD 钱包是否都开启同步？

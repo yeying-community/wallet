@@ -4,6 +4,16 @@ import { shortenAddress } from '../common/chain/index.js';
 import { escapeHtml } from '../common/ui/html-ui.js';
 import { isDeveloperFeatureEnabled } from '../config/index.js';
 
+const LEGACY_DEFAULT_APP_ID = 'yeying-wallet';
+const DEFAULT_UCAN_ACTION = 'write';
+const LEGACY_UCAN_RESOURCES = new Set([
+  'profile',
+  'webdav/*',
+  'webdav#access',
+  'webdav/access',
+  'webdav'
+]);
+
 export class SettingsController {
   constructor({ wallet, transaction, requestPassword }) {
     this.wallet = wallet;
@@ -293,14 +303,16 @@ export class SettingsController {
     const lastStatus = document.getElementById('backupSyncLastStatus');
 
     if (enabledToggle) enabledToggle.checked = Boolean(settings.enabled);
-    if (endpointInput) endpointInput.value = settings.endpoint || 'https://webdav.yeying.pub';
-    if (authModeSelect) authModeSelect.value = settings.authMode || 'siwe';
+    if (endpointInput) endpointInput.value = settings.endpoint || 'https://webdav.yeying.pub/api';
+    if (authModeSelect) authModeSelect.value = settings.authMode || 'ucan';
     if (ucanResourceInput) {
-      ucanResourceInput.value = settings.ucanResource || 'webdav/*';
+      const normalizedResource = this.normalizeUcanResource(settings.ucanResource || '');
+      ucanResourceInput.value = normalizedResource;
       ucanResourceInput.readOnly = true;
     }
     if (ucanActionInput) {
-      ucanActionInput.value = settings.ucanAction || '*';
+      const normalizedResource = this.normalizeUcanResource(settings.ucanResource || '');
+      ucanActionInput.value = this.normalizeUcanAction(settings.ucanAction || '', normalizedResource);
       ucanActionInput.readOnly = true;
     }
     if (ucanAudienceInput) {
@@ -312,7 +324,7 @@ export class SettingsController {
     }
     if (basicInput) basicInput.value = settings.basicAuth || '';
 
-    this.updateBackupSyncAuthPanel(settings.authMode || 'siwe');
+    this.updateBackupSyncAuthPanel(settings.authMode || 'ucan');
     this.updateBackupSyncTokenStatus(settings, tokenStatus);
     this.updateBackupSyncLastStatus(settings, lastStatus);
     this.updateBackupSyncEnabledState(Boolean(settings.enabled));
@@ -760,8 +772,8 @@ export class SettingsController {
       const audienceInput = document.getElementById('backupSyncUcanAudienceInput');
       const ttlInput = document.getElementById('backupSyncUcanTtlInput');
 
-      const resource = String(resourceInput?.value || '').trim() || 'webdav/*';
-      const action = String(actionInput?.value || '').trim() || '*';
+      const resource = this.normalizeUcanResource(resourceInput?.value || '');
+      const action = this.normalizeUcanAction(actionInput?.value || '', resource);
       const audience = String(audienceInput?.value || '').trim() || this.deriveUcanAudience(endpoint);
       const ttlHours = Number(ttlInput?.value || '24');
       const ttlMs = Number.isFinite(ttlHours) ? ttlHours * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
@@ -931,6 +943,50 @@ export class SettingsController {
       .replace(/^Bearer\s+/i, '')
       .replace(/^UCAN\s+/i, '')
       .trim();
+  }
+
+  normalizeUcanResource(value) {
+    const trimmed = String(value || '').trim();
+    if (!trimmed || this.isLegacyUcanResource(trimmed)) {
+      return this.getDefaultUcanResource();
+    }
+    return trimmed;
+  }
+
+  normalizeUcanAction(value, resource) {
+    const trimmed = String(value || '').trim();
+    const resourceTrimmed = String(resource || '').trim();
+    const isLegacyResource = !resourceTrimmed || this.isLegacyUcanResource(resourceTrimmed);
+    if (isLegacyResource || !trimmed || trimmed === '*') {
+      return DEFAULT_UCAN_ACTION;
+    }
+    return trimmed;
+  }
+
+  getDefaultUcanAppId() {
+    try {
+      const id = typeof chrome !== 'undefined' ? chrome?.runtime?.id : '';
+      if (id) return String(id).toLowerCase();
+    } catch {
+      // ignore
+    }
+    return LEGACY_DEFAULT_APP_ID;
+  }
+
+  getDefaultUcanResource() {
+    return `app:${this.getDefaultUcanAppId()}`;
+  }
+
+  isLegacyUcanResource(value) {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return true;
+    const normalized = trimmed.toLowerCase();
+    if (LEGACY_UCAN_RESOURCES.has(normalized)) return true;
+    const legacyResource = `app:${LEGACY_DEFAULT_APP_ID}`;
+    if (normalized === legacyResource) {
+      return normalized !== this.getDefaultUcanResource().toLowerCase();
+    }
+    return false;
   }
 
   async tryBackupSyncAfterUcanAuth(settings) {
@@ -1384,7 +1440,7 @@ function buildSiweMessage(endpoint, address, statement) {
     `Issued At: ${issuedAt}`,
     '',
     statementLine
-  ].join('\\n');
+  ].join('\n');
 }
 
 async function createUcanInvocationKey() {
