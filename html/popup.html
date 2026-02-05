@@ -852,13 +852,13 @@
             </p>
           </div>
 
-          <!-- Backup & Sync -->
+          <!-- 备份与同步 -->
           <div class="settings-section" id="backupSyncSection">
-            <h3>☁️ Backup & Sync</h3>
+            <h3>☁️ 备份与同步</h3>
             <div class="settings-row">
               <label class="settings-toggle">
                 <input type="checkbox" id="backupSyncEnabledToggle" />
-                <span>启用 Backup & Sync</span>
+                <span>启用备份与同步</span>
               </label>
             </div>
             <div class="form-group">
@@ -866,7 +866,7 @@
               <input
                 type="url"
                 id="backupSyncEndpointInput"
-                placeholder="https://webdav.yeying.pub/api"
+                placeholder="https://webdav.yeying.pub"
               />
             </div>
             <div class="form-group">
@@ -959,17 +959,61 @@
             <div id="backupSyncConflictsList" class="sync-conflicts-list">
               <div class="empty-message">暂无冲突</div>
             </div>
+          </div>
 
-            <div class="settings-divider"></div>
-            <div class="sync-activity-header">
-              <h4 class="sync-conflict-title">同步日志</h4>
-              <button id="backupSyncClearLogsBtn" class="btn btn-secondary btn-small">清空日志</button>
+          <!-- 日志审计 -->
+          <div class="settings-section" id="backupSyncAuditSection">
+            <h3>🔎 日志审计</h3>
+            <div class="settings-row">
+              <button id="backupSyncAuditBtn" class="btn btn-secondary">进入日志审计</button>
             </div>
-            <div id="backupSyncActivityList" class="sync-activity-list">
-              <div class="empty-message">暂无日志</div>
-            </div>
+            <p class="settings-hint">查看同步日志，支持搜索与翻页</p>
           </div>
         </div>
+      </div>
+
+      <!-- 同步日志审计页面 -->
+      <div id="backupSyncLogsPage" class="page hidden">
+        <div class="page-header">
+          <button class="back-btn">←</button>
+          <h2>日志审计</h2>
+          <div class="page-actions">
+            <button id="backupSyncClearLogsBtn" class="btn btn-secondary btn-small">
+              清空日志
+            </button>
+          </div>
+        </div>
+        <div class="sync-log-toolbar">
+          <input
+            type="text"
+            id="backupSyncLogsSearchInput"
+            class="input"
+            placeholder="搜索日志（关键字/动作/原因）"
+          />
+        </div>
+        <div class="sync-log-summary">
+          <div class="sync-log-metric">
+            <div class="sync-log-label">最近拉取</div>
+            <div class="sync-log-value" id="backupSyncLogsLastPull">-</div>
+          </div>
+          <div class="sync-log-metric">
+            <div class="sync-log-label">最近推送</div>
+            <div class="sync-log-value" id="backupSyncLogsLastPush">-</div>
+          </div>
+          <div class="sync-log-metric">
+            <div class="sync-log-label">日志总数</div>
+            <div class="sync-log-value" id="backupSyncLogsTotal">0</div>
+          </div>
+          <div class="sync-log-metric">
+            <div class="sync-log-label">匹配结果</div>
+            <div class="sync-log-value" id="backupSyncLogsMatch">0</div>
+          </div>
+        </div>
+        <h3 class="sync-log-title">同步日志</h3>
+        <div id="backupSyncLogsList" class="sync-activity-list sync-log-list">
+          <div class="empty-message">暂无日志</div>
+        </div>
+        <div id="backupSyncLogsFooter" class="sync-log-footer hidden"></div>
       </div>
 
       <!-- 网站管理页面 -->

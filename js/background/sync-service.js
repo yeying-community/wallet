@@ -27,7 +27,7 @@ import { getCachedPassword } from './password-cache.js';
 const SYNC_PAYLOAD_VERSION = 1;
 const SYNC_FILENAME = 'payload.json.enc';
 const SYNC_DEBOUNCE_MS = 1500;
-const DEFAULT_SYNC_ENDPOINT = 'https://webdav.yeying.pub/api';
+const DEFAULT_SYNC_ENDPOINT = 'https://webdav.yeying.pub';
 const LEGACY_DEFAULT_APP_ID = 'yeying-wallet';
 const DEFAULT_UCAN_ACTION = 'write';
 const APP_SCOPE_PREFIX = 'apps';

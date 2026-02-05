@@ -278,6 +278,7 @@ export class PopupController {
       settingsPage: 'walletPage',
       contactsPage: 'walletPage',
       sitesPage: 'walletPage',
+      backupSyncLogsPage: 'settingsPage',
     };
 
     const targetPage = backMap[currentPage];

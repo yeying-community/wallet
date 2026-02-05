@@ -1085,7 +1085,7 @@ export async function handleDeleteContact(contactId) {
 
 // ==================== Backup & Sync ====================
 
-const DEFAULT_BACKUP_SYNC_ENDPOINT = 'https://webdav.yeying.pub/api';
+const DEFAULT_BACKUP_SYNC_ENDPOINT = 'https://webdav.yeying.pub';
 const BACKUP_SYNC_MODES = new Set(['siwe', 'ucan', 'basic']);
 
 function normalizeBackupSyncEndpoint(value) {

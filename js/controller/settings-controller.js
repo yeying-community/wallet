@@ -23,6 +23,11 @@ export class SettingsController {
     this.activeSiteDetail = null;
     this.resetConfirmKeyword = 'RESET';
     this.syncSettings = null;
+    this.syncLogs = [];
+    this.syncLogQuery = '';
+    this.syncLogFiltered = [];
+    this.syncLogPageSize = 30;
+    this.syncLogVisibleCount = 0;
   }
 
   bindEvents() {
@@ -94,6 +99,27 @@ export class SettingsController {
     if (backupSyncClearLogsBtn) {
       backupSyncClearLogsBtn.addEventListener('click', async () => {
         await this.handleBackupSyncClearLogs();
+      });
+    }
+
+    const backupSyncAuditBtn = document.getElementById('backupSyncAuditBtn');
+    if (backupSyncAuditBtn) {
+      backupSyncAuditBtn.addEventListener('click', async () => {
+        await this.openBackupSyncLogsPage();
+      });
+    }
+
+    const backupSyncLogsSearchInput = document.getElementById('backupSyncLogsSearchInput');
+    if (backupSyncLogsSearchInput) {
+      backupSyncLogsSearchInput.addEventListener('input', () => {
+        this.applyBackupSyncLogsFilter(backupSyncLogsSearchInput.value);
+      });
+    }
+
+    const backupSyncLogsList = document.getElementById('backupSyncLogsList');
+    if (backupSyncLogsList) {
+      backupSyncLogsList.addEventListener('scroll', () => {
+        this.handleBackupSyncLogsScroll();
       });
     }
 
@@ -303,7 +329,7 @@ export class SettingsController {
     const lastStatus = document.getElementById('backupSyncLastStatus');
 
     if (enabledToggle) enabledToggle.checked = Boolean(settings.enabled);
-    if (endpointInput) endpointInput.value = settings.endpoint || 'https://webdav.yeying.pub/api';
+    if (endpointInput) endpointInput.value = settings.endpoint || 'https://webdav.yeying.pub';
     if (authModeSelect) authModeSelect.value = settings.authMode || 'ucan';
     if (ucanResourceInput) {
       const normalizedResource = this.normalizeUcanResource(settings.ucanResource || '');
@@ -331,7 +357,7 @@ export class SettingsController {
 
     this.renderBackupSyncAccountAddress();
     this.renderBackupSyncConflicts(settings.conflicts || []);
-    this.renderBackupSyncActivity(settings.logs || []);
+    this.updateBackupSyncLogs(settings.logs || []);
     this.toggleBackupSyncDebug();
   }
 
@@ -418,17 +444,96 @@ export class SettingsController {
     }).join('');
   }
 
-  renderBackupSyncActivity(logs = []) {
-    const container = document.getElementById('backupSyncActivityList');
-    if (!container) return;
-    const list = Array.isArray(logs) ? logs : [];
+  async openBackupSyncLogsPage() {
+    showPage('backupSyncLogsPage');
+    await this.loadBackupSyncLogs();
+  }
 
-    if (list.length === 0) {
-      container.innerHTML = '<div class="empty-message">暂无日志</div>';
+  async loadBackupSyncLogs() {
+    try {
+      const settings = await this.wallet.getBackupSyncSettings();
+      this.syncSettings = settings || this.syncSettings || {};
+      this.updateBackupSyncLogs(settings?.logs || []);
+    } catch (error) {
+      console.error('[SettingsController] 加载同步日志失败:', error);
+      this.updateBackupSyncLogs([]);
+    }
+  }
+
+  updateBackupSyncLogs(logs = []) {
+    this.syncLogs = Array.isArray(logs) ? logs : [];
+    this.updateBackupSyncLogsSummary();
+    this.applyBackupSyncLogsFilter();
+  }
+
+  applyBackupSyncLogsFilter(keyword) {
+    const inputValue = arguments.length > 0
+      ? keyword
+      : (document.getElementById('backupSyncLogsSearchInput')?.value || '');
+    const normalized = String(inputValue || '').trim().toLowerCase();
+    this.syncLogQuery = normalized;
+    const source = Array.isArray(this.syncLogs) ? this.syncLogs : [];
+    this.syncLogFiltered = normalized
+      ? source.filter(entry => this.matchBackupSyncLog(entry, normalized))
+      : [...source];
+    this.syncLogVisibleCount = Math.min(this.syncLogPageSize, this.syncLogFiltered.length);
+    this.updateBackupSyncLogsSummary();
+    this.renderBackupSyncLogsList(false);
+
+    const container = document.getElementById('backupSyncLogsList');
+    if (container) {
+      container.scrollTop = 0;
+    }
+  }
+
+  matchBackupSyncLog(entry, keyword) {
+    if (!keyword) return true;
+    const timeText = entry?.time ? formatLocaleDateTime(entry.time) : '';
+    const fields = [
+      entry?.message,
+      entry?.action,
+      entry?.reason,
+      entry?.level,
+      entry?.id,
+      timeText
+    ].filter(Boolean);
+    const haystack = fields.join(' ').toLowerCase();
+    return haystack.includes(keyword);
+  }
+
+  handleBackupSyncLogsScroll() {
+    const container = document.getElementById('backupSyncLogsList');
+    if (!container) return;
+    if (this.syncLogVisibleCount >= this.syncLogFiltered.length) return;
+    const threshold = 24;
+    if (container.scrollTop + container.clientHeight >= container.scrollHeight - threshold) {
+      this.syncLogVisibleCount = Math.min(
+        this.syncLogFiltered.length,
+        this.syncLogVisibleCount + this.syncLogPageSize
+      );
+      this.renderBackupSyncLogsList(true);
+    }
+  }
+
+  renderBackupSyncLogsList(preserveScroll = false) {
+    const container = document.getElementById('backupSyncLogsList');
+    if (!container) return;
+    const list = Array.isArray(this.syncLogFiltered) ? this.syncLogFiltered : [];
+    const total = list.length;
+    const baseCount = this.syncLogVisibleCount || this.syncLogPageSize;
+    const visibleCount = Math.min(baseCount, total);
+    this.syncLogVisibleCount = visibleCount;
+    const entries = list.slice(0, visibleCount);
+    const scrollTop = preserveScroll ? container.scrollTop : 0;
+
+    if (entries.length === 0) {
+      const emptyText = this.syncLogQuery ? '没有匹配的日志' : '暂无日志';
+      container.innerHTML = `<div class="empty-message">${emptyText}</div>`;
+      this.updateBackupSyncLogsFooter(total, visibleCount);
       return;
     }
 
-    container.innerHTML = list.map(entry => {
+    container.innerHTML = entries.map(entry => {
       const timeText = entry?.time ? formatLocaleDateTime(entry.time) : '-';
       const message = escapeHtml(entry?.message || '-');
       const level = String(entry?.level || 'info').toLowerCase();
@@ -438,6 +543,7 @@ export class SettingsController {
       const durationText = Number.isFinite(entry?.durationMs)
         ? `${Math.max(0, Math.round(entry.durationMs / 1000))}s`
         : '';
+      const actionLabel = entry?.action ? `动作 ${entry.action}` : '';
 
       return `
         <div class="sync-activity-item">
@@ -446,6 +552,7 @@ export class SettingsController {
             <div class="sync-activity-message">${message}</div>
             <div class="sync-activity-meta">
               <span class="sync-activity-tag level-${levelClass}">${escapeHtml(levelLabel)}</span>
+              ${actionLabel ? `<span class="sync-activity-tag">${escapeHtml(actionLabel)}</span>` : ''}
               ${reasonLabel ? `<span class="sync-activity-tag">${escapeHtml(reasonLabel)}</span>` : ''}
               ${durationText ? `<span class="sync-activity-tag">耗时 ${escapeHtml(durationText)}</span>` : ''}
             </div>
@@ -453,6 +560,57 @@ export class SettingsController {
         </div>
       `;
     }).join('');
+
+    if (preserveScroll) {
+      container.scrollTop = scrollTop;
+    }
+
+    this.updateBackupSyncLogsFooter(total, visibleCount);
+  }
+
+  updateBackupSyncLogsFooter(total, visibleCount) {
+    const footer = document.getElementById('backupSyncLogsFooter');
+    if (!footer) return;
+    if (!total) {
+      footer.classList.add('hidden');
+      footer.textContent = '';
+      return;
+    }
+    footer.classList.remove('hidden');
+    if (visibleCount < total) {
+      footer.textContent = `已加载 ${visibleCount} / ${total}，向下滚动加载更多`;
+    } else {
+      footer.textContent = `已加载全部 ${total} 条日志`;
+    }
+  }
+
+  updateBackupSyncLogsSummary() {
+    const lastPullEl = document.getElementById('backupSyncLogsLastPull');
+    const lastPushEl = document.getElementById('backupSyncLogsLastPush');
+    const totalEl = document.getElementById('backupSyncLogsTotal');
+    const matchEl = document.getElementById('backupSyncLogsMatch');
+
+    if (lastPullEl) {
+      const pullText = this.syncSettings?.lastPullAt
+        ? formatLocaleDateTime(this.syncSettings.lastPullAt)
+        : '-';
+      lastPullEl.textContent = pullText;
+    }
+
+    if (lastPushEl) {
+      const pushText = this.syncSettings?.lastPushAt
+        ? formatLocaleDateTime(this.syncSettings.lastPushAt)
+        : '-';
+      lastPushEl.textContent = pushText;
+    }
+
+    if (totalEl) {
+      totalEl.textContent = String(Array.isArray(this.syncLogs) ? this.syncLogs.length : 0);
+    }
+
+    if (matchEl) {
+      matchEl.textContent = String(Array.isArray(this.syncLogFiltered) ? this.syncLogFiltered.length : 0);
+    }
   }
 
   formatBackupSyncReason(reason = '') {
@@ -583,7 +741,7 @@ export class SettingsController {
         this.syncSettings = result.settings;
         this.renderBackupSyncSettings(result.settings);
       }
-      showSuccess(enabled ? '已启用 Backup & Sync' : '已关闭 Backup & Sync');
+      showSuccess(enabled ? '已启用备份与同步' : '已关闭备份与同步');
     } catch (error) {
       console.error('[SettingsController] 更新 Backup & Sync 开关失败:', error);
       showError('更新失败: ' + error.message);
