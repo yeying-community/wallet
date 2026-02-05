@@ -1111,7 +1111,9 @@ export async function handleGetBackupSyncSettings() {
       pendingDelete: await getUserSetting('backupSyncPendingDelete', false),
       networkIds: await getUserSetting('backupSyncNetworkIds', []),
       conflicts: await getUserSetting('backupSyncConflicts', []),
-      logs: await getUserSetting('backupSyncLogs', [])
+      logs: await getUserSetting('backupSyncLogs', []),
+      logMaxCount: await getUserSetting('backupSyncLogMaxCount', null),
+      logRetentionDays: await getUserSetting('backupSyncLogRetentionDays', null)
     };
 
     return { success: true, settings };
@@ -1122,6 +1124,11 @@ export async function handleGetBackupSyncSettings() {
 
 export async function handleUpdateBackupSyncSettings(updates = {}) {
   try {
+    const prevEndpoint = await getUserSetting('backupSyncEndpoint', DEFAULT_BACKUP_SYNC_ENDPOINT);
+    const prevAuthMode = await getUserSetting('backupSyncAuthMode', 'ucan');
+    const prevAuthToken = await getUserSetting('backupSyncAuthToken', '');
+    const prevUcanToken = await getUserSetting('backupSyncUcanToken', '');
+
     const sanitized = {};
 
     if ('enabled' in updates) {
@@ -1167,6 +1174,22 @@ export async function handleUpdateBackupSyncSettings(updates = {}) {
       sanitized.backupSyncBasicAuth = String(updates.basicAuth || '');
     }
 
+    if ('logMaxCount' in updates) {
+      const raw = Number(updates.logMaxCount);
+      if (Number.isFinite(raw)) {
+        const rounded = Math.floor(raw);
+        sanitized.backupSyncLogMaxCount = Math.min(100000, Math.max(50, rounded));
+      }
+    }
+
+    if ('logRetentionDays' in updates) {
+      const raw = Number(updates.logRetentionDays);
+      if (Number.isFinite(raw)) {
+        const rounded = Math.floor(raw);
+        sanitized.backupSyncLogRetentionDays = Math.min(365, Math.max(1, rounded));
+      }
+    }
+
     if ('conflicts' in updates) {
       if (isDeveloperFeatureEnabled('ENABLE_DEBUG_MODE')) {
         sanitized.backupSyncConflicts = Array.isArray(updates.conflicts) ? updates.conflicts : [];
@@ -1188,6 +1211,43 @@ export async function handleUpdateBackupSyncSettings(updates = {}) {
       'backupSyncBasicAuth' in sanitized
     ) {
       await backupSyncService.tryStartAutoSync();
+    }
+
+    if ('backupSyncEndpoint' in sanitized && sanitized.backupSyncEndpoint !== prevEndpoint) {
+      await backupSyncService.logEvent({
+        level: 'info',
+        action: 'endpoint-update',
+        message: `WebDAV 地址已更新为 ${sanitized.backupSyncEndpoint}`
+      }).catch(() => {});
+    }
+
+    const nextAuthMode = sanitized.backupSyncAuthMode || prevAuthMode;
+    if ('backupSyncAuthToken' in sanitized && nextAuthMode === 'siwe') {
+      const hasPrev = Boolean(prevAuthToken);
+      const hasNext = Boolean(sanitized.backupSyncAuthToken);
+      if (hasNext) {
+        await backupSyncService.logEvent({
+          level: 'info',
+          action: hasPrev ? 'siwe-refresh' : 'siwe-login',
+          message: hasPrev ? 'SIWE Token 已刷新' : 'SIWE 登录成功'
+        }).catch(() => {});
+      }
+    }
+
+    if ('backupSyncUcanToken' in sanitized && nextAuthMode === 'ucan') {
+      const hasPrev = Boolean(prevUcanToken);
+      const hasNext = Boolean(sanitized.backupSyncUcanToken);
+      if (hasNext) {
+        await backupSyncService.logEvent({
+          level: 'info',
+          action: hasPrev ? 'ucan-refresh' : 'ucan-login',
+          message: hasPrev ? 'UCAN 已刷新' : 'UCAN 已生成'
+        }).catch(() => {});
+      }
+    }
+
+    if ('backupSyncLogMaxCount' in sanitized || 'backupSyncLogRetentionDays' in sanitized) {
+      await backupSyncService.compactActivityLogs().catch(() => {});
     }
 
     return await handleGetBackupSyncSettings();
@@ -1220,6 +1280,28 @@ export async function handleBackupSyncClearLogs() {
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to clear sync logs' };
+  }
+}
+
+export async function handleBackupSyncLogEvent(options = {}) {
+  try {
+    const level = String(options?.level || 'info').toLowerCase();
+    const action = String(options?.action || '').trim();
+    const reason = String(options?.reason || '').trim();
+    const message = String(options?.message || '').trim();
+    if (!action && !message) {
+      return { success: false, error: 'action or message is required' };
+    }
+    const normalizedLevel = ['info', 'warn', 'error'].includes(level) ? level : 'info';
+    await backupSyncService.logEvent({
+      level: normalizedLevel,
+      action,
+      reason,
+      message
+    });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to log sync event' };
   }
 }
 
@@ -1274,10 +1356,31 @@ export async function handleResolveBackupSyncConflict(options = {}) {
     await updateUserSetting('backupSyncConflicts', nextConflicts);
     backupSyncService.markDirty('conflict-resolved');
 
+    const choiceLabel = action === 'remote' ? '远端' : '本地';
+    const targetLabel = buildConflictLabel(target);
+    await backupSyncService.logEvent({
+      level: 'info',
+      action: 'conflict-resolve',
+      message: `已处理冲突：${targetLabel} 使用${choiceLabel}`
+    }).catch(() => {});
+
     return { success: true, conflicts: nextConflicts };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to resolve conflict' };
   }
+}
+
+function buildConflictLabel(conflict) {
+  if (!conflict || typeof conflict !== 'object') return '冲突';
+  if (conflict.type === 'contact') {
+    const address = conflict.address ? String(conflict.address) : '';
+    const name = conflict.localName || conflict.remoteName || '';
+    if (name) return `联系人 ${name}`;
+    if (address) return `联系人 ${address}`;
+    return '联系人';
+  }
+  const index = Number.isFinite(conflict.index) ? conflict.index : null;
+  return index !== null ? `账户 #${index}` : '账户';
 }
 
 function formatEtherForDisplay(balanceHex, decimals = 4) {

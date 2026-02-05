@@ -516,6 +516,15 @@ export class WalletDomain extends BaseDomain {
   }
 
   /**
+   * 写入同步日志事件
+   * @param {Object} payload
+   * @returns {Promise<Object>}
+   */
+  async logBackupSyncEvent(payload) {
+    return await this._sendMessage(WalletMessageType.BACKUP_SYNC_LOG_EVENT, payload);
+  }
+
+  /**
    * 解决同步冲突
    * @param {Object} options - { id, action }
    * @returns {Promise<Object>}

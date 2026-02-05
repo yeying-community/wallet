@@ -6,6 +6,12 @@ import { isDeveloperFeatureEnabled } from '../config/index.js';
 
 const LEGACY_DEFAULT_APP_ID = 'yeying-wallet';
 const DEFAULT_UCAN_ACTION = 'write';
+const DEFAULT_LOG_MAX_COUNT = 100000;
+const DEFAULT_LOG_RETENTION_DAYS = 30;
+const LOG_MAX_COUNT_MIN = 50;
+const LOG_MAX_COUNT_MAX = 100000;
+const LOG_RETENTION_MIN_DAYS = 1;
+const LOG_RETENTION_MAX_DAYS = 365;
 const LEGACY_UCAN_RESOURCES = new Set([
   'profile',
   'webdav/*',
@@ -99,6 +105,13 @@ export class SettingsController {
     if (backupSyncClearLogsBtn) {
       backupSyncClearLogsBtn.addEventListener('click', async () => {
         await this.handleBackupSyncClearLogs();
+      });
+    }
+
+    const backupSyncLogRetentionSaveBtn = document.getElementById('backupSyncLogRetentionSaveBtn');
+    if (backupSyncLogRetentionSaveBtn) {
+      backupSyncLogRetentionSaveBtn.addEventListener('click', async () => {
+        await this.handleBackupSyncLogRetentionSave();
       });
     }
 
@@ -357,6 +370,7 @@ export class SettingsController {
 
     this.renderBackupSyncAccountAddress();
     this.renderBackupSyncConflicts(settings.conflicts || []);
+    this.renderBackupSyncLogRetention(settings);
     this.updateBackupSyncLogs(settings.logs || []);
     this.toggleBackupSyncDebug();
   }
@@ -453,10 +467,25 @@ export class SettingsController {
     try {
       const settings = await this.wallet.getBackupSyncSettings();
       this.syncSettings = settings || this.syncSettings || {};
+      this.renderBackupSyncLogRetention(settings);
       this.updateBackupSyncLogs(settings?.logs || []);
     } catch (error) {
       console.error('[SettingsController] 加载同步日志失败:', error);
       this.updateBackupSyncLogs([]);
+    }
+  }
+
+  renderBackupSyncLogRetention(settings = {}) {
+    const maxInput = document.getElementById('backupSyncLogMaxInput');
+    const daysInput = document.getElementById('backupSyncLogRetentionInput');
+    const maxCount = this.normalizeLogMaxCount(settings.logMaxCount ?? DEFAULT_LOG_MAX_COUNT);
+    const days = this.normalizeLogRetentionDays(settings.logRetentionDays ?? DEFAULT_LOG_RETENTION_DAYS);
+
+    if (maxInput) {
+      maxInput.value = String(maxCount);
+    }
+    if (daysInput) {
+      daysInput.value = String(days);
     }
   }
 
@@ -650,6 +679,7 @@ export class SettingsController {
       showSuccess('已处理冲突');
     } catch (error) {
       console.error('[SettingsController] 处理同步冲突失败:', error);
+      await this.logBackupSyncError('conflict-resolve-error', error?.message || '处理冲突失败');
       showError('处理失败: ' + error.message);
     }
   }
@@ -774,6 +804,7 @@ export class SettingsController {
       }
     } catch (error) {
       console.error('[SettingsController] 更新 WebDAV 地址失败:', error);
+      await this.logBackupSyncError('endpoint-update-error', error?.message || 'WebDAV 地址保存失败');
       showError('保存失败: ' + error.message);
     }
   }
@@ -820,6 +851,7 @@ export class SettingsController {
       const challenge = await this.fetchSiweChallenge(endpoint, account.address);
       if (!challenge) {
         showError('无法获取挑战信息');
+        await this.logBackupSyncError('siwe-login-error', '无法获取挑战信息');
         return;
       }
       hideWaiting();
@@ -837,6 +869,7 @@ export class SettingsController {
 
       if (!token) {
         showError('登录失败：未返回 Token');
+        await this.logBackupSyncError('siwe-login-error', '未返回 Token');
         return;
       }
 
@@ -854,6 +887,7 @@ export class SettingsController {
       showSuccess('SIWE 登录成功');
     } catch (error) {
       console.error('[SettingsController] SIWE 登录失败:', error);
+      await this.logBackupSyncError('siwe-login-error', error?.message || 'SIWE 登录失败');
       showError('登录失败: ' + error.message);
     }
   }
@@ -879,6 +913,7 @@ export class SettingsController {
 
       if (!token) {
         showError('刷新失败：未返回 Token');
+        await this.logBackupSyncError('siwe-refresh-error', '未返回 Token');
         return;
       }
 
@@ -896,6 +931,7 @@ export class SettingsController {
       showSuccess('Token 已刷新');
     } catch (error) {
       console.error('[SettingsController] 刷新 Token 失败:', error);
+      await this.logBackupSyncError('siwe-refresh-error', error?.message || 'SIWE 刷新失败');
       showError('刷新失败: ' + error.message);
     }
   }
@@ -1003,6 +1039,7 @@ export class SettingsController {
       showSuccess('UCAN 已生成');
     } catch (error) {
       console.error('[SettingsController] 生成 UCAN 失败:', error);
+      await this.logBackupSyncError('ucan-generate-error', error?.message || 'UCAN 生成失败');
       showError('生成失败: ' + error.message);
     }
   }
@@ -1085,6 +1122,54 @@ export class SettingsController {
     }
   }
 
+  async handleBackupSyncLogRetentionSave() {
+    const maxInput = document.getElementById('backupSyncLogMaxInput');
+    const daysInput = document.getElementById('backupSyncLogRetentionInput');
+    const rawMax = Number(maxInput?.value || '');
+    const rawDays = Number(daysInput?.value || '');
+
+    const maxCount = this.normalizeLogMaxCount(rawMax);
+    const days = this.normalizeLogRetentionDays(rawDays);
+
+    if (!Number.isFinite(maxCount) || maxCount <= 0) {
+      showError('最大保留条数无效');
+      return;
+    }
+    if (!Number.isFinite(days) || days < LOG_RETENTION_MIN_DAYS) {
+      showError('保留天数无效');
+      return;
+    }
+
+    try {
+      const result = await this.wallet.updateBackupSyncSettings({
+        logMaxCount: maxCount,
+        logRetentionDays: days
+      });
+      if (result?.settings) {
+        this.syncSettings = result.settings;
+        this.renderBackupSyncLogRetention(result.settings);
+        this.updateBackupSyncLogs(result.settings.logs || []);
+      }
+      showSuccess('留存策略已保存');
+    } catch (error) {
+      console.error('[SettingsController] 保存日志留存策略失败:', error);
+      showError('保存失败: ' + error.message);
+    }
+  }
+
+  async logBackupSyncError(action, message) {
+    try {
+      if (!this.wallet?.logBackupSyncEvent) return;
+      await this.wallet.logBackupSyncEvent({
+        level: 'error',
+        action,
+        message
+      });
+    } catch (error) {
+      console.warn('[SettingsController] 写入同步错误日志失败:', error?.message || error);
+    }
+  }
+
   normalizeBasicAuth(value) {
     if (!value) return '';
     if (value.startsWith('Basic ')) return value;
@@ -1109,6 +1194,24 @@ export class SettingsController {
       return this.getDefaultUcanResource();
     }
     return trimmed;
+  }
+
+  normalizeLogMaxCount(value) {
+    const numberValue = Number(value);
+    if (!Number.isFinite(numberValue)) return DEFAULT_LOG_MAX_COUNT;
+    const rounded = Math.floor(numberValue);
+    if (rounded < LOG_MAX_COUNT_MIN) return LOG_MAX_COUNT_MIN;
+    if (rounded > LOG_MAX_COUNT_MAX) return LOG_MAX_COUNT_MAX;
+    return rounded;
+  }
+
+  normalizeLogRetentionDays(value) {
+    const numberValue = Number(value);
+    if (!Number.isFinite(numberValue)) return DEFAULT_LOG_RETENTION_DAYS;
+    const rounded = Math.floor(numberValue);
+    if (rounded < LOG_RETENTION_MIN_DAYS) return LOG_RETENTION_MIN_DAYS;
+    if (rounded > LOG_RETENTION_MAX_DAYS) return LOG_RETENTION_MAX_DAYS;
+    return rounded;
   }
 
   normalizeUcanAction(value, resource) {

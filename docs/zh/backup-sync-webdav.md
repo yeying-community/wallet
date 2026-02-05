@@ -160,6 +160,8 @@
 - `settings.backupSyncConflicts`（冲突记录，可选）
 - `settings.backupSyncRemoteMeta`（远端 `ETag` / `Last-Modified` 缓存）
 - `settings.backupSyncLogs`（同步日志）
+- `settings.backupSyncLogMaxCount`（日志最大保留条数，默认 100000）
+- `settings.backupSyncLogRetentionDays`（日志保留天数，默认 30）
 
 ## 12. UI 建议
 
@@ -168,6 +170,7 @@
 - “立即同步”按钮
 - 冲突提示入口（若存在）
 - 设置 → 日志审计（独立页面，支持搜索/翻页，展示最近拉取/推送与日志统计，可清空）
+- 日志审计支持配置日志最大条数与保留天数（按天滚动）
 
 ## 13. 调试说明（本地）
 - 若需快速验证冲突 UI，可在 `js/config/feature-flags.js` 中启用：

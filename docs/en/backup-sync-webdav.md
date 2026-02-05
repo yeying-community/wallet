@@ -95,6 +95,8 @@
 - `backupSyncConflicts`
 - `backupSyncRemoteMeta` (cached `ETag` / `Last-Modified`)
 - `backupSyncLogs` (sync activity log)
+- `backupSyncLogMaxCount` (max log entries, default 100000)
+- `backupSyncLogRetentionDays` (log retention days, default 30)
 
 ## 10. Auto sync flow (Mermaid)
 ```mermaid
