@@ -368,6 +368,21 @@
   margin-bottom: 12px;
 }
 
+.sync-log-config {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.sync-log-config .form-group {
+  margin-bottom: 0;
+}
+
+.sync-log-config-actions {
+  margin-bottom: 12px;
+}
+
 .sync-log-summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -41,7 +41,13 @@ const LEGACY_UCAN_RESOURCES = new Set([
 const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 const AUTO_SYNC_JITTER_MS = 30 * 1000;
 const AUTO_SYNC_MAX_BACKOFF_MS = 15 * 60 * 1000;
-const MAX_ACTIVITY_LOGS = 200;
+const DEFAULT_LOG_MAX_COUNT = 100000;
+const DEFAULT_LOG_RETENTION_DAYS = 30;
+const LOG_MAX_COUNT_MIN = 50;
+const LOG_MAX_COUNT_MAX = 100000;
+const LOG_RETENTION_MIN_DAYS = 1;
+const LOG_RETENTION_MAX_DAYS = 365;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const SETTINGS_KEYS = {
   enabled: 'backupSyncEnabled',
@@ -61,7 +67,9 @@ const SETTINGS_KEYS = {
   networkIds: 'backupSyncNetworkIds',
   conflicts: 'backupSyncConflicts',
   remoteMeta: 'backupSyncRemoteMeta',
-  logs: 'backupSyncLogs'
+  logs: 'backupSyncLogs',
+  logMaxCount: 'backupSyncLogMaxCount',
+  logRetentionDays: 'backupSyncLogRetentionDays'
 };
 
 class BackupSyncService {
@@ -90,6 +98,7 @@ class BackupSyncService {
       this._activityLogs = [];
     }
     await this._ensureDefaults();
+    await this._compactActivityLogs();
     this._attachStorageListener();
   }
 
@@ -117,6 +126,19 @@ class BackupSyncService {
     this._dirty = true;
     updateUserSetting(SETTINGS_KEYS.dirty, true).catch(() => {});
     this._schedulePush(reason);
+  }
+
+  async logEvent({ level = 'info', action = '', reason = '', message = '' } = {}) {
+    await this._appendActivityLog(this._buildLogEntry({
+      level,
+      action,
+      reason,
+      message
+    }));
+  }
+
+  async compactActivityLogs() {
+    await this._compactActivityLogs();
   }
 
   async syncAll(reason = 'manual') {
@@ -826,6 +848,16 @@ class BackupSyncService {
     if (enabled === null) {
       await updateUserSetting(SETTINGS_KEYS.enabled, true).catch(() => {});
     }
+
+    const maxCount = await getUserSetting(SETTINGS_KEYS.logMaxCount, null);
+    if (maxCount === null) {
+      await updateUserSetting(SETTINGS_KEYS.logMaxCount, DEFAULT_LOG_MAX_COUNT).catch(() => {});
+    }
+
+    const retentionDays = await getUserSetting(SETTINGS_KEYS.logRetentionDays, null);
+    if (retentionDays === null) {
+      await updateUserSetting(SETTINGS_KEYS.logRetentionDays, DEFAULT_LOG_RETENTION_DAYS).catch(() => {});
+    }
   }
 
   async _resolveBaseEndpoint() {
@@ -1050,13 +1082,42 @@ class BackupSyncService {
     try {
       const logs = Array.isArray(this._activityLogs) ? [...this._activityLogs] : [];
       logs.unshift(entry);
-      if (logs.length > MAX_ACTIVITY_LOGS) {
-        logs.length = MAX_ACTIVITY_LOGS;
-      }
-      this._activityLogs = logs;
-      await updateUserSetting(SETTINGS_KEYS.logs, logs);
+      const nextLogs = await this._applyLogRetention(logs);
+      this._activityLogs = nextLogs;
+      await updateUserSetting(SETTINGS_KEYS.logs, nextLogs);
     } catch (error) {
       console.warn('[BackupSync] append activity log failed:', error?.message || error);
+    }
+  }
+
+  async _applyLogRetention(logs) {
+    const { maxCount, retentionDays } = await this._getLogRetentionConfig();
+    let next = Array.isArray(logs) ? [...logs] : [];
+    if (retentionDays > 0) {
+      const cutoff = getTimestamp() - retentionDays * DAY_MS;
+      next = next.filter(entry => !entry?.time || entry.time >= cutoff);
+    }
+    if (next.length > maxCount) {
+      next.length = maxCount;
+    }
+    return next;
+  }
+
+  async _getLogRetentionConfig() {
+    const rawMax = await getUserSetting(SETTINGS_KEYS.logMaxCount, DEFAULT_LOG_MAX_COUNT);
+    const rawDays = await getUserSetting(SETTINGS_KEYS.logRetentionDays, DEFAULT_LOG_RETENTION_DAYS);
+    return {
+      maxCount: normalizeLogMaxCount(rawMax),
+      retentionDays: normalizeLogRetentionDays(rawDays)
+    };
+  }
+
+  async _compactActivityLogs() {
+    const logs = Array.isArray(this._activityLogs) ? [...this._activityLogs] : [];
+    const nextLogs = await this._applyLogRetention(logs);
+    if (nextLogs.length !== logs.length) {
+      this._activityLogs = nextLogs;
+      await updateUserSetting(SETTINGS_KEYS.logs, nextLogs).catch(() => {});
     }
   }
 
@@ -1134,6 +1195,24 @@ function normalizeUcanAction(value, { forceDefault = false } = {}) {
     return DEFAULT_UCAN_ACTION;
   }
   return trimmed;
+}
+
+function normalizeLogMaxCount(value) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return DEFAULT_LOG_MAX_COUNT;
+  const rounded = Math.floor(numberValue);
+  if (rounded < LOG_MAX_COUNT_MIN) return LOG_MAX_COUNT_MIN;
+  if (rounded > LOG_MAX_COUNT_MAX) return LOG_MAX_COUNT_MAX;
+  return rounded;
+}
+
+function normalizeLogRetentionDays(value) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return DEFAULT_LOG_RETENTION_DAYS;
+  const rounded = Math.floor(numberValue);
+  if (rounded < LOG_RETENTION_MIN_DAYS) return LOG_RETENTION_MIN_DAYS;
+  if (rounded > LOG_RETENTION_MAX_DAYS) return LOG_RETENTION_MAX_DAYS;
+  return rounded;
 }
 
 function extractAppIdFromResource(resource) {

@@ -41,6 +41,7 @@ import {
   handleBackupSyncNow,
   handleBackupSyncClearRemote,
   handleBackupSyncClearLogs,
+  handleBackupSyncLogEvent,
   handleResolveBackupSyncConflict,
   changePassword
 } from './wallet-operations.js';
@@ -741,6 +742,10 @@ export async function handlePopupMessage(message, response) {
 
       case WalletMessageType.BACKUP_SYNC_CLEAR_LOGS:
         response(await handleBackupSyncClearLogs());
+        break;
+
+      case WalletMessageType.BACKUP_SYNC_LOG_EVENT:
+        response(await handleBackupSyncLogEvent(data));
         break;
 
       case WalletMessageType.RESOLVE_BACKUP_SYNC_CONFLICT:
