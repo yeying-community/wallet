@@ -21,6 +21,7 @@ export class CreateWalletController {
         this.applyCreateWalletType(walletTypeSelect.value, origin);
       });
     }
+    this.bindWalletTypeDropdown();
 
     const cancelPasswordBtn = document.getElementById('cancelPasswordBtn');
     if (cancelPasswordBtn) {
@@ -153,6 +154,7 @@ export class CreateWalletController {
   }
 
   applyCreateWalletType(type, origin) {
+    const normalized = String(type || 'hd').toLowerCase() === 'mpc' ? 'mpc' : 'hd';
     const group = document.getElementById('createWalletTypeGroup');
     const mpcFields = document.getElementById('mpcCreateWalletFields');
     const resultEl = document.getElementById('mpcCreateWalletResult');
@@ -162,14 +164,74 @@ export class CreateWalletController {
       group.classList.toggle('hidden', !isAccounts);
     }
     if (mpcFields) {
-      mpcFields.classList.toggle('hidden', type !== 'mpc');
+      mpcFields.classList.toggle('hidden', normalized !== 'mpc');
     }
     if (resultEl) {
-      resultEl.classList.toggle('hidden', type !== 'mpc');
+      resultEl.classList.toggle('hidden', normalized !== 'mpc');
     }
     if (setPasswordBtn && isAccounts) {
-      setPasswordBtn.textContent = type === 'mpc' ? '创建 MPC 钱包' : '创建钱包';
+      setPasswordBtn.textContent = normalized === 'mpc' ? '创建 MPC 钱包' : '创建钱包';
     }
+    this.updateWalletTypeMenu(normalized);
+  }
+
+  bindWalletTypeDropdown() {
+    const trigger = document.getElementById('createWalletTypeTrigger');
+    const menu = document.getElementById('createWalletTypeMenu');
+    const select = document.getElementById('createWalletTypeSelect');
+    if (!trigger || !menu || !select) return;
+
+    const closeMenu = () => {
+      if (!menu.classList.contains('hidden')) {
+        menu.classList.add('hidden');
+        trigger.setAttribute('aria-expanded', 'false');
+      }
+    };
+
+    trigger.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const isHidden = menu.classList.contains('hidden');
+      if (isHidden) {
+        menu.classList.remove('hidden');
+        trigger.setAttribute('aria-expanded', 'true');
+      } else {
+        closeMenu();
+      }
+    });
+
+    menu.addEventListener('click', (event) => {
+      const option = event.target.closest('.network-option');
+      if (!option) return;
+      const nextType = option.dataset.walletType;
+      if (!nextType) return;
+      if (select.value !== nextType) {
+        select.value = nextType;
+        select.dispatchEvent(new Event('change'));
+      } else {
+        const origin = getPageOrigin('setPasswordPage', 'welcome');
+        this.applyCreateWalletType(nextType, origin);
+      }
+      closeMenu();
+    });
+
+    document.addEventListener('click', (event) => {
+      if (menu.classList.contains('hidden')) return;
+      if (trigger.contains(event.target) || menu.contains(event.target)) return;
+      closeMenu();
+    });
+  }
+
+  updateWalletTypeMenu(type) {
+    const label = document.getElementById('createWalletTypeLabel');
+    if (label) {
+      label.textContent = type === 'mpc' ? 'MPC Wallet' : 'HD Wallet';
+    }
+    const menu = document.getElementById('createWalletTypeMenu');
+    if (!menu) return;
+    menu.querySelectorAll('.network-option').forEach(option => {
+      const isActive = option.dataset.walletType === type;
+      option.classList.toggle('active', isActive);
+    });
   }
 
   parseParticipants(input) {
