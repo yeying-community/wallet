@@ -12,6 +12,7 @@ import { getSelectedNetworkName, getUserSetting, ensureDefaultNetworks, getNetwo
 import { normalizeChainId } from '../common/chain/index.js';
 import { normalizePopupBounds } from './window-utils.js';
 import { backupSyncService } from './sync-service.js';
+import { mpcService } from './mpc-service.js';
 
 /**
  * 初始化 Background Script
@@ -25,6 +26,7 @@ async function init() {
   try {
     await updateKeepAlive();
     await backupSyncService.init();
+    await mpcService.init();
     const seededNetworks = await ensureDefaultNetworks(NETWORKS);
 
     // 加载保存的网络选择

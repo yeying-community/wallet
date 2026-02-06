@@ -42,6 +42,8 @@ import {
   getContact,
   saveContact,
   deleteContact,
+  getMpcAuditLogs,
+  clearMpcAuditLogs,
   clearTransactionsByAddress,
   ensureDefaultNetworks,
   saveSelectedNetworkName,
@@ -59,6 +61,7 @@ import { notifyUnlocked } from './unlock-flow.js';
 import { updateKeepAlive } from './offscreen.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { backupSyncService } from './sync-service.js';
+import { mpcService } from './mpc-service.js';
 
 const CUSTOM_TOKENS_KEY = 'custom_tokens';
 const MIN_PASSWORD_LENGTH = 8;
@@ -777,6 +780,8 @@ export async function changePassword(oldPassword, newPassword) {
     updates.push(updated);
   }
 
+  await mpcService.reencryptDeviceKeys(oldPassword, newPassword);
+
   let updatedWallets = 0;
   let updatedAccounts = 0;
   for (const updated of updates) {
@@ -1087,6 +1092,15 @@ export async function handleDeleteContact(contactId) {
 
 const DEFAULT_BACKUP_SYNC_ENDPOINT = 'https://webdav.yeying.pub';
 const BACKUP_SYNC_MODES = new Set(['siwe', 'ucan', 'basic']);
+const DEFAULT_MPC_AUTH_SCHEME = 'ucan';
+const DEFAULT_MPC_E2E_SUITE = 'x25519-aes-gcm';
+const DEFAULT_MPC_REFRESH_POLICY = 'manual';
+const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://www.yeying.pub';
+const DEFAULT_MPC_UCAN_RESOURCE = 'mpc';
+const DEFAULT_MPC_UCAN_ACTION = 'coordinate';
+const MPC_AUTH_SCHEMES = new Set(['ucan']);
+const MPC_E2E_SUITES = new Set(['x25519-aes-gcm']);
+const MPC_REFRESH_POLICIES = new Set(['manual']);
 
 function normalizeBackupSyncEndpoint(value) {
   const trimmed = String(value || '').trim();
@@ -1302,6 +1316,240 @@ export async function handleBackupSyncLogEvent(options = {}) {
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to log sync event' };
+  }
+}
+
+// ==================== MPC Settings ====================
+
+export async function handleGetMpcSettings() {
+  try {
+    const settings = {
+      authScheme: await getUserSetting('mpcCoordinatorAuth', DEFAULT_MPC_AUTH_SCHEME),
+      e2eSuite: await getUserSetting('mpcE2eSuite', DEFAULT_MPC_E2E_SUITE),
+      refreshPolicy: await getUserSetting('mpcRefreshPolicy', DEFAULT_MPC_REFRESH_POLICY),
+      coordinatorEndpoint: await getUserSetting('mpcCoordinatorEndpoint', DEFAULT_MPC_COORDINATOR_ENDPOINT),
+      ucanResource: await getUserSetting('mpcCoordinatorUcanResource', DEFAULT_MPC_UCAN_RESOURCE),
+      ucanAction: await getUserSetting('mpcCoordinatorUcanAction', DEFAULT_MPC_UCAN_ACTION),
+      ucanAudience: await getUserSetting('mpcCoordinatorUcanAudience', ''),
+      ucanToken: await getUserSetting('mpcCoordinatorUcanToken', '')
+    };
+    return { success: true, settings };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to get mpc settings' };
+  }
+}
+
+export async function handleUpdateMpcSettings(updates = {}) {
+  try {
+    const sanitized = {};
+
+    if ('authScheme' in updates) {
+      const value = String(updates.authScheme || '').toLowerCase();
+      if (MPC_AUTH_SCHEMES.has(value)) {
+        sanitized.mpcCoordinatorAuth = value;
+      }
+    }
+
+    if ('e2eSuite' in updates) {
+      const value = String(updates.e2eSuite || '').toLowerCase();
+      if (MPC_E2E_SUITES.has(value)) {
+        sanitized.mpcE2eSuite = value;
+      }
+    }
+
+    if ('refreshPolicy' in updates) {
+      const value = String(updates.refreshPolicy || '').toLowerCase();
+      if (MPC_REFRESH_POLICIES.has(value)) {
+        sanitized.mpcRefreshPolicy = value;
+      }
+    }
+
+    if ('coordinatorEndpoint' in updates) {
+      sanitized.mpcCoordinatorEndpoint = String(updates.coordinatorEndpoint || '').trim();
+    }
+
+    if ('ucanResource' in updates) {
+      sanitized.mpcCoordinatorUcanResource = String(updates.ucanResource || '').trim();
+    }
+
+    if ('ucanAction' in updates) {
+      sanitized.mpcCoordinatorUcanAction = String(updates.ucanAction || '').trim();
+    }
+
+    if ('ucanAudience' in updates) {
+      sanitized.mpcCoordinatorUcanAudience = String(updates.ucanAudience || '').trim();
+    }
+
+    if ('ucanToken' in updates) {
+      sanitized.mpcCoordinatorUcanToken = String(updates.ucanToken || '').trim();
+    }
+
+    if (Object.keys(sanitized).length > 0) {
+      await updateUserSettings(sanitized);
+    }
+
+    if ('mpcCoordinatorEndpoint' in sanitized) {
+      await mpcService.setCoordinatorEndpoint(sanitized.mpcCoordinatorEndpoint);
+    }
+
+    return await handleGetMpcSettings();
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to update mpc settings' };
+  }
+}
+
+export async function handleMpcGetDeviceInfo() {
+  try {
+    const info = await mpcService.getDeviceInfo();
+    return { success: true, device: info };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to get device info' };
+  }
+}
+
+export async function handleMpcCreateSession(options = {}) {
+  try {
+    const result = await mpcService.createSession(options);
+    return { success: true, session: result.session, response: result.response };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to create session' };
+  }
+}
+
+export async function handleMpcJoinSession(options = {}) {
+  try {
+    const result = await mpcService.joinSession(options);
+    return { success: true, participant: result.participant, response: result.response };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to join session' };
+  }
+}
+
+export async function handleMpcSendSessionMessage(options = {}) {
+  try {
+    const result = await mpcService.sendSessionMessage(options);
+    return { success: true, message: result.message };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to send session message' };
+  }
+}
+
+export async function handleMpcDecryptMessage(options = {}) {
+  try {
+    const result = await mpcService.decryptMessage(options);
+    return { success: true, ...result };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to decrypt session message' };
+  }
+}
+
+export async function handleMpcFetchSessionMessages(options = {}) {
+  try {
+    const sessionId = options?.sessionId;
+    const result = await mpcService.fetchSessionMessages(sessionId, options);
+    return { success: true, ...result };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to fetch session messages' };
+  }
+}
+
+export async function handleMpcGetSession(sessionId) {
+  try {
+    const session = await mpcService.getSession(sessionId);
+    return { success: true, session };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to get session' };
+  }
+}
+
+export async function handleMpcGetSessions() {
+  try {
+    const sessions = await mpcService.getSessions();
+    return { success: true, sessions };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to get sessions' };
+  }
+}
+
+export async function handleMpcStartStream(options = {}) {
+  try {
+    const sessionId = options?.sessionId;
+    const cursor = options?.cursor;
+    const result = await mpcService.startEventStream(sessionId, { cursor });
+    return { success: true, ...result };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to start stream' };
+  }
+}
+
+export async function handleMpcStopStream(options = {}) {
+  try {
+    const sessionId = options?.sessionId;
+    const result = await mpcService.stopEventStream(sessionId);
+    return { success: true, ...result };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to stop stream' };
+  }
+}
+
+export async function handleMpcGetAuditLogs() {
+  try {
+    const logs = await getMpcAuditLogs();
+    return { success: true, logs };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to get audit logs' };
+  }
+}
+
+export async function handleMpcClearAuditLogs() {
+  try {
+    await clearMpcAuditLogs();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to clear audit logs' };
+  }
+}
+
+export async function handleMpcGetAuditExportConfig() {
+  try {
+    const config = await mpcService.getAuditExportConfig();
+    return { success: true, config };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to get audit export config' };
+  }
+}
+
+export async function handleMpcUpdateAuditExportConfig(updates = {}) {
+  try {
+    const config = await mpcService.updateAuditExportConfig(updates);
+    return { success: true, config };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to update audit export config' };
+  }
+}
+
+export async function handleMpcExportAuditLogs(options = {}) {
+  try {
+    const includeAll = Boolean(options?.includeAll);
+    let logs = [];
+    if (includeAll) {
+      logs = await getMpcAuditLogs();
+    }
+    const result = includeAll
+      ? await mpcService.exportAuditLogsNow(logs)
+      : await mpcService.flushAuditExportQueue();
+    return { success: true, ...result };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to export audit logs' };
+  }
+}
+
+export async function handleMpcFlushAuditExportQueue() {
+  try {
+    const result = await mpcService.flushAuditExportQueue();
+    return { success: true, ...result };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to flush audit export queue' };
   }
 }
 

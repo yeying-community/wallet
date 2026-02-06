@@ -14,6 +14,7 @@ import { TIMEOUTS } from '../config/index.js';
 import { notifyUnlocked } from './unlock-flow.js';
 import { updateKeepAlive } from './offscreen.js';
 import { backupSyncService } from './sync-service.js';
+import { mpcService } from './mpc-service.js';
 
 /**
  * 解锁钱包
@@ -69,6 +70,9 @@ export async function unlockWallet(password, accountId) {
     backupSyncService.onUnlocked(password).catch((error) => {
       console.warn('[BackupSync] unlock hook failed:', error?.message || error);
     });
+    mpcService.onUnlocked(password).catch((error) => {
+      console.warn('[MPC] unlock hook failed:', error?.message || error);
+    });
 
     console.log('✅ Wallet unlocked');
 
@@ -117,6 +121,9 @@ export async function lockWallet() {
 
     backupSyncService.onLocked().catch((error) => {
       console.warn('[BackupSync] lock hook failed:', error?.message || error);
+    });
+    mpcService.onLocked().catch((error) => {
+      console.warn('[MPC] lock hook failed:', error?.message || error);
     });
 
     console.log('✅ Wallet locked');

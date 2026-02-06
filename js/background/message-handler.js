@@ -42,6 +42,24 @@ import {
   handleBackupSyncClearRemote,
   handleBackupSyncClearLogs,
   handleBackupSyncLogEvent,
+  handleGetMpcSettings,
+  handleUpdateMpcSettings,
+  handleMpcGetDeviceInfo,
+  handleMpcCreateSession,
+  handleMpcJoinSession,
+  handleMpcSendSessionMessage,
+  handleMpcDecryptMessage,
+  handleMpcFetchSessionMessages,
+  handleMpcGetSession,
+  handleMpcGetSessions,
+  handleMpcStartStream,
+  handleMpcStopStream,
+  handleMpcGetAuditLogs,
+  handleMpcClearAuditLogs,
+  handleMpcGetAuditExportConfig,
+  handleMpcUpdateAuditExportConfig,
+  handleMpcExportAuditLogs,
+  handleMpcFlushAuditExportQueue,
   handleResolveBackupSyncConflict,
   changePassword
 } from './wallet-operations.js';
@@ -746,6 +764,78 @@ export async function handlePopupMessage(message, response) {
 
       case WalletMessageType.BACKUP_SYNC_LOG_EVENT:
         response(await handleBackupSyncLogEvent(data));
+        break;
+
+      case WalletMessageType.GET_MPC_SETTINGS:
+        response(await handleGetMpcSettings());
+        break;
+
+      case WalletMessageType.UPDATE_MPC_SETTINGS:
+        response(await handleUpdateMpcSettings(data?.updates));
+        break;
+
+      case WalletMessageType.MPC_GET_DEVICE_INFO:
+        response(await handleMpcGetDeviceInfo());
+        break;
+
+      case WalletMessageType.MPC_CREATE_SESSION:
+        response(await handleMpcCreateSession(data));
+        break;
+
+      case WalletMessageType.MPC_JOIN_SESSION:
+        response(await handleMpcJoinSession(data));
+        break;
+
+      case WalletMessageType.MPC_SEND_SESSION_MESSAGE:
+        response(await handleMpcSendSessionMessage(data));
+        break;
+
+      case WalletMessageType.MPC_DECRYPT_MESSAGE:
+        response(await handleMpcDecryptMessage(data));
+        break;
+
+      case WalletMessageType.MPC_FETCH_SESSION_MESSAGES:
+        response(await handleMpcFetchSessionMessages(data));
+        break;
+
+      case WalletMessageType.MPC_GET_SESSION:
+        response(await handleMpcGetSession(data?.sessionId));
+        break;
+
+      case WalletMessageType.MPC_GET_SESSIONS:
+        response(await handleMpcGetSessions());
+        break;
+
+      case WalletMessageType.MPC_START_STREAM:
+        response(await handleMpcStartStream(data));
+        break;
+
+      case WalletMessageType.MPC_STOP_STREAM:
+        response(await handleMpcStopStream(data));
+        break;
+
+      case WalletMessageType.MPC_GET_AUDIT_LOGS:
+        response(await handleMpcGetAuditLogs());
+        break;
+
+      case WalletMessageType.MPC_CLEAR_AUDIT_LOGS:
+        response(await handleMpcClearAuditLogs());
+        break;
+
+      case WalletMessageType.MPC_GET_AUDIT_EXPORT_CONFIG:
+        response(await handleMpcGetAuditExportConfig());
+        break;
+
+      case WalletMessageType.MPC_UPDATE_AUDIT_EXPORT_CONFIG:
+        response(await handleMpcUpdateAuditExportConfig(data?.updates));
+        break;
+
+      case WalletMessageType.MPC_EXPORT_AUDIT_LOGS:
+        response(await handleMpcExportAuditLogs(data));
+        break;
+
+      case WalletMessageType.MPC_FLUSH_AUDIT_EXPORT_QUEUE:
+        response(await handleMpcFlushAuditExportQueue());
         break;
 
       case WalletMessageType.RESOLVE_BACKUP_SYNC_CONFLICT:

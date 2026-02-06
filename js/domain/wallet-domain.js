@@ -515,6 +515,165 @@ export class WalletDomain extends BaseDomain {
     return await this._sendMessage(WalletMessageType.BACKUP_SYNC_CLEAR_LOGS);
   }
 
+  // ==================== MPC Settings ====================
+
+  /**
+   * 获取 MPC 配置
+   * @returns {Promise<Object>}
+   */
+  async getMpcSettings() {
+    const result = await this._sendMessage(WalletMessageType.GET_MPC_SETTINGS);
+    return result.settings || {};
+  }
+
+  /**
+   * 更新 MPC 配置
+   * @param {Object} updates
+   * @returns {Promise<Object>}
+   */
+  async updateMpcSettings(updates) {
+    return await this._sendMessage(WalletMessageType.UPDATE_MPC_SETTINGS, { updates });
+  }
+
+  /**
+   * 获取 MPC 设备信息
+   * @returns {Promise<Object>}
+   */
+  async getMpcDeviceInfo() {
+    return await this._sendMessage(WalletMessageType.MPC_GET_DEVICE_INFO);
+  }
+
+  /**
+   * 创建 MPC 会话
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async createMpcSession(options = {}) {
+    return await this._sendMessage(WalletMessageType.MPC_CREATE_SESSION, options);
+  }
+
+  /**
+   * 加入 MPC 会话
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async joinMpcSession(options = {}) {
+    return await this._sendMessage(WalletMessageType.MPC_JOIN_SESSION, options);
+  }
+
+  /**
+   * 发送 MPC 会话消息
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async sendMpcSessionMessage(options = {}) {
+    return await this._sendMessage(WalletMessageType.MPC_SEND_SESSION_MESSAGE, options);
+  }
+
+  /**
+   * 解密 MPC 会话消息
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async decryptMpcMessage(options = {}) {
+    return await this._sendMessage(WalletMessageType.MPC_DECRYPT_MESSAGE, options);
+  }
+
+  /**
+   * 拉取 MPC 会话消息
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async fetchMpcSessionMessages(options = {}) {
+    return await this._sendMessage(WalletMessageType.MPC_FETCH_SESSION_MESSAGES, options);
+  }
+
+  /**
+   * 获取 MPC 会话详情
+   * @param {string} sessionId
+   * @returns {Promise<Object>}
+   */
+  async getMpcSession(sessionId) {
+    return await this._sendMessage(WalletMessageType.MPC_GET_SESSION, { sessionId });
+  }
+
+  /**
+   * 获取 MPC 会话列表
+   * @returns {Promise<Object>}
+   */
+  async getMpcSessions() {
+    return await this._sendMessage(WalletMessageType.MPC_GET_SESSIONS);
+  }
+
+  /**
+   * 启动 MPC 会话事件流
+   * @param {string} sessionId
+   * @param {string} cursor
+   * @returns {Promise<Object>}
+   */
+  async startMpcStream(sessionId, cursor) {
+    return await this._sendMessage(WalletMessageType.MPC_START_STREAM, { sessionId, cursor });
+  }
+
+  /**
+   * 停止 MPC 会话事件流
+   * @param {string} sessionId
+   * @returns {Promise<Object>}
+   */
+  async stopMpcStream(sessionId) {
+    return await this._sendMessage(WalletMessageType.MPC_STOP_STREAM, { sessionId });
+  }
+
+  /**
+   * 获取 MPC 审计日志
+   * @returns {Promise<Object>}
+   */
+  async getMpcAuditLogs() {
+    return await this._sendMessage(WalletMessageType.MPC_GET_AUDIT_LOGS);
+  }
+
+  /**
+   * 清空 MPC 审计日志
+   * @returns {Promise<Object>}
+   */
+  async clearMpcAuditLogs() {
+    return await this._sendMessage(WalletMessageType.MPC_CLEAR_AUDIT_LOGS);
+  }
+
+  /**
+   * 获取 MPC 审计导出配置
+   * @returns {Promise<Object>}
+   */
+  async getMpcAuditExportConfig() {
+    return await this._sendMessage(WalletMessageType.MPC_GET_AUDIT_EXPORT_CONFIG);
+  }
+
+  /**
+   * 更新 MPC 审计导出配置
+   * @param {Object} updates
+   * @returns {Promise<Object>}
+   */
+  async updateMpcAuditExportConfig(updates = {}) {
+    return await this._sendMessage(WalletMessageType.MPC_UPDATE_AUDIT_EXPORT_CONFIG, { updates });
+  }
+
+  /**
+   * 导出 MPC 审计日志到 webhook
+   * @param {boolean} includeAll
+   * @returns {Promise<Object>}
+   */
+  async exportMpcAuditLogs(includeAll = false) {
+    return await this._sendMessage(WalletMessageType.MPC_EXPORT_AUDIT_LOGS, { includeAll });
+  }
+
+  /**
+   * 刷新 MPC 审计导出队列
+   * @returns {Promise<Object>}
+   */
+  async flushMpcAuditExportQueue() {
+    return await this._sendMessage(WalletMessageType.MPC_FLUSH_AUDIT_EXPORT_QUEUE);
+  }
+
   /**
    * 写入同步日志事件
    * @param {Object} payload
