@@ -436,6 +436,54 @@
           />
         </div>
 
+        <div class="form-group hidden" id="createWalletTypeGroup">
+          <label>钱包类型</label>
+          <select id="createWalletTypeSelect" class="input">
+            <option value="hd">HD Wallet</option>
+            <option value="mpc">MPC Wallet</option>
+          </select>
+        </div>
+
+        <div id="mpcCreateWalletFields" class="hidden">
+          <div class="form-group">
+            <label>MPC Wallet ID（可选）</label>
+            <input
+              type="text"
+              id="mpcCreateWalletIdInput"
+              class="input"
+              placeholder="mpc_wallet_01"
+            />
+          </div>
+          <div class="form-group">
+            <label>参与者列表（逗号分隔）</label>
+            <input
+              type="text"
+              id="mpcCreateParticipantsInput"
+              class="input"
+              placeholder="p1,p2,p3"
+            />
+          </div>
+          <div class="form-group">
+            <label>门限 (T)</label>
+            <input
+              type="number"
+              id="mpcCreateThresholdInput"
+              class="input"
+              min="1"
+              step="1"
+              placeholder="2"
+            />
+          </div>
+          <div class="form-group">
+            <label>曲线</label>
+            <select id="mpcCreateCurveSelect" class="input">
+              <option value="secp256k1">secp256k1</option>
+              <option value="ed25519">ed25519</option>
+            </select>
+          </div>
+          <p class="settings-hint">创建后将自动生成 Keygen 会话，可在 MPC 设置中加入会话。</p>
+        </div>
+
         <div class="form-group">
           <label id="setPasswordLabel">密码</label>
           <input type="password" id="newPassword" placeholder="至少8位字符" />
@@ -452,6 +500,7 @@
 
         <button id="setPasswordBtn" class="btn btn-primary">创建钱包</button>
         <button id="cancelPasswordBtn" class="btn btn-secondary">取消</button>
+        <p class="settings-hint hidden" id="mpcCreateWalletResult">-</p>
       </div>
 
       <!-- 添加解锁页面 -->
@@ -1060,60 +1109,9 @@
             <p class="settings-hint">配置用于协调器鉴权与会话创建/加入。</p>
           </div>
 
-          <!-- MPC Keygen -->
+          <!-- MPC 会话操作 -->
           <div class="settings-section" id="mpcKeygenSection">
-            <h3>🔐 MPC Keygen</h3>
-            <div class="form-group">
-              <label>Session ID（可选）</label>
-              <input
-                type="text"
-                id="mpcKeygenSessionIdInput"
-                class="input"
-                placeholder="sess_..."
-              />
-            </div>
-            <div class="form-group">
-              <label>Wallet ID</label>
-              <input
-                type="text"
-                id="mpcKeygenWalletIdInput"
-                class="input"
-                placeholder="mpc_wallet_01"
-              />
-            </div>
-            <div class="form-group">
-              <label>参与者列表（逗号分隔）</label>
-              <input
-                type="text"
-                id="mpcKeygenParticipantsInput"
-                class="input"
-                placeholder="p1,p2,p3"
-              />
-            </div>
-            <div class="form-group">
-              <label>门限 (T)</label>
-              <input
-                type="number"
-                id="mpcKeygenThresholdInput"
-                class="input"
-                min="1"
-                step="1"
-                placeholder="2"
-              />
-            </div>
-            <div class="form-group">
-              <label>曲线</label>
-              <select id="mpcKeygenCurveSelect" class="input">
-                <option value="secp256k1">secp256k1</option>
-                <option value="ed25519">ed25519</option>
-              </select>
-            </div>
-            <div class="settings-row">
-              <button id="mpcKeygenCreateBtn" class="btn btn-primary btn-small">创建 Keygen 会话</button>
-            </div>
-            <p class="settings-hint" id="mpcKeygenCreateResult">-</p>
-
-            <div class="settings-divider"></div>
+            <h3>🔐 MPC 会话</h3>
             <h4>加入会话</h4>
             <div class="form-group">
               <label>Session ID</label>

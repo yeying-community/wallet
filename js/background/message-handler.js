@@ -60,6 +60,7 @@ import {
   handleMpcUpdateAuditExportConfig,
   handleMpcExportAuditLogs,
   handleMpcFlushAuditExportQueue,
+  handleCreateMpcWallet,
   handleResolveBackupSyncConflict,
   changePassword
 } from './wallet-operations.js';
@@ -572,6 +573,11 @@ export async function handlePopupMessage(message, response) {
       case 'IMPORT_PRIVATE_KEY_WALLET':
         const importPKResult = await handleImportPrivateKeyWallet(data.accountName, data.privateKey, data.password);
         response(importPKResult);
+        break;
+
+      case 'CREATE_MPC_WALLET':
+        const createMpcResult = await handleCreateMpcWallet(data);
+        response(createMpcResult);
         break;
 
       case 'CREATE_SUB_ACCOUNT':
