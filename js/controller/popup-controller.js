@@ -111,7 +111,10 @@ export class PopupController {
     });
     this.createWalletController = new CreateWalletController({
       wallet: this.wallet,
-      onCreated: () => this.refreshWalletData()
+      onCreated: async () => {
+        await this.refreshWalletData();
+        await this.accountsListController?.loadWalletList();
+      }
     });
   }
 

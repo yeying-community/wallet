@@ -92,6 +92,16 @@ export class WalletDomain extends BaseDomain {
   }
 
   /**
+   * 创建 MPC 钱包
+   * @param {Object} options - 配置
+   * @returns {Promise<Object>} 创建结果
+   */
+  async createMpcWallet(options = {}) {
+    const result = await this._sendMessage(WalletMessageType.CREATE_MPC_WALLET, options);
+    return result;
+  }
+
+  /**
    * 从助记词导入钱包
    * @param {string} accountName - 账户名称
    * @param {string} mnemonic - 助记词

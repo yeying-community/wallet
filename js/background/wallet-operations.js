@@ -42,6 +42,9 @@ import {
   getContact,
   saveContact,
   deleteContact,
+  getMpcWallet,
+  getMpcWalletList,
+  saveMpcWallet,
   getMpcAuditLogs,
   clearMpcAuditLogs,
   clearTransactionsByAddress,
@@ -60,6 +63,7 @@ import { TIMEOUTS, LIMITS, NETWORKS, DEFAULT_NETWORK, isDeveloperFeatureEnabled 
 import { notifyUnlocked } from './unlock-flow.js';
 import { updateKeepAlive } from './offscreen.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
+import { generateId } from '../common/utils/index.js';
 import { backupSyncService } from './sync-service.js';
 import { mpcService } from './mpc-service.js';
 
@@ -90,6 +94,7 @@ export async function HandleGetWalletList() {
     const accounts = await getAccountList();
     const selectedAccountId = await getSelectedAccountId();
     const walletsData = await getWallets();
+    const mpcWallets = await getMpcWalletList();
 
     // 按 walletId 分组
     const walletMap = new Map();
@@ -99,6 +104,9 @@ export async function HandleGetWalletList() {
 
       if (!walletMap.has(walletId)) {
         const wallet = walletsData[walletId];
+        if (!wallet) {
+          return;
+        }
         wallet.accounts = [];
         walletMap.set(walletId, wallet);
       }
@@ -108,10 +116,25 @@ export async function HandleGetWalletList() {
         isSelected: account.id === selectedAccountId
       });
     });
-        // 转换为数组并排序
+
+    Object.values(walletsData || {}).forEach(wallet => {
+      if (!wallet?.id) return;
+      if (walletMap.has(wallet.id)) return;
+      walletMap.set(wallet.id, { ...wallet, accounts: [] });
+    });
+
+    if (Array.isArray(mpcWallets)) {
+      mpcWallets.forEach(wallet => {
+        if (!wallet?.id) return;
+        if (walletMap.has(wallet.id)) return;
+        walletMap.set(wallet.id, { ...wallet, type: 'mpc', accounts: [] });
+      });
+    }
+
+    // 转换为数组并排序
     const wallets = Array.from(walletMap.values()).sort((a, b) => {
-      const aTime = walletsData[a.id]?.createdAt || 0;
-      const bTime = walletsData[b.id]?.createdAt || 0;
+      const aTime = a?.createdAt || 0;
+      const bTime = b?.createdAt || 0;
       return bTime - aTime;
     });
 
@@ -161,6 +184,78 @@ export async function handleCreateHDWallet(accountName, password) {
 
   } catch (error) {
     console.error('❌ Handle create HD wallet failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * 创建 MPC 钱包（并创建 Keygen 会话）
+ * @param {Object} options
+ * @returns {Promise<Object>}
+ */
+export async function handleCreateMpcWallet(options = {}) {
+  try {
+    const name = String(options.name || 'MPC Wallet').trim() || 'MPC Wallet';
+    const walletId = String(options.walletId || '').trim() || generateId('mpc_wallet');
+    const participants = Array.isArray(options.participants)
+      ? options.participants.map(item => String(item).trim()).filter(Boolean)
+      : [];
+    const threshold = Number(options.threshold);
+    const curve = String(options.curve || 'secp256k1').trim() || 'secp256k1';
+
+    if (!participants.length) {
+      throw new Error('参与者不能为空');
+    }
+    if (!Number.isFinite(threshold) || threshold <= 0) {
+      throw new Error('门限必须大于 0');
+    }
+    if (threshold > participants.length) {
+      throw new Error('门限不能大于参与者数量');
+    }
+
+    const existing = await getMpcWallet(walletId);
+    if (existing) {
+      throw new Error('Wallet ID 已存在');
+    }
+    const existingWallet = await getWallet(walletId);
+    if (existingWallet) {
+      throw new Error('Wallet ID 已存在');
+    }
+
+    const sessionResult = await mpcService.createSession({
+      type: 'keygen',
+      walletId,
+      threshold,
+      participants,
+      curve
+    });
+    const now = getTimestamp();
+    const wallet = {
+      id: walletId,
+      name,
+      type: 'mpc',
+      curve,
+      threshold,
+      participants,
+      chainIds: Array.isArray(options.chainIds) ? options.chainIds : [],
+      keyVersion: 1,
+      shareVersion: 1,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    await saveMpcWallet(wallet);
+
+    return {
+      success: true,
+      wallet,
+      session: sessionResult.session
+    };
+  } catch (error) {
+    console.error('❌ Handle create MPC wallet failed:', error);
     return {
       success: false,
       error: error.message

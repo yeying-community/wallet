@@ -30,7 +30,7 @@ export class AccountsListController {
         showPage('setPasswordPage');
         const setPasswordBtn = document.getElementById('setPasswordBtn');
         if (setPasswordBtn) {
-          setPasswordBtn.textContent = '创建新账户';
+          setPasswordBtn.textContent = '创建钱包';
         }
         this.preparePasswordFormForExistingWallet();
       });
@@ -52,6 +52,11 @@ export class AccountsListController {
     const confirmGroup = document.getElementById('confirmPasswordGroup');
     const passwordInput = document.getElementById('newPassword');
     const confirmInput = document.getElementById('confirmPassword');
+    const walletTypeGroup = document.getElementById('createWalletTypeGroup');
+    const walletTypeSelect = document.getElementById('createWalletTypeSelect');
+    const mpcFields = document.getElementById('mpcCreateWalletFields');
+    const mpcResult = document.getElementById('mpcCreateWalletResult');
+    const setPasswordBtn = document.getElementById('setPasswordBtn');
 
     if (hint) {
       hint.textContent = '请输入当前钱包密码';
@@ -67,6 +72,23 @@ export class AccountsListController {
     }
     if (confirmInput) {
       confirmInput.value = '';
+    }
+    if (walletTypeGroup) {
+      walletTypeGroup.classList.remove('hidden');
+    }
+    if (walletTypeSelect) {
+      walletTypeSelect.value = 'hd';
+      walletTypeSelect.dispatchEvent(new Event('change'));
+    }
+    if (mpcFields) {
+      mpcFields.classList.add('hidden');
+    }
+    if (mpcResult) {
+      mpcResult.textContent = '-';
+      mpcResult.classList.add('hidden');
+    }
+    if (setPasswordBtn) {
+      setPasswordBtn.textContent = '创建钱包';
     }
   }
 
@@ -174,31 +196,15 @@ export class AccountsListController {
       return;
     }
 
-    container.innerHTML = wallets.map(wallet => `
-    <div class="wallet-card" data-wallet-id="${wallet.id}">
-      <div class="wallet-header">
-        <div class="wallet-icon ${wallet.type === 'imported' ? 'imported' : ''}">
-          ${wallet.type === 'hd' ? '🔑' : '📥'}
-        </div>
-        <div class="wallet-info">
-          <div class="wallet-name">
-            ${wallet.type === 'hd' ? 'HD Wallet' : 'Imported Wallet'}
-          </div>
-        </div>
-        ${wallet.type === 'hd' ? `
-          <div class="wallet-header-actions">
-            <button
-              class="wallet-header-btn view-mnemonic-btn"
-              data-wallet-id="${wallet.id}"
-              title="查看助记词"
-            >
-              查看助记词
-            </button>
-          </div>
-        ` : ''}
-      </div>
-      <div class="account-list">
-        ${wallet.accounts.map(account => `
+    container.innerHTML = wallets.map(wallet => {
+      const type = wallet.type || 'hd';
+      const isHd = type === 'hd';
+      const isImported = type === 'imported';
+      const isMpc = type === 'mpc';
+      const walletLabel = isMpc ? 'MPC Wallet' : (isHd ? 'HD Wallet' : 'Imported Wallet');
+      const walletIcon = isMpc ? '🧩' : (isHd ? '🔑' : '📥');
+      const accounts = Array.isArray(wallet.accounts) ? wallet.accounts : [];
+      const accountHtml = accounts.length ? accounts.map(account => `
           <div class="account-item ${account.isSelected ? 'active' : ''}"
                data-account-id="${account.id}">
             <div class="account-avatar" data-address="${account.address}"></div>
@@ -229,8 +235,34 @@ export class AccountsListController {
               ` : ''}
             </div>
           </div>
-        `).join('')}
-        ${wallet.type === 'hd' ? `
+        `).join('') : '<div class="empty-message">暂无账户</div>';
+
+      return `
+    <div class="wallet-card" data-wallet-id="${wallet.id}">
+      <div class="wallet-header">
+        <div class="wallet-icon ${isImported ? 'imported' : ''}">
+          ${walletIcon}
+        </div>
+        <div class="wallet-info">
+          <div class="wallet-name">
+            ${walletLabel}
+          </div>
+        </div>
+        ${isHd ? `
+          <div class="wallet-header-actions">
+            <button
+              class="wallet-header-btn view-mnemonic-btn"
+              data-wallet-id="${wallet.id}"
+              title="查看助记词"
+            >
+              查看助记词
+            </button>
+          </div>
+        ` : ''}
+      </div>
+      <div class="account-list">
+        ${accountHtml}
+        ${isHd ? `
           <div class="add-account-item" data-wallet-id="${wallet.id}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"></circle>
@@ -242,7 +274,8 @@ export class AccountsListController {
         ` : ''}
       </div>
     </div>
-  `).join('');
+  `;
+    }).join('');
 
     this.renderAccountAvatars(container);
     this.bindWalletListEvents(onAccountClick, onAccountDetails, onAccountDelete, onAddAccount, onViewMnemonic, onViewPrivateKey);

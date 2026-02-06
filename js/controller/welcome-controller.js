@@ -34,6 +34,10 @@ export class WelcomeController {
     const confirmLabel = document.getElementById('confirmPasswordLabel');
     const confirmGroup = document.getElementById('confirmPasswordGroup');
     const passwordInput = document.getElementById('newPassword');
+    const walletTypeGroup = document.getElementById('createWalletTypeGroup');
+    const walletTypeSelect = document.getElementById('createWalletTypeSelect');
+    const mpcFields = document.getElementById('mpcCreateWalletFields');
+    const mpcResult = document.getElementById('mpcCreateWalletResult');
 
     if (hint) {
       hint.textContent = '请设置一个密码来保护您的钱包';
@@ -49,6 +53,19 @@ export class WelcomeController {
     }
     if (passwordInput) {
       passwordInput.placeholder = '至少8位字符';
+    }
+    if (walletTypeGroup) {
+      walletTypeGroup.classList.add('hidden');
+    }
+    if (walletTypeSelect) {
+      walletTypeSelect.value = 'hd';
+    }
+    if (mpcFields) {
+      mpcFields.classList.add('hidden');
+    }
+    if (mpcResult) {
+      mpcResult.textContent = '-';
+      mpcResult.classList.add('hidden');
     }
   }
 
@@ -68,9 +85,18 @@ export class WelcomeController {
     const nameInput = document.getElementById('setWalletName');
     const passwordInput = document.getElementById('newPassword');
     const confirmInput = document.getElementById('confirmPassword');
+    const walletTypeSelect = document.getElementById('createWalletTypeSelect');
+    const mpcFields = document.getElementById('mpcCreateWalletFields');
+    const mpcResult = document.getElementById('mpcCreateWalletResult');
 
     if (nameInput) nameInput.value = '主钱包';
     if (passwordInput) passwordInput.value = '';
     if (confirmInput) confirmInput.value = '';
+    if (walletTypeSelect) walletTypeSelect.value = 'hd';
+    if (mpcFields) mpcFields.classList.add('hidden');
+    if (mpcResult) {
+      mpcResult.textContent = '-';
+      mpcResult.classList.add('hidden');
+    }
   }
 }
