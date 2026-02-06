@@ -315,6 +315,13 @@
   background: #ffffff;
 }
 
+.sync-activity-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-left: auto;
+}
+
 .sync-activity-time {
   font-size: 11px;
   color: #6b7280;

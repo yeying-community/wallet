@@ -15,7 +15,8 @@ export {
   SettingsStorageKeys,
   TransactionStorageKeys,
   ContactsStorageKeys,
-  UcanStorageKeys
+  UcanStorageKeys,
+  MpcStorageKeys
 } from './storage-keys.js';
 
 // ==================== 基础存储 ====================
@@ -128,6 +129,55 @@ export {
   saveContact,
   deleteContact
 } from './contact-storage.js';
+
+// ==================== MPC 存储 ====================
+export {
+  getMpcDeviceId,
+  setMpcDeviceId,
+  getMpcDeviceKeys,
+  getMpcDeviceKey,
+  saveMpcDeviceKey,
+  deleteMpcDeviceKey,
+  getMpcWallets,
+  getMpcWallet,
+  saveMpcWallet,
+  deleteMpcWallet,
+  getMpcWalletList,
+  getMpcParticipants,
+  getMpcParticipant,
+  saveMpcParticipant,
+  deleteMpcParticipant,
+  getMpcParticipantList,
+  getMpcKeyShares,
+  getMpcKeyShare,
+  saveMpcKeyShare,
+  deleteMpcKeyShare,
+  getMpcSessions,
+  getMpcSession,
+  saveMpcSession,
+  deleteMpcSession,
+  getMpcSessionList,
+  getMpcSignRequests,
+  getMpcSignRequest,
+  saveMpcSignRequest,
+  deleteMpcSignRequest,
+  getMpcMessages,
+  getMpcMessage,
+  saveMpcMessage,
+  deleteMpcMessage,
+  getMpcMessageList,
+  getMpcAuditLogs,
+  setMpcAuditLogs,
+  appendMpcAuditLog,
+  clearMpcAuditLogs,
+  getMpcAuditExportConfig,
+  saveMpcAuditExportConfig,
+  getMpcAuditExportQueue,
+  setMpcAuditExportQueue,
+  enqueueMpcAuditExport,
+  dequeueMpcAuditExport,
+  clearMpcAuditExportQueue
+} from './mpc-storage.js';
 
 // ==================== 工具方法 ====================
 

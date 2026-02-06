@@ -41,6 +41,21 @@ export const UcanStorageKeys = {
   UCAN_SESSIONS: 'ucan_sessions'          // UCAN 会话 Map<origin:address:sessionId, Session>
 };
 
+// ==================== MPC 相关 ====================
+export const MpcStorageKeys = {
+  MPC_DEVICE_ID: 'mpc_device_id',
+  MPC_DEVICE_KEYS: 'mpc_device_keys',
+  MPC_WALLETS: 'mpc_wallets',
+  MPC_PARTICIPANTS: 'mpc_participants',
+  MPC_KEY_SHARES: 'mpc_key_shares',
+  MPC_SESSIONS: 'mpc_sessions',
+  MPC_SIGN_REQUESTS: 'mpc_sign_requests',
+  MPC_MESSAGES: 'mpc_messages',
+  MPC_AUDIT_LOGS: 'mpc_audit_logs',
+  MPC_AUDIT_EXPORT_CONFIG: 'mpc_audit_export_config',
+  MPC_AUDIT_EXPORT_QUEUE: 'mpc_audit_export_queue'
+};
+
 // ==================== 统一导出 ====================
 export const StorageKeys = {
   ...WalletStorageKeys,
@@ -49,5 +64,6 @@ export const StorageKeys = {
   ...SettingsStorageKeys,
   ...TransactionStorageKeys,
   ...ContactsStorageKeys,
-  ...UcanStorageKeys
+  ...UcanStorageKeys,
+  ...MpcStorageKeys
 };

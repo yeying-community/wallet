@@ -969,6 +969,302 @@
             </div>
             <p class="settings-hint">查看同步日志，支持搜索与翻页</p>
           </div>
+
+          <!-- MPC 门限钱包设置 -->
+          <div class="settings-section" id="mpcSettingsSection">
+            <h3>🧩 MPC 门限钱包</h3>
+            <div class="form-group">
+              <label>协调器鉴权</label>
+              <select id="mpcAuthSchemeSelect" class="input">
+                <option value="ucan">UCAN</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>端到端加密套件</label>
+              <select id="mpcE2eSuiteSelect" class="input">
+                <option value="x25519-aes-gcm">x25519-aes-gcm</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Key Refresh 触发策略</label>
+              <select id="mpcRefreshPolicySelect" class="input">
+                <option value="manual">手动</option>
+              </select>
+            </div>
+            <p class="settings-hint">这些配置用于 MPC 协调器与成员端协作。</p>
+          </div>
+
+          <!-- MPC 协调器配置 -->
+          <div class="settings-section" id="mpcCoordinatorSection">
+            <h3>🛰️ MPC 协调器</h3>
+            <div class="form-group">
+              <label>协调器地址</label>
+              <input
+                type="text"
+                id="mpcCoordinatorEndpointInput"
+                class="input"
+                placeholder="https://www.yeying.pub"
+              />
+            </div>
+            <div class="form-group">
+              <label>UCAN Resource</label>
+              <input
+                type="text"
+                id="mpcCoordinatorUcanResourceInput"
+                class="input"
+                placeholder="app:your-app"
+              />
+            </div>
+            <div class="form-group">
+              <label>UCAN Action</label>
+              <input
+                type="text"
+                id="mpcCoordinatorUcanActionInput"
+                class="input"
+                placeholder="coordinate"
+              />
+            </div>
+            <div class="form-group">
+              <label>UCAN Audience</label>
+              <input
+                type="text"
+                id="mpcCoordinatorUcanAudienceInput"
+                class="input"
+                placeholder="did:web:example.com"
+              />
+            </div>
+            <div class="form-group">
+              <label>UCAN 有效期 (小时)</label>
+              <input
+                type="number"
+                id="mpcCoordinatorUcanTtlInput"
+                class="input"
+                min="1"
+                max="168"
+                step="1"
+                value="24"
+              />
+            </div>
+            <div class="form-group">
+              <label>UCAN Token（可选）</label>
+              <textarea
+                id="mpcCoordinatorUcanTokenInput"
+                class="input"
+                placeholder="粘贴 UCAN Token"
+              ></textarea>
+            </div>
+            <div class="settings-row">
+              <button id="mpcCoordinatorSaveBtn" class="btn btn-secondary btn-small">保存配置</button>
+              <button id="mpcCoordinatorUcanGenerateBtn" class="btn btn-secondary btn-small">生成 UCAN</button>
+            </div>
+            <p class="settings-hint">配置用于协调器鉴权与会话创建/加入。</p>
+          </div>
+
+          <!-- MPC Keygen -->
+          <div class="settings-section" id="mpcKeygenSection">
+            <h3>🔐 MPC Keygen</h3>
+            <div class="form-group">
+              <label>Session ID（可选）</label>
+              <input
+                type="text"
+                id="mpcKeygenSessionIdInput"
+                class="input"
+                placeholder="sess_..."
+              />
+            </div>
+            <div class="form-group">
+              <label>Wallet ID</label>
+              <input
+                type="text"
+                id="mpcKeygenWalletIdInput"
+                class="input"
+                placeholder="mpc_wallet_01"
+              />
+            </div>
+            <div class="form-group">
+              <label>参与者列表（逗号分隔）</label>
+              <input
+                type="text"
+                id="mpcKeygenParticipantsInput"
+                class="input"
+                placeholder="p1,p2,p3"
+              />
+            </div>
+            <div class="form-group">
+              <label>门限 (T)</label>
+              <input
+                type="number"
+                id="mpcKeygenThresholdInput"
+                class="input"
+                min="1"
+                step="1"
+                placeholder="2"
+              />
+            </div>
+            <div class="form-group">
+              <label>曲线</label>
+              <select id="mpcKeygenCurveSelect" class="input">
+                <option value="secp256k1">secp256k1</option>
+                <option value="ed25519">ed25519</option>
+              </select>
+            </div>
+            <div class="settings-row">
+              <button id="mpcKeygenCreateBtn" class="btn btn-primary btn-small">创建 Keygen 会话</button>
+            </div>
+            <p class="settings-hint" id="mpcKeygenCreateResult">-</p>
+
+            <div class="settings-divider"></div>
+            <h4>加入会话</h4>
+            <div class="form-group">
+              <label>Session ID</label>
+              <input
+                type="text"
+                id="mpcJoinSessionIdInput"
+                class="input"
+                placeholder="sess_..."
+              />
+            </div>
+            <div class="form-group">
+              <label>Participant ID</label>
+              <input
+                type="text"
+                id="mpcJoinParticipantIdInput"
+                class="input"
+                placeholder="p1"
+              />
+            </div>
+            <div class="form-group">
+              <label>身份 (DID)</label>
+              <input
+                type="text"
+                id="mpcJoinIdentityInput"
+                class="input"
+                placeholder="did:pkh:eth:0x..."
+              />
+            </div>
+            <div class="settings-row">
+              <button id="mpcJoinSessionBtn" class="btn btn-secondary btn-small">加入会话并监听</button>
+              <button id="mpcStopStreamBtn" class="btn btn-secondary btn-small">停止监听</button>
+            </div>
+            <p class="settings-hint" id="mpcJoinSessionResult">-</p>
+
+            <div class="settings-divider"></div>
+            <h4>发送消息</h4>
+            <div class="form-group">
+              <label>Session ID</label>
+              <input
+                type="text"
+                id="mpcSendSessionIdInput"
+                class="input"
+                placeholder="sess_..."
+              />
+            </div>
+            <div class="form-group">
+              <label>From (Participant ID)</label>
+              <input
+                type="text"
+                id="mpcSendFromInput"
+                class="input"
+                placeholder="p1"
+              />
+            </div>
+            <div class="form-group">
+              <label>To (Participant ID, 可选)</label>
+              <input
+                type="text"
+                id="mpcSendToInput"
+                class="input"
+                placeholder="p2"
+              />
+            </div>
+            <div class="form-group">
+              <label>Recipient E2E 公钥（可选）</label>
+              <input
+                type="text"
+                id="mpcSendRecipientKeyInput"
+                class="input"
+                placeholder="x25519:base64..."
+              />
+            </div>
+            <div class="form-group">
+              <label>消息类型</label>
+              <input
+                type="text"
+                id="mpcSendTypeInput"
+                class="input"
+                placeholder="keygen_round_1"
+              />
+            </div>
+            <div class="form-group">
+              <label>Round</label>
+              <input
+                type="number"
+                id="mpcSendRoundInput"
+                class="input"
+                min="0"
+                step="1"
+                placeholder="1"
+              />
+            </div>
+            <div class="form-group">
+              <label>Seq</label>
+              <input
+                type="number"
+                id="mpcSendSeqInput"
+                class="input"
+                min="0"
+                step="1"
+                placeholder="1"
+              />
+            </div>
+            <div class="form-group">
+              <label>Payload (JSON)</label>
+              <textarea
+                id="mpcSendPayloadInput"
+                class="input"
+                placeholder="{\"step\":1}"
+              ></textarea>
+            </div>
+            <div class="settings-row">
+              <button id="mpcSendMessageBtn" class="btn btn-primary btn-small">发送消息</button>
+            </div>
+            <p class="settings-hint" id="mpcSendMessageResult">-</p>
+
+            <div class="settings-divider"></div>
+            <h4>消息收件箱</h4>
+            <div class="settings-row">
+              <button id="mpcMessagesPollStartBtn" class="btn btn-secondary btn-small">开始轮询</button>
+              <button id="mpcMessagesPollStopBtn" class="btn btn-secondary btn-small">停止轮询</button>
+            </div>
+            <p class="settings-hint" id="mpcMessagesPollStatus">未开始轮询</p>
+            <div id="mpcMessagesList" class="sync-activity-list sync-log-list">
+              <div class="empty-message">暂无消息</div>
+            </div>
+            <div class="settings-divider"></div>
+            <h4>消息详情</h4>
+            <p class="settings-hint" id="mpcMessageDetailStatus">-</p>
+            <textarea id="mpcMessageDetailPayload" class="input" readonly placeholder="解密后的 payload 会显示在这里"></textarea>
+          </div>
+
+          <!-- MPC 会话列表 -->
+          <div class="settings-section" id="mpcSessionsSection">
+            <h3>🗂️ MPC 会话列表</h3>
+            <div class="settings-row">
+              <button id="mpcSessionsRefreshBtn" class="btn btn-secondary btn-small">刷新列表</button>
+            </div>
+            <div id="mpcSessionsList" class="sync-activity-list">
+              <div class="empty-message">暂无会话</div>
+            </div>
+          </div>
+
+          <!-- MPC 日志审计 -->
+          <div class="settings-section" id="mpcAuditSection">
+            <h3>📒 MPC 日志审计</h3>
+            <div class="settings-row">
+              <button id="mpcAuditBtn" class="btn btn-secondary">进入 MPC 日志审计</button>
+            </div>
+            <p class="settings-hint">查看 MPC 协调器事件日志</p>
+          </div>
         </div>
       </div>
 
@@ -1045,6 +1341,135 @@
           <div class="empty-message">暂无日志</div>
         </div>
         <div id="backupSyncLogsFooter" class="sync-log-footer hidden"></div>
+      </div>
+
+      <!-- MPC 日志审计页面 -->
+      <div id="mpcLogsPage" class="page hidden">
+        <div class="page-header">
+          <button class="back-btn">←</button>
+          <h2>MPC 日志审计</h2>
+          <div class="page-actions">
+            <button id="mpcClearLogsBtn" class="btn btn-secondary btn-small">
+              清空日志
+            </button>
+          </div>
+        </div>
+        <div class="sync-log-toolbar">
+          <input
+            type="text"
+            id="mpcLogsSearchInput"
+            class="input"
+            placeholder="搜索日志（动作/Session/关键字）"
+          />
+        </div>
+        <div class="sync-log-config">
+          <div class="form-group">
+            <label>Webhook 地址</label>
+            <input
+              type="text"
+              id="mpcAuditExportEndpointInput"
+              class="input"
+              placeholder="https://audit.example.com/hooks/mpc"
+            />
+          </div>
+          <div class="form-group">
+            <label>启用导出</label>
+            <label class="settings-toggle">
+              <input type="checkbox" id="mpcAuditExportEnabledToggle" />
+              <span>启用</span>
+            </label>
+          </div>
+          <div class="form-group" style="grid-column: span 2;">
+            <label>Webhook Headers (JSON)</label>
+            <textarea
+              id="mpcAuditExportHeadersInput"
+              class="input"
+              placeholder="{\"Authorization\":\"Bearer <token>\"}"
+            ></textarea>
+          </div>
+        </div>
+        <div class="settings-row sync-log-config-actions">
+          <button id="mpcAuditExportSaveBtn" class="btn btn-secondary btn-small">
+            保存导出配置
+          </button>
+          <button id="mpcAuditExportFlushBtn" class="btn btn-secondary btn-small">
+            推送队列
+          </button>
+          <button id="mpcAuditExportAllBtn" class="btn btn-secondary btn-small">
+            推送全部
+          </button>
+          <button id="mpcAuditExportJsonBtn" class="btn btn-secondary btn-small">
+            导出 JSON
+          </button>
+          <button id="mpcAuditExportCsvBtn" class="btn btn-secondary btn-small">
+            导出 CSV
+          </button>
+        </div>
+        <p class="settings-hint" id="mpcAuditExportStatus">最近推送: -</p>
+        <div class="sync-log-summary">
+          <div class="sync-log-metric">
+            <div class="sync-log-label">最近事件</div>
+            <div class="sync-log-value" id="mpcLogsLastEvent">-</div>
+          </div>
+          <div class="sync-log-metric">
+            <div class="sync-log-label">日志总数</div>
+            <div class="sync-log-value" id="mpcLogsTotal">0</div>
+          </div>
+          <div class="sync-log-metric">
+            <div class="sync-log-label">匹配结果</div>
+            <div class="sync-log-value" id="mpcLogsMatch">0</div>
+          </div>
+        </div>
+        <h3 class="sync-log-title">MPC 日志</h3>
+        <div id="mpcLogsList" class="sync-activity-list sync-log-list">
+          <div class="empty-message">暂无日志</div>
+        </div>
+        <div id="mpcLogsFooter" class="sync-log-footer hidden"></div>
+      </div>
+
+      <!-- MPC 会话详情 -->
+      <div id="mpcSessionDetailModal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>会话详情</h3>
+            <button class="btn-close" id="closeMpcSessionDetailModal">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="detail-row">
+              <div class="detail-label">Session ID</div>
+              <div class="detail-value mono" id="mpcSessionDetailId">-</div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-label">类型</div>
+              <div class="detail-value" id="mpcSessionDetailType">-</div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-label">状态</div>
+              <div class="detail-value" id="mpcSessionDetailStatus">-</div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-label">轮次</div>
+              <div class="detail-value" id="mpcSessionDetailRound">-</div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-label">门限</div>
+              <div class="detail-value" id="mpcSessionDetailThreshold">-</div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-label">曲线</div>
+              <div class="detail-value" id="mpcSessionDetailCurve">-</div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-label">成员</div>
+              <div class="detail-value" id="mpcSessionDetailParticipants">-</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="refreshMpcSessionDetailBtn" class="btn btn-secondary">刷新</button>
+            <button id="closeMpcSessionDetailBtn" class="btn btn-secondary">关闭</button>
+          </div>
+        </div>
       </div>
 
       <!-- 网站管理页面 -->

@@ -279,6 +279,7 @@ export class PopupController {
       contactsPage: 'walletPage',
       sitesPage: 'walletPage',
       backupSyncLogsPage: 'settingsPage',
+      mpcLogsPage: 'settingsPage',
     };
 
     const targetPage = backMap[currentPage];
@@ -312,6 +313,8 @@ export class PopupController {
     this.stopTransactionPolling();
     showPage('settingsPage');
     await this.settingsController.loadBackupSyncSettings();
+    await this.settingsController.loadMpcSettings();
+    await this.settingsController.loadMpcSessions();
   }
 
   async openBackupSyncSettings() {
