@@ -1,6 +1,7 @@
 /**
  * 验证规则配置
  */
+import { ethers } from '../../lib/ethers-6.16.esm.min.js';
 
 // ==================== 地址验证规则 ====================
 export const ADDRESS_VALIDATION = {
@@ -114,15 +115,13 @@ export function validateEthereumAddress(address, requireChecksum = false) {
   
   // 校验和检查（如果需要）
   if (requireChecksum && ADDRESS_VALIDATION.ETHEREUM.checksum) {
-    // 这里需要实现 EIP-55 校验和验证
-    // 简化版本，实际应该使用 ethers.js 或 web3.js
-    const hasUpperCase = /[A-F]/.test(address.slice(2));
-    const hasLowerCase = /[a-f]/.test(address.slice(2));
-    
-    if (hasUpperCase && hasLowerCase) {
-      // 有大小写混合，需要验证校验和
-      // 这里应该调用实际的校验和验证函数
-      console.warn('Checksum validation not fully implemented');
+    try {
+      const checksummed = ethers.getAddress(address);
+      if (checksummed !== address) {
+        return { valid: false, error: 'Invalid EIP-55 checksum' };
+      }
+    } catch {
+      return { valid: false, error: 'Invalid address checksum' };
     }
   }
   

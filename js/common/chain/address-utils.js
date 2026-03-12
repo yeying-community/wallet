@@ -1,6 +1,7 @@
 /**
  * 地址处理工具函数
  */
+import { ethers } from '../../../lib/ethers-6.16.esm.min.js';
 
 /**
  * 验证以太坊地址格式
@@ -36,22 +37,22 @@ export function isValidChecksum(address) {
     return false;
   }
   
-  const addressLower = address.toLowerCase().slice(2);
-  const addressUpper = address.slice(2);
+  const addressBody = address.slice(2);
   
   // 检查是否包含大小写混合
-  const hasUpper = /[A-F]/.test(addressUpper);
-  const hasLower = /[a-f]/.test(addressLower);
+  const hasUpper = /[A-F]/.test(addressBody);
+  const hasLower = /[a-f]/.test(addressBody);
   
   // 如果没有大小写混合，则认为是有效的（全部小写或全部大写）
   if (!hasUpper || !hasLower) {
     return true;
   }
   
-  // TODO: 实现完整的 EIP-55 校验和验证
-  // 这里需要使用 keccak256 计算地址的哈希
-  console.warn('Full EIP-55 checksum validation not implemented');
-  return true;
+  try {
+    return ethers.getAddress(address) === address;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -114,13 +115,7 @@ export function addChecksum(address) {
     throw new Error('Invalid address format');
   }
   
-  const addressLower = address.toLowerCase().slice(2);
-  
-  // TODO: 实现完整的 EIP-55 校验和
-  // 这里需要使用 keccak256 计算地址的哈希
-  console.warn('EIP-55 checksum generation not fully implemented');
-  
-  return `0x${addressLower}`;
+  return ethers.getAddress(address);
 }
 
 /**
@@ -254,4 +249,3 @@ export function validateAddressOrEns(value) {
   
   return { valid: false, type: null };
 }
-

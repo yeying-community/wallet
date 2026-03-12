@@ -116,8 +116,6 @@ class BackupSyncService {
       console.warn('[BackupSync] push on lock failed:', error?.message || error);
     } finally {
       this._contexts.clear();
-      this._dirty = false;
-      await updateUserSetting(SETTINGS_KEYS.dirty, false).catch(() => {});
       this.stopAutoSync();
     }
   }
