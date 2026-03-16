@@ -3,7 +3,7 @@
 本文基于当前代码实现说明 DApp 连接钱包、SIWE/UCAN 授权的实际流程。
 
 ## 流程总结
-- 首次连接：连接页 + SIWE/UCAN 签名页（2 个弹窗，若已解锁）。
+- 首次连接：连接页与后续 JWT/SIWE/UCAN 签名页复用同一个审批弹窗（若签名请求紧随其后）。
 - 以后再进：如果站点已授权，只剩 SIWE/UCAN 签名页。
 - 如果钱包锁了：会先出现解锁页（已解锁则跳过）。
 
@@ -26,10 +26,11 @@
    `handleEthRequestAccounts` 会判断站点是否已授权：  
    - **已授权**：直接返回账户列表，不弹连接页。  
    - **未授权**：打开 `approval.html?type=connect` 让用户确认连接。
+   - 用户确认后，弹窗不会立刻关闭，而是短暂进入“等待后续登录请求”状态。
 
 3. **SIWE/UCAN 签名（Sign 页面）**  
    DApp 发送 SIWE/UCAN 登录消息（如 `personal_sign` / `eth_sign` / `eth_signTypedData`）时，  
-   会打开 `approval.html?type=sign...` 进行签名确认。
+   会优先复用同一 `origin + tabId` 的审批弹窗，直接切换到 `approval.html?type=sign...` 进行签名确认，避免再次弹出新窗口。
 
 4. **UCAN 会话/签名接口**  
    调用 `yeying_ucan_session` / `yeying_ucan_sign` 时，后台会先 `ensureSiteAuthorized`，  
@@ -46,10 +47,11 @@ flowchart TD
   E -- 是 --> F[直接返回账户<br/>不弹连接页]
   E -- 否 --> G[打开连接页 approval.html?type=connect]
   G --> H[用户同意连接]
+  H --> H1[弹窗保持打开<br/>等待后续登录请求]
   F --> I[DApp 发起 SIWE/UCAN 签名请求?]
-  H --> I
+  H1 --> I
   I -- 否 --> J[流程结束]
-  I -- 是 --> K[打开签名页 approval.html?type=sign]
+  I -- 是 --> K[复用当前审批弹窗<br/>切换到签名页 approval.html?type=sign]
   K --> L[用户确认签名]
   L --> M{UCAN 会话接口?}
   M -- 是 --> N[ensureSiteAuthorized<br/>创建/使用 UCAN 会话]

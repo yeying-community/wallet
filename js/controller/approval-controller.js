@@ -30,6 +30,7 @@ export class ApprovalController {
     this.requestData = dependencies.requestData;
 
     this.isProcessing = false;
+    this.followupTimer = null;
   }
 
   /**
@@ -81,6 +82,7 @@ export class ApprovalController {
     try {
       const account = await this.wallet.getCurrentAccount();
       if (!account) {
+        this.isProcessing = false;
         showError('请先创建或导入钱包');
         return;
       }
@@ -92,7 +94,12 @@ export class ApprovalController {
       });
 
       showSuccess('已授权连接');
-      this.closeWindow();
+      this.showFollowupWaitingState({
+        title: '连接成功',
+        description: '等待网站继续发起登录签名请求…',
+        hint: '如果是 JWT、SIWE 或 UCAN 登录，此窗口会直接进入签名确认。',
+        timeoutMs: 10000
+      });
     } catch (error) {
       this.isProcessing = false;
       showError('授权失败: ' + error.message);
@@ -380,6 +387,52 @@ export class ApprovalController {
     }
   }
 
+  showFollowupWaitingState(options = {}) {
+    this.clearFollowupTimer();
+
+    const title = options.title || '等待后续请求';
+    const description = options.description || '当前授权已完成';
+    const hint = options.hint || '';
+    const timeoutMs = Number.isFinite(options.timeoutMs) ? options.timeoutMs : 10000;
+
+    document.querySelectorAll('.request-view').forEach((view) => {
+      view.classList.add('hidden');
+    });
+
+    const waitingView = document.getElementById('approvalWaiting');
+    const titleEl = document.getElementById('waitingTitle');
+    const descriptionEl = document.getElementById('waitingDescription');
+    const hintEl = document.getElementById('waitingHint');
+    const closeBtn = document.getElementById('waitingCloseButton');
+
+    if (titleEl) {
+      titleEl.textContent = title;
+    }
+    if (descriptionEl) {
+      descriptionEl.textContent = description;
+    }
+    if (hintEl) {
+      hintEl.textContent = hint;
+    }
+    if (closeBtn && !closeBtn.dataset.bound) {
+      closeBtn.addEventListener('click', () => this.closeWindow());
+      closeBtn.dataset.bound = 'true';
+    }
+    if (waitingView) {
+      waitingView.classList.remove('hidden');
+    }
+
+    this.followupTimer = setTimeout(() => {
+      this.closeWindow();
+    }, timeoutMs);
+  }
+
+  clearFollowupTimer() {
+    if (!this.followupTimer) return;
+    clearTimeout(this.followupTimer);
+    this.followupTimer = null;
+  }
+
   /**
    * 发送响应到 background
    */
@@ -404,6 +457,7 @@ export class ApprovalController {
    * 关闭当前窗口
    */
   closeWindow() {
+    this.clearFollowupTimer();
     if (typeof window !== 'undefined') {
       window.close();
     }

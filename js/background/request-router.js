@@ -25,34 +25,13 @@ import { withPopupBoundsAsync } from './window-utils.js';
 import { POPUP_DIMENSIONS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { handleUcanSession, handleUcanSign } from './ucan.js';
-import { updateKeepAlive } from './offscreen.js';
-
-function findPendingRequest(type, origin, tabId) {
-  for (const [requestId, request] of state.pendingRequests.entries()) {
-    if (request.type !== type) continue;
-    if (origin && request.origin !== origin) continue;
-    if (typeof tabId === 'number' && request.tabId !== tabId) continue;
-    return { requestId, request };
-  }
-  return null;
-}
-
-function focusPendingWindow(pending) {
-  const windowId = pending?.request?.windowId;
-  if (!windowId) return;
-  chrome.windows.update(windowId, { focused: true }).catch(() => { });
-}
-
-function addPendingRequest(requestId, request) {
-  state.pendingRequests.set(requestId, request);
-  updateKeepAlive();
-}
-
-function removePendingRequest(requestId) {
-  if (state.pendingRequests.delete(requestId)) {
-    updateKeepAlive();
-  }
-}
+import {
+  addPendingRequest,
+  findPendingRequest,
+  focusPendingWindow,
+  openApprovalWindow,
+  removePendingRequest
+} from './approval-flow.js';
 
 async function isActiveTab(tabId) {
   if (!Number.isFinite(tabId)) return false;
@@ -623,6 +602,7 @@ async function handlePersonalSign(accountId, params, origin, tabId) {
     type: 'sign_message',
     origin,
     tabId,
+    reuseSession: true,
     data: {
       accountId,
       message: messageToSign,
@@ -633,71 +613,65 @@ async function handlePersonalSign(accountId, params, origin, tabId) {
 
   // 打开授权弹窗
   return new Promise(async (resolve, reject) => {
-    const windowOptions = await withPopupBoundsAsync({
-      url: `html/approval.html?requestId=${requestId}&type=sign_message`,
-      type: 'popup',
-      width: POPUP_DIMENSIONS.width,
-      height: POPUP_DIMENSIONS.height,
-      focused: true
-    });
+    let approvalWindow;
+    try {
+      approvalWindow = await openApprovalWindow({
+        requestId,
+        requestType: 'sign_message',
+        origin,
+        tabId,
+        reuseSession: true
+      });
+    } catch (error) {
+      removePendingRequest(requestId);
+      reject(error);
+      return;
+    }
 
-    chrome.windows.create(windowOptions, (window) => {
-      if (!window) {
-        removePendingRequest(requestId);
-        reject(createInternalError('Failed to open approval window'));
-        return;
-      }
+    const windowRemovedListener = (windowId) => {
+      if (windowId === approvalWindow.windowId) {
+        chrome.windows.onRemoved.removeListener(windowRemovedListener);
+        chrome.runtime.onMessage.removeListener(messageListener);
 
-      const pendingRequest = state.pendingRequests.get(requestId);
-      if (pendingRequest) {
-        pendingRequest.windowId = window.id;
-      }
-
-      const windowRemovedListener = (windowId) => {
-        if (windowId === window.id) {
-          chrome.windows.onRemoved.removeListener(windowRemovedListener);
-          chrome.runtime.onMessage.removeListener(messageListener);
-
-          if (state.pendingRequests.has(requestId)) {
-            removePendingRequest(requestId);
-            reject(createUserRejectedError('User closed approval window'));
-          }
-        }
-      };
-
-      const messageListener = async (responseMessage, sender) => {
-        if (responseMessage.type === ApprovalMessageType.APPROVAL_RESPONSE && responseMessage.requestId === requestId) {
-          chrome.windows.onRemoved.removeListener(windowRemovedListener);
-          chrome.runtime.onMessage.removeListener(messageListener);
-
-          removePendingRequest(requestId);
-
-          if (responseMessage.approved) {
-            try {
-              const signature = await signMessage(accountId, messageToSign);
-              resolve(signature);
-            } catch (error) {
-              reject(error);
-            }
-          } else {
-            reject(createInternalError('User rejected the signature request'));
-          }
-        }
-      };
-
-      chrome.windows.onRemoved.addListener(windowRemovedListener);
-      chrome.runtime.onMessage.addListener(messageListener);
-
-      setTimeout(() => {
         if (state.pendingRequests.has(requestId)) {
-          chrome.windows.onRemoved.removeListener(windowRemovedListener);
-          chrome.runtime.onMessage.removeListener(messageListener);
           removePendingRequest(requestId);
-          chrome.windows.remove(window.id).catch(() => { });
-          reject(createTimeoutError('Approval request timeout'));
+          reject(createUserRejectedError('User closed approval window'));
         }
-      }, 300000);
-    });
+      }
+    };
+
+    const messageListener = async (responseMessage, sender) => {
+      if (responseMessage.type === ApprovalMessageType.APPROVAL_RESPONSE && responseMessage.requestId === requestId) {
+        chrome.windows.onRemoved.removeListener(windowRemovedListener);
+        chrome.runtime.onMessage.removeListener(messageListener);
+
+        removePendingRequest(requestId);
+
+        if (responseMessage.approved) {
+          try {
+            const signature = await signMessage(accountId, messageToSign);
+            resolve(signature);
+          } catch (error) {
+            reject(error);
+          }
+        } else {
+          reject(createInternalError('User rejected the signature request'));
+        }
+      }
+    };
+
+    chrome.windows.onRemoved.addListener(windowRemovedListener);
+    chrome.runtime.onMessage.addListener(messageListener);
+
+    setTimeout(() => {
+      if (state.pendingRequests.has(requestId)) {
+        chrome.windows.onRemoved.removeListener(windowRemovedListener);
+        chrome.runtime.onMessage.removeListener(messageListener);
+        removePendingRequest(requestId);
+        chrome.windows.remove(approvalWindow.windowId).catch(() => { });
+        reject(createTimeoutError('Approval request timeout'));
+      }
+    }, 300000);
   });
 }
 
@@ -737,6 +711,7 @@ async function handleSignTypedData(accountId, params, origin, tabId) {
     type: 'sign_typed_data',
     origin,
     tabId,
+    reuseSession: true,
     data: {
       accountId,
       typedData,
@@ -747,71 +722,65 @@ async function handleSignTypedData(accountId, params, origin, tabId) {
 
   // 打开授权弹窗
   return new Promise(async (resolve, reject) => {
-    const windowOptions = await withPopupBoundsAsync({
-      url: `html/approval.html?requestId=${requestId}&type=sign_typed_data`,
-      type: 'popup',
-      width: POPUP_DIMENSIONS.width,
-      height: POPUP_DIMENSIONS.height,
-      focused: true
-    });
+    let approvalWindow;
+    try {
+      approvalWindow = await openApprovalWindow({
+        requestId,
+        requestType: 'sign_typed_data',
+        origin,
+        tabId,
+        reuseSession: true
+      });
+    } catch (error) {
+      removePendingRequest(requestId);
+      reject(error);
+      return;
+    }
 
-    chrome.windows.create(windowOptions, (window) => {
-      if (!window) {
-        removePendingRequest(requestId);
-        reject(createInternalError('Failed to open approval window'));
-        return;
-      }
+    const windowRemovedListener = (windowId) => {
+      if (windowId === approvalWindow.windowId) {
+        chrome.windows.onRemoved.removeListener(windowRemovedListener);
+        chrome.runtime.onMessage.removeListener(messageListener);
 
-      const pendingRequest = state.pendingRequests.get(requestId);
-      if (pendingRequest) {
-        pendingRequest.windowId = window.id;
-      }
-
-      const windowRemovedListener = (windowId) => {
-        if (windowId === window.id) {
-          chrome.windows.onRemoved.removeListener(windowRemovedListener);
-          chrome.runtime.onMessage.removeListener(messageListener);
-
-          if (state.pendingRequests.has(requestId)) {
-            removePendingRequest(requestId);
-            reject(createUserRejectedError('User closed approval window'));
-          }
-        }
-      };
-
-      const messageListener = async (message, sender) => {
-        if (message.type === ApprovalMessageType.APPROVAL_RESPONSE && message.requestId === requestId) {
-          chrome.windows.onRemoved.removeListener(windowRemovedListener);
-          chrome.runtime.onMessage.removeListener(messageListener);
-
-          removePendingRequest(requestId);
-
-          if (message.approved) {
-            try {
-              const { domain, types, message: value } = typedData;
-              const signature = await signTypedData(accountId, domain, types, value);
-              resolve(signature);
-            } catch (error) {
-              reject(error);
-            }
-          } else {
-            reject(createUserRejectedError('User rejected the signature request'));
-          }
-        }
-      };
-
-      chrome.windows.onRemoved.addListener(windowRemovedListener);
-      chrome.runtime.onMessage.addListener(messageListener);
-
-      setTimeout(() => {
         if (state.pendingRequests.has(requestId)) {
-          chrome.windows.onRemoved.removeListener(windowRemovedListener);
-          chrome.runtime.onMessage.removeListener(messageListener);
           removePendingRequest(requestId);
-          chrome.windows.remove(window.id).catch(() => { });
-          reject(createTimeoutError('Approval request timeout'));
+          reject(createUserRejectedError('User closed approval window'));
         }
-      }, 300000);
-    });
+      }
+    };
+
+    const messageListener = async (message, sender) => {
+      if (message.type === ApprovalMessageType.APPROVAL_RESPONSE && message.requestId === requestId) {
+        chrome.windows.onRemoved.removeListener(windowRemovedListener);
+        chrome.runtime.onMessage.removeListener(messageListener);
+
+        removePendingRequest(requestId);
+
+        if (message.approved) {
+          try {
+            const { domain, types, message: value } = typedData;
+            const signature = await signTypedData(accountId, domain, types, value);
+            resolve(signature);
+          } catch (error) {
+            reject(error);
+          }
+        } else {
+          reject(createUserRejectedError('User rejected the signature request'));
+        }
+      }
+    };
+
+    chrome.windows.onRemoved.addListener(windowRemovedListener);
+    chrome.runtime.onMessage.addListener(messageListener);
+
+    setTimeout(() => {
+      if (state.pendingRequests.has(requestId)) {
+        chrome.windows.onRemoved.removeListener(windowRemovedListener);
+        chrome.runtime.onMessage.removeListener(messageListener);
+        removePendingRequest(requestId);
+        chrome.windows.remove(approvalWindow.windowId).catch(() => { });
+        reject(createTimeoutError('Approval request timeout'));
+      }
+    }, 300000);
   });
 }

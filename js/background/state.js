@@ -17,6 +17,7 @@ export const state = {
 
   // 请求管理
   pendingRequests: new Map(),      // requestId => { type, data, timestamp }
+  approvalSessions: new Map(),     // sessionKey => { windowId, tabId, activeRequestId, queue }
 
   // 弹窗位置
   popupBounds: null,               // { left, top, screen }
@@ -39,6 +40,7 @@ export function resetState() {
   state.connectedSites.clear();
   state.connections.clear();
   state.pendingRequests.clear();
+  state.approvalSessions.clear();
   state.keyring = null;
   state.lockTimer = null;
   state.passwordCache = null;

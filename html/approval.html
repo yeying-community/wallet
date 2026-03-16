@@ -11,6 +11,28 @@
 
   <body>
     <div class="approval-container">
+      <div id="approvalWaiting" class="request-view hidden">
+        <div class="request-header">
+          <h2 id="waitingTitle">连接成功</h2>
+        </div>
+
+        <div class="request-body">
+          <div class="waiting-card">
+            <div class="waiting-icon">✓</div>
+            <div class="waiting-text" id="waitingDescription"></div>
+            <div class="waiting-hint" id="waitingHint">
+              如果网站继续发起登录签名，此窗口会直接切换到下一步。
+            </div>
+          </div>
+        </div>
+
+        <div class="request-footer">
+          <div class="button-group">
+            <button id="waitingCloseButton" class="btn btn-primary">关闭</button>
+          </div>
+        </div>
+      </div>
+
       <!-- 连接请求 -->
       <div id="connectRequest" class="request-view hidden">
         <div class="request-header">
