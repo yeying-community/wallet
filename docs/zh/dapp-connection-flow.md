@@ -26,11 +26,12 @@
    `handleEthRequestAccounts` 会判断站点是否已授权：  
    - **已授权**：直接返回账户列表，不弹连接页。  
    - **未授权**：打开 `approval.html?type=connect` 让用户确认连接。
-   - 用户确认后，弹窗不会立刻关闭，而是短暂进入“等待后续登录请求”状态。
+   - 用户确认后，弹窗不会立刻关闭，而是进入“等待后续登录请求”状态；优先保持同一窗口以承接 SIWE/UCAN 签名（也可手动关闭）。
 
 3. **SIWE/UCAN 签名（Sign 页面）**  
    DApp 发送 SIWE/UCAN 登录消息（如 `personal_sign` / `eth_sign` / `eth_signTypedData`）时，  
    会优先复用同一 `origin + tabId` 的审批弹窗，直接切换到 `approval.html?type=sign...` 进行签名确认，避免再次弹出新窗口。
+   - 若签名请求在连接审批期间提前到达，会先进入同会话队列；连接通过后自动切换到签名页继续。
 
 4. **UCAN 会话/签名接口**  
    调用 `yeying_ucan_session` / `yeying_ucan_sign` 时，后台会先 `ensureSiteAuthorized`，  

@@ -26,11 +26,12 @@ This document describes the actual flow based on the current code.
    `handleEthRequestAccounts` checks whether the site is already authorized:  
    - **Authorized**: returns accounts directly, no connect popup.  
    - **Not authorized**: opens `approval.html?type=connect`.
-   - After approval, the popup stays open briefly in a waiting state for the follow-up login/sign request.
+   - After approval, the popup stays in a waiting state (instead of closing immediately) so SIWE/UCAN signing can continue in the same window; users can still close it manually.
 
 3. **SIWE/UCAN signing (Sign page)**  
    When the DApp sends a SIWE/UCAN login message (e.g. `personal_sign`, `eth_sign`, `eth_signTypedData`),  
    the wallet first tries to reuse the same approval popup for the same `origin + tabId`, and switches it to `approval.html?type=sign...` instead of opening a new window.
+   - If a sign request arrives before the connect approval is finished, it is queued in the same approval session and promoted automatically after connect is approved.
 
 4. **UCAN session/sign APIs**  
    `yeying_ucan_session` / `yeying_ucan_sign` call `ensureSiteAuthorized` first.  

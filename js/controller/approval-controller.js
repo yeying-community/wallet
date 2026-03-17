@@ -31,6 +31,8 @@ export class ApprovalController {
 
     this.isProcessing = false;
     this.followupTimer = null;
+    this.hasQueuedFollowup = false;
+    this.runtimeMessageListener = null;
   }
 
   /**
@@ -73,6 +75,8 @@ export class ApprovalController {
     if (rejectBtn) {
       rejectBtn.addEventListener('click', () => this.reject());
     }
+
+    this.bindApprovalQueueEvents();
   }
 
   async approveConnect() {
@@ -96,14 +100,49 @@ export class ApprovalController {
       showSuccess('已授权连接');
       this.showFollowupWaitingState({
         title: '连接成功',
-        description: '等待网站继续发起登录签名请求…',
-        hint: '如果是 JWT、SIWE 或 UCAN 登录，此窗口会直接进入签名确认。',
-        timeoutMs: 10000
+        description: this.hasQueuedFollowup
+          ? '检测到后续签名请求，正在进入签名确认…'
+          : '等待网站继续发起登录签名请求…',
+        hint: this.hasQueuedFollowup
+          ? '请在下一步确认签名内容。'
+          : '为减少重复弹窗，此窗口会保持打开，直到进入签名确认或你手动关闭。',
+        timeoutMs: 0
       });
     } catch (error) {
       this.isProcessing = false;
       showError('授权失败: ' + error.message);
     }
+  }
+
+  bindApprovalQueueEvents() {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.onMessage) {
+      return;
+    }
+
+    const hintEl = document.getElementById('connectFlowHint');
+    if (!hintEl) {
+      return;
+    }
+
+    this.runtimeMessageListener = (message) => {
+      if (message?.type !== ApprovalMessageType.APPROVAL_QUEUE_UPDATE) {
+        return;
+      }
+      if (message?.data?.activeRequestId !== this.requestId) {
+        return;
+      }
+
+      this.hasQueuedFollowup = true;
+      const queueSize = Number.isFinite(message?.data?.queueSize)
+        ? message.data.queueSize
+        : 1;
+      hintEl.textContent = queueSize > 1
+        ? `检测到 ${queueSize} 个后续请求，连接后会继续确认签名。`
+        : '检测到后续签名请求，连接后会继续签名确认。';
+      hintEl.classList.remove('hidden');
+    };
+
+    chrome.runtime.onMessage.addListener(this.runtimeMessageListener);
   }
 
   // ==================== 交易签名请求 ====================
@@ -422,15 +461,25 @@ export class ApprovalController {
       waitingView.classList.remove('hidden');
     }
 
-    this.followupTimer = setTimeout(() => {
-      this.closeWindow();
-    }, timeoutMs);
+    if (timeoutMs > 0) {
+      this.followupTimer = setTimeout(() => {
+        this.closeWindow();
+      }, timeoutMs);
+    }
   }
 
   clearFollowupTimer() {
     if (!this.followupTimer) return;
     clearTimeout(this.followupTimer);
     this.followupTimer = null;
+  }
+
+  clearRuntimeListeners() {
+    if (!this.runtimeMessageListener) return;
+    if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+      chrome.runtime.onMessage.removeListener(this.runtimeMessageListener);
+    }
+    this.runtimeMessageListener = null;
   }
 
   /**
@@ -458,6 +507,7 @@ export class ApprovalController {
    */
   closeWindow() {
     this.clearFollowupTimer();
+    this.clearRuntimeListeners();
     if (typeof window !== 'undefined') {
       window.close();
     }

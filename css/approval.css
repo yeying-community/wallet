@@ -105,6 +105,17 @@ body {
   font-size: 20px;
 }
 
+.flow-hint {
+  margin-top: 10px;
+  border: 1px solid #dbeafe;
+  background: #eff6ff;
+  color: #1e40af;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .transaction-details {
   background: #f8f9fa;
   padding: 15px;

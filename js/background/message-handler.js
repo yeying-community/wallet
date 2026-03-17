@@ -688,6 +688,11 @@ export async function handlePopupMessage(message, response) {
         });
         break;
 
+      case ApprovalMessageType.APPROVAL_QUEUE_UPDATE:
+        // background -> approval 页面提示消息；若回流到 background，直接忽略
+        response({ success: true });
+        break;
+
       case WalletMessageType.GET_ACCOUNT_BY_ID:
         response(await handleGetAccountById(data?.accountId));
         break;

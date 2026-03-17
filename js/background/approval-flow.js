@@ -4,6 +4,7 @@
  */
 
 import { createInternalError } from '../common/errors/index.js';
+import { ApprovalMessageType } from '../protocol/extension-protocol.js';
 import { POPUP_DIMENSIONS } from '../config/index.js';
 import { state } from './state.js';
 import { updateKeepAlive } from './offscreen.js';
@@ -93,6 +94,18 @@ function enqueueSessionRequest(session, requestId) {
     return queue;
   }
   return [...queue, requestId];
+}
+
+function notifyQueuedApproval(sessionKey, activeRequestId, queuedRequestId, queueSize) {
+  chrome.runtime.sendMessage({
+    type: ApprovalMessageType.APPROVAL_QUEUE_UPDATE,
+    data: {
+      sessionKey,
+      activeRequestId,
+      queuedRequestId,
+      queueSize
+    }
+  }).catch(() => { });
 }
 
 export function getApprovalSessionKey(origin, tabId) {
@@ -207,6 +220,7 @@ export async function openApprovalWindow(options) {
     );
 
     if (session?.activeRequestId && state.pendingRequests.has(session.activeRequestId)) {
+      const currentActiveRequestId = session.activeRequestId;
       const nextQueue = enqueueSessionRequest(session, requestId);
       updatePendingRequestWindow(requestId, session.windowId, session.tabId);
       setApprovalSession(sessionKey, {
@@ -214,6 +228,7 @@ export async function openApprovalWindow(options) {
         queue: nextQueue,
         updatedAt: Date.now()
       });
+      notifyQueuedApproval(sessionKey, currentActiveRequestId, requestId, nextQueue.length);
       await chrome.windows.update(session.windowId, { focused: true }).catch(() => { });
       return {
         windowId: session.windowId,
