@@ -127,7 +127,7 @@ export async function routeRequest(method, params, metadata) {
       tabId: Number.isFinite(tabId) ? tabId : null,
       timestamp: getTimestamp()
     });
-    await requestUnlock();
+    await requestUnlock({ origin, tabId, method });
   }
 
   // 检查钱包是否已解锁

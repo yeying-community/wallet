@@ -5,7 +5,7 @@ This document describes the actual flow based on the current code.
 ## Summary
 - First-time connect: the connect page and follow-up JWT/SIWE/UCAN signing page reuse the same approval popup when the sign request follows immediately.
 - Returning site: If already authorized, only the SIWE/UCAN signing page appears.
-- Wallet locked: An unlock popup appears first (skipped when already unlocked).
+- Wallet locked: the same approval popup enters an unlock step first instead of opening a separate unlock window.
 
 > Note: the signing page only appears when the DApp actually sends a signing request (e.g. SIWE/UCAN login message).
 
@@ -19,7 +19,7 @@ This document describes the actual flow based on the current code.
 ## Detailed Flow
 1. **DApp requests accounts**  
    Typically `eth_requestAccounts` / `wallet_requestPermissions`.  
-   - If locked, `request-router` calls `requestUnlock()` and opens the unlock popup.  
+   - If locked, `request-router` calls `requestUnlock()` and enters an unlock step inside the approval popup.
    - After unlocking, connection continues.
 
 2. **Connect approval (Connect page)**  
@@ -41,7 +41,7 @@ This document describes the actual flow based on the current code.
 ```mermaid
 flowchart TD
   A[DApp calls eth_requestAccounts / wallet_requestPermissions] --> B{Wallet locked?}
-  B -- Yes --> C[Open unlock popup popup.html]
+  B -- Yes --> C[Open unlock step inside approval popup approval.html?type=unlock]
   C --> D[Unlocked]
   B -- No --> D
   D --> E{Site already authorized?}

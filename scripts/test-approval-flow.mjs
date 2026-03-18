@@ -281,6 +281,11 @@ async function run() {
     context,
     moduleCache
   );
+  const unlockModule = await loadModule(
+    path.join(repoRoot, 'js/background/unlock-flow.js'),
+    context,
+    moduleCache
+  );
 
   const { state, resetState } = stateModule.namespace;
   const {
@@ -289,6 +294,10 @@ async function run() {
     openApprovalWindow,
     hasActiveApprovalForSession
   } = approvalModule.namespace;
+  const {
+    requestUnlock,
+    notifyUnlocked
+  } = unlockModule.namespace;
 
   function resetAll() {
     resetState();
@@ -517,11 +526,73 @@ async function run() {
     );
   }
 
+  async function testUnlockPopupIsReusedByFollowupApproval() {
+    resetAll();
+
+    const unlockPromise = requestUnlock({
+      origin: 'https://locked.example',
+      tabId: 55,
+      method: 'eth_requestAccounts'
+    });
+
+    await waitFor(() => chrome.__stats.windowsCreated === 1, 'unlock popup was not created');
+
+    const createdWindow = [...chrome.__windows.values()][0];
+    const createdTab = createdWindow?.tabs?.[0];
+    assert.ok(createdWindow, 'unlock popup should exist');
+    assert.ok(createdTab, 'unlock popup should have a tab');
+    assert.match(
+      createdTab.url,
+      /html\/approval\.html\?type=unlock/,
+      'locked flow should open approval unlock step instead of popup.html'
+    );
+
+    const session = state.approvalSessions.get('https://locked.example:55');
+    assert.ok(session, 'unlock flow should prime an approval session for same origin/tab');
+    assert.equal(session.windowId, createdWindow.id, 'primed session should point to unlock popup');
+    assert.equal(session.activeRequestId, null, 'unlock step should not consume approval request slot');
+
+    notifyUnlocked();
+    await unlockPromise;
+
+    assert.equal(
+      chrome.__windows.has(createdWindow.id),
+      true,
+      'unlock popup should stay open after successful unlock to continue same-window flow'
+    );
+
+    addPendingRequest('req-after-unlock', {
+      type: 'connect',
+      origin: 'https://locked.example',
+      tabId: 55,
+      reuseSession: true,
+      data: {}
+    });
+
+    const reused = await openApprovalWindow({
+      requestId: 'req-after-unlock',
+      requestType: 'connect',
+      origin: 'https://locked.example',
+      tabId: 55,
+      reuseSession: true
+    });
+
+    assert.equal(reused.reused, true, 'approval after unlock should reuse the unlock popup');
+    assert.equal(reused.windowId, createdWindow.id, 'reused approval should keep unlock popup window');
+    assert.equal(chrome.__stats.windowsCreated, 1, 'unlock + connect should still use one popup window');
+    assert.match(
+      chrome.__tabs.get(createdTab.id).url,
+      /requestId=req-after-unlock/,
+      'same unlock popup tab should transition into follow-up approval request'
+    );
+  }
+
   const tests = [
     ['create and reuse approval popup', testCreateAndReuseWindow],
     ['queue follow-up approval while current one is active', testQueueFollowupWhileCurrentApprovalIsActive],
     ['fallback to new popup when reuse fails', testFallbackToNewWindowWhenReuseFails],
-    ['clear session after popup close', testWindowRemovalCleansSession]
+    ['clear session after popup close', testWindowRemovalCleansSession],
+    ['reuse unlock popup for follow-up approval', testUnlockPopupIsReusedByFollowupApproval]
   ];
 
   for (const [name, testFn] of tests) {

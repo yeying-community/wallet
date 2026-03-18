@@ -5,7 +5,7 @@
 ## 流程总结
 - 首次连接：连接页与后续 JWT/SIWE/UCAN 签名页复用同一个审批弹窗（若签名请求紧随其后）。
 - 以后再进：如果站点已授权，只剩 SIWE/UCAN 签名页。
-- 如果钱包锁了：会先出现解锁页（已解锁则跳过）。
+- 如果钱包锁了：会先进入同一审批弹窗内的解锁步骤，而不是额外弹出独立解锁窗。
 
 > 备注：签名页只会在 DApp 发起签名请求时出现（如 SIWE/UCAN 登录消息）。
 
@@ -19,7 +19,7 @@
 ## 详细流程说明
 1. **DApp 请求连接账户**  
    通常调用 `eth_requestAccounts` / `wallet_requestPermissions`。  
-   - 若钱包锁定，`request-router` 会先触发 `requestUnlock()` 打开解锁弹窗。  
+   - 若钱包锁定，`request-router` 会先触发 `requestUnlock()`，在审批弹窗中进入解锁步骤。
    - 解锁成功后进入连接流程。
 
 2. **连接授权（Connect 页面）**  
@@ -41,7 +41,7 @@
 ```mermaid
 flowchart TD
   A[DApp 调用 eth_requestAccounts / wallet_requestPermissions] --> B{钱包锁定?}
-  B -- 是 --> C[打开解锁页 popup.html]
+  B -- 是 --> C[打开审批弹窗中的解锁步骤 approval.html?type=unlock]
   C --> D[解锁成功]
   B -- 否 --> D
   D --> E{站点已授权?}

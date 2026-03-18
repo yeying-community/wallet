@@ -17,6 +17,7 @@
 import { showError, showSuccess, showWaiting } from '../common/ui/index.js';
 import { ApprovalMessageType } from '../protocol/extension-protocol.js';
 import { shortenAddress } from '../common/chain/index.js'
+import { formatLocaleDateTime } from '../common/utils/time-utils.js';
 
 export class ApprovalController {
   constructor(dependencies) {
@@ -45,6 +46,9 @@ export class ApprovalController {
       case 'connect':
         this.bindConnectEvents();
         break;
+      case 'unlock':
+        this.bindUnlockEvents();
+        break;
       case 'transaction':
         this.bindTransactionEvents();
         break;
@@ -64,6 +68,128 @@ export class ApprovalController {
   }
 
   // ==================== 连接请求 ====================
+
+  bindUnlockEvents() {
+    const approveBtn = document.getElementById('approveUnlock');
+    const cancelBtn = document.getElementById('cancelUnlock');
+    const passwordInput = document.getElementById('unlockPassword');
+
+    if (approveBtn) {
+      approveBtn.addEventListener('click', () => this.approveUnlock());
+    }
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => this.closeWindow());
+    }
+    if (passwordInput) {
+      passwordInput.addEventListener('keypress', async (event) => {
+        if (event.key === 'Enter') {
+          await this.approveUnlock();
+        }
+      });
+      setTimeout(() => passwordInput.focus(), 0);
+    }
+
+    this.renderUnlockReason();
+  }
+
+  renderUnlockReason() {
+    const info = this.requestData || {};
+    const originEl = document.getElementById('unlockOrigin');
+    const container = document.getElementById('unlockReason');
+    const reasonOriginEl = document.getElementById('unlockReasonOrigin');
+    const methodEl = document.getElementById('unlockReasonMethod');
+    const timeEl = document.getElementById('unlockReasonTime');
+    const badgeEl = document.getElementById('unlockReasonMethodBadge');
+
+    if (originEl) {
+      originEl.textContent = info.origin || '会话已过期，请输入密码继续';
+    }
+    if (!container) {
+      return;
+    }
+    if (!info || (!info.origin && !info.method && !info.timestamp)) {
+      container.classList.add('hidden');
+      return;
+    }
+
+    const formatted = this.formatUnlockMethod(info.method);
+    if (reasonOriginEl) {
+      reasonOriginEl.textContent = info.origin || '-';
+    }
+    if (methodEl) {
+      methodEl.textContent = formatted.detail || formatted.label || info.method || '-';
+    }
+    if (badgeEl) {
+      badgeEl.textContent = formatted.label || '-';
+    }
+    if (timeEl) {
+      timeEl.textContent = info.timestamp ? formatLocaleDateTime(info.timestamp) : '-';
+    }
+    container.classList.remove('hidden');
+  }
+
+  formatUnlockMethod(method) {
+    const raw = String(method || '').trim();
+    if (!raw) {
+      return { label: '请求', detail: '-' };
+    }
+    const map = {
+      yeying_ucan_sign: { label: 'UCAN', detail: 'UCAN 签名' },
+      yeying_ucan_session: { label: 'UCAN', detail: 'UCAN 会话' },
+      eth_requestAccounts: { label: '连接', detail: '连接钱包' },
+      eth_sendTransaction: { label: '交易', detail: '发送交易' },
+      eth_signTransaction: { label: '交易', detail: '签名交易' },
+      personal_sign: { label: '签名', detail: '消息签名' },
+      eth_sign: { label: '签名', detail: '消息签名' },
+      eth_signTypedData: { label: '签名', detail: '结构化签名' },
+      eth_signTypedData_v4: { label: '签名', detail: '结构化签名' },
+      wallet_requestPermissions: { label: '授权', detail: '权限请求' },
+      wallet_addEthereumChain: { label: '网络', detail: '添加网络' },
+      wallet_switchEthereumChain: { label: '网络', detail: '切换网络' },
+      wallet_watchAsset: { label: '资产', detail: '添加资产' }
+    };
+    if (map[raw]) {
+      return map[raw];
+    }
+    const lower = raw.toLowerCase();
+    if (lower.includes('siwe')) {
+      return { label: 'SIWE', detail: 'SIWE 登录' };
+    }
+    if (lower.includes('ucan')) {
+      return { label: 'UCAN', detail: 'UCAN 请求' };
+    }
+    return { label: '请求', detail: raw };
+  }
+
+  async approveUnlock() {
+    if (this.isProcessing) return;
+    this.isProcessing = true;
+
+    const passwordInput = document.getElementById('unlockPassword');
+    const password = passwordInput?.value || '';
+
+    if (!password) {
+      this.isProcessing = false;
+      showError('请输入密码');
+      return;
+    }
+
+    try {
+      showWaiting();
+      const currentAccount = await this.wallet.getCurrentAccount();
+      await this.wallet.unlock(password, currentAccount?.id);
+      showSuccess('解锁成功');
+      this.showFollowupWaitingState({
+        title: '解锁成功',
+        description: '正在继续当前网站的授权请求…',
+        hint: '此窗口会直接进入连接或签名确认。',
+        timeoutMs: 0
+      });
+    } catch (error) {
+      this.isProcessing = false;
+      showError('密码错误');
+    }
+  }
 
   bindConnectEvents() {
     const approveBtn = document.getElementById('approveConnect');

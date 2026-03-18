@@ -119,6 +119,20 @@ export function getApprovalSession(origin, tabId) {
   return state.approvalSessions.get(sessionKey) || null;
 }
 
+export function primeApprovalSessionWindow(origin, tabId, windowId, approvalTabId) {
+  const sessionKey = getApprovalSessionKey(origin, tabId);
+  ensureWindowCleanupListener();
+  setApprovalSession(sessionKey, {
+    windowId,
+    tabId: approvalTabId,
+    activeRequestId: null,
+    lastRequestId: null,
+    queue: [],
+    updatedAt: Date.now()
+  });
+  return sessionKey;
+}
+
 export function hasActiveApprovalForSession(origin, tabId) {
   const session = getApprovalSession(origin, tabId);
   if (!session?.activeRequestId) return false;
