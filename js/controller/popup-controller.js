@@ -1,5 +1,5 @@
 import { showPage, getCurrentPage, getPageOrigin, showError } from '../common/ui/index.js';
-import { formatLocaleDateTime } from '../common/utils/time-utils.js';
+import { formatDate, formatLocaleDateTime } from '../common/utils/time-utils.js';
 import { POLLING_CONFIG } from '../config/index.js';
 import { WelcomeController } from './welcome-controller.js';
 import { UnlockWalletController } from './wallet/unlock-wallet-controller.js';
@@ -272,6 +272,14 @@ export class PopupController {
         : authMode === 'ucan'
           ? Boolean(settings?.ucanToken)
           : Boolean(settings?.authToken);
+      const latestSyncAt = [settings?.lastPullAt, settings?.lastPushAt]
+        .map((value) => {
+          const timestamp = value ? new Date(value).getTime() : 0;
+          return Number.isFinite(timestamp) ? timestamp : 0;
+        })
+        .filter(Boolean)
+        .sort((a, b) => b - a)[0] || 0;
+      const staleSyncThresholdMs = 30 * 60 * 1000;
 
       let statusText = '同步状态未知';
       if (!enabled) {
@@ -284,7 +292,9 @@ export class PopupController {
         statusText = '同步未登录';
         badge.className = 'sync-status-badge warning';
       } else {
-        statusText = '同步已开启';
+        statusText = latestSyncAt > 0 && (Date.now() - latestSyncAt) >= staleSyncThresholdMs
+          ? formatDate(latestSyncAt, 'relative')
+          : '已同步';
         badge.className = 'sync-status-badge success';
       }
 
