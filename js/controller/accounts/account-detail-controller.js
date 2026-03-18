@@ -128,6 +128,7 @@ export class AccountDetailController {
         }
       }
 
+      window.refreshWalletSelects?.();
       this.exitAccountNameEdit(true);
       showPage('accountDetailPage');
     } catch (error) {

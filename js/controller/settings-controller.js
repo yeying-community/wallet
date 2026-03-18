@@ -608,6 +608,7 @@ export class SettingsController {
     this.updateBackupSyncTokenStatus(settings, tokenStatus);
     this.updateBackupSyncLastStatus(settings, lastStatus);
     this.updateBackupSyncEnabledState(Boolean(settings.enabled));
+    window.refreshWalletSelects?.();
 
     this.renderBackupSyncAccountAddress();
     this.renderBackupSyncConflicts(settings.conflicts || []);
@@ -656,6 +657,7 @@ export class SettingsController {
     if (ucanTtlInput && !ucanTtlInput.value) {
       ucanTtlInput.value = '24';
     }
+    window.refreshWalletSelects?.();
   }
 
   async handleMpcSettingsUpdate(updates = {}) {

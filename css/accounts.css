@@ -452,6 +452,22 @@
   font-size: 12px;
 }
 
+.account-detail-qr-size .custom-select {
+  width: 96px;
+}
+
+.account-detail-qr-size .custom-select-trigger {
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.account-detail-qr-size .custom-select-menu {
+  min-width: 120px;
+  right: auto;
+}
+
 #accountDetailPage {
   display: flex;
   flex-direction: column;
