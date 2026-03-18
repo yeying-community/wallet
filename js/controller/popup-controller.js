@@ -259,6 +259,7 @@ export class PopupController {
 
   async updateBackupSyncStatus() {
     const badge = document.getElementById('backupSyncStatusBadge');
+    const badgeText = document.getElementById('backupSyncStatusText');
     if (!badge) return;
 
     try {
@@ -291,11 +292,34 @@ export class PopupController {
       const pushText = settings?.lastPushAt ? formatLocaleDateTime(settings.lastPushAt) : '-';
       badge.title = `${statusText} · 最近拉取: ${pullText} · 最近推送: ${pushText}`;
       badge.setAttribute('aria-label', statusText);
+      if (badgeText) {
+        badgeText.textContent = statusText;
+      }
     } catch (error) {
       badge.className = 'sync-status-badge';
       badge.title = '同步状态未知';
       badge.setAttribute('aria-label', '同步状态未知');
+      if (badgeText) {
+        badgeText.textContent = '同步状态未知';
+      }
     }
+  }
+
+  toggleWalletHeaderMenu() {
+    const menu = document.getElementById('walletHeaderMenu');
+    const button = document.getElementById('walletHeaderMenuBtn');
+    if (!menu || !button) return;
+    const willOpen = menu.classList.contains('hidden');
+    menu.classList.toggle('hidden', !willOpen);
+    button.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+  }
+
+  closeWalletHeaderMenu() {
+    const menu = document.getElementById('walletHeaderMenu');
+    const button = document.getElementById('walletHeaderMenuBtn');
+    if (!menu || !button) return;
+    menu.classList.add('hidden');
+    button.setAttribute('aria-expanded', 'false');
   }
 
   bindBackEvents() {
@@ -442,10 +466,23 @@ export class PopupController {
   }
 
   bindWalletPageEvents() {
+    const accountHeader = document.getElementById('accountHeader');
     const accountDropdownBtn = document.getElementById('accountDropdownBtn');
+    if (accountHeader) {
+      accountHeader.addEventListener('click', async () => {
+        await this.openAccountsPage();
+      });
+      accountHeader.addEventListener('keydown', async (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        await this.openAccountsPage();
+      });
+    }
+
     if (accountDropdownBtn) {
       accountDropdownBtn.addEventListener('click', async (event) => {
         event.preventDefault();
+        event.stopPropagation();
         await this.openAccountsPage();
       });
     }
@@ -461,13 +498,25 @@ export class PopupController {
     const transferBtn = document.getElementById('transferBtn');
     if (transferBtn) {
       transferBtn.addEventListener('click', async () => {
+        this.closeWalletHeaderMenu();
         await this.openTransferPage();
+      });
+    }
+
+    const walletHeaderMenuBtn = document.getElementById('walletHeaderMenuBtn');
+    const walletHeaderMenu = document.getElementById('walletHeaderMenu');
+    if (walletHeaderMenuBtn && walletHeaderMenu) {
+      walletHeaderMenuBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.toggleWalletHeaderMenu();
       });
     }
 
     const settingsBtn = document.getElementById('settingsBtn');
     if (settingsBtn) {
       settingsBtn.addEventListener('click', async () => {
+        this.closeWalletHeaderMenu();
         await this.openSettingsPage();
       });
     }
@@ -475,6 +524,7 @@ export class PopupController {
     const sitesManageBtn = document.getElementById('sitesManageBtn');
     if (sitesManageBtn) {
       sitesManageBtn.addEventListener('click', async () => {
+        this.closeWalletHeaderMenu();
         await this.openSitesPage();
       });
     }
@@ -482,9 +532,27 @@ export class PopupController {
     const contactsBtn = document.getElementById('contactsBtn');
     if (contactsBtn) {
       contactsBtn.addEventListener('click', async () => {
+        this.closeWalletHeaderMenu();
         await this.openContactsPage();
       });
     }
+
+    const networkManageBtn = document.getElementById('networkManageBtn');
+    if (networkManageBtn) {
+      networkManageBtn.addEventListener('click', async () => {
+        this.closeWalletHeaderMenu();
+        await this.networkController?.handleOpenNetworkManage?.();
+      });
+    }
+
+    document.addEventListener('click', (event) => {
+      if (!walletHeaderMenu || !walletHeaderMenuBtn) return;
+      const target = event.target;
+      if (walletHeaderMenu.contains(target) || walletHeaderMenuBtn.contains(target)) {
+        return;
+      }
+      this.closeWalletHeaderMenu();
+    });
 
     const sendBtn = document.getElementById('sendBtn');
     if (sendBtn) {
