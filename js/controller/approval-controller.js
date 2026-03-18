@@ -179,11 +179,8 @@ export class ApprovalController {
       const currentAccount = await this.wallet.getCurrentAccount();
       await this.wallet.unlock(password, currentAccount?.id);
       showSuccess('解锁成功');
-      this.showFollowupWaitingState({
-        title: '解锁成功',
-        description: '正在继续当前网站的授权请求…',
-        hint: '此窗口会直接进入连接或签名确认。',
-        timeoutMs: 0
+      this.enterTransitionState({
+        closeAfterMs: 1500
       });
     } catch (error) {
       this.isProcessing = false;
@@ -224,15 +221,8 @@ export class ApprovalController {
       });
 
       showSuccess('已授权连接');
-      this.showFollowupWaitingState({
-        title: '连接成功',
-        description: this.hasQueuedFollowup
-          ? '检测到后续签名请求，正在进入签名确认…'
-          : '等待网站继续发起登录签名请求…',
-        hint: this.hasQueuedFollowup
-          ? '请在下一步确认签名内容。'
-          : '为减少重复弹窗，此窗口会保持打开，直到进入签名确认或你手动关闭。',
-        timeoutMs: 0
+      this.enterTransitionState({
+        closeAfterMs: this.hasQueuedFollowup ? 1500 : 300
       });
     } catch (error) {
       this.isProcessing = false;
@@ -549,6 +539,24 @@ export class ApprovalController {
     } catch (error) {
       console.error('[ApprovalController] 拒绝失败:', error);
       this.closeWindow();
+    }
+  }
+
+  enterTransitionState(options = {}) {
+    this.clearFollowupTimer();
+
+    const closeAfterMs = Number.isFinite(options.closeAfterMs) ? options.closeAfterMs : 800;
+    document.querySelectorAll('button').forEach((button) => {
+      button.disabled = true;
+    });
+    document.querySelectorAll('input').forEach((input) => {
+      input.disabled = true;
+    });
+
+    if (closeAfterMs > 0) {
+      this.followupTimer = setTimeout(() => {
+        this.closeWindow();
+      }, closeAfterMs);
     }
   }
 
