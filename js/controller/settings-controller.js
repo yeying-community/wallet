@@ -1,5 +1,5 @@
 import { showPage, showSuccess, showError, showWaiting, hideWaiting } from '../common/ui/index.js';
-import { formatLocaleDateTime, formatIsoTimestamp } from '../common/utils/time-utils.js';
+import { formatDate, formatLocaleDateTime, formatIsoTimestamp } from '../common/utils/time-utils.js';
 import { shortenAddress } from '../common/chain/index.js';
 import { escapeHtml } from '../common/ui/html-ui.js';
 import { isDeveloperFeatureEnabled } from '../config/index.js';
@@ -2293,62 +2293,72 @@ export class SettingsController {
 
   async handleBackupSyncUcanGenerate() {
     try {
-      const endpoint = (document.getElementById('backupSyncEndpointInput')?.value || '').trim();
-      if (!endpoint) {
-        showError('请输入 WebDAV 地址');
+      const generation = await this.generateBackupSyncUcan();
+      if (generation?.cancelled) {
         return;
       }
-      try {
-        new URL(endpoint);
-      } catch {
-        showError('WebDAV 地址格式不正确');
-        return;
-      }
+      await this.tryBackupSyncAfterUcanAuth(generation?.settings);
+      showSuccess('UCAN 已生成');
+    } catch (error) {
+      console.error('[SettingsController] 生成 UCAN 失败:', error);
+      await this.logBackupSyncError('ucan-generate-error', error?.message || 'UCAN 生成失败');
+      showError('生成失败: ' + error.message);
+    }
+  }
 
-      const account = await this.wallet.getCurrentAccount();
-      if (!account?.address) {
-        showError('未找到当前账户');
-        return;
-      }
+  async generateBackupSyncUcan() {
+    const endpoint = (document.getElementById('backupSyncEndpointInput')?.value || '').trim();
+    if (!endpoint) {
+      throw new Error('请输入 WebDAV 地址');
+    }
+    try {
+      new URL(endpoint);
+    } catch {
+      throw new Error('WebDAV 地址格式不正确');
+    }
 
-      if (!this.transaction) {
-        showError('签名模块未初始化');
-        return;
-      }
+    const account = await this.wallet.getCurrentAccount();
+    if (!account?.address) {
+      throw new Error('未找到当前账户');
+    }
 
-      const resourceInput = document.getElementById('backupSyncUcanResourceInput');
-      const actionInput = document.getElementById('backupSyncUcanActionInput');
-      const audienceInput = document.getElementById('backupSyncUcanAudienceInput');
-      const ttlInput = document.getElementById('backupSyncUcanTtlInput');
+    if (!this.transaction) {
+      throw new Error('签名模块未初始化');
+    }
 
-      const resource = this.normalizeUcanResource(resourceInput?.value || '');
-      const action = this.normalizeUcanAction(actionInput?.value || '', resource);
-      const audience = String(audienceInput?.value || '').trim() || this.deriveUcanAudience(endpoint);
-      const ttlHours = Number(ttlInput?.value || '24');
-      const ttlMs = Number.isFinite(ttlHours) ? ttlHours * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+    const resourceInput = document.getElementById('backupSyncUcanResourceInput');
+    const actionInput = document.getElementById('backupSyncUcanActionInput');
+    const audienceInput = document.getElementById('backupSyncUcanAudienceInput');
+    const ttlInput = document.getElementById('backupSyncUcanTtlInput');
 
-      if (!audience) {
-        showError('请填写 Audience');
-        return;
-      }
+    const resource = this.normalizeUcanResource(resourceInput?.value || '');
+    const action = this.normalizeUcanAction(actionInput?.value || '', resource);
+    const audience = String(audienceInput?.value || '').trim() || this.deriveUcanAudience(endpoint);
+    const ttlHours = Number(ttlInput?.value || '24');
+    const ttlMs = Number.isFinite(ttlHours) ? ttlHours * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
 
-      const now = Date.now();
-      const expiresAt = now + ttlMs;
-      const { did, keys } = await createUcanInvocationKey();
-      const statement = {
-        aud: did,
-        cap: [{ resource, action }],
-        exp: expiresAt,
-        nbf: now
-      };
-      const message = buildSiweMessage(endpoint, account.address, statement);
+    if (!audience) {
+      throw new Error('请填写 Audience');
+    }
 
-      const password = await this.requestPassword?.();
-      if (!password) {
-        return;
-      }
+    const now = Date.now();
+    const expiresAt = now + ttlMs;
+    const { did, keys } = await createUcanInvocationKey();
+    const statement = {
+      aud: did,
+      cap: [{ resource, action }],
+      exp: expiresAt,
+      nbf: now
+    };
+    const message = buildSiweMessage(endpoint, account.address, statement);
 
-      showWaiting();
+    const password = await this.requestPassword?.();
+    if (!password) {
+      return { cancelled: true, settings: this.syncSettings || null };
+    }
+
+    showWaiting();
+    try {
       const signature = await this.transaction.signMessage(message, password);
       const rootProof = {
         type: 'siwe',
@@ -2389,13 +2399,9 @@ export class SettingsController {
         this.syncSettings = result.settings;
         this.renderBackupSyncSettings(result.settings);
       }
-
-      await this.tryBackupSyncAfterUcanAuth(result?.settings);
-      showSuccess('UCAN 已生成');
-    } catch (error) {
-      console.error('[SettingsController] 生成 UCAN 失败:', error);
-      await this.logBackupSyncError('ucan-generate-error', error?.message || 'UCAN 生成失败');
-      showError('生成失败: ' + error.message);
+      return { cancelled: false, settings: result?.settings || this.syncSettings || null };
+    } finally {
+      hideWaiting();
     }
   }
 
@@ -2427,8 +2433,36 @@ export class SettingsController {
   async handleBackupSyncNow() {
     try {
       await this.ensureBackupSyncEndpoint();
+      const currentSettings = this.syncSettings || await this.wallet.getBackupSyncSettings();
+      const preflight = await this.ensureBackupSyncUcanFresh(currentSettings);
+      if (preflight?.cancelled) {
+        return;
+      }
+
+      let result;
       showWaiting();
-      const result = await this.wallet.backupSyncNow();
+      try {
+        result = await this.wallet.backupSyncNow();
+      } finally {
+        hideWaiting();
+      }
+
+      if (!result?.success) {
+        const syncError = new Error(result?.error || '同步失败');
+        if (this.shouldRetryBackupSyncWithUcan(syncError, preflight?.settings || currentSettings)) {
+          const refresh = await this.ensureBackupSyncUcanFresh(preflight?.settings || currentSettings, { force: true });
+          if (refresh?.cancelled) {
+            return;
+          }
+          showWaiting();
+          try {
+            result = await this.wallet.backupSyncNow();
+          } finally {
+            hideWaiting();
+          }
+        }
+      }
+
       if (!result?.success) {
         throw new Error(result?.error || '同步失败');
       }
@@ -2437,6 +2471,8 @@ export class SettingsController {
     } catch (error) {
       console.error('[SettingsController] 立即同步失败:', error);
       showError(this.formatBackupSyncError(error, '同步失败'));
+    } finally {
+      hideWaiting();
     }
   }
 
@@ -2541,6 +2577,63 @@ export class SettingsController {
       .replace(/^Bearer\s+/i, '')
       .replace(/^UCAN\s+/i, '')
       .trim();
+  }
+
+  decodeJwtPayload(value) {
+    const token = this.normalizeUcanToken(value);
+    const segments = token.split('.');
+    if (segments.length < 2) return null;
+    try {
+      const base64 = segments[1].replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+      return JSON.parse(atob(padded));
+    } catch {
+      return null;
+    }
+  }
+
+  getBackupSyncUcanExpiresAt(settings = {}) {
+    const payload = this.decodeJwtPayload(settings?.ucanToken || '');
+    const exp = Number(payload?.exp);
+    if (!Number.isFinite(exp) || exp <= 0) return 0;
+    return exp > 1e12 ? exp : exp * 1000;
+  }
+
+  isBackupSyncUcanExpiringSoon(settings = {}, thresholdMs = 5 * 60 * 1000) {
+    const expiresAt = this.getBackupSyncUcanExpiresAt(settings);
+    if (!expiresAt) return true;
+    return expiresAt <= (Date.now() + thresholdMs);
+  }
+
+  shouldRetryBackupSyncWithUcan(error, settings = {}) {
+    const mode = String(settings?.authMode || 'ucan').toLowerCase();
+    if (mode !== 'ucan') return false;
+    const message = String(error?.message || error || '').toLowerCase();
+    return message.includes('401')
+      || message.includes('unauthorized')
+      || message.includes('authentication failed');
+  }
+
+  async ensureBackupSyncUcanFresh(settings = {}, options = {}) {
+    const { force = false } = options;
+    const mode = String(settings?.authMode || 'ucan').toLowerCase();
+    if (mode !== 'ucan') {
+      return { cancelled: false, settings };
+    }
+    if (!force && !this.isBackupSyncUcanExpiringSoon(settings)) {
+      return { cancelled: false, settings };
+    }
+
+    const expiresAt = this.getBackupSyncUcanExpiresAt(settings);
+    if (force) {
+      showSuccess('同步认证失效，正在重新授权');
+    } else if (expiresAt) {
+      showSuccess(`UCAN 即将过期，正在刷新 (${formatDate(expiresAt, 'relative')})`);
+    } else {
+      showSuccess('UCAN 不可用，正在重新授权');
+    }
+
+    return await this.generateBackupSyncUcan();
   }
 
   normalizeUcanResource(value) {
