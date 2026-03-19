@@ -4,46 +4,40 @@
  */
 
 import { state } from './state.js';
-import { TIMEOUTS } from '../config/index.js';
 import { createInternalError, createUserRejectedError, createTimeoutError } from '../common/errors/index.js';
 import { POPUP_DIMENSIONS } from '../config/index.js';
 import { withPopupBoundsAsync } from './window-utils.js';
-import { WalletMessageType } from '../protocol/extension-protocol.js';
+import { primeApprovalSessionWindow } from './approval-flow.js';
 
 const unlockWaiters = new Set();
 let unlockPromise = null;
 let unlockWindowId = null;
 let unlockWindowCreated = false;
+let unlockApprovalTabId = null;
 
-function findExistingPopupWindow() {
-  const popupUrl = chrome.runtime.getURL('html/popup.html');
-  return new Promise((resolve) => {
-    chrome.windows.getAll({ populate: true }, (windows) => {
-      const list = Array.isArray(windows) ? windows : [];
-      for (const win of list) {
-        const tabs = Array.isArray(win.tabs) ? win.tabs : [];
-        const popupTab = tabs.find(tab => typeof tab.url === 'string' && tab.url.startsWith(popupUrl));
-        if (popupTab) {
-          resolve({ window: win, tabId: popupTab.id });
-          return;
-        }
-      }
-      resolve(null);
-    });
-  });
+async function resolveWindowTabId(windowId) {
+  if (!Number.isFinite(windowId)) return null;
+  try {
+    const tabs = await chrome.tabs.query({ windowId });
+    return tabs?.[0]?.id ?? null;
+  } catch (error) {
+    return null;
+  }
 }
 
-function waitForUnlock(timeout = TIMEOUTS.APPROVAL) {
+function waitForUnlock(timeout = 0) {
   if (state.keyring) {
     return Promise.resolve(true);
   }
 
   return new Promise((resolve, reject) => {
     const waiter = { resolve, reject, timer: null };
-    waiter.timer = setTimeout(() => {
-      unlockWaiters.delete(waiter);
-      reject(createTimeoutError('Unlock timeout'));
-    }, timeout);
+    if (timeout > 0) {
+      waiter.timer = setTimeout(() => {
+        unlockWaiters.delete(waiter);
+        reject(createTimeoutError('Unlock timeout'));
+      }, timeout);
+    }
 
     unlockWaiters.add(waiter);
   });
@@ -59,7 +53,7 @@ export function notifyUnlocked() {
   unlockWaiters.clear();
 }
 
-export function requestUnlock() {
+export function requestUnlock(context = {}) {
   if (state.keyring) {
     return Promise.resolve(true);
   }
@@ -72,17 +66,8 @@ export function requestUnlock() {
   }
 
   unlockPromise = (async () => {
-    const existingWindow = await findExistingPopupWindow();
-    if (existingWindow) {
-      unlockWindowId = existingWindow.window.id;
-      unlockWindowCreated = false;
-      chrome.windows.update(unlockWindowId, { focused: true }).catch(() => { });
-      chrome.runtime.sendMessage({ type: WalletMessageType.SHOW_UNLOCK_PAGE }).catch(() => { });
-      return waitForUnlockWithWindow();
-    }
-
     const windowOptions = await withPopupBoundsAsync({
-      url: 'html/popup.html',
+      url: 'html/approval.html?type=unlock',
       type: 'popup',
       width: POPUP_DIMENSIONS.width,
       height: POPUP_DIMENSIONS.height,
@@ -101,6 +86,12 @@ export function requestUnlock() {
 
         unlockWindowId = window.id;
         unlockWindowCreated = true;
+        resolveWindowTabId(window.id).then((tabId) => {
+          unlockApprovalTabId = tabId;
+          if (context?.origin) {
+            primeApprovalSessionWindow(context.origin, context.tabId, window.id, tabId);
+          }
+        }).catch(() => { });
 
         waitForUnlockWithWindow()
           .then(resolve)
@@ -114,12 +105,14 @@ export function requestUnlock() {
 
 function waitForUnlockWithWindow() {
   return new Promise((resolve, reject) => {
-    const cleanup = () => {
+    const cleanup = (options = {}) => {
+      const { closeWindow = false } = options;
       chrome.windows.onRemoved.removeListener(windowRemovedListener);
-      if (unlockWindowCreated && unlockWindowId) {
+      if (closeWindow && unlockWindowCreated && unlockWindowId) {
         chrome.windows.remove(unlockWindowId).catch(() => { });
       }
       unlockWindowId = null;
+      unlockApprovalTabId = null;
       unlockWindowCreated = false;
       unlockPromise = null;
     };
@@ -133,13 +126,13 @@ function waitForUnlockWithWindow() {
 
     chrome.windows.onRemoved.addListener(windowRemovedListener);
 
-    waitForUnlock(TIMEOUTS.APPROVAL)
+    waitForUnlock(0)
       .then(() => {
         cleanup();
         resolve(true);
       })
       .catch((error) => {
-        cleanup();
+        cleanup({ closeWindow: true });
         reject(error);
       });
   });

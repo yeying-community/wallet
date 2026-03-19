@@ -136,6 +136,7 @@ export class CreateWalletController {
       mpcResult.textContent = '-';
       mpcResult.classList.add('hidden');
     }
+    window.refreshWalletSelects?.();
     this.applyCreateWalletType('hd', getPageOrigin('setPasswordPage', 'welcome'));
   }
 

@@ -7,7 +7,6 @@ import { ApprovalMessageType } from '../protocol/extension-protocol.js';
 import { state } from './state.js';
 import {
   createWalletLockedError,
-  createInternalError,
   createInvalidParams,
   createUserRejectedError,
   createTimeoutError,
@@ -17,39 +16,20 @@ import { getSelectedAccount, saveAuthorization, getAuthorization, deleteAuthoriz
 import { resetLockTimer } from './keyring.js';
 import { refreshPasswordCache } from './password-cache.js';
 import { sendEvent } from './connection.js';
-import { POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
-import { withPopupBoundsAsync } from './window-utils.js';
+import { TIMEOUTS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { updateKeepAlive } from './offscreen.js';
+import {
+  addPendingRequest,
+  findPendingRequest,
+  focusApprovalSession,
+  focusPendingWindow,
+  hasActiveApprovalForSession,
+  openApprovalWindow,
+  removePendingRequest
+} from './approval-flow.js';
 
 const connectInFlight = new Map();
-
-function findPendingRequest(type, origin, tabId) {
-  for (const [requestId, request] of state.pendingRequests.entries()) {
-    if (request.type !== type) continue;
-    if (origin && request.origin !== origin) continue;
-    if (typeof tabId === 'number' && request.tabId !== tabId) continue;
-    return { requestId, request };
-  }
-  return null;
-}
-
-function focusPendingWindow(pending) {
-  const windowId = pending?.request?.windowId;
-  if (!windowId) return;
-  chrome.windows.update(windowId, { focused: true }).catch(() => { });
-}
-
-function addPendingRequest(requestId, request) {
-  state.pendingRequests.set(requestId, request);
-  updateKeepAlive();
-}
-
-function removePendingRequest(requestId) {
-  if (state.pendingRequests.delete(requestId)) {
-    updateKeepAlive();
-  }
-}
 
 function updateConnectedSites() {
   updateKeepAlive();
@@ -129,6 +109,11 @@ export async function handleEthRequestAccounts(origin, tabId) {
         throw createError(-32002, 'Connection request already pending');
       }
 
+      if (hasActiveApprovalForSession(origin, tabId)) {
+        focusApprovalSession(origin, tabId);
+        throw createError(-32002, 'Approval request already pending');
+      }
+
       // 获取当前账户
       const account = await getSelectedAccount();
       if (!account) {
@@ -150,6 +135,7 @@ export async function handleEthRequestAccounts(origin, tabId) {
         type: EventType.CONNECT,
         origin,
         tabId,
+        reuseSession: true,
         data: {
           origin,
           accounts: [address]
@@ -161,100 +147,93 @@ export async function handleEthRequestAccounts(origin, tabId) {
 
       // 🪟 打开授权弹窗
       return new Promise(async (resolve, reject) => {
-        const windowOptions = await withPopupBoundsAsync({
-          url: `html/approval.html?requestId=${requestId}&type=connect`,
-          type: 'popup',
-          width: POPUP_DIMENSIONS.width,
-          height: POPUP_DIMENSIONS.height,
-          focused: true
-        });
+        let approvalWindow;
+        try {
+          approvalWindow = await openApprovalWindow({
+            requestId,
+            requestType: 'connect',
+            origin,
+            tabId,
+            reuseSession: true
+          });
+        } catch (error) {
+          removePendingRequest(requestId);
+          reject(error);
+          return;
+        }
 
-        chrome.windows.create(windowOptions, (window) => {
-          if (!window) {
-            removePendingRequest(requestId);
-            reject(createInternalError('Failed to open approval window'));
-            return;
-          }
+        console.log('✅ Approval window opened:', approvalWindow.windowId);
 
-          const pendingRequest = state.pendingRequests.get(requestId);
-          if (pendingRequest) {
-            pendingRequest.windowId = window.id;
-          }
+        const windowRemovedListener = (windowId) => {
+          if (windowId === approvalWindow.windowId) {
+            console.log('🚪 Approval window closed by user');
 
-          console.log('✅ Approval window opened:', window.id);
+            chrome.windows.onRemoved.removeListener(windowRemovedListener);
+            chrome.runtime.onMessage.removeListener(messageListener);
 
-          // 监听窗口关闭（用户取消）
-          const windowRemovedListener = (windowId) => {
-            if (windowId === window.id) {
-              console.log('🚪 Approval window closed by user');
-
-              chrome.windows.onRemoved.removeListener(windowRemovedListener);
-              chrome.runtime.onMessage.removeListener(messageListener);
-
-              if (state.pendingRequests.has(requestId)) {
-                removePendingRequest(requestId);
-                reject(createUserRejectedError('User closed approval window'));
-              }
-            }
-          };
-
-          // 监听授权结果
-          const messageListener = (message, sender) => {
-            if (message.type === ApprovalMessageType.APPROVAL_RESPONSE && message.requestId === requestId) {
-              console.log('📨 Received approval response:', message);
-
-              chrome.windows.onRemoved.removeListener(windowRemovedListener);
-              chrome.runtime.onMessage.removeListener(messageListener);
-
-              removePendingRequest(requestId);
-
-              if (message.approved) {
-                // 保存连接信息
-                state.connectedSites.set(origin, {
-                  accounts: [address],
-                  chainId: state.currentChainId,
-                  connectedAt: getTimestamp()
-                });
-                updateConnectedSites();
-
-                // 持久化授权
-                saveAuthorization(origin, address).catch(err => {
-                  console.error('Failed to save authorization:', err);
-                });
-
-                // 用户授权后才刷新锁定计时
-                resetLockTimer();
-                refreshPasswordCache();
-
-                console.log('✅ Connection approved:', origin);
-                resolve([address]);
-              } else {
-                console.log('❌ Connection rejected:', origin);
-                reject(createUserRejectedError('User rejected the connection request'));
-              }
-            }
-          };
-
-          chrome.windows.onRemoved.addListener(windowRemovedListener);
-          chrome.runtime.onMessage.addListener(messageListener);
-
-          // 超时处理
-          setTimeout(() => {
             if (state.pendingRequests.has(requestId)) {
-              console.log('⏰ Approval timeout:', requestId);
-
-              chrome.windows.onRemoved.removeListener(windowRemovedListener);
-              chrome.runtime.onMessage.removeListener(messageListener);
-
               removePendingRequest(requestId);
-
-              // 尝试关闭窗口
-              chrome.windows.remove(window.id).catch(() => { });
-
-              reject(createTimeoutError('Approval request timeout'));
+              reject(createUserRejectedError('User closed approval window'));
             }
-          }, TIMEOUTS.REQUEST);
-        });
+          }
+        };
+
+        const messageListener = (message, sender) => {
+          if (message.type === ApprovalMessageType.APPROVAL_RESPONSE && message.requestId === requestId) {
+            console.log('📨 Received approval response:', message);
+
+            chrome.windows.onRemoved.removeListener(windowRemovedListener);
+            chrome.runtime.onMessage.removeListener(messageListener);
+
+            if (message.approved) {
+              // 保存连接信息
+              state.connectedSites.set(origin, {
+                accounts: [address],
+                chainId: state.currentChainId,
+                connectedAt: getTimestamp()
+              });
+              updateConnectedSites();
+
+              // 持久化授权
+              saveAuthorization(origin, address).catch(err => {
+                console.error('Failed to save authorization:', err);
+              });
+
+              // 用户授权后才刷新锁定计时
+              resetLockTimer();
+              refreshPasswordCache();
+
+              removePendingRequest(requestId, { activateNext: true });
+
+              console.log('✅ Connection approved:', origin);
+              resolve([address]);
+            } else {
+              removePendingRequest(requestId);
+              console.log('❌ Connection rejected:', origin);
+              reject(createUserRejectedError('User rejected the connection request'));
+            }
+          }
+        };
+
+        chrome.windows.onRemoved.addListener(windowRemovedListener);
+        chrome.runtime.onMessage.addListener(messageListener);
+
+        // 超时处理
+        setTimeout(() => {
+          if (state.pendingRequests.has(requestId)) {
+            console.log('⏰ Approval timeout:', requestId);
+
+            chrome.windows.onRemoved.removeListener(windowRemovedListener);
+            chrome.runtime.onMessage.removeListener(messageListener);
+
+            removePendingRequest(requestId);
+
+            // 尝试关闭窗口
+            chrome.windows.remove(approvalWindow.windowId).catch(() => { });
+
+            reject(createTimeoutError('Approval request timeout'));
+          }
+        }, TIMEOUTS.REQUEST);
       });
 
     } catch (error) {

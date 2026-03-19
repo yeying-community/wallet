@@ -1,4 +1,5 @@
 import { generateAvatar } from '../../common/chain/index.js';
+import { shortenAddress } from '../../common/chain/format-ui.js';
 
 export class AccountHeaderController {
   constructor({ wallet } = {}) {
@@ -20,6 +21,12 @@ export class AccountHeaderController {
     const nameEl = document.getElementById('accountName');
     if (nameEl) {
       nameEl.textContent = account?.name || '未知账户';
+    }
+
+    const addressEl = document.getElementById('accountAddress');
+    if (addressEl) {
+      addressEl.textContent = account?.address ? shortenAddress(account.address) : '-';
+      addressEl.title = account?.address || '';
     }
 
     const avatarEl = document.getElementById('walletAvatar');

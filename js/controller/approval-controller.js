@@ -17,6 +17,7 @@
 import { showError, showSuccess, showWaiting } from '../common/ui/index.js';
 import { ApprovalMessageType } from '../protocol/extension-protocol.js';
 import { shortenAddress } from '../common/chain/index.js'
+import { formatLocaleDateTime } from '../common/utils/time-utils.js';
 
 export class ApprovalController {
   constructor(dependencies) {
@@ -30,6 +31,9 @@ export class ApprovalController {
     this.requestData = dependencies.requestData;
 
     this.isProcessing = false;
+    this.followupTimer = null;
+    this.hasQueuedFollowup = false;
+    this.runtimeMessageListener = null;
   }
 
   /**
@@ -41,6 +45,9 @@ export class ApprovalController {
     switch (this.requestType) {
       case 'connect':
         this.bindConnectEvents();
+        break;
+      case 'unlock':
+        this.bindUnlockEvents();
         break;
       case 'transaction':
         this.bindTransactionEvents();
@@ -62,6 +69,125 @@ export class ApprovalController {
 
   // ==================== 连接请求 ====================
 
+  bindUnlockEvents() {
+    const approveBtn = document.getElementById('approveUnlock');
+    const cancelBtn = document.getElementById('cancelUnlock');
+    const passwordInput = document.getElementById('unlockPassword');
+
+    if (approveBtn) {
+      approveBtn.addEventListener('click', () => this.approveUnlock());
+    }
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => this.closeWindow());
+    }
+    if (passwordInput) {
+      passwordInput.addEventListener('keypress', async (event) => {
+        if (event.key === 'Enter') {
+          await this.approveUnlock();
+        }
+      });
+      setTimeout(() => passwordInput.focus(), 0);
+    }
+
+    this.renderUnlockReason();
+  }
+
+  renderUnlockReason() {
+    const info = this.requestData || {};
+    const originEl = document.getElementById('unlockOrigin');
+    const container = document.getElementById('unlockReason');
+    const reasonOriginEl = document.getElementById('unlockReasonOrigin');
+    const methodEl = document.getElementById('unlockReasonMethod');
+    const timeEl = document.getElementById('unlockReasonTime');
+    const badgeEl = document.getElementById('unlockReasonMethodBadge');
+
+    if (originEl) {
+      originEl.textContent = info.origin || '会话已过期，请输入密码继续';
+    }
+    if (!container) {
+      return;
+    }
+    if (!info || (!info.origin && !info.method && !info.timestamp)) {
+      container.classList.add('hidden');
+      return;
+    }
+
+    const formatted = this.formatUnlockMethod(info.method);
+    if (reasonOriginEl) {
+      reasonOriginEl.textContent = info.origin || '-';
+    }
+    if (methodEl) {
+      methodEl.textContent = formatted.detail || formatted.label || info.method || '-';
+    }
+    if (badgeEl) {
+      badgeEl.textContent = formatted.label || '-';
+    }
+    if (timeEl) {
+      timeEl.textContent = info.timestamp ? formatLocaleDateTime(info.timestamp) : '-';
+    }
+    container.classList.remove('hidden');
+  }
+
+  formatUnlockMethod(method) {
+    const raw = String(method || '').trim();
+    if (!raw) {
+      return { label: '请求', detail: '-' };
+    }
+    const map = {
+      yeying_ucan_sign: { label: 'UCAN', detail: 'UCAN 签名' },
+      yeying_ucan_session: { label: 'UCAN', detail: 'UCAN 会话' },
+      eth_requestAccounts: { label: '连接', detail: '连接钱包' },
+      eth_sendTransaction: { label: '交易', detail: '发送交易' },
+      eth_signTransaction: { label: '交易', detail: '签名交易' },
+      personal_sign: { label: '签名', detail: '消息签名' },
+      eth_sign: { label: '签名', detail: '消息签名' },
+      eth_signTypedData: { label: '签名', detail: '结构化签名' },
+      eth_signTypedData_v4: { label: '签名', detail: '结构化签名' },
+      wallet_requestPermissions: { label: '授权', detail: '权限请求' },
+      wallet_addEthereumChain: { label: '网络', detail: '添加网络' },
+      wallet_switchEthereumChain: { label: '网络', detail: '切换网络' },
+      wallet_watchAsset: { label: '资产', detail: '添加资产' }
+    };
+    if (map[raw]) {
+      return map[raw];
+    }
+    const lower = raw.toLowerCase();
+    if (lower.includes('siwe')) {
+      return { label: 'SIWE', detail: 'SIWE 登录' };
+    }
+    if (lower.includes('ucan')) {
+      return { label: 'UCAN', detail: 'UCAN 请求' };
+    }
+    return { label: '请求', detail: raw };
+  }
+
+  async approveUnlock() {
+    if (this.isProcessing) return;
+    this.isProcessing = true;
+
+    const passwordInput = document.getElementById('unlockPassword');
+    const password = passwordInput?.value || '';
+
+    if (!password) {
+      this.isProcessing = false;
+      showError('请输入密码');
+      return;
+    }
+
+    try {
+      showWaiting();
+      const currentAccount = await this.wallet.getCurrentAccount();
+      await this.wallet.unlock(password, currentAccount?.id);
+      showSuccess('解锁成功');
+      this.enterTransitionState({
+        closeAfterMs: 1500
+      });
+    } catch (error) {
+      this.isProcessing = false;
+      showError('密码错误');
+    }
+  }
+
   bindConnectEvents() {
     const approveBtn = document.getElementById('approveConnect');
     const rejectBtn = document.getElementById('rejectConnect');
@@ -72,6 +198,8 @@ export class ApprovalController {
     if (rejectBtn) {
       rejectBtn.addEventListener('click', () => this.reject());
     }
+
+    this.bindApprovalQueueEvents();
   }
 
   async approveConnect() {
@@ -81,6 +209,7 @@ export class ApprovalController {
     try {
       const account = await this.wallet.getCurrentAccount();
       if (!account) {
+        this.isProcessing = false;
         showError('请先创建或导入钱包');
         return;
       }
@@ -92,11 +221,44 @@ export class ApprovalController {
       });
 
       showSuccess('已授权连接');
-      this.closeWindow();
+      this.enterTransitionState({
+        closeAfterMs: this.hasQueuedFollowup ? 1500 : 300
+      });
     } catch (error) {
       this.isProcessing = false;
       showError('授权失败: ' + error.message);
     }
+  }
+
+  bindApprovalQueueEvents() {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.onMessage) {
+      return;
+    }
+
+    const hintEl = document.getElementById('connectFlowHint');
+    if (!hintEl) {
+      return;
+    }
+
+    this.runtimeMessageListener = (message) => {
+      if (message?.type !== ApprovalMessageType.APPROVAL_QUEUE_UPDATE) {
+        return;
+      }
+      if (message?.data?.activeRequestId !== this.requestId) {
+        return;
+      }
+
+      this.hasQueuedFollowup = true;
+      const queueSize = Number.isFinite(message?.data?.queueSize)
+        ? message.data.queueSize
+        : 1;
+      hintEl.textContent = queueSize > 1
+        ? `检测到 ${queueSize} 个后续请求，连接后会继续确认签名。`
+        : '检测到后续签名请求，连接后会继续签名确认。';
+      hintEl.classList.remove('hidden');
+    };
+
+    chrome.runtime.onMessage.addListener(this.runtimeMessageListener);
   }
 
   // ==================== 交易签名请求 ====================
@@ -380,6 +542,80 @@ export class ApprovalController {
     }
   }
 
+  enterTransitionState(options = {}) {
+    this.clearFollowupTimer();
+
+    const closeAfterMs = Number.isFinite(options.closeAfterMs) ? options.closeAfterMs : 800;
+    document.querySelectorAll('button').forEach((button) => {
+      button.disabled = true;
+    });
+    document.querySelectorAll('input').forEach((input) => {
+      input.disabled = true;
+    });
+
+    if (closeAfterMs > 0) {
+      this.followupTimer = setTimeout(() => {
+        this.closeWindow();
+      }, closeAfterMs);
+    }
+  }
+
+  showFollowupWaitingState(options = {}) {
+    this.clearFollowupTimer();
+
+    const title = options.title || '等待后续请求';
+    const description = options.description || '当前授权已完成';
+    const hint = options.hint || '';
+    const timeoutMs = Number.isFinite(options.timeoutMs) ? options.timeoutMs : 10000;
+
+    document.querySelectorAll('.request-view').forEach((view) => {
+      view.classList.add('hidden');
+    });
+
+    const waitingView = document.getElementById('approvalWaiting');
+    const titleEl = document.getElementById('waitingTitle');
+    const descriptionEl = document.getElementById('waitingDescription');
+    const hintEl = document.getElementById('waitingHint');
+    const closeBtn = document.getElementById('waitingCloseButton');
+
+    if (titleEl) {
+      titleEl.textContent = title;
+    }
+    if (descriptionEl) {
+      descriptionEl.textContent = description;
+    }
+    if (hintEl) {
+      hintEl.textContent = hint;
+    }
+    if (closeBtn && !closeBtn.dataset.bound) {
+      closeBtn.addEventListener('click', () => this.closeWindow());
+      closeBtn.dataset.bound = 'true';
+    }
+    if (waitingView) {
+      waitingView.classList.remove('hidden');
+    }
+
+    if (timeoutMs > 0) {
+      this.followupTimer = setTimeout(() => {
+        this.closeWindow();
+      }, timeoutMs);
+    }
+  }
+
+  clearFollowupTimer() {
+    if (!this.followupTimer) return;
+    clearTimeout(this.followupTimer);
+    this.followupTimer = null;
+  }
+
+  clearRuntimeListeners() {
+    if (!this.runtimeMessageListener) return;
+    if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+      chrome.runtime.onMessage.removeListener(this.runtimeMessageListener);
+    }
+    this.runtimeMessageListener = null;
+  }
+
   /**
    * 发送响应到 background
    */
@@ -404,6 +640,8 @@ export class ApprovalController {
    * 关闭当前窗口
    */
   closeWindow() {
+    this.clearFollowupTimer();
+    this.clearRuntimeListeners();
     if (typeof window !== 'undefined') {
       window.close();
     }

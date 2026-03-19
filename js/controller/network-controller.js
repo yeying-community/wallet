@@ -40,13 +40,6 @@ export class NetworkController {
       this.boundDocumentClick = true;
     }
 
-    const networkManageBtn = document.getElementById('networkManageBtn');
-    if (networkManageBtn) {
-      networkManageBtn.addEventListener('click', async () => {
-        await this.handleOpenNetworkManage();
-      });
-    }
-
     const networkAddBtn = document.getElementById('networkAddBtn');
     if (networkAddBtn) {
       networkAddBtn.addEventListener('click', async () => {

@@ -29,25 +29,33 @@ class ApprovalApp {
       this.requestId = urlParams.get('requestId');
       this.requestType = this.normalizeRequestType(urlParams.get('type'));
 
-      if (!this.requestId || !this.requestType) {
+      if (!this.requestType || (this.requestType !== 'unlock' && !this.requestId)) {
         showToast('无效的请求参数', 'error');
         setTimeout(() => window.close(), 2000);
         return;
       }
 
-      // 从background获取请求详情
-      const response = await chrome.runtime.sendMessage({
-        type: ApprovalMessageType.GET_PENDING_REQUEST,
-        data: { requestId: this.requestId }
-      });
+      if (this.requestType === 'unlock') {
+        const walletState = await this.wallet.getWalletState();
+        this.requestData = {
+          ...(walletState?.lastUnlockRequest || {}),
+          unlocked: Boolean(walletState?.unlocked)
+        };
+      } else {
+        // 从background获取请求详情
+        const response = await chrome.runtime.sendMessage({
+          type: ApprovalMessageType.GET_PENDING_REQUEST,
+          data: { requestId: this.requestId }
+        });
 
-      if (!response || !response.request) {
-        showToast('无法获取请求详情', 'error');
-        setTimeout(() => window.close(), 2000);
-        return;
+        if (!response || !response.request) {
+          showToast('无法获取请求详情', 'error');
+          setTimeout(() => window.close(), 2000);
+          return;
+        }
+
+        this.requestData = response.request?.data || response.request;
       }
-
-      this.requestData = response.request?.data || response.request;
 
       // 根据类型显示对应界面
       this.renderRequestUI();
@@ -88,6 +96,9 @@ class ApprovalApp {
       case 'connect':
         this.renderConnectRequest();
         break;
+      case 'unlock':
+        this.renderUnlockRequest();
+        break;
       case 'transaction':
         this.renderTransactionRequest();
         break;
@@ -109,6 +120,14 @@ class ApprovalApp {
   renderConnectRequest() {
     document.getElementById('connectRequest').classList.remove('hidden');
     document.getElementById('connectOrigin').textContent = this.requestData.origin;
+  }
+
+  renderUnlockRequest() {
+    document.getElementById('unlockRequest').classList.remove('hidden');
+    const originEl = document.getElementById('unlockOrigin');
+    if (originEl) {
+      originEl.textContent = this.requestData.origin || '会话已过期，请输入密码继续';
+    }
   }
 
   renderTransactionRequest() {

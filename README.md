@@ -56,3 +56,7 @@
 ## 下载依赖包
 curl -L -o lib/ethers-6.16.esm.min.js https://cdn.jsdelivr.net/npm/ethers@6/dist/ethers.min.js
 curl -o qrcode.min.js https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js
+
+## 回归检查
+
+- 审批弹窗复用回归脚本：`node --experimental-vm-modules scripts/test-approval-flow.mjs`

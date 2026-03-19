@@ -1,5 +1,5 @@
 import { showPage, getCurrentPage, getPageOrigin, showError } from '../common/ui/index.js';
-import { formatLocaleDateTime } from '../common/utils/time-utils.js';
+import { formatDate, formatLocaleDateTime } from '../common/utils/time-utils.js';
 import { POLLING_CONFIG } from '../config/index.js';
 import { WelcomeController } from './welcome-controller.js';
 import { UnlockWalletController } from './wallet/unlock-wallet-controller.js';
@@ -122,6 +122,7 @@ export class PopupController {
     await this.networkController?.prefillNetworkLabels?.();
     await this.networkController?.syncSelectedNetwork?.();
     await this.showInitialPage();
+    this.initCustomSelects();
     this.bindEvents();
   }
 
@@ -141,7 +142,7 @@ export class PopupController {
     }
 
     showPage('unlockPage');
-    this.renderUnlockReason(state?.lastUnlockRequest || null);
+    this.renderUnlockReason(null);
   }
 
   renderUnlockReason(info) {
@@ -235,6 +236,129 @@ export class PopupController {
     this.createWalletController.bindEvents();
   }
 
+  initCustomSelects() {
+    const selects = document.querySelectorAll('select.input:not(.hidden)');
+    selects.forEach((select) => this.enhanceCustomSelect(select));
+    window.refreshWalletSelects = () => {
+      this.refreshCustomSelects();
+    };
+    document.addEventListener('click', (event) => {
+      if (event.target.closest('.custom-select')) return;
+      this.closeCustomSelects();
+    });
+  }
+
+  enhanceCustomSelect(select) {
+    if (!select || select.dataset.customSelectReady === '1') return;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'custom-select';
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'custom-select-trigger';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+
+    const label = document.createElement('span');
+    label.className = 'custom-select-label';
+
+    const chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    chevron.setAttribute('class', 'custom-select-chevron');
+    chevron.setAttribute('viewBox', '0 0 16 16');
+    chevron.setAttribute('fill', 'none');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M4 6.5L8 10L12 6.5');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '1.8');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    chevron.appendChild(path);
+    trigger.append(label, chevron);
+
+    const menu = document.createElement('div');
+    menu.className = 'custom-select-menu hidden';
+    menu.setAttribute('role', 'listbox');
+
+    select.parentNode.insertBefore(wrapper, select);
+    wrapper.appendChild(select);
+    wrapper.appendChild(trigger);
+    wrapper.appendChild(menu);
+
+    select.classList.add('custom-select-native');
+    select.dataset.customSelectReady = '1';
+
+    const syncFromSelect = () => {
+      const selectedOption = select.options[select.selectedIndex] || select.options[0];
+      label.textContent = selectedOption?.textContent || '';
+      trigger.disabled = Boolean(select.disabled);
+      wrapper.classList.toggle('is-disabled', Boolean(select.disabled));
+      menu.innerHTML = '';
+      Array.from(select.options).forEach((option) => {
+        const optionBtn = document.createElement('button');
+        optionBtn.type = 'button';
+        optionBtn.className = 'custom-select-option';
+        if (option.disabled) {
+          optionBtn.disabled = true;
+        }
+        optionBtn.textContent = option.textContent || '';
+        optionBtn.dataset.value = option.value;
+        if (option.value === select.value) {
+          optionBtn.classList.add('is-selected');
+        }
+        optionBtn.addEventListener('click', () => {
+          if (option.disabled) return;
+          if (select.value !== option.value) {
+            select.value = option.value;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+          } else {
+            syncFromSelect();
+          }
+          this.closeCustomSelects();
+        });
+        menu.appendChild(optionBtn);
+      });
+    };
+
+    trigger.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (select.disabled) return;
+      const willOpen = menu.classList.contains('hidden');
+      this.closeCustomSelects(wrapper);
+      wrapper.classList.toggle('open', willOpen);
+      menu.classList.toggle('hidden', !willOpen);
+      trigger.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    });
+
+    trigger.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      trigger.click();
+    });
+
+    select.addEventListener('change', syncFromSelect);
+    select._customSelectSync = syncFromSelect;
+    syncFromSelect();
+  }
+
+  refreshCustomSelects() {
+    document.querySelectorAll('select[data-custom-select-ready="1"]').forEach((select) => {
+      select._customSelectSync?.();
+    });
+  }
+
+  closeCustomSelects(exceptWrapper = null) {
+    document.querySelectorAll('.custom-select').forEach((wrapper) => {
+      if (exceptWrapper && wrapper === exceptWrapper) return;
+      wrapper.classList.remove('open');
+      const trigger = wrapper.querySelector('.custom-select-trigger');
+      const menu = wrapper.querySelector('.custom-select-menu');
+      trigger?.setAttribute('aria-expanded', 'false');
+      menu?.classList.add('hidden');
+    });
+  }
+
   bindStorageEvents() {
     if (this.storageUnsubscribe) return;
     this.storageUnsubscribe = onStorageChanged(async (changes, areaName) => {
@@ -259,6 +383,7 @@ export class PopupController {
 
   async updateBackupSyncStatus() {
     const badge = document.getElementById('backupSyncStatusBadge');
+    const badgeText = document.getElementById('backupSyncStatusText');
     if (!badge) return;
 
     try {
@@ -271,6 +396,14 @@ export class PopupController {
         : authMode === 'ucan'
           ? Boolean(settings?.ucanToken)
           : Boolean(settings?.authToken);
+      const latestSyncAt = [settings?.lastPullAt, settings?.lastPushAt]
+        .map((value) => {
+          const timestamp = value ? new Date(value).getTime() : 0;
+          return Number.isFinite(timestamp) ? timestamp : 0;
+        })
+        .filter(Boolean)
+        .sort((a, b) => b - a)[0] || 0;
+      const staleSyncThresholdMs = 30 * 60 * 1000;
 
       let statusText = '同步状态未知';
       if (!enabled) {
@@ -283,7 +416,9 @@ export class PopupController {
         statusText = '同步未登录';
         badge.className = 'sync-status-badge warning';
       } else {
-        statusText = '同步已开启';
+        statusText = latestSyncAt > 0 && (Date.now() - latestSyncAt) >= staleSyncThresholdMs
+          ? formatDate(latestSyncAt, 'relative')
+          : '已同步';
         badge.className = 'sync-status-badge success';
       }
 
@@ -291,11 +426,34 @@ export class PopupController {
       const pushText = settings?.lastPushAt ? formatLocaleDateTime(settings.lastPushAt) : '-';
       badge.title = `${statusText} · 最近拉取: ${pullText} · 最近推送: ${pushText}`;
       badge.setAttribute('aria-label', statusText);
+      if (badgeText) {
+        badgeText.textContent = statusText;
+      }
     } catch (error) {
       badge.className = 'sync-status-badge';
       badge.title = '同步状态未知';
       badge.setAttribute('aria-label', '同步状态未知');
+      if (badgeText) {
+        badgeText.textContent = '同步状态未知';
+      }
     }
+  }
+
+  toggleWalletHeaderMenu() {
+    const menu = document.getElementById('walletHeaderMenu');
+    const button = document.getElementById('walletHeaderMenuBtn');
+    if (!menu || !button) return;
+    const willOpen = menu.classList.contains('hidden');
+    menu.classList.toggle('hidden', !willOpen);
+    button.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+  }
+
+  closeWalletHeaderMenu() {
+    const menu = document.getElementById('walletHeaderMenu');
+    const button = document.getElementById('walletHeaderMenuBtn');
+    if (!menu || !button) return;
+    menu.classList.add('hidden');
+    button.setAttribute('aria-expanded', 'false');
   }
 
   bindBackEvents() {
@@ -442,10 +600,23 @@ export class PopupController {
   }
 
   bindWalletPageEvents() {
+    const accountHeader = document.getElementById('accountHeader');
     const accountDropdownBtn = document.getElementById('accountDropdownBtn');
+    if (accountHeader) {
+      accountHeader.addEventListener('click', async () => {
+        await this.openAccountsPage();
+      });
+      accountHeader.addEventListener('keydown', async (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        await this.openAccountsPage();
+      });
+    }
+
     if (accountDropdownBtn) {
       accountDropdownBtn.addEventListener('click', async (event) => {
         event.preventDefault();
+        event.stopPropagation();
         await this.openAccountsPage();
       });
     }
@@ -461,13 +632,25 @@ export class PopupController {
     const transferBtn = document.getElementById('transferBtn');
     if (transferBtn) {
       transferBtn.addEventListener('click', async () => {
+        this.closeWalletHeaderMenu();
         await this.openTransferPage();
+      });
+    }
+
+    const walletHeaderMenuBtn = document.getElementById('walletHeaderMenuBtn');
+    const walletHeaderMenu = document.getElementById('walletHeaderMenu');
+    if (walletHeaderMenuBtn && walletHeaderMenu) {
+      walletHeaderMenuBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.toggleWalletHeaderMenu();
       });
     }
 
     const settingsBtn = document.getElementById('settingsBtn');
     if (settingsBtn) {
       settingsBtn.addEventListener('click', async () => {
+        this.closeWalletHeaderMenu();
         await this.openSettingsPage();
       });
     }
@@ -475,6 +658,7 @@ export class PopupController {
     const sitesManageBtn = document.getElementById('sitesManageBtn');
     if (sitesManageBtn) {
       sitesManageBtn.addEventListener('click', async () => {
+        this.closeWalletHeaderMenu();
         await this.openSitesPage();
       });
     }
@@ -482,9 +666,27 @@ export class PopupController {
     const contactsBtn = document.getElementById('contactsBtn');
     if (contactsBtn) {
       contactsBtn.addEventListener('click', async () => {
+        this.closeWalletHeaderMenu();
         await this.openContactsPage();
       });
     }
+
+    const networkManageBtn = document.getElementById('networkManageBtn');
+    if (networkManageBtn) {
+      networkManageBtn.addEventListener('click', async () => {
+        this.closeWalletHeaderMenu();
+        await this.networkController?.handleOpenNetworkManage?.();
+      });
+    }
+
+    document.addEventListener('click', (event) => {
+      if (!walletHeaderMenu || !walletHeaderMenuBtn) return;
+      const target = event.target;
+      if (walletHeaderMenu.contains(target) || walletHeaderMenuBtn.contains(target)) {
+        return;
+      }
+      this.closeWalletHeaderMenu();
+    });
 
     const sendBtn = document.getElementById('sendBtn');
     if (sendBtn) {
