@@ -151,26 +151,30 @@ body {
 }
 
 .unlock-reason-grid {
-  display: grid;
-  grid-template-columns: 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
 }
 
 .unlock-reason-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
 }
 
 .unlock-reason-label {
   font-size: 11px;
   color: #6b7280;
+  white-space: nowrap;
+  padding-top: 1px;
 }
 
 .unlock-reason-value {
   font-size: 13px;
   color: #111827;
   word-break: break-all;
+  min-width: 0;
 }
 
 .unlock-form {

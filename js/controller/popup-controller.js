@@ -142,7 +142,7 @@ export class PopupController {
     }
 
     showPage('unlockPage');
-    this.renderUnlockReason(state?.lastUnlockRequest || null);
+    this.renderUnlockReason(null);
   }
 
   renderUnlockReason(info) {

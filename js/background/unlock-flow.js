@@ -4,11 +4,9 @@
  */
 
 import { state } from './state.js';
-import { TIMEOUTS } from '../config/index.js';
 import { createInternalError, createUserRejectedError, createTimeoutError } from '../common/errors/index.js';
 import { POPUP_DIMENSIONS } from '../config/index.js';
 import { withPopupBoundsAsync } from './window-utils.js';
-import { WalletMessageType } from '../protocol/extension-protocol.js';
 import { primeApprovalSessionWindow } from './approval-flow.js';
 
 const unlockWaiters = new Set();
@@ -27,17 +25,19 @@ async function resolveWindowTabId(windowId) {
   }
 }
 
-function waitForUnlock(timeout = TIMEOUTS.APPROVAL) {
+function waitForUnlock(timeout = 0) {
   if (state.keyring) {
     return Promise.resolve(true);
   }
 
   return new Promise((resolve, reject) => {
     const waiter = { resolve, reject, timer: null };
-    waiter.timer = setTimeout(() => {
-      unlockWaiters.delete(waiter);
-      reject(createTimeoutError('Unlock timeout'));
-    }, timeout);
+    if (timeout > 0) {
+      waiter.timer = setTimeout(() => {
+        unlockWaiters.delete(waiter);
+        reject(createTimeoutError('Unlock timeout'));
+      }, timeout);
+    }
 
     unlockWaiters.add(waiter);
   });
@@ -126,7 +126,7 @@ function waitForUnlockWithWindow() {
 
     chrome.windows.onRemoved.addListener(windowRemovedListener);
 
-    waitForUnlock(TIMEOUTS.APPROVAL)
+    waitForUnlock(0)
       .then(() => {
         cleanup();
         resolve(true);
