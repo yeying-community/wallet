@@ -419,7 +419,11 @@ class ApprovalApp {
         prefixEl.textContent = payloadInfo.prefix;
         wrapper.appendChild(prefixEl);
       }
-      wrapper.appendChild(this.buildStatementNode(payloadInfo.payload, 0));
+      if (this.isUcanRootPayload(payloadInfo.payload)) {
+        wrapper.appendChild(this.buildUcanRootSummary(payloadInfo.payload));
+      } else {
+        wrapper.appendChild(this.buildStatementNode(payloadInfo.payload, 0));
+      }
       container.appendChild(wrapper);
       return;
     }
@@ -470,6 +474,94 @@ class ApprovalApp {
       return null;
     }
     return null;
+  }
+
+  isUcanRootPayload(payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
+    const audience = this.normalizeSummaryText(payload.aud || payload.audience);
+    const caps = this.getRootCapabilities(payload);
+    return audience && caps.length > 0;
+  }
+
+  buildUcanRootSummary(payload) {
+    const card = document.createElement('div');
+    card.className = 'ucan-summary';
+
+    const title = document.createElement('div');
+    title.className = 'ucan-summary-title';
+    title.textContent = '授权摘要';
+    card.appendChild(title);
+
+    const audienceRaw = this.normalizeSummaryText(payload.aud || payload.audience);
+    const audience = this.formatAudience(audienceRaw) || audienceRaw;
+    if (audience) {
+      card.appendChild(this.buildSummaryLine('授权对象', audience));
+    }
+
+    const caps = this.getRootCapabilities(payload);
+    const capabilityContext = this.buildCapabilityContext({ payload, caps });
+    if (caps.length > 0) {
+      card.appendChild(this.buildCapabilitySummary(caps, capabilityContext));
+    }
+
+    const exp = this.formatTimestamp(payload.exp);
+    if (exp) {
+      card.appendChild(this.buildSummaryLine('过期时间', exp));
+    }
+    const nbf = this.formatTimestamp(payload.nbf);
+    if (nbf) {
+      card.appendChild(this.buildSummaryLine('生效时间', nbf));
+    }
+
+    return card;
+  }
+
+  buildSummaryLine(label, value) {
+    const row = document.createElement('div');
+    row.className = 'ucan-summary-line';
+
+    const key = document.createElement('div');
+    key.className = 'ucan-summary-key';
+    key.textContent = label;
+
+    const val = document.createElement('div');
+    val.className = 'ucan-summary-value';
+    val.textContent = value;
+
+    row.appendChild(key);
+    row.appendChild(val);
+    return row;
+  }
+
+  buildCapabilitySummary(caps, capabilityContext) {
+    const section = document.createElement('div');
+    section.className = 'ucan-summary-section';
+
+    const label = document.createElement('div');
+    label.className = 'ucan-summary-label';
+    label.textContent = '能力范围';
+    section.appendChild(label);
+
+    const list = this.buildCapabilityList(caps, 0, capabilityContext);
+    section.appendChild(list);
+    return section;
+  }
+
+  getRootCapabilities(payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
+    if (Array.isArray(payload.cap) && payload.cap.length > 0) {
+      return payload.cap;
+    }
+    if (Array.isArray(payload.capabilities) && payload.capabilities.length > 0) {
+      return payload.capabilities;
+    }
+    return [];
+  }
+
+  normalizeSummaryText(value) {
+    if (value == null) return '';
+    const text = String(value).trim();
+    return text;
   }
 
   buildStatementNode(value, depth, key) {
@@ -528,6 +620,10 @@ class ApprovalApp {
 
   buildStatementList(list, depth, key) {
     const items = Array.isArray(list) ? list : [];
+    if (this.isCapabilityList(items, key)) {
+      const capabilityContext = this.buildCapabilityContext({ caps: items });
+      return this.buildCapabilityList(items, depth, capabilityContext);
+    }
     const isPrimitiveList = items.every((item) => item == null || typeof item !== 'object');
     if (isPrimitiveList) {
       const ul = document.createElement('ul');
@@ -566,14 +662,404 @@ class ApprovalApp {
     return table;
   }
 
+  isCapabilityList(items, key) {
+    if (!Array.isArray(items) || !items.length) return false;
+    const normalizedKey = String(key || '').toLowerCase();
+    if (normalizedKey === 'cap' || normalizedKey === 'capabilities') {
+      return true;
+    }
+    return items.every((item) => item && typeof item === 'object' && ('resource' in item || 'action' in item));
+  }
+
+  buildCapabilityList(items, depth, capabilityContext) {
+    const list = document.createElement('div');
+    list.className = depth === 0 ? 'statement-cap-list' : 'statement-cap-list statement-cap-list-nested';
+
+    items.forEach((item, index) => {
+      const cap = item && typeof item === 'object' ? item : {};
+      const row = document.createElement('div');
+      row.className = 'statement-cap-item';
+
+      const title = document.createElement('div');
+      title.className = 'statement-cap-title';
+      title.textContent = `#${index + 1}`;
+
+      const detail = document.createElement('div');
+      detail.className = 'statement-cap-detail';
+      const resource = this.formatCapabilityResourceWithContext(cap.resource, capabilityContext) ?? '-';
+      const action = this.formatCapabilityAction(cap.action) ?? '-';
+      detail.textContent = `${resource}  ·  ${action}`;
+
+      row.appendChild(title);
+      row.appendChild(detail);
+      const impact = this.describeCapabilityImpact(cap.resource, cap.action, capabilityContext);
+      if (impact) {
+        const impactEl = document.createElement('div');
+        impactEl.className = 'statement-cap-impact';
+        impactEl.textContent = impact;
+        row.appendChild(impactEl);
+      }
+      list.appendChild(row);
+    });
+
+    return list;
+  }
+
   isWideStatementKey(key) {
     const normalized = String(key || '').toLowerCase();
-    return normalized === 'resource' || normalized === 'action';
+    return (
+      normalized === 'resource' ||
+      normalized === 'action' ||
+      normalized === 'aud' ||
+      normalized === 'audience' ||
+      normalized === 'cap' ||
+      normalized === 'capabilities' ||
+      normalized === 'invocationcapabilities' ||
+      normalized === 'version'
+    );
+  }
+
+  formatCapabilityResource(value) {
+    if (value == null) return null;
+    const resource = String(value).trim();
+    if (!resource) return null;
+    return resource;
+  }
+
+  formatCapabilityResourceWithContext(value, capabilityContext) {
+    void capabilityContext;
+    return this.formatCapabilityResource(value);
+  }
+
+  formatCapabilityAction(value) {
+    if (value == null) return null;
+    const action = String(value).trim().toLowerCase();
+    if (!action) return null;
+    if (action === 'invoke') {
+      return 'invoke（调用）';
+    }
+    if (action === 'read') {
+      return 'read（读取）';
+    }
+    if (action === 'write') {
+      return 'write（写入）';
+    }
+    return action;
+  }
+
+  formatAudience(value) {
+    if (value == null) return null;
+    const audience = String(value).trim();
+    if (!audience) return null;
+    return audience;
+  }
+
+  normalizeCapabilityAction(value) {
+    if (value == null) return '';
+    return String(value).trim().toLowerCase();
+  }
+
+  sanitizeAppId(value) {
+    if (value == null) return null;
+    const appId = String(value).trim().replace(/[^a-zA-Z0-9._-]/g, '-');
+    return appId || null;
+  }
+
+  getAppIdFromResource(resource) {
+    if (!resource || typeof resource !== 'string') return null;
+    const normalized = resource.trim();
+    if (!normalized.startsWith('app:')) return null;
+    const appId = normalized.slice('app:'.length).trim();
+    return appId || null;
+  }
+
+  parseDidWebDomain(value) {
+    if (value == null) return null;
+    const text = String(value).trim();
+    if (!text) return null;
+    const lower = text.toLowerCase();
+    const prefix = 'did:web:';
+    if (!lower.startsWith(prefix)) return null;
+    const domain = text.slice(prefix.length).trim();
+    return domain || null;
+  }
+
+  getRouterDomainFromResource(resource) {
+    if (!resource || typeof resource !== 'string') return null;
+    const normalized = resource.trim();
+    const lower = normalized.toLowerCase();
+    const prefix = 'llm:';
+    if (lower.startsWith(prefix)) {
+      const domain = normalized.slice(prefix.length).trim();
+      return domain || null;
+    }
+    return null;
+  }
+
+  getWebdavDomainFromResource(resource) {
+    if (!resource || typeof resource !== 'string') return null;
+    const normalized = resource.trim();
+    const lower = normalized.toLowerCase();
+    if (lower.startsWith('webdav:')) {
+      const domain = normalized.slice('webdav:'.length).trim();
+      return domain || null;
+    }
+    if (lower.startsWith('dav:')) {
+      const domain = normalized.slice('dav:'.length).trim();
+      return domain || null;
+    }
+    if (lower.startsWith('app:')) {
+      const suffix = normalized.slice('app:'.length).trim();
+      if (this.isLikelyDomain(suffix)) {
+        return suffix;
+      }
+    }
+    return null;
+  }
+
+  isLikelyDomain(value) {
+    if (value == null) return false;
+    const text = String(value).trim();
+    if (!text) return false;
+
+    const hostWithPort = /^([a-z0-9-]+\.)*[a-z0-9-]+(:\d{1,5})?$/i;
+    const localhostWithPort = /^localhost(:\d{1,5})?$/i;
+    const ipv4WithPort = /^\d{1,3}(?:\.\d{1,3}){3}(:\d{1,5})?$/;
+    const ipv6WithPort = /^\[[0-9a-f:]+\](:\d{1,5})?$/i;
+
+    if (localhostWithPort.test(text) || ipv4WithPort.test(text) || ipv6WithPort.test(text)) {
+      return true;
+    }
+    if (!hostWithPort.test(text)) {
+      return false;
+    }
+    if (text.includes('.')) {
+      return true;
+    }
+    return text.toLowerCase() === 'localhost';
+  }
+
+  getRequestOriginDomain() {
+    const origin = this.requestData && this.requestData.origin ? String(this.requestData.origin).trim() : '';
+    if (!origin) return null;
+    try {
+      return new URL(origin).host || null;
+    } catch {
+      return null;
+    }
+  }
+
+  getRequestOriginAppId() {
+    const domain = this.getRequestOriginDomain();
+    if (!domain) return null;
+    return this.sanitizeAppId(domain);
+  }
+
+  normalizeServiceHost(value) {
+    if (value == null) return null;
+    const raw = String(value).trim();
+    if (!raw) return null;
+    if (raw.includes('://')) {
+      try {
+        const host = new URL(raw).host.trim();
+        return host || null;
+      } catch {
+        return null;
+      }
+    }
+    const host = raw.split('/')[0].trim();
+    return host || null;
+  }
+
+  extractServiceHosts(payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return { router: null, webdav: null };
+    }
+    const serviceHostsRaw =
+      payload.service_hosts && typeof payload.service_hosts === 'object' && !Array.isArray(payload.service_hosts)
+        ? payload.service_hosts
+        : null;
+    if (!serviceHostsRaw) {
+      return { router: null, webdav: null };
+    }
+    return {
+      router: this.normalizeServiceHost(serviceHostsRaw.router),
+      webdav: this.normalizeServiceHost(serviceHostsRaw.webdav),
+    };
+  }
+
+  buildCapabilityContext(options) {
+    const opts = options && typeof options === 'object' ? options : {};
+    const payload =
+      opts.payload && typeof opts.payload === 'object' && !Array.isArray(opts.payload)
+        ? opts.payload
+        : null;
+    const caps = Array.isArray(opts.caps) ? opts.caps : [];
+    const context = {
+      currentAppId: null,
+      routerAppId: null,
+      webdavAppId: null,
+      routerServiceHost: null,
+      webdavServiceHost: null,
+    };
+
+    const serviceHosts = this.extractServiceHosts(payload);
+    if (serviceHosts.router) {
+      context.routerServiceHost = serviceHosts.router;
+    }
+    if (serviceHosts.webdav) {
+      context.webdavServiceHost = serviceHosts.webdav;
+    }
+
+    caps.forEach((item) => {
+      const cap = item && typeof item === 'object' ? item : {};
+      const resource = this.formatCapabilityResource(cap.resource);
+      const action = this.normalizeCapabilityAction(cap.action);
+      if (!resource) return;
+      const appId = this.getAppIdFromResource(resource);
+
+      if (appId) {
+        if (!context.webdavAppId && (action === 'write' || action === 'read')) {
+          context.webdavAppId = appId;
+        }
+        if (!context.routerAppId && action === 'invoke') {
+          context.routerAppId = appId;
+        }
+        return;
+      }
+
+      if (!context.routerServiceHost) {
+        const routerDomain = this.getRouterDomainFromResource(resource);
+        if (routerDomain) {
+          context.routerServiceHost = routerDomain;
+        }
+      }
+      if (!context.webdavServiceHost) {
+        const webdavDomain = this.getWebdavDomainFromResource(resource);
+        if (webdavDomain) {
+          context.webdavServiceHost = webdavDomain;
+        }
+      }
+      if (this.isRouterCapabilityResource(resource)) {
+        if (!context.routerAppId) {
+          context.routerAppId = this.getRequestOriginAppId();
+        }
+      }
+    });
+
+    if (payload) {
+      const audDomain = this.parseDidWebDomain(payload.aud || payload.audience);
+      const audAppId = this.sanitizeAppId(audDomain);
+      if (audAppId) {
+        if (!context.currentAppId) {
+          context.currentAppId = audAppId;
+        }
+        if (!context.routerAppId) {
+          context.routerAppId = audAppId;
+        }
+        if (!context.webdavAppId) {
+          context.webdavAppId = audAppId;
+        }
+      }
+    }
+
+    const originAppId = this.getRequestOriginAppId();
+    if (!context.currentAppId && originAppId) {
+      context.currentAppId = originAppId;
+    }
+    if (!context.webdavAppId && originAppId) {
+      context.webdavAppId = originAppId;
+    }
+    if (!context.routerAppId && originAppId) {
+      context.routerAppId = originAppId;
+    }
+    if (!context.currentAppId) {
+      context.currentAppId = context.webdavAppId || context.routerAppId || null;
+    }
+
+    return context;
+  }
+
+  isRouterCapabilityResource(resource) {
+    if (!resource || typeof resource !== 'string') return false;
+    const normalized = resource.trim().toLowerCase();
+    return (
+      normalized.startsWith('llm:') ||
+      normalized === 'router:llm' ||
+      normalized === 'router/llm' ||
+      normalized === 'llm' ||
+      normalized === 'profile'
+    );
+  }
+
+  resolveCapabilityServiceHost(resource, action, context) {
+    const normalizedAction = this.normalizeCapabilityAction(action);
+    if (normalizedAction === 'invoke') {
+      return context.routerServiceHost || null;
+    }
+    if (normalizedAction === 'write' || normalizedAction === 'read') {
+      return context.webdavServiceHost || null;
+    }
+
+    const normalizedResource = this.formatCapabilityResource(resource);
+    if (normalizedResource) {
+      const routerDomain = this.getRouterDomainFromResource(normalizedResource);
+      if (routerDomain) return routerDomain;
+      const webdavDomain = this.getWebdavDomainFromResource(normalizedResource);
+      if (webdavDomain) return webdavDomain;
+    }
+
+    return context.routerServiceHost || context.webdavServiceHost || null;
+  }
+
+  resolveCapabilityTargetResource(resource, action, context) {
+    const appId = this.getAppIdFromResource(resource);
+    if (appId) {
+      return `app:${appId}`;
+    }
+
+    const normalizedAction = this.normalizeCapabilityAction(action);
+    if (normalizedAction === 'invoke' && context.routerAppId) {
+      return `app:${context.routerAppId}`;
+    }
+    if ((normalizedAction === 'write' || normalizedAction === 'read') && context.webdavAppId) {
+      return `app:${context.webdavAppId}`;
+    }
+    if (this.isRouterCapabilityResource(resource) && context.routerAppId) {
+      return `app:${context.routerAppId}`;
+    }
+    return this.formatCapabilityResource(resource) || '<目标资源>';
+  }
+
+  describeCapabilityImpact(resourceValue, actionValue, capabilityContext) {
+    const resource = this.formatCapabilityResource(resourceValue);
+    const action = this.normalizeCapabilityAction(actionValue);
+    if (!resource || !action) return null;
+    const context = capabilityContext && typeof capabilityContext === 'object' ? capabilityContext : {};
+    const currentAppId =
+      context.currentAppId || context.webdavAppId || context.routerAppId || '<当前 appId>';
+    const targetResource = this.resolveCapabilityTargetResource(resource, action, context);
+    const serviceHost = this.resolveCapabilityServiceHost(resource, action, context);
+    const serviceLabel = serviceHost || targetResource || '<目标服务>';
+    const actionLabel = this.formatCapabilityAction(action) || action;
+    return `授权当前应用 app:${currentAppId} 访问服务: ${serviceLabel}，执行${actionLabel}操作。`;
   }
 
   formatStatementScalar(key, value) {
     if (!key) return null;
     const normalizedKey = String(key).toLowerCase();
+    if (normalizedKey === 'resource') {
+      return this.formatCapabilityResource(value);
+    }
+    if (normalizedKey === 'action') {
+      return this.formatCapabilityAction(value);
+    }
+    if (normalizedKey === 'aud') {
+      return this.formatAudience(value);
+    }
+    if (normalizedKey === 'audience') {
+      return this.formatAudience(value);
+    }
     const timeKeys = new Set([
       'exp',
       'iat',
@@ -668,19 +1154,32 @@ class ApprovalApp {
     if (!listEl) return;
     listEl.innerHTML = '';
 
+    const recapCaps = recapInfo.capabilities.flatMap((entry) =>
+      (entry.actions || []).map((actionEntry) => ({
+        resource: entry.resource,
+        action: actionEntry?.action,
+      }))
+    );
+    const recapCapabilityContext = this.buildCapabilityContext({ caps: recapCaps });
+
     recapInfo.capabilities.forEach((entry) => {
       const resourceBox = document.createElement('div');
       resourceBox.className = 'recap-resource';
 
       const title = document.createElement('div');
       title.className = 'recap-resource-title';
-      title.textContent = entry.resource;
+      title.textContent =
+        this.formatCapabilityResourceWithContext(entry.resource, recapCapabilityContext) ||
+        entry.resource;
       resourceBox.appendChild(title);
 
       const actionList = document.createElement('div');
       actionList.className = 'recap-action-list';
 
       entry.actions.forEach((actionEntry) => {
+        const actionItem = document.createElement('div');
+        actionItem.className = 'recap-action-item';
+
         const row = document.createElement('div');
         row.className = 'recap-action';
 
@@ -694,7 +1193,19 @@ class ApprovalApp {
 
         row.appendChild(actionName);
         row.appendChild(constraints);
-        actionList.appendChild(row);
+        actionItem.appendChild(row);
+        const impact = this.describeCapabilityImpact(
+          entry.resource,
+          actionEntry.action,
+          recapCapabilityContext
+        );
+        if (impact) {
+          const impactEl = document.createElement('div');
+          impactEl.className = 'recap-capability-impact';
+          impactEl.textContent = impact;
+          actionItem.appendChild(impactEl);
+        }
+        actionList.appendChild(actionItem);
       });
 
       resourceBox.appendChild(actionList);
