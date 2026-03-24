@@ -6,6 +6,12 @@
 - 钱包如何展示与风险提示
 - SIWE 与 UCAN 在 Chat / Router / WebDAV 架构里的关系
 
+## 阅读导航
+
+- 当前文档：SIWE（认证层）规范与接入。
+- 下一步建议阅读：`./ucan-protocol.md`（授权层），理解 `resource/action/audience` 如何承接 SIWE 身份。
+- 推荐顺序：先读 SIWE，再读 UCAN。
+
 ## 1. 适用范围
 
 - 钱包：YeYing Wallet 浏览器扩展
@@ -22,6 +28,32 @@
 1. 先发 SIWE 登录签名，建立身份上下文
 2. 再在 statement/resources 中携带 UCAN 信息（如 `UCAN-AUTH` / `urn:recap:`）
 3. 后端按 SIWE 身份 + UCAN 能力联合校验
+
+### 2.1 为什么 SIWE 与 UCAN 要分层
+
+分层的核心目的是让“身份”与“权限”各自稳定、独立演进：
+
+1. 语义分离，降低歧义
+   - SIWE 只回答“谁在登录”，重点是地址归属、域名绑定、防重放。
+   - UCAN 只回答“能做什么”，重点是资源、动作、受众和过期控制。
+2. 权限更可控
+   - 如果只用 SIWE，服务端通常只能判“已登录”，难以表达细粒度能力。
+   - 引入 UCAN 后，可按 `resource + action` 做最小权限校验。
+3. 多服务复用更自然
+   - Chat 作为前端应用，后面可能同时访问 Router、WebDAV、应用市场等多个服务。
+   - SIWE 身份可以复用，UCAN 可按服务分别签发 Invocation，避免单 token 过宽授权。
+4. 迁移成本更低
+   - 身份体系变化（登录流程、session 策略）通常不应影响权限模型。
+   - 权限模型升级（新增 scope、新增 action）也不应改动 SIWE 基本流程。
+5. 审批体验更清晰
+   - 钱包可在同一签名页展示 SIWE 基础字段和 ReCap/UCAN 能力摘要。
+   - 用户能区分“登录行为”与“授权行为”，减少误签风险。
+
+总结：
+
+- SIWE 负责认证（Authentication）
+- UCAN 负责授权（Authorization）
+- 两者组合后，才能在 Chat / Router / WebDAV 这种多服务架构里实现清晰、可扩展且最小权限的安全模型。
 
 ## 3. SIWE 标准字段（EIP-4361）
 

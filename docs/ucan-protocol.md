@@ -2,6 +2,12 @@
 
 本文档给出一份可直接复用的 UCAN 接入模板，目标是把 `chat`（前端应用）、`router`（模型服务）、`webdav`（存储服务）三者的授权关系讲清楚，并给出 DApp 侧最小接入步骤。
 
+## 阅读导航
+
+- 当前文档：UCAN（授权层）规范与接入。
+- 前置建议阅读：`./siwe-protocol.md`（认证层），理解“谁在授权”与“授权什么”之间的分工。
+- 推荐顺序：先读 SIWE，再读 UCAN。
+
 ## 1. 适用范围
 
 - 适用钱包：YeYing Wallet 浏览器扩展。
@@ -66,6 +72,34 @@
 
 - `scope` 用于表达粒度，默认 `all`，后续可扩展 `profile`、`media` 等。
 - `appId` 推荐由发起应用域名归一化得到（如 `localhost:3020 -> localhost-3020`）。
+
+#### 4.1.1 为什么设计为 `app:<scope>:<appId>`
+
+这个格式是为了同时满足“可读、可校验、可扩展、可迁移”四个目标：
+
+1. `app` 是命名空间
+   - 先确定这是“应用级资源”，避免和用户资源、系统资源混淆。
+   - 服务端可以先按前缀分流策略，日志检索也更清晰。
+2. `scope` 预留粒度扩展位
+   - 当前默认 `all`，后续可以平滑扩展到 `profile`、`media`、`history` 等。
+   - 如果没有 `scope`，后续细粒度只能靠 action 或 constraints 叠补，策略会变复杂。
+3. `appId` 明确多租户边界
+   - 标识“哪个应用在申请权限”，便于 Router/WebDAV 统一执行租户隔离。
+   - 同一 `appId` 可跨服务复用，避免每个服务定义不同资源语言。
+4. 与 UCAN 校验职责天然解耦
+   - `resource` 管对象范围（`app:all:localhost-3020`）
+   - `action` 管操作类型（`invoke`/`write`/`read`）
+   - `aud` 与 `service_hosts` 管目标服务绑定
+5. 兼容历史格式，降低迁移成本
+   - 历史 `app:<appId>` 可在解析层视为 `app:all:<appId>`。
+   - 新老格式可并存一段时间，不阻断现网。
+
+对比示例（同一 Chat 应用）：
+
+- Router：`resource=app:all:localhost-3020`，`action=invoke`
+- WebDAV：`resource=app:all:localhost-3020`，`action=write`
+
+这种建模使用户看到统一资源语义，服务端按 action + audience 精确收敛权限。
 
 ### 4.2 动作命名
 
