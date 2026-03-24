@@ -728,7 +728,16 @@ class ApprovalApp {
 
   formatCapabilityResourceWithContext(value, capabilityContext) {
     void capabilityContext;
-    return this.formatCapabilityResource(value);
+    const resource = this.formatCapabilityResource(value);
+    if (!resource) return resource;
+
+    const appResource = this.parseAppResource(resource);
+    if (!appResource) return resource;
+
+    if (!appResource.scope) {
+      return `app:all:${appResource.appId}`;
+    }
+    return `app:${appResource.scope}:${appResource.appId}`;
   }
 
   formatCapabilityAction(value) {
@@ -765,12 +774,29 @@ class ApprovalApp {
     return appId || null;
   }
 
-  getAppIdFromResource(resource) {
+  parseAppResource(resource) {
     if (!resource || typeof resource !== 'string') return null;
     const normalized = resource.trim();
     if (!normalized.startsWith('app:')) return null;
-    const appId = normalized.slice('app:'.length).trim();
-    return appId || null;
+    const suffix = normalized.slice('app:'.length).trim();
+    if (!suffix) return null;
+
+    const segments = suffix.split(':').map((segment) => segment.trim());
+    if (segments.length === 1) {
+      const appId = segments[0];
+      if (!appId) return null;
+      return { scope: null, appId };
+    }
+
+    const [scope, ...rest] = segments;
+    const appId = rest.join(':').trim();
+    if (!scope || !appId) return null;
+    return { scope, appId };
+  }
+
+  getAppIdFromResource(resource) {
+    const parsed = this.parseAppResource(resource);
+    return parsed ? parsed.appId : null;
   }
 
   parseDidWebDomain(value) {
