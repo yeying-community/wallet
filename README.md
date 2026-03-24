@@ -10,7 +10,8 @@
 ## 文档
 
 - [DApp 连接与 SIWE/UCAN 授权流程](./docs/dapp-connection-flow.md)
-- [UCAN 协议说明与使用指南（Chat / Router / WebDAV 模板）](./docs/ucan-protocol-chat-router-webdav.md)
+- [SIWE 协议说明与使用指南](./docs/siwe-protocol.md)
+- [UCAN 协议说明与使用指南（Chat / Router / WebDAV 模板）](./docs/ucan-protocol.md)
 - [WebDAV 备份同步说明](./docs/backup-sync-webdav.md)
 - [MPC 门限钱包方案](./docs/mpc-threshold-wallet.md)
 
