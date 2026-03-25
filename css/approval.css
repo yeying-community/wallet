@@ -305,20 +305,21 @@ body {
 
 .statement-item {
   display: grid;
-  grid-template-columns: 3ch minmax(0, 1fr);
+  grid-template-columns: minmax(9ch, max-content) minmax(0, 1fr);
   gap: 8px;
   align-items: start;
 }
 
 .statement-item-wide-key {
-  grid-template-columns: 8ch minmax(0, 1fr);
+  grid-template-columns: minmax(13ch, max-content) minmax(0, 1fr);
 }
 
 .statement-key {
   font-size: 12px;
   font-weight: 600;
   color: #666;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .statement-val {
@@ -347,6 +348,99 @@ body {
 
 .statement-list-nested {
   margin-top: 6px;
+}
+
+.statement-cap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.statement-cap-list-nested {
+  margin-top: 6px;
+}
+
+.statement-cap-item {
+  border: 1px solid #dfe3eb;
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.statement-cap-title {
+  font-size: 11px;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.statement-cap-detail {
+  font-size: 12px;
+  color: #1f2937;
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.statement-cap-impact {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: #4b5563;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.ucan-summary {
+  border: 1px solid #d9e2f7;
+  border-radius: 10px;
+  background: #f7f9ff;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ucan-summary-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1f3a6f;
+}
+
+.ucan-summary-line {
+  display: grid;
+  grid-template-columns: 7ch minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.ucan-summary-key {
+  font-size: 12px;
+  color: #4b5563;
+  font-weight: 600;
+}
+
+.ucan-summary-value {
+  font-size: 12px;
+  color: #111827;
+  word-break: break-word;
+}
+
+.ucan-summary-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ucan-summary-label {
+  font-size: 11px;
+  color: #6b7280;
+  font-weight: 600;
 }
 
 .button-group {
@@ -455,17 +549,20 @@ body {
   margin: 0;
 }
 
+.recap-action-item {
+  padding: 6px 0;
+  border-bottom: 1px dashed #e0e0e0;
+}
+
+.recap-action-item:last-child {
+  border-bottom: none;
+}
+
 .recap-action {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding: 6px 0;
-  border-bottom: 1px dashed #e0e0e0;
   font-size: 12px;
-}
-
-.recap-action:last-child {
-  border-bottom: none;
 }
 
 .recap-action-name {
@@ -480,6 +577,18 @@ body {
   word-break: break-word;
   max-width: 65%;
   font-size: 11px;
+}
+
+.recap-capability-impact {
+  margin-top: 4px;
+  border: 1px solid #eceff3;
+  border-radius: 6px;
+  background: #fafbfc;
+  padding: 5px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #4b5563;
+  word-break: break-word;
 }
 
 .recap-raw summary {

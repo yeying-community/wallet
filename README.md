@@ -7,6 +7,14 @@
 3. 打开右上角“开发者模式”开关
 4. 点击“加载未打包的扩展程序”，并指定代码目录，即完成安装
 
+## 文档
+
+- [DApp 连接与 SIWE/UCAN 授权流程](./docs/dapp-connection-flow.md)
+- [SIWE 协议说明与使用指南](./docs/siwe-protocol.md)
+- [UCAN 协议说明与使用指南（Chat / Router / WebDAV 模板）](./docs/ucan-protocol.md)
+- [WebDAV 备份同步说明](./docs/backup-sync-webdav.md)
+- [MPC 门限钱包方案](./docs/mpc-threshold-wallet.md)
+
 
 ## 标准 / EIP 支持矩阵
 
