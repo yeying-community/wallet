@@ -668,7 +668,12 @@ class ApprovalApp {
     if (normalizedKey === 'cap' || normalizedKey === 'capabilities') {
       return true;
     }
-    return items.every((item) => item && typeof item === 'object' && ('resource' in item || 'action' in item));
+    return items.every(
+      (item) =>
+        item &&
+        typeof item === 'object' &&
+        ('resource' in item || 'action' in item || 'with' in item || 'can' in item)
+    );
   }
 
   buildCapabilityList(items, depth, capabilityContext) {
@@ -686,13 +691,17 @@ class ApprovalApp {
 
       const detail = document.createElement('div');
       detail.className = 'statement-cap-detail';
-      const resource = this.formatCapabilityResourceWithContext(cap.resource, capabilityContext) ?? '-';
-      const action = this.formatCapabilityAction(cap.action) ?? '-';
+      const resource = this.formatCapabilityResourceWithContext(this.getCapabilityResource(cap), capabilityContext) ?? '-';
+      const action = this.formatCapabilityAction(this.getCapabilityAction(cap)) ?? '-';
       detail.textContent = `${resource}  ·  ${action}`;
 
       row.appendChild(title);
       row.appendChild(detail);
-      const impact = this.describeCapabilityImpact(cap.resource, cap.action, capabilityContext);
+      const impact = this.describeCapabilityImpact(
+        this.getCapabilityResource(cap),
+        this.getCapabilityAction(cap),
+        capabilityContext
+      );
       if (impact) {
         const impactEl = document.createElement('div');
         impactEl.className = 'statement-cap-impact';
@@ -710,6 +719,8 @@ class ApprovalApp {
     return (
       normalized === 'resource' ||
       normalized === 'action' ||
+      normalized === 'with' ||
+      normalized === 'can' ||
       normalized === 'aud' ||
       normalized === 'audience' ||
       normalized === 'cap' ||
@@ -724,6 +735,21 @@ class ApprovalApp {
     const resource = String(value).trim();
     if (!resource) return null;
     return resource;
+  }
+
+  getCapabilityResource(cap) {
+    if (!cap || typeof cap !== 'object') return null;
+    const withValue = this.formatCapabilityResource(cap.with);
+    if (withValue) return withValue;
+    return this.formatCapabilityResource(cap.resource);
+  }
+
+  getCapabilityAction(cap) {
+    if (!cap || typeof cap !== 'object') return null;
+    const canValue = this.normalizeCapabilityAction(cap.can);
+    if (canValue) return canValue;
+    const actionValue = this.normalizeCapabilityAction(cap.action);
+    return actionValue || null;
   }
 
   formatCapabilityResourceWithContext(value, capabilityContext) {
@@ -939,8 +965,8 @@ class ApprovalApp {
 
     caps.forEach((item) => {
       const cap = item && typeof item === 'object' ? item : {};
-      const resource = this.formatCapabilityResource(cap.resource);
-      const action = this.normalizeCapabilityAction(cap.action);
+      const resource = this.getCapabilityResource(cap);
+      const action = this.getCapabilityAction(cap);
       if (!resource) return;
       const appId = this.getAppIdFromResource(resource);
 
@@ -1078,6 +1104,12 @@ class ApprovalApp {
       return this.formatCapabilityResource(value);
     }
     if (normalizedKey === 'action') {
+      return this.formatCapabilityAction(value);
+    }
+    if (normalizedKey === 'with') {
+      return this.formatCapabilityResource(value);
+    }
+    if (normalizedKey === 'can') {
       return this.formatCapabilityAction(value);
     }
     if (normalizedKey === 'aud') {

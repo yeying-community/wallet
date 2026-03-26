@@ -87,8 +87,8 @@
    - 标识“哪个应用在申请权限”，便于 Router/WebDAV 统一执行租户隔离。
    - 同一 `appId` 可跨服务复用，避免每个服务定义不同资源语言。
 4. 与 UCAN 校验职责天然解耦
-   - `resource` 管对象范围（`app:all:localhost-3020`）
-   - `action` 管操作类型（`invoke`/`write`/`read`）
+   - `with` 管对象范围（`app:all:localhost-3020`）
+   - `can` 管操作类型（`invoke`/`write`/`read`）
    - `aud` 与 `service_hosts` 管目标服务绑定
 5. 兼容历史格式，降低迁移成本
    - 历史 `app:<appId>` 可在解析层视为 `app:all:<appId>`。
@@ -96,8 +96,8 @@
 
 对比示例（同一 Chat 应用）：
 
-- Router：`resource=app:all:localhost-3020`，`action=invoke`
-- WebDAV：`resource=app:all:localhost-3020`，`action=write`
+- Router：`with=app:all:localhost-3020`，`can=invoke`
+- WebDAV：`with=app:all:localhost-3020`，`can=write`
 
 这种建模使用户看到统一资源语义，服务端按 action + audience 精确收敛权限。
 
@@ -111,7 +111,7 @@
 
 以 Chat（`appId=localhost-3020`）为例：
 
-| 服务 | capability.resource | capability.action | 说明 |
+| 服务 | capability.with | capability.can | 说明 |
 | --- | --- | --- | --- |
 | Router | `app:all:localhost-3020` | `invoke` | 允许当前应用调用模型接口 |
 | WebDAV | `app:all:localhost-3020` | `write` | 允许当前应用写入会话/媒体数据 |
@@ -131,8 +131,8 @@
     "webdav": "localhost:6065"
   },
   "cap": [
-    { "resource": "app:all:localhost-3020", "action": "invoke" },
-    { "resource": "app:all:localhost-3020", "action": "write" }
+    { "with": "app:all:localhost-3020", "can": "invoke" },
+    { "with": "app:all:localhost-3020", "can": "write" }
   ],
   "exp": 1767225600,
   "iat": 1767139200
@@ -271,8 +271,8 @@ const session = await getUcanSession("default", provider);
 const chatAppId = "localhost-3020";
 
 const rootCaps = [
-  { resource: `app:all:${chatAppId}`, action: "invoke" },
-  { resource: `app:all:${chatAppId}`, action: "write" },
+  { with: `app:all:${chatAppId}`, can: "invoke" },
+  { with: `app:all:${chatAppId}`, can: "write" },
 ];
 
 const root = await createRootUcan({
@@ -290,14 +290,14 @@ const root = await createRootUcan({
 
 const routerToken = await createInvocationUcan({
   audience: "did:web:localhost:3011",
-  capabilities: [{ resource: `app:all:${chatAppId}`, action: "invoke" }],
+  capabilities: [{ with: `app:all:${chatAppId}`, can: "invoke" }],
   sessionId: "default",
   issuer: session,
 });
 
 const webdavToken = await createInvocationUcan({
   audience: "did:web:localhost:6065",
-  capabilities: [{ resource: `app:all:${chatAppId}`, action: "write" }],
+  capabilities: [{ with: `app:all:${chatAppId}`, can: "write" }],
   sessionId: "default",
   issuer: session,
 });
@@ -310,7 +310,7 @@ const webdavToken = await createInvocationUcan({
 - `UCAN issuer mismatch`：
   - 检查 `payload.iss` 与 session.did 是否一致。
 - 服务端 `capability denied`：
-  - 检查 `resource/action` 是否匹配服务要求。
+  - 检查 `with/can`（兼容 `resource/action`）是否匹配服务要求。
 - 服务端 `audience` 失败：
   - 检查 Invocation `aud` 是否是目标服务 DID。
 - 偶发要求解锁钱包：
