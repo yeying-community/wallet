@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "夜莺钱包",
-  "version": "1.4.8",
+  "version": "1.4.9",
   "description": "夜莺钱包插件",
   "permissions": [
     "storage",
@@ -36,7 +36,9 @@
         "*://chrome.google.com/*",
         "*://chromewebstore.google.com/*"
       ],
-      "js": ["content.js"],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
     }
@@ -48,7 +50,10 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["inject.js", "js/protocol/dapp-protocol.js"],
+      "resources": [
+        "inject.js",
+        "js/protocol/dapp-protocol.js"
+      ],
       "matches": [
         "file:///*",
         "https://*/*",
