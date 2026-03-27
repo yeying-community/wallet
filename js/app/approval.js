@@ -925,18 +925,33 @@ class ApprovalApp {
 
   extractServiceHosts(payload) {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-      return { router: null, webdav: null };
+      return { router: null, webdav: null, byKey: {}, list: [] };
     }
     const serviceHostsRaw =
       payload.service_hosts && typeof payload.service_hosts === 'object' && !Array.isArray(payload.service_hosts)
         ? payload.service_hosts
         : null;
     if (!serviceHostsRaw) {
-      return { router: null, webdav: null };
+      return { router: null, webdav: null, byKey: {}, list: [] };
     }
+
+    const byKey = {};
+    const list = [];
+    Object.entries(serviceHostsRaw).forEach(([rawKey, rawValue]) => {
+      const key = String(rawKey || '').trim().toLowerCase();
+      const host = this.normalizeServiceHost(rawValue);
+      if (!key || !host) return;
+      byKey[key] = host;
+      if (!list.includes(host)) {
+        list.push(host);
+      }
+    });
+
     return {
-      router: this.normalizeServiceHost(serviceHostsRaw.router),
-      webdav: this.normalizeServiceHost(serviceHostsRaw.webdav),
+      router: byKey.router || null,
+      webdav: byKey.webdav || byKey.dav || byKey.storage || null,
+      byKey,
+      list,
     };
   }
 
@@ -953,6 +968,8 @@ class ApprovalApp {
       webdavAppId: null,
       routerServiceHost: null,
       webdavServiceHost: null,
+      serviceHostsByKey: {},
+      serviceHostList: [],
     };
 
     const serviceHosts = this.extractServiceHosts(payload);
@@ -961,6 +978,12 @@ class ApprovalApp {
     }
     if (serviceHosts.webdav) {
       context.webdavServiceHost = serviceHosts.webdav;
+    }
+    if (serviceHosts.byKey && typeof serviceHosts.byKey === 'object') {
+      context.serviceHostsByKey = serviceHosts.byKey;
+    }
+    if (Array.isArray(serviceHosts.list)) {
+      context.serviceHostList = serviceHosts.list;
     }
 
     caps.forEach((item) => {
@@ -1045,12 +1068,25 @@ class ApprovalApp {
   }
 
   resolveCapabilityServiceHost(resource, action, context) {
+    const hostByScope = this.getServiceHostFromResourceScope(resource, context);
+    if (hostByScope) {
+      return hostByScope;
+    }
+
     const normalizedAction = this.normalizeCapabilityAction(action);
     if (normalizedAction === 'invoke') {
-      return context.routerServiceHost || null;
+      return (
+        context.routerServiceHost ||
+        this.pickServiceHostByAction(normalizedAction, context) ||
+        null
+      );
     }
     if (normalizedAction === 'write' || normalizedAction === 'read') {
-      return context.webdavServiceHost || null;
+      return (
+        context.webdavServiceHost ||
+        this.pickServiceHostByAction(normalizedAction, context) ||
+        null
+      );
     }
 
     const normalizedResource = this.formatCapabilityResource(resource);
@@ -1061,24 +1097,100 @@ class ApprovalApp {
       if (webdavDomain) return webdavDomain;
     }
 
-    return context.routerServiceHost || context.webdavServiceHost || null;
+    return (
+      this.pickServiceHostByAction(normalizedAction, context) ||
+      context.routerServiceHost ||
+      context.webdavServiceHost ||
+      null
+    );
+  }
+
+  getServiceHostFromResourceScope(resource, context) {
+    const parsed = this.parseAppResource(resource);
+    if (!parsed || !parsed.scope) return null;
+
+    const scope = String(parsed.scope).trim().toLowerCase();
+    if (!scope || scope === 'all') return null;
+
+    const byKey =
+      context && context.serviceHostsByKey && typeof context.serviceHostsByKey === 'object'
+        ? context.serviceHostsByKey
+        : {};
+
+    if (byKey[scope]) {
+      return byKey[scope];
+    }
+
+    if ((scope === 'webdav' || scope === 'dav' || scope === 'storage') && byKey.webdav) {
+      return byKey.webdav;
+    }
+    if ((scope === 'router' || scope === 'llm') && byKey.router) {
+      return byKey.router;
+    }
+
+    return null;
+  }
+
+  formatServiceHostList(hosts) {
+    const list = Array.isArray(hosts) ? hosts.filter((item) => item && typeof item === 'string') : [];
+    if (!list.length) return null;
+    if (list.length <= 3) {
+      return list.join(', ');
+    }
+    return `${list.slice(0, 3).join(', ')} 等${list.length}个服务`;
+  }
+
+  pickServiceHostByAction(action, context) {
+    const normalizedAction = this.normalizeCapabilityAction(action);
+    const byKey =
+      context && context.serviceHostsByKey && typeof context.serviceHostsByKey === 'object'
+        ? context.serviceHostsByKey
+        : {};
+    const hostList = Array.isArray(context && context.serviceHostList) ? context.serviceHostList : [];
+
+    const invokePriority = ['router', 'node', 'go', 'java', 'python', 'api', 'backend', 'service'];
+    const storagePriority = ['webdav', 'dav', 'storage', 'file', 'files'];
+    const preferredKeys =
+      normalizedAction === 'invoke'
+        ? invokePriority
+        : normalizedAction === 'write' || normalizedAction === 'read'
+          ? storagePriority
+          : [];
+
+    const matchedHosts = [];
+    for (const key of preferredKeys) {
+      const host = byKey[key];
+      if (!host) continue;
+      if (!matchedHosts.includes(host)) {
+        matchedHosts.push(host);
+      }
+    }
+    if (matchedHosts.length === 1) {
+      return matchedHosts[0];
+    }
+    if (matchedHosts.length > 1) {
+      return this.formatServiceHostList(matchedHosts);
+    }
+
+    return this.formatServiceHostList(hostList);
   }
 
   resolveCapabilityTargetResource(resource, action, context) {
     const appId = this.getAppIdFromResource(resource);
     if (appId) {
-      return `app:${appId}`;
+      const normalized = this.formatCapabilityResourceWithContext(resource, context);
+      return normalized || `app:all:${appId}`;
     }
 
     const normalizedAction = this.normalizeCapabilityAction(action);
     if (normalizedAction === 'invoke' && context.routerAppId) {
-      return `app:${context.routerAppId}`;
+      return `app:all:${context.routerAppId}`;
     }
     if ((normalizedAction === 'write' || normalizedAction === 'read') && context.webdavAppId) {
-      return `app:${context.webdavAppId}`;
+      return `app:all:${context.webdavAppId}`;
     }
     if (this.isRouterCapabilityResource(resource) && context.routerAppId) {
-      return `app:${context.routerAppId}`;
+      return `app:all:${context.routerAppId}`;
     }
     return this.formatCapabilityResource(resource) || '<目标资源>';
   }
@@ -1092,9 +1204,9 @@ class ApprovalApp {
       context.currentAppId || context.webdavAppId || context.routerAppId || '<当前 appId>';
     const targetResource = this.resolveCapabilityTargetResource(resource, action, context);
     const serviceHost = this.resolveCapabilityServiceHost(resource, action, context);
-    const serviceLabel = serviceHost || targetResource || '<目标服务>';
+    const serviceLabel = serviceHost || '<未声明服务地址>';
     const actionLabel = this.formatCapabilityAction(action) || action;
-    return `授权当前应用 app:${currentAppId} 访问服务: ${serviceLabel}，执行${actionLabel}操作。`;
+    return `授权当前应用 app:${currentAppId} 访问资源: ${targetResource}，访问服务: ${serviceLabel}，执行${actionLabel}操作。`;
   }
 
   formatStatementScalar(key, value) {
