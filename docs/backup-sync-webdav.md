@@ -29,7 +29,7 @@
 ## 3. WebDAV 对接约束（服务端能力）
 
 - WebDAV 服务通常有前缀（常见 `/api`、`/dav`、`/webdav`）。
-- 钱包侧默认 endpoint：`https://webdav.yeying.pub`（末尾 `/` 可选）。
+- 钱包侧默认 endpoint：`https://webdav.yeying.pub/dav`（末尾 `/` 可选）。
 - 当用户仅填写域名或 `/` 时，钱包会用 `OPTIONS` 自动探测前缀：`/`、`/dav`、`/webdav`、`/api`，选择首个非 404 的前缀。
 - 若启用 UCAN 的 **app scope**（服务端 `required_resource=app:*`），钱包会把同步路径放入 `/apps/<appId>/...` 目录下。
   默认 appId 为插件域名（扩展 ID，例如 `chrome-extension://<id>/` 的 `<id>`）。
@@ -153,7 +153,7 @@
 ## 11. 本地存储与配置（建议新增）
 
 - `settings.backupSyncEnabled`（默认 true）
-- `settings.backupSyncEndpoint`（WebDAV Base URL，默认 `https://webdav.yeying.pub`，末尾 `/` 可选）
+- `settings.backupSyncEndpoint`（WebDAV Base URL，默认 `https://webdav.yeying.pub/dav`，末尾 `/` 可选）
 - `settings.backupSyncAuthMode`（ucan | siwe | basic，默认 ucan）
 - `settings.backupSyncLastPullAt` / `LastPushAt`
 - `settings.backupSyncDirty`（是否有待推送变更）

@@ -583,7 +583,7 @@ export class SettingsController {
     const lastStatus = document.getElementById('backupSyncLastStatus');
 
     if (enabledToggle) enabledToggle.checked = Boolean(settings.enabled);
-    if (endpointInput) endpointInput.value = settings.endpoint || 'https://webdav.yeying.pub';
+    if (endpointInput) endpointInput.value = settings.endpoint || 'https://webdav.yeying.pub/dav';
     if (authModeSelect) authModeSelect.value = settings.authMode || 'ucan';
     if (ucanResourceInput) {
       const normalizedResource = this.normalizeUcanResource(settings.ucanResource || '');
