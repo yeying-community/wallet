@@ -1185,7 +1185,7 @@ export async function handleDeleteContact(contactId) {
 
 // ==================== Backup & Sync ====================
 
-const DEFAULT_BACKUP_SYNC_ENDPOINT = 'https://webdav.yeying.pub';
+const DEFAULT_BACKUP_SYNC_ENDPOINT = 'https://webdav.yeying.pub/dav';
 const BACKUP_SYNC_MODES = new Set(['siwe', 'ucan', 'basic']);
 const DEFAULT_MPC_AUTH_SCHEME = 'ucan';
 const DEFAULT_MPC_E2E_SUITE = 'x25519-aes-gcm';
