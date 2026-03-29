@@ -8,6 +8,13 @@ export class BaseDomain {
     this._retryDelay = Number.isFinite(retryDelay) ? retryDelay : 150;
   }
 
+  _shouldRetryMessageError(message) {
+    const normalized = String(message || '').toLowerCase();
+    return normalized.includes('receiving end does not exist')
+      || normalized.includes('message port closed before a response was received')
+      || normalized.includes('could not establish connection');
+  }
+
   /**
    * 发送消息到 background
    * @param {string} type - 消息类型
@@ -37,9 +44,10 @@ export class BaseDomain {
           chrome.runtime.sendMessage({ type, data }, (response) => {
             if (chrome.runtime.lastError) {
               const message = chrome.runtime.lastError.message || 'Unknown error';
-              const shouldRetry = message.includes('Receiving end does not exist') && attempt < this._maxRetries;
+              const shouldRetry = this._shouldRetryMessageError(message) && attempt < this._maxRetries;
               if (shouldRetry) {
                 const delay = this._retryDelay * (attempt + 1);
+                console.warn(`[BaseDomain] retry ${attempt + 1}/${this._maxRetries} for ${type}: ${message}`);
                 setTimeout(() => sendWithRetry(attempt + 1), delay);
                 return;
               }

@@ -593,8 +593,11 @@ export async function handlePopupMessage(message, response) {
       // ==================== 解锁/锁定 ====================
 
       case 'UNLOCK_WALLET':
-        const unlockResult = await unlockWallet(data.password, data.accountId);
-        response(unlockResult);
+        {
+          const unlockSource = typeof data?.source === 'string' ? data.source : 'unknown';
+          const unlockResult = await unlockWallet(data.password, data.accountId, unlockSource);
+          response(unlockResult);
+        }
         break;
 
       case 'LOCK_WALLET':
@@ -926,7 +929,7 @@ export async function handlePopupMessage(message, response) {
               });
               break;
             }
-            await unlockWallet(data.password, account.id);
+            await unlockWallet(data.password, account.id, 'popup');
           }
           const signature = await signMessage(account.id, data.message);
           response({
@@ -956,7 +959,7 @@ export async function handlePopupMessage(message, response) {
               });
               break;
             }
-            await unlockWallet(data.password, account.id);
+            await unlockWallet(data.password, account.id, 'popup');
           }
           const signedTransaction = await signTransaction(account.id, data.transaction);
           response({

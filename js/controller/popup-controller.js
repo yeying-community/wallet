@@ -127,20 +127,39 @@ export class PopupController {
   }
 
   async showInitialPage() {
-    const isInitialized = await this.wallet.isInitialized();
+    let startupState;
+    try {
+      startupState = await this.wallet.getStartupState();
+    } catch (error) {
+      console.error('[PopupController] 获取启动状态失败:', error);
+      showPage('unlockPage');
+      this.renderUnlockReason(null);
+      return;
+    }
 
-    if (!isInitialized) {
+    if (startupState?.errors?.length) {
+      console.warn('[PopupController] 启动状态检查存在异常:', startupState.errors);
+    }
+
+    if (startupState?.initialized === false) {
       showPage('welcomePage');
       return;
     }
 
-    const state = await this.wallet.getWalletState();
-    if (state && state.unlocked) {
+    if (startupState?.unlocked === true) {
       showPage('walletPage');
       await this.refreshWalletData();
       return;
     }
 
+    if (startupState?.initialized === true || startupState?.unlocked === false) {
+      showPage('unlockPage');
+      this.renderUnlockReason(null);
+      return;
+    }
+
+    // 两个状态查询都失败时，保守进入解锁页，避免误导用户看到新建/导入流程
+    console.warn('[PopupController] 启动状态未知，默认显示解锁页');
     showPage('unlockPage');
     this.renderUnlockReason(null);
   }

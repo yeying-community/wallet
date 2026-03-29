@@ -93,7 +93,7 @@ export class TransactionSendController {
         try {
           showWaiting();
           const account = await this.wallet.getCurrentAccount();
-          await this.wallet.unlock(password, account?.id);
+          await this.wallet.unlock(password, account?.id, { source: 'popup' });
         } catch (unlockError) {
           console.error('[TransactionSendController] 解锁失败:', unlockError);
           showError('密码错误');

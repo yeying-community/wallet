@@ -47,6 +47,23 @@ async function isActiveTab(tabId) {
   }
 }
 
+async function isWalletPopupOpen() {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.getContexts) {
+    return false;
+  }
+
+  try {
+    const popupUrl = chrome.runtime.getURL('html/popup.html');
+    const contexts = await chrome.runtime.getContexts({ contextTypes: ['POPUP'] });
+    return Array.isArray(contexts) && contexts.some((context) => {
+      const url = String(context?.documentUrl || '');
+      return url.startsWith(popupUrl);
+    });
+  } catch (error) {
+    return false;
+  }
+}
+
 async function recordUnlockRequest(info) {
   if (!info) return;
   try {
@@ -115,6 +132,18 @@ export async function routeRequest(method, params, metadata) {
     'yeying_ucan_session',
     'yeying_ucan_sign'
   ]);
+
+  const blockedWhilePopupOpenMethods = new Set([
+    ...unlockMethods,
+    'wallet_requestPermissions',
+    'wallet_watchAsset',
+    'wallet_addEthereumChain',
+    'wallet_switchEthereumChain'
+  ]);
+
+  if (blockedWhilePopupOpenMethods.has(method) && await isWalletPopupOpen()) {
+    throw createError(-32002, 'Wallet popup is currently open. Close it and retry.');
+  }
 
   if (!state.keyring && unlockMethods.has(method)) {
     const active = await isActiveTab(tabId);

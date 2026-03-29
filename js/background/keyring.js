@@ -20,9 +20,10 @@ import { mpcService } from './mpc-service.js';
  * 解锁钱包
  * @param {string} password - 密码
  * @param {string} accountId - 账户 ID
+ * @param {string} source - 解锁来源（popup / approval / internal）
  * @returns {Promise<Object>} { success, account }
  */
-export async function unlockWallet(password, accountId) {
+export async function unlockWallet(password, accountId, source = 'unknown') {
   try {
     console.log('🔓 Unlocking wallet...');
 
@@ -64,7 +65,7 @@ export async function unlockWallet(password, accountId) {
     resetLockTimer();
 
     // 通知等待解锁的请求
-    notifyUnlocked();
+    notifyUnlocked(source);
     updateKeepAlive();
 
     backupSyncService.onUnlocked(password).catch((error) => {
