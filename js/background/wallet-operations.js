@@ -77,8 +77,11 @@ const MIN_PASSWORD_LENGTH = 8;
 export async function isWalletInitialized() {
   try {
     const wallets = await getWallets();
+    const mpcWallets = await getMpcWalletList();
     const obj = wallets || {};
-    return { success: true, initialized: Object.keys(obj).length > 0 };
+    const hasHdWallet = Object.keys(obj).length > 0;
+    const hasMpcWallet = Array.isArray(mpcWallets) && mpcWallets.length > 0;
+    return { success: true, initialized: hasHdWallet || hasMpcWallet };
   } catch (error) {
     console.error('❌ Check wallet initialization failed:', error);
     return { success: false, error: error.message };
@@ -462,7 +465,7 @@ export async function handleSwitchAccount(accountId, password = null) {
         }
 
         console.log('✅ Account unlocked successfully');
-        notifyUnlocked();
+        notifyUnlocked('internal');
 
       } catch (error) {
         console.error('❌ Failed to unlock account:', error);

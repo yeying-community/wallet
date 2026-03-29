@@ -43,14 +43,29 @@ function waitForUnlock(timeout = 0) {
   });
 }
 
-export function notifyUnlocked() {
+function settleUnlockWaiters(settle) {
   unlockWaiters.forEach(waiter => {
     if (waiter.timer) {
       clearTimeout(waiter.timer);
     }
-    waiter.resolve(true);
+    settle(waiter);
   });
   unlockWaiters.clear();
+}
+
+function rejectUnlockWaiters(error) {
+  const rejection = error || createUserRejectedError('Unlock request cancelled');
+  settleUnlockWaiters((waiter) => waiter.reject(rejection));
+}
+
+export function notifyUnlocked(source = 'approval') {
+  // 仅当审批解锁页面完成解锁时，继续等待中的站点请求。
+  // 主插件弹窗内的手动解锁应与站点审批流程隔离，避免出现“点插件却跳站点连接弹窗”。
+  if (source === 'approval') {
+    settleUnlockWaiters((waiter) => waiter.resolve(true));
+    return;
+  }
+  rejectUnlockWaiters(createUserRejectedError('Unlock request cancelled by manual unlock'));
 }
 
 export function requestUnlock(context = {}) {

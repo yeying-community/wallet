@@ -42,7 +42,7 @@ export class UnlockWalletController {
       showWaiting();
 
       const currentAccount = await this.wallet.getCurrentAccount();
-      await this.wallet.unlock(password, currentAccount?.id);
+      await this.wallet.unlock(password, currentAccount?.id, { source: 'popup' });
 
       showPage('walletPage');
       if (this.onUnlocked) {

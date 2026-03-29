@@ -39,6 +39,47 @@ export class WalletDomain extends BaseDomain {
     }
   }
 
+  async getStartupState() {
+    const [initializedResult, walletStateResult] = await Promise.allSettled([
+      this._sendMessage(WalletMessageType.IS_WALLET_INITIALIZED),
+      this._sendMessage(WalletMessageType.GET_WALLET_STATE)
+    ]);
+
+    const errors = [];
+    let initialized = null;
+    let unlocked = null;
+    let chainId = null;
+    let lastUnlockRequest = null;
+
+    if (initializedResult.status === 'fulfilled') {
+      initialized = Boolean(initializedResult.value?.initialized);
+    } else {
+      errors.push({
+        type: WalletMessageType.IS_WALLET_INITIALIZED,
+        message: initializedResult.reason?.message || 'Unknown error'
+      });
+    }
+
+    if (walletStateResult.status === 'fulfilled') {
+      unlocked = Boolean(walletStateResult.value?.unlocked);
+      chainId = walletStateResult.value?.chainId || null;
+      lastUnlockRequest = walletStateResult.value?.lastUnlockRequest || null;
+    } else {
+      errors.push({
+        type: WalletMessageType.GET_WALLET_STATE,
+        message: walletStateResult.reason?.message || 'Unknown error'
+      });
+    }
+
+    return {
+      initialized,
+      unlocked,
+      chainId,
+      lastUnlockRequest,
+      errors
+    };
+  }
+
   /**
    * 获取钱包状态
    * @returns {Promise<Object>} 钱包状态
@@ -298,16 +339,18 @@ export class WalletDomain extends BaseDomain {
    * 解锁钱包
    * @param {string} password - 密码
    * @param {string} accountId - 可选的账户 ID
+   * @param {Object} options - 可选项
    * @returns {Promise<Object>} 解锁结果
    */
-  async unlock(password, accountId) {
+  async unlock(password, accountId, options = {}) {
     if (!password || password.length < 8) {
       throw new Error('密码至少需要8位字符');
     }
 
     const result = await this._sendMessage(WalletMessageType.UNLOCK_WALLET, {
       password,
-      accountId
+      accountId,
+      source: typeof options?.source === 'string' ? options.source : 'unknown'
     });
 
     this._currentAccount = result.account;
