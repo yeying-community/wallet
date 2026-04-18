@@ -8,6 +8,16 @@
 - 授权规范：`./UCAN协议说明.md`
 - 推荐顺序：先本手册，再 SIWE，再 UCAN。
 
+## SDK 推荐（web3-bs）
+- 推荐前端 SDK：`@yeying-community/web3-bs`
+- 本地联调仓库（当前开发环境）：`/Users/liuxin2/Workspace/opensource/web3-bs`
+- 适合 DApp 的核心能力：
+  - Provider 发现与连接：`getProvider`、`requestAccounts`
+  - SIWE 登录：`loginWithChallenge`、`authFetch`
+  - UCAN 授权：`getUcanSession`、`createRootUcan`、`createInvocationUcan`
+  - 多后端编排：`initDappSession`、`initWebDavStorage`
+- 接入建议：优先使用 SDK 封装；仅在特殊场景下再直接调用底层 `provider.request`。
+
 ## 1. 适用范围
 - 钱包：YeYing Wallet 浏览器扩展。
 - 登录签名：`personal_sign`、`eth_sign`、`eth_signTypedData(_v4)`。
@@ -20,11 +30,12 @@
 - 后端已具备 UCAN 能力校验（`with/can/aud/exp/iss`）。
 
 ## 3. 快速开始（最小路径）
-1. 连接账户：调用 `eth_requestAccounts`（或 `wallet_requestPermissions`）。
-2. 发起登录签名：构造 SIWE 消息并调用 `personal_sign`。
-3. 申请 UCAN 会话：调用 `yeying_ucan_session`。
-4. 执行 UCAN 签名：调用 `yeying_ucan_sign`。
-5. 后端完成 SIWE + UCAN 联合校验后建立会话。
+1. 连接账户：`getProvider` + `requestAccounts`。
+2. 登录认证：`loginWithChallenge`（或手动构造 SIWE + `signMessage`）。
+3. 申请 UCAN 会话：`getUcanSession`（钱包支持时会优先走钱包 UCAN RPC）。
+4. 签发请求令牌：`createInvocationUcan`。
+5. 访问后端资源：`authFetch`（JWT）或 `authUcanFetch`（UCAN）。
+6. 后端完成 SIWE + UCAN 联合校验后建立会话与权限上下文。
 
 ## 4. 标准接入步骤
 ### 4.1 连接账户
@@ -46,29 +57,52 @@
 - SIWE：验签、nonce 一次性、时间有效性、domain 绑定。
 - UCAN：`with/can` 能力匹配、`aud` 目标匹配、`exp` 与 `iss` 校验。
 
-## 5. 最小调用示例
+## 5. 最小调用示例（SDK 方式，推荐）
 ```ts
-await provider.request({ method: "eth_requestAccounts" });
+import {
+  getProvider,
+  requestAccounts,
+  loginWithChallenge,
+  getUcanSession,
+  createInvocationUcan,
+  authUcanFetch,
+} from "@yeying-community/web3-bs";
 
-const signature = await provider.request({
-  method: "personal_sign",
-  params: [siweMessage, account],
+const provider = await getProvider({ preferYeYing: true, timeoutMs: 5000 });
+if (!provider) throw new Error("No injected wallet provider");
+
+const accounts = await requestAccounts({ provider });
+const account = accounts[0];
+if (!account) throw new Error("No account returned");
+
+await loginWithChallenge({
+  provider,
+  address: account,
+  baseUrl: "https://your-api.example.com/api/v1/public/auth",
+  storeToken: true,
 });
 
-const session = await provider.request({
-  method: "yeying_ucan_session",
-  params: [{ sessionId: "default", forceNew: false }],
+const session = await getUcanSession("default", provider);
+const appId = "your-app-id";
+const ucan = await createInvocationUcan({
+  audience: "did:web:api.example.com",
+  capabilities: [{ with: `app:all:${appId}`, can: "invoke" }],
+  sessionId: "default",
+  issuer: session,
 });
 
-const signed = await provider.request({
-  method: "yeying_ucan_sign",
-  params: [{
-    sessionId: "default",
-    signingInput: "<ucan-signing-input>",
-    payload: { iss: session.did }
-  }]
+const response = await authUcanFetch("https://api.example.com/v1/chat", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ message: "hello" }),
+}, {
+  ucan,
 });
 ```
+
+说明：
+- SDK 会优先尝试钱包提供的 `yeying_ucan_session` / `yeying_ucan_sign`。
+- 若钱包不支持上述 UCAN RPC，SDK 会回退到本地 UCAN session 模式。
 
 ## 6. 用户可见审批流程
 - 首次连接：显示连接确认页。
@@ -116,3 +150,4 @@ flowchart TD
 - 请求路由：`js/background/request-router.js`
 - 审批 UI：`html/approval.html` + `js/app/approval.js`
 - UCAN 会话：`js/background/ucan.js`
+- 相关 SDK 仓库：`/Users/liuxin2/Workspace/opensource/web3-bs`
