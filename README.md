@@ -9,11 +9,11 @@
 
 ## 文档
 
-- [DApp 连接与 SIWE/UCAN 授权流程](./docs/dapp-connection-flow.md)
-- [SIWE 协议说明与使用指南](./docs/siwe-protocol.md)
-- [UCAN 协议说明与使用指南（Chat / Router / WebDAV 模板）](./docs/ucan-protocol.md)
-- [WebDAV 备份同步说明](./docs/backup-sync-webdav.md)
-- [MPC 门限钱包方案](./docs/mpc-threshold-wallet.md)
+- [DApp 连接与 SIWE/UCAN 授权流程](./docs/DApp连接与SIWE-UCAN授权流程.md)
+- [SIWE 协议说明与使用指南](./docs/SIWE协议说明.md)
+- [UCAN 协议说明与使用指南（Chat / Router / WebDAV 模板）](./docs/UCAN协议说明.md)
+- [WebDAV 备份同步说明](./docs/WebDAV备份同步说明.md)
+- [MPC 门限钱包方案](./docs/MPC门限钱包方案.md)
 
 
 ## 标准 / EIP 支持矩阵
