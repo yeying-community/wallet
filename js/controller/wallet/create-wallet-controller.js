@@ -8,6 +8,25 @@ export class CreateWalletController {
     this.onCreated = onCreated;
     this.mpcContacts = [];
     this.selectedMpcParticipants = [];
+    this.currentMpcAccount = null;
+  }
+
+  normalizeAddress(address) {
+    const normalized = String(address || '').trim();
+    return normalized ? normalized.toLowerCase() : '';
+  }
+
+  dedupeAddresses(addresses = []) {
+    const unique = [];
+    const seen = new Set();
+    for (const item of addresses) {
+      const raw = String(item || '').trim();
+      const key = this.normalizeAddress(raw);
+      if (!raw || !key || seen.has(key)) continue;
+      seen.add(key);
+      unique.push(raw);
+    }
+    return unique;
   }
 
   bindEvents() {
@@ -144,6 +163,7 @@ export class CreateWalletController {
       mpcResult.classList.add('hidden');
     }
     this.selectedMpcParticipants = [];
+    this.currentMpcAccount = null;
     this.renderMpcParticipantSelection();
     window.refreshWalletSelects?.();
     this.applyCreateWalletType('hd', getPageOrigin('setPasswordPage', 'welcome'));
@@ -293,9 +313,19 @@ export class CreateWalletController {
   }
 
   async loadMpcContacts() {
+    const currentAccount = await this.wallet.getCurrentAccount();
+    const currentAddress = String(currentAccount?.address || '').trim();
+    this.currentMpcAccount = currentAddress
+      ? {
+          address: currentAddress,
+          name: String(currentAccount?.name || '').trim() || '当前账户',
+        }
+      : null;
     const contacts = await this.wallet.getContacts();
+    const selfKey = this.normalizeAddress(currentAddress);
     this.mpcContacts = Array.isArray(contacts)
       ? contacts.filter(item => String(item?.address || '').trim())
+          .filter(item => this.normalizeAddress(item.address) !== selfKey)
       : [];
     const addressSet = new Set(this.mpcContacts.map(item => String(item.address || '').trim()));
     this.selectedMpcParticipants = this.selectedMpcParticipants.filter(address => addressSet.has(address));
@@ -363,17 +393,40 @@ export class CreateWalletController {
     const selectedContacts = this.selectedMpcParticipants
       .map((address) => this.mpcContacts.find((item) => String(item?.address || '').trim() === address))
       .filter(Boolean);
+    const selfParticipant = this.currentMpcAccount
+      ? {
+          ...this.currentMpcAccount,
+          self: true,
+        }
+      : null;
 
     if (label) {
-      label.textContent = selectedContacts.length ? `已选 ${selectedContacts.length} 位联系人` : '请选择联系人';
+      if (selectedContacts.length > 0) {
+        label.textContent = `当前账户 + ${selectedContacts.length} 位联系人`;
+      } else if (selfParticipant) {
+        label.textContent = '当前账户将自动加入';
+      } else {
+        label.textContent = '请选择联系人';
+      }
     }
     if (selected) {
-      if (!selectedContacts.length) {
+      const chips = [];
+      if (selfParticipant) {
+        chips.push(`
+          <div class="mpc-contact-chip mpc-contact-chip-self">
+            <span class="mpc-contact-chip-label">
+              <span class="mpc-contact-chip-name">${escapeHtml(selfParticipant.name)}</span>
+              <span class="mpc-contact-chip-address">${escapeHtml(shortenAddress(selfParticipant.address))}</span>
+            </span>
+          </div>
+        `);
+      }
+      if (!selectedContacts.length && !selfParticipant) {
         selected.innerHTML = '';
         selected.classList.add('hidden');
       } else {
         selected.classList.remove('hidden');
-        selected.innerHTML = selectedContacts.map((contact) => {
+        chips.push(...selectedContacts.map((contact) => {
           const address = String(contact.address || '').trim();
           const short = shortenAddress(address);
           const name = contact.name ? escapeHtml(contact.name) : '未命名联系人';
@@ -392,7 +445,8 @@ export class CreateWalletController {
               >×</button>
             </div>
           `;
-        }).join('');
+        }));
+        selected.innerHTML = chips.join('');
         selected.querySelectorAll('.mpc-contact-chip-remove').forEach((button) => {
           button.addEventListener('click', () => {
             const address = String(button.dataset.address || '').trim();
@@ -428,11 +482,21 @@ export class CreateWalletController {
     const resultEl = document.getElementById('mpcCreateWalletResult');
 
     const walletId = String(walletIdInput?.value || '').trim();
-    const participants = [...this.selectedMpcParticipants];
+    const currentAddress =
+      String(this.currentMpcAccount?.address || '').trim() ||
+      String((await this.wallet.getCurrentAccount())?.address || '').trim();
+    const participants = this.dedupeAddresses([
+      currentAddress,
+      ...this.selectedMpcParticipants,
+    ]);
     const threshold = Number(thresholdInput?.value || 0);
     const curve = String(curveSelect?.value || 'secp256k1').trim();
 
-    if (!participants.length) {
+    if (!currentAddress) {
+      showError('未找到当前账户');
+      return;
+    }
+    if (!this.selectedMpcParticipants.length) {
       showError('请先选择联系人');
       return;
     }
@@ -450,7 +514,8 @@ export class CreateWalletController {
       name,
       participants,
       threshold,
-      curve
+      curve,
+      password
     });
     if (!response?.success) {
       throw new Error(response?.error || '创建失败');

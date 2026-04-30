@@ -203,9 +203,20 @@ export async function handleCreateMpcWallet(options = {}) {
   try {
     const name = String(options.name || 'MPC Wallet').trim() || 'MPC Wallet';
     const walletId = String(options.walletId || '').trim() || generateId('mpc_wallet');
-    const participants = Array.isArray(options.participants)
+    const currentAccount = await getSelectedAccount() || (await getAccountList())[0] || null;
+    const selfAddress = String(currentAccount?.address || '').trim();
+    const participantCandidates = Array.isArray(options.participants)
       ? options.participants.map(item => String(item).trim()).filter(Boolean)
       : [];
+    const participants = [];
+    const seenParticipants = new Set();
+    for (const item of [selfAddress, ...participantCandidates]) {
+      const raw = String(item || '').trim();
+      const key = raw.toLowerCase();
+      if (!raw || seenParticipants.has(key)) continue;
+      seenParticipants.add(key);
+      participants.push(raw);
+    }
     const threshold = Number(options.threshold);
     const curve = String(options.curve || 'secp256k1').trim() || 'secp256k1';
 
@@ -233,7 +244,8 @@ export async function handleCreateMpcWallet(options = {}) {
       walletId,
       threshold,
       participants,
-      curve
+      curve,
+      password: options.password
     });
     const now = getTimestamp();
     const wallet = {
