@@ -137,9 +137,20 @@ export async function getMpcParticipants() {
   }
 }
 
-export async function getMpcParticipant(participantId) {
+function buildParticipantStorageKey(sessionId, participantId) {
+  const normalizedSessionId = String(sessionId || '').trim();
+  const normalizedParticipantId = String(participantId || '').trim();
+  if (!normalizedParticipantId) {
+    return '';
+  }
+  return normalizedSessionId ? `${normalizedSessionId}:${normalizedParticipantId}` : normalizedParticipantId;
+}
+
+export async function getMpcParticipant(sessionId, participantId) {
   try {
-    return await getMapItem(MpcStorageKeys.MPC_PARTICIPANTS, participantId);
+    const key = buildParticipantStorageKey(sessionId, participantId);
+    if (!key) return null;
+    return await getMapItem(MpcStorageKeys.MPC_PARTICIPANTS, key);
   } catch (error) {
     logError('mpc-storage-get-participant', error);
     return null;
@@ -148,29 +159,37 @@ export async function getMpcParticipant(participantId) {
 
 export async function saveMpcParticipant(participant) {
   try {
-    if (!participant || !participant.id) {
+    const key = buildParticipantStorageKey(participant?.sessionId, participant?.id);
+    if (!participant || !key) {
       throw new Error('Invalid MPC participant');
     }
-    await setMapItem(MpcStorageKeys.MPC_PARTICIPANTS, participant.id, participant);
+    await setMapItem(MpcStorageKeys.MPC_PARTICIPANTS, key, participant);
   } catch (error) {
     logError('mpc-storage-save-participant', error);
     throw error;
   }
 }
 
-export async function deleteMpcParticipant(participantId) {
+export async function deleteMpcParticipant(sessionId, participantId) {
   try {
-    await deleteMapItem(MpcStorageKeys.MPC_PARTICIPANTS, participantId);
+    const key = buildParticipantStorageKey(sessionId, participantId);
+    if (!key) return;
+    await deleteMapItem(MpcStorageKeys.MPC_PARTICIPANTS, key);
   } catch (error) {
     logError('mpc-storage-delete-participant', error);
     throw error;
   }
 }
 
-export async function getMpcParticipantList() {
+export async function getMpcParticipantList(sessionId = '') {
   try {
     const participants = await getMpcParticipants();
-    return Object.values(participants);
+    const list = Object.values(participants);
+    const normalizedSessionId = String(sessionId || '').trim();
+    if (!normalizedSessionId) {
+      return list;
+    }
+    return list.filter(participant => String(participant?.sessionId || '').trim() === normalizedSessionId);
   } catch (error) {
     logError('mpc-storage-get-participant-list', error);
     return [];
