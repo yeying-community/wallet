@@ -105,6 +105,10 @@ export class MpcCoordinatorClient {
     return this.request(`/api/v1/public/mpc/sessions/${sessionId}/messages${suffix}`, { method: 'GET' });
   }
 
+  async getSession(sessionId) {
+    return this.request(`/api/v1/public/mpc/sessions/${sessionId}`, { method: 'GET' });
+  }
+
   async openSessionStream(sessionId, options = {}) {
     const token = options.token || await this._resolveToken();
     const baseUrl = buildHttpUrl(this._endpoint, '/api/v1/public/mpc/ws');

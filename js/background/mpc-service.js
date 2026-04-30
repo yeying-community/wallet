@@ -41,7 +41,7 @@ import {
   decryptEnvelope
 } from './mpc-crypto.js';
 
-const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://www.yeying.pub';
+const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
 
 class MpcService {
   constructor() {
@@ -157,6 +157,80 @@ class MpcService {
     return this._deviceKeys || null;
   }
 
+  _buildParticipantRecord(sessionId, participant = {}) {
+    const participantId = String(participant.participantId || participant.id || '').trim();
+    if (!sessionId || !participantId) {
+      return null;
+    }
+    return {
+      id: participantId,
+      sessionId,
+      label: participant.label || participantId,
+      deviceId: String(participant.deviceId || '').trim(),
+      identity: String(participant.identity || '').trim(),
+      signingPublicKey: String(participant.signingPublicKey || '').trim(),
+      e2ePublicKey: String(participant.e2ePublicKey || '').trim(),
+      status: String(participant.status || 'active').trim() || 'active',
+      joinedAt: participant.joinedAt || getTimestamp()
+    };
+  }
+
+  _buildSessionRecord(input = {}, fallback = {}) {
+    const sessionId = String(input.id || fallback.id || '').trim();
+    if (!sessionId) {
+      return null;
+    }
+    return {
+      id: sessionId,
+      type: String(input.type || fallback.type || 'keygen').trim() || 'keygen',
+      walletId: String(input.walletId || fallback.walletId || '').trim(),
+      threshold: input.threshold ?? fallback.threshold ?? null,
+      participants: Array.isArray(input.participants) ? input.participants : (Array.isArray(fallback.participants) ? fallback.participants : []),
+      curve: String(input.curve || fallback.curve || 'secp256k1').trim() || 'secp256k1',
+      status: String(input.status || fallback.status || 'created').trim() || 'created',
+      round: Number.isFinite(input.round) ? input.round : (Number.isFinite(fallback.round) ? fallback.round : 0),
+      createdAt: input.createdAt || fallback.createdAt || getTimestamp(),
+      updatedAt: getTimestamp(),
+      expiresAt: input.expiresAt || fallback.expiresAt || ''
+    };
+  }
+
+  async _syncSessionParticipants(sessionId, participants = []) {
+    if (!sessionId || !Array.isArray(participants)) return [];
+    const synced = [];
+    for (const item of participants) {
+      const participant = this._buildParticipantRecord(sessionId, item);
+      if (!participant) continue;
+      await saveMpcParticipant(participant);
+      synced.push(participant);
+    }
+    return synced;
+  }
+
+  async _syncSessionSnapshot(sessionInput, fallback = {}) {
+    const session = this._buildSessionRecord(sessionInput, fallback);
+    if (!session) {
+      return null;
+    }
+    const joinedParticipants = Array.isArray(sessionInput?.joinedParticipants)
+      ? sessionInput.joinedParticipants
+      : [];
+    await saveMpcSession(session);
+    await this._syncSessionParticipants(session.id, joinedParticipants);
+    return session;
+  }
+
+  async _refreshSessionFromCoordinator(sessionId) {
+    const id = String(sessionId || '').trim();
+    if (!id) {
+      throw new Error('sessionId is required');
+    }
+    const response = await this._coordinator.getSession(id);
+    const local = await getMpcSession(id);
+    const session = await this._syncSessionSnapshot(response, local || { id });
+    return { session, response };
+  }
+
   async getDeviceInfo() {
     await this.init();
     const publicKeys = this.getDevicePublicKeys();
@@ -182,21 +256,18 @@ class MpcService {
 
     const response = await this._coordinator.createSession(payload);
     const sessionId = response?.sessionId || response?.id || options.sessionId || generateId('mpc_session');
-    const now = getTimestamp();
-    const session = {
+    const session = await this._syncSessionSnapshot(response, {
       id: sessionId,
       type,
-      walletId: response?.walletId || payload.walletId,
-      threshold: response?.threshold ?? payload.threshold,
-      participants: response?.participants || payload.participants,
-      curve: response?.curve || payload.curve,
-      status: response?.status || 'created',
+      walletId: payload.walletId,
+      threshold: payload.threshold,
+      participants: payload.participants,
+      curve: payload.curve,
+      status: 'created',
       round: 0,
-      createdAt: now,
-      updatedAt: now,
-      expiresAt: response?.expiresAt || payload.expiresAt
-    };
-    await saveMpcSession(session);
+      createdAt: getTimestamp(),
+      expiresAt: payload.expiresAt
+    });
     return { session, response };
   }
 
@@ -230,6 +301,7 @@ class MpcService {
     const now = getTimestamp();
     const participantRecord = {
       id: participantId,
+      sessionId,
       label: options.label || participantId,
       deviceId,
       identity,
@@ -239,21 +311,15 @@ class MpcService {
       joinedAt: now
     };
     await saveMpcParticipant(participantRecord);
+    const sessionSnapshot = response?.session || response;
+    const existing = await getMpcSession(sessionId);
+    const session = await this._syncSessionSnapshot(sessionSnapshot, existing || {
+      id: sessionId,
+      participants: [participantId],
+      updatedAt: now
+    });
 
-    const session = await getMpcSession(sessionId);
-    if (session) {
-      const list = Array.isArray(session.participants) ? [...session.participants] : [];
-      if (!list.includes(participantId)) {
-        list.push(participantId);
-      }
-      await saveMpcSession({
-        ...session,
-        participants: list,
-        updatedAt: now
-      });
-    }
-
-    return { participant: participantRecord, response };
+    return { participant: participantRecord, session, response };
   }
 
   async sendSessionMessage(options = {}) {
@@ -273,6 +339,7 @@ class MpcService {
 
     if (!envelope) {
       const recipientKey = await this._resolveRecipientKey({
+        sessionId,
         toParticipantId: options.toParticipantId,
         recipientE2ePublicKey: options.recipientE2ePublicKey
       });
@@ -338,7 +405,7 @@ class MpcService {
     let senderE2ePublicKey = envelope.senderPubKey || message.senderE2ePublicKey || '';
     let senderSigningPublicKey = null;
     if (message.from) {
-      const participant = await getMpcParticipant(message.from);
+      const participant = await getMpcParticipant(message.sessionId || options.sessionId || '', message.from);
       if (participant?.signingPublicKey) {
         const raw = stripKeyPrefix(participant.signingPublicKey, 'ed25519');
         senderSigningPublicKey = await importPublicKeyRawBase64(raw, MPC_SIGNING_ALG, ['verify']);
@@ -378,6 +445,10 @@ class MpcService {
       }
       stored.push(msg);
     }
+    if (response?.session) {
+      const local = await getMpcSession(id);
+      await this._syncSessionSnapshot(response.session, local || { id });
+    }
     return {
       messages: stored,
       cursor: response?.nextCursor || response?.cursor || null,
@@ -386,7 +457,8 @@ class MpcService {
   }
 
   async getSession(sessionId) {
-    return await getMpcSession(sessionId);
+    const { session } = await this._refreshSessionFromCoordinator(sessionId);
+    return session;
   }
 
   async getSessions() {
@@ -588,12 +660,12 @@ class MpcService {
     return nextStatus;
   }
 
-  async _resolveRecipientKey({ toParticipantId, recipientE2ePublicKey }) {
+  async _resolveRecipientKey({ sessionId, toParticipantId, recipientE2ePublicKey }) {
     if (recipientE2ePublicKey) {
       return String(recipientE2ePublicKey);
     }
     if (!toParticipantId) return '';
-    const participant = await getMpcParticipant(toParticipantId);
+    const participant = await getMpcParticipant(sessionId || '', toParticipantId);
     return participant?.e2ePublicKey || '';
   }
 
@@ -627,14 +699,7 @@ class MpcService {
     }
 
     if (eventType === 'participant-joined') {
-      const session = await getMpcSession(sessionId);
-      if (session && data?.status) {
-        await saveMpcSession({
-          ...session,
-          status: data.status,
-          updatedAt: getTimestamp()
-        });
-      }
+      await this._refreshSessionFromCoordinator(sessionId).catch(() => {});
     }
 
     const message = eventType === 'message'

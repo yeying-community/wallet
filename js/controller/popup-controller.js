@@ -505,7 +505,7 @@ export class PopupController {
       tokenAddPage: 'walletPage',
       accountDetailPage: 'accountsPage',
       settingsPage: 'walletPage',
-      contactsPage: 'walletPage',
+      contactsPage: document.getElementById('contactsPage')?.dataset?.returnPage || 'walletPage',
       sitesPage: 'walletPage',
       backupSyncLogsPage: 'settingsPage',
       mpcLogsPage: 'settingsPage',
@@ -513,6 +513,12 @@ export class PopupController {
 
     const targetPage = backMap[currentPage];
     if (targetPage) {
+      if (currentPage === 'contactsPage') {
+        const contactsPage = document.getElementById('contactsPage');
+        if (contactsPage?.dataset?.returnPage) {
+          delete contactsPage.dataset.returnPage;
+        }
+      }
       showPage(targetPage);
       if (targetPage === 'networkManagePage') {
         await this.networkController?.loadNetworkList();

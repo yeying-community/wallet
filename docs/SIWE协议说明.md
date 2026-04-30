@@ -9,7 +9,7 @@
 ## 阅读导航
 
 - 当前文档：SIWE（认证层）规范与接入。
-- 下一步建议阅读：`./ucan-protocol.md`（授权层），理解 `resource/action/audience` 如何承接 SIWE 身份。
+- 下一步建议阅读：`./UCAN协议说明.md`（授权层），理解 `resource/action/audience` 如何承接 SIWE 身份。
 - 推荐顺序：先读 SIWE，再读 UCAN。
 
 ## 1. 适用范围
@@ -166,7 +166,7 @@ const signature = await provider.request({
 
 对应文档：
 
-- UCAN 能力模板与接入：`./ucan-protocol.md`
+- UCAN 能力模板与接入：`./UCAN协议说明.md`
 
 ## 8. 常见问题
 

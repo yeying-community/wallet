@@ -455,13 +455,21 @@
               />
             </div>
             <div class="form-group">
-              <label>参与者列表（逗号分隔）</label>
-              <input
-                type="text"
-                id="mpcCreateParticipantsInput"
-                class="input"
-                placeholder="p1,p2,p3"
-              />
+              <label>参与者联系人</label>
+              <div class="network-selector input-like mpc-contact-selector" id="mpcCreateParticipantsSelector">
+                <button
+                  type="button"
+                  class="network-trigger"
+                  id="mpcCreateParticipantsTrigger"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                >
+                  <span class="network-label" id="mpcCreateParticipantsLabel">请选择联系人</span>
+                  <span class="network-chevron">▾</span>
+                </button>
+                <div class="network-menu hidden" id="mpcCreateParticipantsMenu" role="listbox"></div>
+              </div>
+              <div id="mpcCreateParticipantsSelected" class="mpc-contact-selected-list hidden"></div>
             </div>
             <div class="form-group">
               <label>门限 (T)</label>
@@ -1060,7 +1068,7 @@
                 type="text"
                 id="mpcCoordinatorEndpointInput"
                 class="input"
-                placeholder="https://www.yeying.pub"
+                placeholder="https://node.yeying.pub"
               />
             </div>
             <div class="form-group">

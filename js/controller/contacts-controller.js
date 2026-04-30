@@ -1,4 +1,4 @@
-import { showSuccess, showError } from '../common/ui/index.js';
+import { showSuccess, showError, showPage } from '../common/ui/index.js';
 import { copyAddressToClipboard } from '../common/ui/clipboard-ui.js';
 import { shortenAddress } from '../common/chain/index.js';
 
@@ -179,8 +179,8 @@ export class ContactsController {
         await this.wallet.addContact({ name, address, note });
         showSuccess('联系人已添加');
       }
-      this.closeEditorModal();
       await this.loadContacts();
+      this.closeEditorModal();
     } catch (error) {
       console.error('[ContactsController] 添加联系人失败:', error);
       showError(error.message || '添加失败');
@@ -191,6 +191,7 @@ export class ContactsController {
     const modal = document.getElementById('contactEditorModal');
     modal?.classList.add('hidden');
     this.clearEditMode();
+    this.returnToSourcePageIfNeeded();
   }
 
   handleEditContact(contactId) {
@@ -236,6 +237,22 @@ export class ContactsController {
     modal?.classList.remove('hidden');
     const nameInput = document.getElementById('contactNameInput');
     nameInput?.focus();
+  }
+
+  getReturnPage() {
+    const contactsPage = document.getElementById('contactsPage');
+    return String(contactsPage?.dataset?.returnPage || '').trim();
+  }
+
+  returnToSourcePageIfNeeded() {
+    const contactsPage = document.getElementById('contactsPage');
+    const returnPage = this.getReturnPage();
+    if (!contactsPage || !returnPage) return;
+    delete contactsPage.dataset.returnPage;
+    showPage(returnPage);
+    if (returnPage === 'setPasswordPage') {
+      window.refreshCreateWalletMpcContacts?.();
+    }
   }
 
   async handleDeleteContact(contactId) {

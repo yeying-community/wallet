@@ -1,12 +1,20 @@
+import { shortenAddress } from '../../common/chain/index.js';
+import { escapeHtml } from '../../common/ui/html-ui.js';
 import { showPage, showError, showSuccess, getPageOrigin } from '../../common/ui/index.js';
 
 export class CreateWalletController {
   constructor({ wallet, onCreated }) {
     this.wallet = wallet;
     this.onCreated = onCreated;
+    this.mpcContacts = [];
+    this.selectedMpcParticipants = [];
   }
 
   bindEvents() {
+    window.refreshCreateWalletMpcContacts = async () => {
+      await this.loadMpcContacts();
+    };
+
     const setPasswordBtn = document.getElementById('setPasswordBtn');
     if (setPasswordBtn) {
       setPasswordBtn.addEventListener('click', async () => {
@@ -22,6 +30,7 @@ export class CreateWalletController {
       });
     }
     this.bindWalletTypeDropdown();
+    this.bindMpcParticipantsSelector();
 
     const cancelPasswordBtn = document.getElementById('cancelPasswordBtn');
     if (cancelPasswordBtn) {
@@ -119,7 +128,6 @@ export class CreateWalletController {
     const confirmInput = document.getElementById('confirmPassword');
     const walletTypeSelect = document.getElementById('createWalletTypeSelect');
     const mpcWalletIdInput = document.getElementById('mpcCreateWalletIdInput');
-    const mpcParticipantsInput = document.getElementById('mpcCreateParticipantsInput');
     const mpcThresholdInput = document.getElementById('mpcCreateThresholdInput');
     const mpcCurveSelect = document.getElementById('mpcCreateCurveSelect');
     const mpcResult = document.getElementById('mpcCreateWalletResult');
@@ -129,13 +137,14 @@ export class CreateWalletController {
     if (confirmInput) confirmInput.value = '';
     if (walletTypeSelect) walletTypeSelect.value = 'hd';
     if (mpcWalletIdInput) mpcWalletIdInput.value = '';
-    if (mpcParticipantsInput) mpcParticipantsInput.value = '';
     if (mpcThresholdInput) mpcThresholdInput.value = '';
     if (mpcCurveSelect) mpcCurveSelect.value = 'secp256k1';
     if (mpcResult) {
       mpcResult.textContent = '-';
       mpcResult.classList.add('hidden');
     }
+    this.selectedMpcParticipants = [];
+    this.renderMpcParticipantSelection();
     window.refreshWalletSelects?.();
     this.applyCreateWalletType('hd', getPageOrigin('setPasswordPage', 'welcome'));
   }
@@ -174,6 +183,13 @@ export class CreateWalletController {
       setPasswordBtn.textContent = normalized === 'mpc' ? '创建 MPC 钱包' : '创建钱包';
     }
     this.updateWalletTypeMenu(normalized);
+    if (normalized === 'mpc') {
+      this.loadMpcContacts().catch((error) => {
+        console.error('[CreateWalletController] 加载 MPC 联系人失败:', error);
+      });
+    } else {
+      this.closeMpcParticipantsMenu();
+    }
   }
 
   bindWalletTypeDropdown() {
@@ -235,26 +251,189 @@ export class CreateWalletController {
     });
   }
 
-  parseParticipants(input) {
-    const raw = String(input || '').trim();
-    if (!raw) return [];
-    return raw.split(',').map(item => item.trim()).filter(Boolean);
+  bindMpcParticipantsSelector() {
+    const trigger = document.getElementById('mpcCreateParticipantsTrigger');
+    const menu = document.getElementById('mpcCreateParticipantsMenu');
+    if (trigger && menu) {
+      trigger.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        const hidden = menu.classList.contains('hidden');
+        if (hidden) {
+          await this.loadMpcContacts();
+          this.openMpcParticipantsMenu();
+        } else {
+          this.closeMpcParticipantsMenu();
+        }
+      });
+      document.addEventListener('click', (event) => {
+        if (menu.classList.contains('hidden')) return;
+        if (trigger.contains(event.target) || menu.contains(event.target)) return;
+        this.closeMpcParticipantsMenu();
+      });
+      menu.addEventListener('click', (event) => {
+        const addContactAction = event.target.closest('[data-action="add-contact"]');
+        if (!addContactAction) return;
+        this.closeMpcParticipantsMenu();
+        const contactsPage = document.getElementById('contactsPage');
+        if (contactsPage) {
+          contactsPage.dataset.returnPage = 'setPasswordPage';
+        }
+        const contactsBtn = document.getElementById('contactsBtn');
+        if (contactsBtn) {
+          contactsBtn.click();
+        } else {
+          showPage('contactsPage');
+        }
+        const openAddBtn = document.getElementById('openAddContactBtn');
+        if (openAddBtn) {
+          setTimeout(() => openAddBtn.click(), 0);
+        }
+      });
+    }
+  }
+
+  async loadMpcContacts() {
+    const contacts = await this.wallet.getContacts();
+    this.mpcContacts = Array.isArray(contacts)
+      ? contacts.filter(item => String(item?.address || '').trim())
+      : [];
+    const addressSet = new Set(this.mpcContacts.map(item => String(item.address || '').trim()));
+    this.selectedMpcParticipants = this.selectedMpcParticipants.filter(address => addressSet.has(address));
+    this.renderMpcParticipantsMenu();
+    this.renderMpcParticipantSelection();
+  }
+
+  renderMpcParticipantsMenu() {
+    const menu = document.getElementById('mpcCreateParticipantsMenu');
+    if (!menu) return;
+    const contactOptions = this.mpcContacts.length
+      ? this.mpcContacts.map((contact) => {
+        const address = String(contact.address || '').trim();
+        const label = contact.name
+          ? `${escapeHtml(contact.name)} (${escapeHtml(shortenAddress(address))})`
+          : escapeHtml(shortenAddress(address));
+        const active = this.selectedMpcParticipants.includes(address);
+        return `
+          <button
+            type="button"
+            class="network-option mpc-contact-option${active ? ' active' : ''}"
+            data-address="${escapeHtml(address)}"
+          >
+            <span>${label}</span>
+          </button>
+        `;
+      }).join('')
+      : '<div class="network-option mpc-contact-option-empty" aria-disabled="true">暂无联系人</div>';
+
+    menu.innerHTML = `
+      ${contactOptions}
+      <div class="mpc-contact-menu-footer">
+        <button
+          type="button"
+          class="network-option mpc-contact-menu-action"
+          data-action="add-contact"
+          aria-label="添加联系人"
+          title="添加联系人"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M12 5v14"></path>
+            <path d="M5 12h14"></path>
+          </svg>
+        </button>
+      </div>
+    `;
+    menu.querySelectorAll('.mpc-contact-option').forEach((button) => {
+      button.addEventListener('click', () => {
+        const address = String(button.dataset.address || '').trim();
+        if (!address) return;
+        if (this.selectedMpcParticipants.includes(address)) {
+          this.selectedMpcParticipants = this.selectedMpcParticipants.filter(item => item !== address);
+        } else {
+          this.selectedMpcParticipants = [...this.selectedMpcParticipants, address];
+        }
+        this.renderMpcParticipantsMenu();
+        this.renderMpcParticipantSelection();
+      });
+    });
+  }
+
+  renderMpcParticipantSelection() {
+    const label = document.getElementById('mpcCreateParticipantsLabel');
+    const selected = document.getElementById('mpcCreateParticipantsSelected');
+    const selectedContacts = this.selectedMpcParticipants
+      .map((address) => this.mpcContacts.find((item) => String(item?.address || '').trim() === address))
+      .filter(Boolean);
+
+    if (label) {
+      label.textContent = selectedContacts.length ? `已选 ${selectedContacts.length} 位联系人` : '请选择联系人';
+    }
+    if (selected) {
+      if (!selectedContacts.length) {
+        selected.innerHTML = '';
+        selected.classList.add('hidden');
+      } else {
+        selected.classList.remove('hidden');
+        selected.innerHTML = selectedContacts.map((contact) => {
+          const address = String(contact.address || '').trim();
+          const short = shortenAddress(address);
+          const name = contact.name ? escapeHtml(contact.name) : '未命名联系人';
+          return `
+            <div class="mpc-contact-chip">
+              <span class="mpc-contact-chip-label">
+                <span class="mpc-contact-chip-name">${name}</span>
+                <span class="mpc-contact-chip-address">${escapeHtml(short)}</span>
+              </span>
+              <button
+                type="button"
+                class="mpc-contact-chip-remove"
+                data-address="${escapeHtml(address)}"
+                aria-label="移除联系人"
+                title="移除"
+              >×</button>
+            </div>
+          `;
+        }).join('');
+        selected.querySelectorAll('.mpc-contact-chip-remove').forEach((button) => {
+          button.addEventListener('click', () => {
+            const address = String(button.dataset.address || '').trim();
+            this.selectedMpcParticipants = this.selectedMpcParticipants.filter(item => item !== address);
+            this.renderMpcParticipantsMenu();
+            this.renderMpcParticipantSelection();
+          });
+        });
+      }
+    }
+  }
+
+  openMpcParticipantsMenu() {
+    const menu = document.getElementById('mpcCreateParticipantsMenu');
+    const trigger = document.getElementById('mpcCreateParticipantsTrigger');
+    if (!menu || !trigger) return;
+    menu.classList.remove('hidden');
+    trigger.setAttribute('aria-expanded', 'true');
+  }
+
+  closeMpcParticipantsMenu() {
+    const menu = document.getElementById('mpcCreateParticipantsMenu');
+    const trigger = document.getElementById('mpcCreateParticipantsTrigger');
+    if (!menu || !trigger) return;
+    menu.classList.add('hidden');
+    trigger.setAttribute('aria-expanded', 'false');
   }
 
   async handleCreateMpcWallet({ name, password }) {
     const walletIdInput = document.getElementById('mpcCreateWalletIdInput');
-    const participantsInput = document.getElementById('mpcCreateParticipantsInput');
     const thresholdInput = document.getElementById('mpcCreateThresholdInput');
     const curveSelect = document.getElementById('mpcCreateCurveSelect');
     const resultEl = document.getElementById('mpcCreateWalletResult');
 
     const walletId = String(walletIdInput?.value || '').trim();
-    const participants = this.parseParticipants(participantsInput?.value || '');
+    const participants = [...this.selectedMpcParticipants];
     const threshold = Number(thresholdInput?.value || 0);
     const curve = String(curveSelect?.value || 'secp256k1').trim();
 
     if (!participants.length) {
-      showError('请填写参与者列表');
+      showError('请先选择联系人');
       return;
     }
     if (!Number.isFinite(threshold) || threshold <= 0) {

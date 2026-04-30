@@ -678,6 +678,108 @@ body {
   right: 0;
 }
 
+.mpc-contact-selector {
+  width: 100%;
+}
+
+.mpc-contact-selected-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mpc-contact-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid #dbe3f0;
+  background: #f8fbff;
+  color: #1f2937;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.mpc-contact-chip-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mpc-contact-chip-name {
+  font-weight: 500;
+}
+
+.mpc-contact-chip-address {
+  color: #6b7280;
+}
+
+.mpc-contact-chip-remove {
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.mpc-contact-chip-remove:hover {
+  color: #111827;
+}
+
+.mpc-contact-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mpc-contact-option-empty {
+  color: #94a3b8;
+  cursor: default;
+}
+
+.mpc-contact-option.active::after {
+  content: '已选';
+  color: #2563eb;
+  font-size: 12px;
+}
+
+.mpc-contact-menu-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.mpc-contact-menu-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 999px;
+  color: #2563eb;
+  font-weight: 500;
+}
+
+.mpc-contact-menu-action svg {
+  width: 16px;
+  height: 16px;
+}
+
+.mpc-contact-menu-action:hover {
+  background: #eff6ff;
+}
+
 .token-selector {
   display: inline-flex;
   align-items: center;
