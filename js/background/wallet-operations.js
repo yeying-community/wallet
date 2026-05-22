@@ -1508,6 +1508,49 @@ export async function handleUpdateMpcSettings(updates = {}) {
   }
 }
 
+export async function handleGenerateMpcCoordinatorUcan(options = {}) {
+  try {
+    const endpoint = String(options.coordinatorEndpoint || '').trim();
+    const resource = String(options.ucanResource || '').trim() || DEFAULT_MPC_UCAN_RESOURCE;
+    const action = String(options.ucanAction || '').trim() || DEFAULT_MPC_UCAN_ACTION;
+    const audience = String(options.ucanAudience || '').trim();
+    const ttlHours = Number(options.ttlHours || 24);
+    const password = String(options.password || '');
+
+    if (!endpoint) {
+      return { success: false, error: '协调器地址未配置' };
+    }
+
+    const generated = await mpcService.generateCoordinatorUcan({
+      endpoint,
+      password,
+      audience,
+      resource,
+      action,
+      ttlHours,
+      forceRefresh: true
+    });
+
+    await updateUserSettings({
+      mpcCoordinatorEndpoint: endpoint
+    });
+    await mpcService.setCoordinatorEndpoint(endpoint);
+
+    const settingsResult = await handleGetMpcSettings();
+    return {
+      success: true,
+      token: generated.token,
+      audience: generated.audience,
+      resource: generated.resource,
+      action: generated.action,
+      expiresAt: generated.expiresAt,
+      settings: settingsResult.settings
+    };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to generate MPC coordinator UCAN' };
+  }
+}
+
 export async function handleMpcGetDeviceInfo() {
   try {
     const info = await mpcService.getDeviceInfo();

@@ -26,6 +26,7 @@ import {
 } from '../storage/index.js';
 import { MpcCoordinatorClient } from './mpc-coordinator-client.js';
 import { getCachedPassword } from './password-cache.js';
+import { ensureTargetUcanToken } from './target-ucan-manager.js';
 import {
   MPC_SIGNING_ALG,
   MPC_E2E_ALG,
@@ -42,6 +43,9 @@ import {
 } from './mpc-crypto.js';
 
 const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
+const DEFAULT_MPC_UCAN_RESOURCE = 'mpc';
+const DEFAULT_MPC_UCAN_ACTION = 'coordinate';
+const DEFAULT_MPC_UCAN_TTL_HOURS = 24;
 
 class MpcService {
   constructor() {
@@ -225,10 +229,45 @@ class MpcService {
     if (!id) {
       throw new Error('sessionId is required');
     }
+    await this._ensureCoordinatorToken();
     const response = await this._coordinator.getSession(id);
     const local = await getMpcSession(id);
     const session = await this._syncSessionSnapshot(response, local || { id });
     return { session, response };
+  }
+
+  async _ensureCoordinatorToken(options = {}) {
+    const endpoint = String(options.endpoint || '').trim()
+      || await getUserSetting('mpcCoordinatorEndpoint', DEFAULT_MPC_COORDINATOR_ENDPOINT);
+    const result = await ensureTargetUcanToken({
+      endpoint,
+      tokenSettingKey: 'mpcCoordinatorUcanToken',
+      audienceSettingKey: 'mpcCoordinatorUcanAudience',
+      resourceSettingKey: 'mpcCoordinatorUcanResource',
+      actionSettingKey: 'mpcCoordinatorUcanAction',
+      defaultResource: DEFAULT_MPC_UCAN_RESOURCE,
+      defaultAction: DEFAULT_MPC_UCAN_ACTION,
+      ttlHours: options.ttlHours ?? DEFAULT_MPC_UCAN_TTL_HOURS,
+      password: options.password,
+      audience: options.audience,
+      resource: options.resource,
+      action: options.action,
+      forceRefresh: options.forceRefresh
+    });
+    return result;
+  }
+
+  async generateCoordinatorUcan(options = {}) {
+    await this.init();
+    return await this._ensureCoordinatorToken({
+      endpoint: options.endpoint,
+      password: options.password,
+      audience: options.audience,
+      resource: options.resource,
+      action: options.action,
+      ttlHours: options.ttlHours,
+      forceRefresh: options.forceRefresh
+    });
   }
 
   async getDeviceInfo() {
@@ -242,6 +281,7 @@ class MpcService {
 
   async createSession(options = {}) {
     await this.init();
+    await this._ensureCoordinatorToken({ password: options.password });
     const type = String(options.type || 'keygen').toLowerCase();
     const payload = {
       type,
@@ -273,6 +313,7 @@ class MpcService {
 
   async joinSession(options = {}) {
     await this.init();
+    await this._ensureCoordinatorToken({ password: options.password });
     const sessionId = String(options.sessionId || '').trim();
     const participantId = String(options.participantId || '').trim();
     if (!sessionId) {
@@ -324,6 +365,7 @@ class MpcService {
 
   async sendSessionMessage(options = {}) {
     await this.init();
+    await this._ensureCoordinatorToken({ password: options.password });
     const sessionId = String(options.sessionId || '').trim();
     const from = String(options.from || '').trim();
     if (!sessionId) {
@@ -430,6 +472,7 @@ class MpcService {
 
   async fetchSessionMessages(sessionId, options = {}) {
     await this.init();
+    await this._ensureCoordinatorToken({ password: options.password });
     const id = String(sessionId || '').trim();
     if (!id) {
       throw new Error('sessionId is required');
@@ -467,6 +510,7 @@ class MpcService {
 
   async startEventStream(sessionId, options = {}) {
     await this.init();
+    const tokenResult = await this._ensureCoordinatorToken({ password: options.password });
     const id = String(sessionId || '').trim();
     if (!id) {
       throw new Error('sessionId is required');
@@ -488,6 +532,7 @@ class MpcService {
     };
 
     const stream = await this._coordinator.openSessionStream(id, {
+      token: tokenResult.token,
       cursor,
       onEvent: (event) => {
         this._handleStreamEvent(id, event).catch(() => {});

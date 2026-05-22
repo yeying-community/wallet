@@ -2,6 +2,13 @@ import { showPage, showSuccess, showError, showWaiting, hideWaiting } from '../c
 import { formatDate, formatLocaleDateTime, formatIsoTimestamp } from '../common/utils/time-utils.js';
 import { shortenAddress } from '../common/chain/index.js';
 import { escapeHtml } from '../common/ui/html-ui.js';
+import {
+  normalizeBearerToken,
+  deriveUcanAudience,
+  buildSiweMessage,
+  createUcanInvocationKey,
+  createUcanInvocationToken
+} from '../common/ucan-utils.js';
 import { isDeveloperFeatureEnabled } from '../config/index.js';
 
 const LEGACY_DEFAULT_APP_ID = 'yeying-wallet';
@@ -727,17 +734,6 @@ export class SettingsController {
         return;
       }
 
-      const account = await this.wallet.getCurrentAccount();
-      if (!account?.address) {
-        showError('未找到当前账户');
-        return;
-      }
-
-      if (!this.transaction) {
-        showError('签名模块未初始化');
-        return;
-      }
-
       const resourceInput = document.getElementById('mpcCoordinatorUcanResourceInput');
       const actionInput = document.getElementById('mpcCoordinatorUcanActionInput');
       const audienceInput = document.getElementById('mpcCoordinatorUcanAudienceInput');
@@ -747,23 +743,10 @@ export class SettingsController {
       const action = this.normalizeMpcUcanAction(actionInput?.value || '', resource);
       const audience = String(audienceInput?.value || '').trim() || this.deriveUcanAudience(endpoint);
       const ttlHours = Number(ttlInput?.value || '24');
-      const ttlMs = Number.isFinite(ttlHours) ? ttlHours * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-
       if (!audience) {
         showError('请填写 Audience');
         return;
       }
-
-      const now = Date.now();
-      const expiresAt = now + ttlMs;
-      const { did, keys } = await createUcanInvocationKey();
-      const statement = {
-        aud: did,
-        cap: [{ resource, action }],
-        exp: expiresAt,
-        nbf: now
-      };
-      const message = buildSiweMessage(endpoint, account.address, statement);
 
       const password = await this.requestPassword?.();
       if (!password) {
@@ -771,47 +754,26 @@ export class SettingsController {
       }
 
       showWaiting();
-      const signature = await this.transaction.signMessage(message, password);
-      const rootProof = {
-        type: 'siwe',
-        iss: `did:pkh:eth:${account.address.toLowerCase()}`,
-        aud: did,
-        cap: [{ resource, action }],
-        exp: expiresAt,
-        nbf: now,
-        siwe: {
-          message,
-          signature
-        }
-      };
-
-      const { token } = await createUcanInvocationToken({
-        audience,
-        capability: { resource, action },
-        proof: rootProof,
-        expiresAt,
-        notBefore: now,
-        keys,
-        did
-      });
-
-      const normalizedToken = this.normalizeUcanToken(token);
-      if (resourceInput) resourceInput.value = resource;
-      if (actionInput) actionInput.value = action;
-      if (audienceInput) audienceInput.value = audience;
-
-      const result = await this.wallet.updateMpcSettings({
+      const result = await this.wallet.generateMpcCoordinatorUcan({
         coordinatorEndpoint: endpoint,
         ucanResource: resource,
         ucanAction: action,
         ucanAudience: audience,
-        ucanToken: normalizedToken
+        ttlHours,
+        password
       });
+
+      if (!result?.success) {
+        throw new Error(result?.error || '生成失败');
+      }
 
       if (result?.settings) {
         this.mpcSettings = result.settings;
         this.renderMpcSettings(result.settings);
       }
+      if (resourceInput) resourceInput.value = result?.resource || resource;
+      if (actionInput) actionInput.value = result?.action || action;
+      if (audienceInput) audienceInput.value = result?.audience || audience;
 
       showSuccess('UCAN 已生成');
     } catch (error) {
@@ -2099,14 +2061,7 @@ export class SettingsController {
   }
 
   deriveUcanAudience(endpoint) {
-    try {
-      const url = new URL(endpoint);
-      const host = url.hostname;
-      const port = url.port ? `:${url.port}` : '';
-      return host ? `did:web:${host}${port}` : '';
-    } catch {
-      return '';
-    }
+    return deriveUcanAudience(endpoint);
   }
 
   async renderBackupSyncAccountAddress() {
@@ -2573,12 +2528,7 @@ export class SettingsController {
   }
 
   normalizeUcanToken(value) {
-    const trimmed = String(value || '').trim();
-    if (!trimmed) return '';
-    return trimmed
-      .replace(/^Bearer\s+/i, '')
-      .replace(/^UCAN\s+/i, '')
-      .trim();
+    return normalizeBearerToken(value);
   }
 
   decodeJwtPayload(value) {
@@ -3147,109 +3097,4 @@ export class SettingsController {
     emptyEl.classList.add('hidden');
     rowsEl.classList.remove('hidden');
   }
-}
-
-function buildSiweMessage(endpoint, address, statement) {
-  const url = new URL(endpoint);
-  const domain = url.host || url.hostname;
-  const nonce = Math.random().toString(36).slice(2, 10);
-  const issuedAt = new Date().toISOString();
-  const statementLine = `UCAN-AUTH: ${JSON.stringify(statement)}`;
-
-  return [
-    `${domain} wants you to sign in with your Ethereum account:`,
-    address,
-    '',
-    `URI: ${url.origin}`,
-    'Version: 1',
-    'Chain ID: 1',
-    `Nonce: ${nonce}`,
-    `Issued At: ${issuedAt}`,
-    '',
-    statementLine
-  ].join('\n');
-}
-
-async function createUcanInvocationKey() {
-  if (!crypto?.subtle) {
-    throw new Error('WebCrypto not available');
-  }
-  const keys = await crypto.subtle.generateKey(
-    { name: 'Ed25519' },
-    true,
-    ['sign', 'verify']
-  );
-  const publicRaw = new Uint8Array(await crypto.subtle.exportKey('raw', keys.publicKey));
-  const did = toDidKey(publicRaw);
-  return { keys, did };
-}
-
-async function createUcanInvocationToken({ audience, capability, proof, expiresAt, notBefore, keys, did }) {
-  if (!crypto?.subtle) {
-    throw new Error('WebCrypto not available');
-  }
-  if (!keys?.privateKey || !did) {
-    throw new Error('Missing UCAN key');
-  }
-  const payload = {
-    iss: did,
-    aud: audience,
-    cap: [capability],
-    exp: expiresAt,
-    nbf: notBefore,
-    prf: [proof]
-  };
-  const header = { alg: 'EdDSA', typ: 'UCAN' };
-  const signingInput = `${base64UrlEncode(JSON.stringify(header))}.${base64UrlEncode(JSON.stringify(payload))}`;
-  const signature = await crypto.subtle.sign(
-    'Ed25519',
-    keys.privateKey,
-    new TextEncoder().encode(signingInput)
-  );
-  const token = `${signingInput}.${base64UrlEncode(new Uint8Array(signature))}`;
-  return { token, did };
-}
-
-function base64UrlEncode(input) {
-  const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : input;
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 1) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function base58Encode(bytes) {
-  const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-  let zeros = 0;
-  while (zeros < bytes.length && bytes[zeros] === 0) zeros += 1;
-
-  const encoded = [];
-  for (let i = zeros; i < bytes.length; i += 1) {
-    let carry = bytes[i];
-    for (let j = 0; j < encoded.length; j += 1) {
-      carry += encoded[j] << 8;
-      encoded[j] = carry % 58;
-      carry = (carry / 58) | 0;
-    }
-    while (carry > 0) {
-      encoded.push(carry % 58);
-      carry = (carry / 58) | 0;
-    }
-  }
-
-  let output = '';
-  for (let i = 0; i < zeros; i += 1) output += '1';
-  for (let i = encoded.length - 1; i >= 0; i -= 1) {
-    output += alphabet[encoded[i]];
-  }
-  return output;
-}
-
-function toDidKey(publicKeyRaw) {
-  const prefix = new Uint8Array([0xed, 0x01]);
-  const combined = new Uint8Array(prefix.length + publicKeyRaw.length);
-  combined.set(prefix, 0);
-  combined.set(publicKeyRaw, prefix.length);
-  return `did:key:z${base58Encode(combined)}`;
 }
