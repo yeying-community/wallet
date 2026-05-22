@@ -10,7 +10,7 @@
 
 ## SDK 推荐（web3-bs）
 - 推荐前端 SDK：`@yeying-community/web3-bs`
-- 本地联调仓库（当前开发环境）：`/Users/liuxin2/Workspace/opensource/web3-bs`
+- SDK 仓库：`yeying-community/web3-bs`
 - 适合 DApp 的核心能力：
   - Provider 发现与连接：`getProvider`、`requestAccounts`
   - SIWE 登录：`loginWithChallenge`、`authFetch`
@@ -150,4 +150,4 @@ flowchart TD
 - 请求路由：`js/background/request-router.js`
 - 审批 UI：`html/approval.html` + `js/app/approval.js`
 - UCAN 会话：`js/background/ucan.js`
-- 相关 SDK 仓库：`/Users/liuxin2/Workspace/opensource/web3-bs`
+- 相关 SDK 仓库：`yeying-community/web3-bs`
