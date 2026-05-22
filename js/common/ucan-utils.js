@@ -64,7 +64,7 @@ export function deriveUcanAudience(endpoint) {
   }
 }
 
-function decodeJwtPayload(value) {
+export function decodeJwtPayload(value) {
   const token = normalizeBearerToken(value);
   const segments = token.split('.');
   if (segments.length < 2) return null;

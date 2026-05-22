@@ -10,6 +10,7 @@ import {
 import { cachePassword, getCachedPassword, refreshPasswordCache } from './password-cache.js';
 import {
   normalizeBearerToken,
+  decodeJwtPayload,
   deriveUcanAudience,
   getUcanExpiresAt,
   isUcanExpiringSoon,
@@ -19,19 +20,6 @@ import {
 } from '../common/ucan-utils.js';
 
 const DEFAULT_UCAN_TTL_HOURS = 24;
-
-function decodeJwtPayload(value) {
-  const token = normalizeBearerToken(value);
-  const segments = token.split('.');
-  if (segments.length < 2) return null;
-  try {
-    const base64 = segments[1].replace(/-/g, '+').replace(/_/g, '/');
-    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
-    return JSON.parse(atob(padded));
-  } catch {
-    return null;
-  }
-}
 
 async function getSigningAccount() {
   let account = await getSelectedAccount();

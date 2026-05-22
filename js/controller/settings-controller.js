@@ -4,6 +4,7 @@ import { shortenAddress } from '../common/chain/index.js';
 import { escapeHtml } from '../common/ui/html-ui.js';
 import {
   normalizeBearerToken,
+  getUcanExpiresAt,
   deriveUcanAudience,
   buildSiweMessage,
   createUcanInvocationKey,
@@ -689,14 +690,6 @@ export class SettingsController {
     const ucanTokenInput = document.getElementById('mpcCoordinatorUcanTokenInput');
 
     const endpoint = String(endpointInput?.value || '').trim();
-    if (endpoint) {
-      try {
-        new URL(endpoint);
-      } catch {
-        showError('Webhook 地址格式不正确');
-        return;
-      }
-    }
     if (endpoint) {
       try {
         new URL(endpoint);
@@ -2531,24 +2524,8 @@ export class SettingsController {
     return normalizeBearerToken(value);
   }
 
-  decodeJwtPayload(value) {
-    const token = this.normalizeUcanToken(value);
-    const segments = token.split('.');
-    if (segments.length < 2) return null;
-    try {
-      const base64 = segments[1].replace(/-/g, '+').replace(/_/g, '/');
-      const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
-      return JSON.parse(atob(padded));
-    } catch {
-      return null;
-    }
-  }
-
   getBackupSyncUcanExpiresAt(settings = {}) {
-    const payload = this.decodeJwtPayload(settings?.ucanToken || '');
-    const exp = Number(payload?.exp);
-    if (!Number.isFinite(exp) || exp <= 0) return 0;
-    return exp > 1e12 ? exp : exp * 1000;
+    return getUcanExpiresAt(settings?.ucanToken || '');
   }
 
   isBackupSyncUcanExpiringSoon(settings = {}, thresholdMs = 5 * 60 * 1000) {
