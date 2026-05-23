@@ -589,6 +589,15 @@ export class WalletDomain extends BaseDomain {
   }
 
   /**
+   * 生成 MPC 协调器 UCAN
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async generateMpcCoordinatorUcan(options = {}) {
+    return await this._sendMessage(WalletMessageType.GENERATE_MPC_COORDINATOR_UCAN, options);
+  }
+
+  /**
    * 获取 MPC 设备信息
    * @returns {Promise<Object>}
    */

@@ -365,8 +365,8 @@ Resources:
 
 对应代码：
 
-- SIWE 解析：[js/app/approval.js](/Users/liuxin2/Workspace/opensource/wallet/js/app/approval.js)
-- 请求路由：[js/background/request-router.js](/Users/liuxin2/Workspace/opensource/wallet/js/background/request-router.js)
+- SIWE 解析：[js/app/approval.js](../js/app/approval.js)
+- 请求路由：[js/background/request-router.js](../js/background/request-router.js)
 
 ## 7. 钱包风险提示应该关注什么
 
@@ -501,10 +501,10 @@ const signature = await provider.request({
 
 ## 13. 代码参考
 
-- 钱包 SIWE 展示与解析：[js/app/approval.js](/Users/liuxin2/Workspace/opensource/wallet/js/app/approval.js)
-- 钱包签名请求路由：[js/background/request-router.js](/Users/liuxin2/Workspace/opensource/wallet/js/background/request-router.js)
-- UCAN 说明：[UCAN协议说明.md](/Users/liuxin2/Workspace/opensource/wallet/docs/UCAN协议说明.md)
-- DApp 接入说明：[DApp接入手册.md](/Users/liuxin2/Workspace/opensource/wallet/docs/DApp接入手册.md)
+- 钱包 SIWE 展示与解析：[js/app/approval.js](../js/app/approval.js)
+- 钱包签名请求路由：[js/background/request-router.js](../js/background/request-router.js)
+- UCAN 说明：[UCAN协议说明.md](./UCAN协议说明.md)
+- DApp 接入说明：[DApp接入手册.md](./DApp接入手册.md)
 
 ## 14. 官方参考
 

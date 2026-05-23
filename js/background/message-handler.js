@@ -44,6 +44,7 @@ import {
   handleBackupSyncLogEvent,
   handleGetMpcSettings,
   handleUpdateMpcSettings,
+  handleGenerateMpcCoordinatorUcan,
   handleMpcGetDeviceInfo,
   handleMpcCreateSession,
   handleMpcJoinSession,
@@ -786,6 +787,10 @@ export async function handlePopupMessage(message, response) {
 
       case WalletMessageType.UPDATE_MPC_SETTINGS:
         response(await handleUpdateMpcSettings(data?.updates));
+        break;
+
+      case WalletMessageType.GENERATE_MPC_COORDINATOR_UCAN:
+        response(await handleGenerateMpcCoordinatorUcan(data));
         break;
 
       case WalletMessageType.MPC_GET_DEVICE_INFO:

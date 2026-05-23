@@ -1,4 +1,4 @@
-import { showPage, getCurrentPage, getPageOrigin, showError } from '../common/ui/index.js';
+import { showPage, getCurrentPage, getPageOrigin, showError, showSuccess } from '../common/ui/index.js';
 import { formatDate, formatLocaleDateTime } from '../common/utils/time-utils.js';
 import { POLLING_CONFIG } from '../config/index.js';
 import { WelcomeController } from './welcome-controller.js';
@@ -585,6 +585,25 @@ export class PopupController {
     await this.contactsController?.loadContacts?.();
   }
 
+  async lockWallet() {
+    try {
+      this.closeWalletHeaderMenu();
+      this.stopTransactionPolling();
+      await this.wallet.lock();
+
+      const passwordInput = document.getElementById('unlockPassword');
+      if (passwordInput) {
+        passwordInput.value = '';
+      }
+      this.renderUnlockReason(null);
+      showPage('unlockPage');
+      showSuccess('钱包已锁定');
+    } catch (error) {
+      console.error('[PopupController] 锁定钱包失败:', error);
+      showError('锁定失败: ' + (error?.message || '未知错误'));
+    }
+  }
+
   async refreshWalletData() {
     await this.accountHeaderController?.refreshHeader?.();
     await this.tokenBalanceController?.refreshBalanceSilently?.();
@@ -701,6 +720,13 @@ export class PopupController {
       networkManageBtn.addEventListener('click', async () => {
         this.closeWalletHeaderMenu();
         await this.networkController?.handleOpenNetworkManage?.();
+      });
+    }
+
+    const lockWalletBtn = document.getElementById('lockWalletBtn');
+    if (lockWalletBtn) {
+      lockWalletBtn.addEventListener('click', async () => {
+        await this.lockWallet();
       });
     }
 
