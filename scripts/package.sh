@@ -100,7 +100,7 @@ ensure_on_main_branch() {
 
   current_branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)"
   if [ "$current_branch" != "$MAIN_BRANCH" ]; then
-    die "无参打包需要在 $MAIN_BRANCH 分支执行，当前分支为 $current_branch。"
+    die "无参打包需要在 ${MAIN_BRANCH} 分支执行，当前分支为 ${current_branch}。"
   fi
 }
 
@@ -366,7 +366,7 @@ prepare_auto_release() {
 
   if [ -n "$latest_tag" ]; then
     latest_tag_commit="$(ref_commit "$latest_tag")"
-    info "当前最大 TAG: $latest_tag ($latest_tag_commit)"
+    info "当前最大 TAG: ${latest_tag} (${latest_tag_commit})"
   else
     info "当前未发现语义化 TAG，将从 v0.0.1 开始。"
   fi
@@ -387,7 +387,7 @@ prepare_auto_release() {
     git -C "$REPO_ROOT" commit -m "chore: bump manifest version to $release_version"
     info "已提交 manifest 版本更新。"
   else
-    info "manifest.json 版本已是 $release_version，无需额外提交。"
+    info "manifest.json 版本已是 ${release_version}，无需额外提交。"
   fi
 
   TARGET_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
