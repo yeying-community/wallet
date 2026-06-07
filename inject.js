@@ -12,10 +12,27 @@ import {
   MessageBuilder
 } from './js/protocol/dapp-protocol.js';
 
+const INJECT_SCRIPT_URL = import.meta.url;
+
 (function () {
   'use strict';
 
   console.log('🔌 YeYing Wallet Provider initializing...');
+
+  const BRIDGE_TOKEN = (() => {
+    try {
+      const src = INJECT_SCRIPT_URL || '';
+      if (!src) return '';
+      return new URL(src).searchParams.get('bridgeToken') || '';
+    } catch (error) {
+      return '';
+    }
+  })();
+
+  if (!BRIDGE_TOKEN) {
+    console.error('❌ YeYing bridge token missing, provider injection aborted');
+    return;
+  }
 
   // ==================== 防止重复注入 ====================
   if (window.ethereum && window.ethereum.isYeYing) {
@@ -165,6 +182,7 @@ import {
 
       // 只处理 YEYING_MESSAGE
       if (message?.type !== MESSAGE_TYPE) return;
+      if (message.metadata?.bridgeToken !== BRIDGE_TOKEN) return;
 
       console.log('📥 Provider received:', message);
 
@@ -339,6 +357,7 @@ import {
     async _sendRequest(method, params) {
       return new Promise((resolve, reject) => {
         const message = MessageBuilder.createRequest(method, params, window.location.origin);
+        message.metadata.bridgeToken = BRIDGE_TOKEN;
         const requestId = message.metadata.id;
 
         // 设置超时

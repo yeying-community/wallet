@@ -22,13 +22,17 @@
   const RECONNECT_DELAY_BASE = 1000; // 基础延迟 1 秒
   const QUEUE_MAX_AGE = 15000; // 请求排队超时
   const QUEUE_MAX_SIZE = 100; // 最大排队请求数
+  const bridgeToken =
+    `${chrome.runtime.id}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 
   // ==================== 注入 inject.js ====================
 
   function injectScript() {
     const script = document.createElement('script');
     script.type = 'module';
-    script.src = chrome.runtime.getURL('inject.js');
+    const url = new URL(chrome.runtime.getURL('inject.js'));
+    url.searchParams.set('bridgeToken', bridgeToken);
+    script.src = url.toString();
     script.onload = function () {
       console.log('✅ inject.js loaded');
       this.remove();
@@ -158,8 +162,8 @@
 
     console.log('📬 Bridge received from background:', message);
 
-    // 直接转发到页面（不做任何处理）
-    window.postMessage(message, '*');
+    // 只把本 content bridge 处理过的请求响应回传给页面。
+    window.postMessage(withBridgeToken(message), '*');
   }
 
   function handlePageMessage(event) {
@@ -170,6 +174,10 @@
 
     // 只处理 YEYING_MESSAGE
     if (message?.type !== MESSAGE_TYPE) return;
+
+    if (message.metadata?.bridgeToken !== bridgeToken) {
+      return;
+    }
 
     console.log('📨 Bridge received from page:', message);
 
@@ -221,12 +229,22 @@
 
   function sendEventToPage(event, data) {
     const message = MessageBuilder.createEvent(event, data);
-    window.postMessage(message, '*');
+    window.postMessage(withBridgeToken(message), '*');
   }
 
   function sendErrorToPage(requestId, error) {
     const message = MessageBuilder.createErrorResponse(error, requestId);
-    window.postMessage(message, '*');
+    window.postMessage(withBridgeToken(message), '*');
+  }
+
+  function withBridgeToken(message) {
+    return {
+      ...message,
+      metadata: {
+        ...(message.metadata || {}),
+        bridgeToken
+      }
+    };
   }
 
   // ==================== 监听广播事件 ====================
@@ -238,7 +256,7 @@
 
     // 转发事件到页面
     if (message.category === MessageCategory.EVENT) {
-      window.postMessage(message, '*');
+      window.postMessage(withBridgeToken(message), '*');
       sendResponse({ success: true });
       return true; // 保持消息通道开启
     }
