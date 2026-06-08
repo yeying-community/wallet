@@ -19,7 +19,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
 
   console.log('🔌 YeYing Wallet Provider initializing...');
 
-  const BRIDGE_TOKEN = (() => {
+  const INITIAL_BRIDGE_TOKEN = (() => {
     try {
       const src = INJECT_SCRIPT_URL || '';
       if (!src) return '';
@@ -29,16 +29,13 @@ const INJECT_SCRIPT_URL = import.meta.url;
     }
   })();
 
-  if (!BRIDGE_TOKEN) {
+  if (!INITIAL_BRIDGE_TOKEN) {
     console.error('❌ YeYing bridge token missing, provider injection aborted');
     return;
   }
 
-  // ==================== 防止重复注入 ====================
-  if (window.ethereum && window.ethereum.isYeYing) {
-    console.warn('⚠️ YeYing Provider already injected');
-    return;
-  }
+  const existingProvider =
+    window.ethereum && window.ethereum.isYeYing ? window.ethereum : null;
 
   // ==================== 协议常量 ====================
 
@@ -155,6 +152,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
 
       // 待处理的请求
       this._pendingRequests = new Map();
+      this._bridgeToken = INITIAL_BRIDGE_TOKEN;
 
       // 初始化
       this._initialize();
@@ -182,7 +180,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
 
       // 只处理 YEYING_MESSAGE
       if (message?.type !== MESSAGE_TYPE) return;
-      if (message.metadata?.bridgeToken !== BRIDGE_TOKEN) return;
+      if (message.metadata?.bridgeToken !== this._bridgeToken) return;
 
       console.log('📥 Provider received:', message);
 
@@ -357,7 +355,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
     async _sendRequest(method, params) {
       return new Promise((resolve, reject) => {
         const message = MessageBuilder.createRequest(method, params, window.location.origin);
-        message.metadata.bridgeToken = BRIDGE_TOKEN;
+        message.metadata.bridgeToken = this._bridgeToken;
         const requestId = message.metadata.id;
 
         // 设置超时
@@ -378,11 +376,43 @@ const INJECT_SCRIPT_URL = import.meta.url;
           reject,
           timeoutId,
           method,
+          message,
           timestamp: Date.now()
         });
 
         // 发送消息到 content script
         window.postMessage(message, '*');
+      });
+    }
+
+    _setBridgeToken(bridgeToken) {
+      if (!bridgeToken || bridgeToken === this._bridgeToken) return;
+
+      console.log('🔄 Rebinding YeYing Provider bridge');
+      this._bridgeToken = bridgeToken;
+      this._replayPendingRequests();
+      this._state.isConnected = false;
+      this._connectEmitted = false;
+      this._requestInitialState();
+    }
+
+    _rejectPendingRequests(code, message) {
+      this._pendingRequests.forEach((pending) => {
+        clearTimeout(pending.timeoutId);
+        pending.reject(new ProviderRpcError(code, message));
+      });
+      this._pendingRequests.clear();
+    }
+
+    _replayPendingRequests() {
+      this._pendingRequests.forEach((pending, requestId) => {
+        if (!pending.message) {
+          return;
+        }
+        pending.message.metadata.bridgeToken = this._bridgeToken;
+        pending.timestamp = Date.now();
+        console.log('🔁 Replaying pending wallet request:', pending.method, requestId);
+        window.postMessage(pending.message, '*');
       });
     }
 
@@ -500,7 +530,90 @@ const INJECT_SCRIPT_URL = import.meta.url;
     }
   }
 
+  function rebindExistingProvider(provider, bridgeToken) {
+    console.warn('⚠️ YeYing Provider already injected, rebinding bridge');
+
+    if (provider._yeyingBridgeMessageListener) {
+      window.removeEventListener('message', provider._yeyingBridgeMessageListener);
+    }
+
+    provider._yeyingBridgeMessageListener = (event) => {
+      if (event.source !== window) return;
+
+      const message = event.data;
+      if (message?.type !== MESSAGE_TYPE) return;
+      if (message.metadata?.bridgeToken !== provider._bridgeToken) return;
+
+      const { category } = message;
+      if (category === MessageCategory.RESPONSE) {
+        provider._handleResponse(message);
+      } else if (category === MessageCategory.EVENT) {
+        provider._handleEvent(message);
+      }
+    };
+    window.addEventListener('message', provider._yeyingBridgeMessageListener);
+
+    provider._replayPendingRequests = function () {
+      this._pendingRequests?.forEach((pending, requestId) => {
+        if (!pending.message) return;
+        pending.message.metadata.bridgeToken = this._bridgeToken;
+        pending.timestamp = Date.now();
+        console.log('🔁 Replaying pending wallet request:', pending.method, requestId);
+        window.postMessage(pending.message, '*');
+      });
+    };
+
+    provider._setBridgeToken = function (nextBridgeToken) {
+      if (!nextBridgeToken || nextBridgeToken === this._bridgeToken) return;
+
+      console.log('🔄 Rebinding YeYing Provider bridge');
+      this._bridgeToken = nextBridgeToken;
+      this._replayPendingRequests?.();
+      this._state.isConnected = false;
+      this._connectEmitted = false;
+      this._requestInitialState?.();
+    };
+
+    provider._sendRequest = function (method, params) {
+      return new Promise((resolve, reject) => {
+        const message = MessageBuilder.createRequest(method, params, window.location.origin);
+        message.metadata.bridgeToken = this._bridgeToken;
+        const requestId = message.metadata.id;
+
+        const timeoutId = setTimeout(() => {
+          this._pendingRequests.delete(requestId);
+          reject(
+            new ProviderRpcError(
+              -32603,
+              'Request timeout',
+              { method, timeout: REQUEST_TIMEOUT }
+            )
+          );
+        }, REQUEST_TIMEOUT);
+
+        this._pendingRequests.set(requestId, {
+          resolve,
+          reject,
+          timeoutId,
+          method,
+          message,
+          timestamp: Date.now()
+        });
+
+        window.postMessage(message, '*');
+      });
+    };
+
+    provider._setBridgeToken(bridgeToken);
+    window.dispatchEvent(new Event('ethereum#initialized'));
+  }
+
   // ==================== 注入到 window ====================
+
+  if (existingProvider) {
+    rebindExistingProvider(existingProvider, INITIAL_BRIDGE_TOKEN);
+    return;
+  }
 
   const provider = new YeYingProvider();
 

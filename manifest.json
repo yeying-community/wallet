@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "夜莺钱包",
-  "version": "1.4.11",
+  "version": "1.4.12",
   "description": "夜莺钱包插件",
   "permissions": [
     "storage",
     "activeTab",
     "tabs",
+    "scripting",
     "offscreen"
   ],
   "host_permissions": [
