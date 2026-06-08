@@ -24,6 +24,15 @@
   const QUEUE_MAX_SIZE = 100; // 最大排队请求数
   const bridgeToken =
     `${chrome.runtime.id}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  const previousBridge = globalThis.__YEYING_WALLET_CONTENT_BRIDGE__;
+  if (previousBridge && typeof previousBridge.dispose === 'function') {
+    previousBridge.dispose('content_script_reinject');
+  }
+  const bridgeState = {
+    disposed: false,
+    dispose: null
+  };
+  globalThis.__YEYING_WALLET_CONTENT_BRIDGE__ = bridgeState;
 
   // ==================== 注入 inject.js ====================
 
@@ -53,6 +62,7 @@
   const requestQueue = new Map();
 
   function initConnection() {
+    if (bridgeState.disposed) return;
     // 检查扩展上下文是否有效
     if (!chrome.runtime?.id) {
       console.error('❌ Extension context invalidated');
@@ -94,6 +104,7 @@
   }
 
   function handleDisconnect() {
+    if (bridgeState.disposed) return;
     console.warn('⚠️ Port disconnected');
 
     const error = chrome.runtime.lastError;
@@ -128,6 +139,7 @@
   }
 
   function flushQueuedRequests() {
+    if (bridgeState.disposed) return;
     if (!port || requestQueue.size === 0) return;
 
     const now = Date.now();
@@ -158,6 +170,7 @@
   // ==================== 消息处理 ====================
 
   function handleBackgroundMessage(message) {
+    if (bridgeState.disposed) return;
     if (message?.type !== MESSAGE_TYPE) return;
 
     console.log('📬 Bridge received from background:', message);
@@ -167,6 +180,7 @@
   }
 
   function handlePageMessage(event) {
+    if (bridgeState.disposed) return;
     // 只处理来自当前页面的消息
     if (event.source !== window) return;
 
@@ -250,6 +264,7 @@
   // ==================== 监听广播事件 ====================
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (bridgeState.disposed) return;
     if (message?.type !== MESSAGE_TYPE) return;
 
     console.log('📬 Content script received broadcast:', message);
@@ -263,6 +278,22 @@
   });
 
   // ==================== 启动 ====================
+
+  bridgeState.dispose = function disposeBridge(reason) {
+    if (bridgeState.disposed) return;
+    bridgeState.disposed = true;
+    window.removeEventListener('message', handlePageMessage);
+    requestQueue.clear();
+    if (port) {
+      try {
+        port.disconnect();
+      } catch (error) {
+        // Ignore disconnect errors while replacing the content bridge.
+      }
+      port = null;
+    }
+    console.log('🧹 Content script bridge disposed:', reason);
+  };
 
   window.addEventListener('message', handlePageMessage);
   initConnection();
