@@ -12,16 +12,30 @@ import {
   MessageBuilder
 } from './js/protocol/dapp-protocol.js';
 
+const INJECT_SCRIPT_URL = import.meta.url;
+
 (function () {
   'use strict';
 
-  console.log('🔌 YeYing Wallet Provider initializing...');
+  console.debug('YeYing Wallet Provider initializing...');
 
-  // ==================== 防止重复注入 ====================
-  if (window.ethereum && window.ethereum.isYeYing) {
-    console.warn('⚠️ YeYing Provider already injected');
+  const INITIAL_BRIDGE_TOKEN = (() => {
+    try {
+      const src = INJECT_SCRIPT_URL || '';
+      if (!src) return '';
+      return new URL(src).searchParams.get('bridgeToken') || '';
+    } catch (error) {
+      return '';
+    }
+  })();
+
+  if (!INITIAL_BRIDGE_TOKEN) {
+    console.error('❌ YeYing bridge token missing, provider injection aborted');
     return;
   }
+
+  const existingProvider =
+    window.ethereum && window.ethereum.isYeYing ? window.ethereum : null;
 
   // ==================== 协议常量 ====================
 
@@ -138,6 +152,8 @@ import {
 
       // 待处理的请求
       this._pendingRequests = new Map();
+      this._bridgeToken = INITIAL_BRIDGE_TOKEN;
+      this._yeyingBridgeMessageListener = this._handleMessage.bind(this);
 
       // 初始化
       this._initialize();
@@ -146,15 +162,15 @@ import {
     // ==================== 初始化 ====================
 
     _initialize() {
-      console.log('🔧 Initializing YeYing Provider...');
+      console.debug('Initializing YeYing Provider...');
 
       // 监听来自 content script 的消息
-      window.addEventListener('message', this._handleMessage.bind(this));
+      window.addEventListener('message', this._yeyingBridgeMessageListener);
 
       // 请求初始状态
       this._requestInitialState();
 
-      console.log('✅ YeYing Provider initialized');
+      console.debug('YeYing Provider initialized');
     }
 
     _handleMessage(event) {
@@ -165,8 +181,9 @@ import {
 
       // 只处理 YEYING_MESSAGE
       if (message?.type !== MESSAGE_TYPE) return;
+      if (message.metadata?.bridgeToken !== this._bridgeToken) return;
 
-      console.log('📥 Provider received:', message);
+      console.debug('Provider received:', message);
 
       const { category } = message;
 
@@ -183,7 +200,7 @@ import {
       const pending = this._pendingRequests.get(requestId);
 
       if (!pending) {
-        console.warn('⚠️ Received response for unknown request:', requestId);
+        console.debug('Ignoring response for unknown wallet request:', requestId);
         return;
       }
 
@@ -215,7 +232,7 @@ import {
         return;
       }
 
-      console.log('📢 Event received:', event, data);
+      console.debug('Event received:', event, data);
 
       // ✅ 使用 EventType 常量
       switch (event) {
@@ -260,7 +277,7 @@ import {
           }
         }
 
-        console.log('📊 Initial state:', this._state);
+        console.debug('Initial state:', this._state);
       } catch (error) {
         console.error('❌ Failed to get initial state:', error);
       }
@@ -278,7 +295,7 @@ import {
 
       const { method, params = [] } = args;
 
-      console.log('📤 Request:', method, params);
+      console.debug('Wallet request:', method, params);
 
       return this._sendRequest(method, params);
     }
@@ -339,6 +356,7 @@ import {
     async _sendRequest(method, params) {
       return new Promise((resolve, reject) => {
         const message = MessageBuilder.createRequest(method, params, window.location.origin);
+        message.metadata.bridgeToken = this._bridgeToken;
         const requestId = message.metadata.id;
 
         // 设置超时
@@ -359,11 +377,43 @@ import {
           reject,
           timeoutId,
           method,
+          message,
           timestamp: Date.now()
         });
 
         // 发送消息到 content script
         window.postMessage(message, '*');
+      });
+    }
+
+    _setBridgeToken(bridgeToken) {
+      if (!bridgeToken || bridgeToken === this._bridgeToken) return;
+
+      console.debug('Rebinding YeYing Provider bridge');
+      this._bridgeToken = bridgeToken;
+      this._replayPendingRequests();
+      this._state.isConnected = false;
+      this._connectEmitted = false;
+      this._requestInitialState();
+    }
+
+    _rejectPendingRequests(code, message) {
+      this._pendingRequests.forEach((pending) => {
+        clearTimeout(pending.timeoutId);
+        pending.reject(new ProviderRpcError(code, message));
+      });
+      this._pendingRequests.clear();
+    }
+
+    _replayPendingRequests() {
+      this._pendingRequests.forEach((pending, requestId) => {
+        if (!pending.message) {
+          return;
+        }
+        pending.message.metadata.bridgeToken = this._bridgeToken;
+        pending.timestamp = Date.now();
+        console.debug('Replaying pending wallet request:', pending.method, requestId);
+        window.postMessage(pending.message, '*');
       });
     }
 
@@ -379,7 +429,7 @@ import {
 
       if (!accountsChanged) return;
 
-      console.log('👤 Accounts changed:', accountsArray);
+      console.debug('Accounts changed:', accountsArray);
 
       this._state.accounts = accountsArray;
       if (accountsArray.length > 0) {
@@ -400,7 +450,7 @@ import {
 
       if (newChainId === this._state.chainId) return;
 
-      console.log('⛓️ Chain changed:', newChainId);
+      console.debug('Chain changed:', newChainId);
 
       this._state.chainId = newChainId;
       this._state.isConnected = true;
@@ -408,7 +458,7 @@ import {
     }
 
     _handleConnect(data) {
-      console.log('🔗 Connected:', data);
+      console.debug('Connected:', data);
 
       const shouldEmit = !this._connectEmitted;
       this._state.isConnected = true;
@@ -428,7 +478,7 @@ import {
     }
 
     _handleDisconnect(data) {
-      console.log('🔌 Disconnected:', data);
+      console.debug('Disconnected:', data);
 
       const wasConnected = this._state.isConnected;
       this._state.isConnected = false;
@@ -481,7 +531,90 @@ import {
     }
   }
 
+  function rebindExistingProvider(provider, bridgeToken) {
+    console.debug('YeYing Provider already injected, rebinding bridge');
+
+    if (provider._yeyingBridgeMessageListener) {
+      window.removeEventListener('message', provider._yeyingBridgeMessageListener);
+    }
+
+    provider._yeyingBridgeMessageListener = (event) => {
+      if (event.source !== window) return;
+
+      const message = event.data;
+      if (message?.type !== MESSAGE_TYPE) return;
+      if (message.metadata?.bridgeToken !== provider._bridgeToken) return;
+
+      const { category } = message;
+      if (category === MessageCategory.RESPONSE) {
+        provider._handleResponse(message);
+      } else if (category === MessageCategory.EVENT) {
+        provider._handleEvent(message);
+      }
+    };
+    window.addEventListener('message', provider._yeyingBridgeMessageListener);
+
+    provider._replayPendingRequests = function () {
+      this._pendingRequests?.forEach((pending, requestId) => {
+        if (!pending.message) return;
+        pending.message.metadata.bridgeToken = this._bridgeToken;
+        pending.timestamp = Date.now();
+        console.debug('Replaying pending wallet request:', pending.method, requestId);
+        window.postMessage(pending.message, '*');
+      });
+    };
+
+    provider._setBridgeToken = function (nextBridgeToken) {
+      if (!nextBridgeToken || nextBridgeToken === this._bridgeToken) return;
+
+      console.debug('Rebinding YeYing Provider bridge');
+      this._bridgeToken = nextBridgeToken;
+      this._replayPendingRequests?.();
+      this._state.isConnected = false;
+      this._connectEmitted = false;
+      this._requestInitialState?.();
+    };
+
+    provider._sendRequest = function (method, params) {
+      return new Promise((resolve, reject) => {
+        const message = MessageBuilder.createRequest(method, params, window.location.origin);
+        message.metadata.bridgeToken = this._bridgeToken;
+        const requestId = message.metadata.id;
+
+        const timeoutId = setTimeout(() => {
+          this._pendingRequests.delete(requestId);
+          reject(
+            new ProviderRpcError(
+              -32603,
+              'Request timeout',
+              { method, timeout: REQUEST_TIMEOUT }
+            )
+          );
+        }, REQUEST_TIMEOUT);
+
+        this._pendingRequests.set(requestId, {
+          resolve,
+          reject,
+          timeoutId,
+          method,
+          message,
+          timestamp: Date.now()
+        });
+
+        window.postMessage(message, '*');
+      });
+    };
+
+    provider._setBridgeToken(bridgeToken);
+    window.dispatchEvent(new Event('ethereum#initialized'));
+  }
+
   // ==================== 注入到 window ====================
+
+  if (existingProvider) {
+    rebindExistingProvider(existingProvider, INITIAL_BRIDGE_TOKEN);
+    return;
+  }
 
   const provider = new YeYingProvider();
 
@@ -523,8 +656,8 @@ import {
   // 调试接口
   window.__YEYING_PROVIDER__ = provider;
 
-  console.log('✅ YeYing Provider injected successfully');
-  console.log('📍 Access via window.ethereum');
+  console.debug('YeYing Provider injected successfully');
+  console.debug('Access via window.ethereum');
 
   // 触发初始化完成事件
   window.dispatchEvent(new Event('ethereum#initialized'));

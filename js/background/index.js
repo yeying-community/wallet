@@ -14,6 +14,11 @@ import { normalizePopupBounds } from './window-utils.js';
 import { backupSyncService } from './sync-service.js';
 import { mpcService } from './mpc-service.js';
 
+const INJECTABLE_TAB_URLS = [
+  'http://*/*',
+  'https://*/*'
+];
+
 /**
  * 初始化 Background Script
  */
@@ -71,7 +76,42 @@ async function init() {
 }
 
 // 启动
-init();
+init()
+  .then(() => reinjectContentScripts('background_init'))
+  .catch((error) => {
+    console.warn('⚠️ Background init finished with reinjection skipped:', error);
+  });
+
+async function reinjectContentScripts(reason) {
+  if (!chrome.scripting?.executeScript) {
+    console.warn('⚠️ chrome.scripting API unavailable, skip content reinjection');
+    return;
+  }
+
+  let tabs = [];
+  try {
+    tabs = await chrome.tabs.query({ url: INJECTABLE_TAB_URLS });
+  } catch (error) {
+    console.warn('⚠️ Failed to query tabs for content reinjection:', error);
+    return;
+  }
+
+  await Promise.all(
+    tabs.map(async (tab) => {
+      if (!tab.id || !tab.url) return;
+
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id, allFrames: false },
+          files: ['content.js']
+        });
+        console.log('✅ Re-injected content script:', reason, tab.id, tab.url);
+      } catch (error) {
+        console.warn('⚠️ Failed to re-inject content script:', tab.id, tab.url, error);
+      }
+    })
+  );
+}
 
 // 监听扩展安装/更新
 chrome.runtime.onInstalled.addListener((details) => {
@@ -83,4 +123,13 @@ chrome.runtime.onInstalled.addListener((details) => {
   } else if (details.reason === 'update') {
     console.log('🔄 Extension updated');
   }
+
+  if (details.reason === 'install' || details.reason === 'update') {
+    reinjectContentScripts(details.reason);
+  }
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  console.log('🚀 Extension startup, checking existing tabs');
+  reinjectContentScripts('startup');
 });
