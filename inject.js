@@ -17,7 +17,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
 (function () {
   'use strict';
 
-  console.log('🔌 YeYing Wallet Provider initializing...');
+  console.debug('YeYing Wallet Provider initializing...');
 
   const INITIAL_BRIDGE_TOKEN = (() => {
     try {
@@ -153,6 +153,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
       // 待处理的请求
       this._pendingRequests = new Map();
       this._bridgeToken = INITIAL_BRIDGE_TOKEN;
+      this._yeyingBridgeMessageListener = this._handleMessage.bind(this);
 
       // 初始化
       this._initialize();
@@ -161,15 +162,15 @@ const INJECT_SCRIPT_URL = import.meta.url;
     // ==================== 初始化 ====================
 
     _initialize() {
-      console.log('🔧 Initializing YeYing Provider...');
+      console.debug('Initializing YeYing Provider...');
 
       // 监听来自 content script 的消息
-      window.addEventListener('message', this._handleMessage.bind(this));
+      window.addEventListener('message', this._yeyingBridgeMessageListener);
 
       // 请求初始状态
       this._requestInitialState();
 
-      console.log('✅ YeYing Provider initialized');
+      console.debug('YeYing Provider initialized');
     }
 
     _handleMessage(event) {
@@ -182,7 +183,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
       if (message?.type !== MESSAGE_TYPE) return;
       if (message.metadata?.bridgeToken !== this._bridgeToken) return;
 
-      console.log('📥 Provider received:', message);
+      console.debug('Provider received:', message);
 
       const { category } = message;
 
@@ -199,7 +200,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
       const pending = this._pendingRequests.get(requestId);
 
       if (!pending) {
-        console.warn('⚠️ Received response for unknown request:', requestId);
+        console.debug('Ignoring response for unknown wallet request:', requestId);
         return;
       }
 
@@ -231,7 +232,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
         return;
       }
 
-      console.log('📢 Event received:', event, data);
+      console.debug('Event received:', event, data);
 
       // ✅ 使用 EventType 常量
       switch (event) {
@@ -276,7 +277,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
           }
         }
 
-        console.log('📊 Initial state:', this._state);
+        console.debug('Initial state:', this._state);
       } catch (error) {
         console.error('❌ Failed to get initial state:', error);
       }
@@ -294,7 +295,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
 
       const { method, params = [] } = args;
 
-      console.log('📤 Request:', method, params);
+      console.debug('Wallet request:', method, params);
 
       return this._sendRequest(method, params);
     }
@@ -388,7 +389,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
     _setBridgeToken(bridgeToken) {
       if (!bridgeToken || bridgeToken === this._bridgeToken) return;
 
-      console.log('🔄 Rebinding YeYing Provider bridge');
+      console.debug('Rebinding YeYing Provider bridge');
       this._bridgeToken = bridgeToken;
       this._replayPendingRequests();
       this._state.isConnected = false;
@@ -411,7 +412,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
         }
         pending.message.metadata.bridgeToken = this._bridgeToken;
         pending.timestamp = Date.now();
-        console.log('🔁 Replaying pending wallet request:', pending.method, requestId);
+        console.debug('Replaying pending wallet request:', pending.method, requestId);
         window.postMessage(pending.message, '*');
       });
     }
@@ -428,7 +429,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
 
       if (!accountsChanged) return;
 
-      console.log('👤 Accounts changed:', accountsArray);
+      console.debug('Accounts changed:', accountsArray);
 
       this._state.accounts = accountsArray;
       if (accountsArray.length > 0) {
@@ -449,7 +450,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
 
       if (newChainId === this._state.chainId) return;
 
-      console.log('⛓️ Chain changed:', newChainId);
+      console.debug('Chain changed:', newChainId);
 
       this._state.chainId = newChainId;
       this._state.isConnected = true;
@@ -457,7 +458,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
     }
 
     _handleConnect(data) {
-      console.log('🔗 Connected:', data);
+      console.debug('Connected:', data);
 
       const shouldEmit = !this._connectEmitted;
       this._state.isConnected = true;
@@ -477,7 +478,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
     }
 
     _handleDisconnect(data) {
-      console.log('🔌 Disconnected:', data);
+      console.debug('Disconnected:', data);
 
       const wasConnected = this._state.isConnected;
       this._state.isConnected = false;
@@ -531,7 +532,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
   }
 
   function rebindExistingProvider(provider, bridgeToken) {
-    console.warn('⚠️ YeYing Provider already injected, rebinding bridge');
+    console.debug('YeYing Provider already injected, rebinding bridge');
 
     if (provider._yeyingBridgeMessageListener) {
       window.removeEventListener('message', provider._yeyingBridgeMessageListener);
@@ -558,7 +559,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
         if (!pending.message) return;
         pending.message.metadata.bridgeToken = this._bridgeToken;
         pending.timestamp = Date.now();
-        console.log('🔁 Replaying pending wallet request:', pending.method, requestId);
+        console.debug('Replaying pending wallet request:', pending.method, requestId);
         window.postMessage(pending.message, '*');
       });
     };
@@ -566,7 +567,7 @@ const INJECT_SCRIPT_URL = import.meta.url;
     provider._setBridgeToken = function (nextBridgeToken) {
       if (!nextBridgeToken || nextBridgeToken === this._bridgeToken) return;
 
-      console.log('🔄 Rebinding YeYing Provider bridge');
+      console.debug('Rebinding YeYing Provider bridge');
       this._bridgeToken = nextBridgeToken;
       this._replayPendingRequests?.();
       this._state.isConnected = false;
@@ -655,8 +656,8 @@ const INJECT_SCRIPT_URL = import.meta.url;
   // 调试接口
   window.__YEYING_PROVIDER__ = provider;
 
-  console.log('✅ YeYing Provider injected successfully');
-  console.log('📍 Access via window.ethereum');
+  console.debug('YeYing Provider injected successfully');
+  console.debug('Access via window.ethereum');
 
   // 触发初始化完成事件
   window.dispatchEvent(new Event('ethereum#initialized'));

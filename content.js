@@ -14,7 +14,7 @@
     MessageBuilder
   } = await import(chrome.runtime.getURL('js/protocol/dapp-protocol.js'));
 
-  console.log('🌉 Content script bridge loading...');
+  console.debug('Content script bridge loading...');
 
   // ==================== 协议常量 ====================
 
@@ -43,7 +43,7 @@
     url.searchParams.set('bridgeToken', bridgeToken);
     script.src = url.toString();
     script.onload = function () {
-      console.log('✅ inject.js loaded');
+      console.debug('inject.js loaded');
       this.remove();
     };
     script.onerror = function () {
@@ -79,7 +79,7 @@
       port.onMessage.addListener(handleBackgroundMessage);
       port.onDisconnect.addListener(handleDisconnect);
 
-      console.log('✅ Bridge connected to background');
+      console.debug('Bridge connected to background');
 
       flushQueuedRequests();
     } catch (error) {
@@ -90,7 +90,7 @@
       if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
         reconnectAttempts++;
         const delay = RECONNECT_DELAY_BASE * reconnectAttempts;
-        console.log(
+        console.debug(
           `🔄 Reconnecting in ${delay}ms... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`
         );
         setTimeout(initConnection, delay);
@@ -126,7 +126,7 @@
     if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
       reconnectAttempts++;
       const delay = RECONNECT_DELAY_BASE * reconnectAttempts;
-      console.log(
+      console.debug(
         `🔄 Reconnecting in ${delay}ms... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`
       );
       setTimeout(initConnection, delay);
@@ -172,8 +172,14 @@
   function handleBackgroundMessage(message) {
     if (bridgeState.disposed) return;
     if (message?.type !== MESSAGE_TYPE) return;
+    if (
+      message.metadata?.bridgeToken &&
+      message.metadata.bridgeToken !== bridgeToken
+    ) {
+      return;
+    }
 
-    console.log('📬 Bridge received from background:', message);
+    console.debug('Bridge received from background:', message);
 
     // 只把本 content bridge 处理过的请求响应回传给页面。
     window.postMessage(withBridgeToken(message), '*');
@@ -193,13 +199,13 @@
       return;
     }
 
-    console.log('📨 Bridge received from page:', message);
-
     // 只转发请求到 background
     if (message.category !== MessageCategory.REQUEST) {
-      console.log('⏭️ Ignoring non-request message:', message.category);
+      console.debug('Ignoring non-request wallet bridge message:', message.category);
       return;
     }
+
+    console.debug('Bridge received request from page:', message);
 
     // 检查连接
     if (!port) {
@@ -267,7 +273,7 @@
     if (bridgeState.disposed) return;
     if (message?.type !== MESSAGE_TYPE) return;
 
-    console.log('📬 Content script received broadcast:', message);
+    console.debug('Content script received broadcast:', message);
 
     // 转发事件到页面
     if (message.category === MessageCategory.EVENT) {
@@ -292,11 +298,11 @@
       }
       port = null;
     }
-    console.log('🧹 Content script bridge disposed:', reason);
+    console.debug('Content script bridge disposed:', reason);
   };
 
   window.addEventListener('message', handlePageMessage);
   initConnection();
 
-  console.log('✅ Content script bridge ready');
+  console.debug('Content script bridge ready');
 })();
