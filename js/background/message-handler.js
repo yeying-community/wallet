@@ -89,6 +89,12 @@ import {
 import { validateNetworkConfig } from '../config/validation-rules.js';
 import { broadcastEvent } from './connection.js';
 import { normalizePopupBounds } from './window-utils.js';
+import {
+  ensureApprovalStateHydrated,
+  getPendingRequestById,
+  getActiveApprovalSummary,
+  recordApprovalResponse
+} from './approval-flow.js';
 
 async function persistPopupBounds(bounds) {
   const normalized = normalizePopupBounds(bounds);
@@ -528,7 +534,11 @@ export async function handleContentMessage(message, port, origin, tabId) {
 
   try {
     // 路由请求
-    const result = await routeRequest(method, params, { origin, tabId });
+    const result = await routeRequest(method, params, {
+      origin,
+      tabId,
+      clientRequestId: requestId
+    });
 
     // 发送响应
     sendResponse(port, requestId, result);
@@ -685,10 +695,35 @@ export async function handlePopupMessage(message, response) {
         break;
 
       case ApprovalMessageType.GET_PENDING_REQUEST:
-        const pendingRequest = state.pendingRequests.get(data.requestId);
+        await ensureApprovalStateHydrated();
+        const pendingRequest = getPendingRequestById(data.requestId);
         response({
           success: true,
           request: pendingRequest || null
+        });
+        break;
+
+      case ApprovalMessageType.GET_ACTIVE_APPROVAL:
+        await ensureApprovalStateHydrated();
+        {
+          const approval = getActiveApprovalSummary();
+          if (approval?.windowId) {
+            chrome.windows.update(approval.windowId, { focused: true }).catch(() => { });
+          }
+          response({
+            success: true,
+            approval
+          });
+        }
+        break;
+
+      case ApprovalMessageType.APPROVAL_RESPONSE:
+        await ensureApprovalStateHydrated();
+        response({
+          success: recordApprovalResponse(message.requestId, {
+            approved: message.approved,
+            account: message.account || null
+          })
         });
         break;
 

@@ -23,6 +23,7 @@ import {
   TransactionSendController
 } from './transaction/index.js';
 import { NetworkStorageKeys, SettingsStorageKeys, onStorageChanged } from '../storage/index.js';
+import { ApprovalMessageType } from '../protocol/extension-protocol.js';
 
 export class PopupController {
   constructor({ wallet, transaction, network, token }) {
@@ -127,6 +128,11 @@ export class PopupController {
   }
 
   async showInitialPage() {
+    const resumedApproval = await this.resumePendingApproval();
+    if (resumedApproval) {
+      return;
+    }
+
     let startupState;
     try {
       startupState = await this.wallet.getStartupState();
@@ -162,6 +168,28 @@ export class PopupController {
     console.warn('[PopupController] 启动状态未知，默认显示解锁页');
     showPage('unlockPage');
     this.renderUnlockReason(null);
+  }
+
+  async resumePendingApproval() {
+    if (!chrome?.runtime?.sendMessage) {
+      return false;
+    }
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: ApprovalMessageType.GET_ACTIVE_APPROVAL
+      });
+      const approval = response?.approval;
+      if (!approval?.windowId) {
+        return false;
+      }
+
+      setTimeout(() => window.close(), 50);
+      return true;
+    } catch (error) {
+      console.warn('[PopupController] 恢复待审批窗口失败:', error);
+      return false;
+    }
   }
 
   renderUnlockReason(info) {
