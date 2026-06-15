@@ -5,18 +5,92 @@
 
 import { createInternalError } from '../common/errors/index.js';
 import { ApprovalMessageType } from '../protocol/extension-protocol.js';
-import { POPUP_DIMENSIONS } from '../config/index.js';
+import { POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
 import { state } from './state.js';
 import { updateKeepAlive } from './offscreen.js';
 import { withPopupBoundsAsync } from './window-utils.js';
+import { getValue, setValue } from '../storage/index.js';
 
 let windowCleanupBound = false;
+let approvalStateHydrationPromise = null;
+const approvalWaiters = new Map();
+const APPROVAL_STORAGE_KEYS = {
+  PENDING_REQUESTS: 'approval_pending_requests',
+  APPROVAL_SESSIONS: 'approval_sessions'
+};
+
+function createErrorFromPlainObject(payload, fallbackMessage = 'Approval failed') {
+  const error = new Error(payload?.message || fallbackMessage);
+  if (Number.isFinite(payload?.code)) {
+    error.code = payload.code;
+  }
+  return error;
+}
+
+function serializePendingRequests() {
+  return Array.from(state.pendingRequests.entries()).map(([requestId, request]) => ([
+    requestId,
+    {
+      ...request,
+      response: request?.response ? { ...request.response } : null
+    }
+  ]));
+}
+
+function serializeApprovalSessions() {
+  return Array.from(state.approvalSessions.entries()).map(([sessionKey, session]) => ([
+    sessionKey,
+    {
+      ...session,
+      queue: getQueuedRequestIds(session)
+    }
+  ]));
+}
+
+function persistApprovalState() {
+  const payload = {
+    [APPROVAL_STORAGE_KEYS.PENDING_REQUESTS]: serializePendingRequests(),
+    [APPROVAL_STORAGE_KEYS.APPROVAL_SESSIONS]: serializeApprovalSessions()
+  };
+  setValue(APPROVAL_STORAGE_KEYS.PENDING_REQUESTS, payload[APPROVAL_STORAGE_KEYS.PENDING_REQUESTS]).catch((error) => {
+    console.warn('[ApprovalFlow] Failed to persist pending requests:', error);
+  });
+  setValue(APPROVAL_STORAGE_KEYS.APPROVAL_SESSIONS, payload[APPROVAL_STORAGE_KEYS.APPROVAL_SESSIONS]).catch((error) => {
+    console.warn('[ApprovalFlow] Failed to persist approval sessions:', error);
+  });
+}
+
+function updateApprovalState() {
+  updateKeepAlive();
+  persistApprovalState();
+}
+
+function clearApprovalWaiters(requestId, settle) {
+  const waiters = approvalWaiters.get(requestId);
+  if (!waiters?.length) return;
+  approvalWaiters.delete(requestId);
+  waiters.forEach((waiter) => {
+    if (waiter.timer) {
+      clearTimeout(waiter.timer);
+    }
+    settle(waiter);
+  });
+}
+
+function resolveApprovalWaiters(requestId, response) {
+  clearApprovalWaiters(requestId, (waiter) => waiter.resolve(response));
+}
+
+function rejectApprovalWaiters(requestId, error) {
+  clearApprovalWaiters(requestId, (waiter) => waiter.reject(error));
+}
 
 function updatePendingRequestWindow(requestId, windowId, tabId) {
   const pendingRequest = state.pendingRequests.get(requestId);
   if (!pendingRequest) return;
   pendingRequest.windowId = windowId;
   pendingRequest.windowTabId = tabId;
+  updateApprovalState();
 }
 
 function ensureWindowCleanupListener() {
@@ -28,8 +102,22 @@ function ensureWindowCleanupListener() {
       state.approvalSessions.delete(sessionKey);
       changed = true;
     }
+    const removedRequestIds = [];
+    for (const [requestId, request] of state.pendingRequests.entries()) {
+      if (request?.windowId !== windowId) continue;
+      removedRequestIds.push(requestId);
+    }
+    removedRequestIds.forEach((requestId) => {
+      removePendingRequest(requestId, {
+        error: createErrorFromPlainObject(
+          { message: 'User closed approval window', code: 4001 },
+          'User closed approval window'
+        )
+      });
+      changed = true;
+    });
     if (changed) {
-      updateKeepAlive();
+      updateApprovalState();
     }
   });
   windowCleanupBound = true;
@@ -48,7 +136,7 @@ async function resolveWindowTabId(windowId) {
 async function ensureApprovalSessionAlive(sessionKey, session) {
   if (!session?.windowId) {
     state.approvalSessions.delete(sessionKey);
-    updateKeepAlive();
+    updateApprovalState();
     return null;
   }
 
@@ -56,7 +144,7 @@ async function ensureApprovalSessionAlive(sessionKey, session) {
     await chrome.windows.get(session.windowId);
   } catch (error) {
     state.approvalSessions.delete(sessionKey);
-    updateKeepAlive();
+    updateApprovalState();
     return null;
   }
 
@@ -66,13 +154,13 @@ async function ensureApprovalSessionAlive(sessionKey, session) {
 
   if (!Number.isFinite(nextTabId)) {
     state.approvalSessions.delete(sessionKey);
-    updateKeepAlive();
+    updateApprovalState();
     return null;
   }
 
   if (session.tabId !== nextTabId) {
     session.tabId = nextTabId;
-    updateKeepAlive();
+    updateApprovalState();
   }
 
   return session;
@@ -81,7 +169,7 @@ async function ensureApprovalSessionAlive(sessionKey, session) {
 function setApprovalSession(sessionKey, value) {
   if (!sessionKey) return;
   state.approvalSessions.set(sessionKey, value);
-  updateKeepAlive();
+  updateApprovalState();
 }
 
 function getQueuedRequestIds(session) {
@@ -168,11 +256,11 @@ export function addPendingRequest(requestId, request) {
     request.sessionKey = getApprovalSessionKey(request.origin, request.tabId);
   }
 
-  updateKeepAlive();
+  updateApprovalState();
 }
 
 export function removePendingRequest(requestId, options = {}) {
-  const { activateNext = false } = options;
+  const { activateNext = false, error = null } = options;
   const request = state.pendingRequests.get(requestId);
   if (!state.pendingRequests.delete(requestId)) {
     return;
@@ -212,7 +300,224 @@ export function removePendingRequest(requestId, options = {}) {
     }
   }
 
-  updateKeepAlive();
+  if (error) {
+    rejectApprovalWaiters(requestId, error);
+  }
+
+  updateApprovalState();
+}
+
+export async function ensureApprovalStateHydrated(options = {}) {
+  const { force = false } = options;
+  if (force) {
+    approvalStateHydrationPromise = null;
+  }
+  if (approvalStateHydrationPromise) {
+    return approvalStateHydrationPromise;
+  }
+
+  approvalStateHydrationPromise = (async () => {
+    ensureWindowCleanupListener();
+
+    const [pendingEntries, sessionEntries] = await Promise.all([
+      getValue(APPROVAL_STORAGE_KEYS.PENDING_REQUESTS, []),
+      getValue(APPROVAL_STORAGE_KEYS.APPROVAL_SESSIONS, [])
+    ]);
+
+    state.pendingRequests.clear();
+    state.approvalSessions.clear();
+
+    const now = Date.now();
+    for (const entry of Array.isArray(pendingEntries) ? pendingEntries : []) {
+      const [requestId, request] = Array.isArray(entry) ? entry : [];
+      if (!requestId || !request) continue;
+      const expiresAt = Number.isFinite(request.expiresAt)
+        ? request.expiresAt
+        : (Number.isFinite(request.timestamp) ? request.timestamp + TIMEOUTS.REQUEST : now + TIMEOUTS.REQUEST);
+      if (expiresAt <= now) {
+        continue;
+      }
+      state.pendingRequests.set(requestId, {
+        ...request,
+        expiresAt
+      });
+    }
+
+    for (const entry of Array.isArray(sessionEntries) ? sessionEntries : []) {
+      const [sessionKey, session] = Array.isArray(entry) ? entry : [];
+      if (!sessionKey || !session) continue;
+      state.approvalSessions.set(sessionKey, {
+        ...session,
+        queue: getQueuedRequestIds(session)
+      });
+    }
+
+    for (const [sessionKey, session] of [...state.approvalSessions.entries()]) {
+      await ensureApprovalSessionAlive(sessionKey, session);
+    }
+
+    for (const [requestId, request] of [...state.pendingRequests.entries()]) {
+      const session = request?.sessionKey ? state.approvalSessions.get(request.sessionKey) : null;
+      if (session?.windowId) {
+        request.windowId = session.windowId;
+        request.windowTabId = session.tabId;
+        continue;
+      }
+
+      if (!Number.isFinite(request?.windowId)) {
+        request.windowId = null;
+        request.windowTabId = null;
+        continue;
+      }
+
+      try {
+        await chrome.windows.get(request.windowId);
+      } catch (error) {
+        request.windowId = null;
+        request.windowTabId = null;
+      }
+    }
+
+    updateApprovalState();
+  })();
+
+  return approvalStateHydrationPromise;
+}
+
+export function getClientRequestKey(origin, tabId, method, clientRequestId) {
+  const normalizedOrigin = origin || 'unknown';
+  const normalizedTabId = Number.isFinite(tabId) ? tabId : 'none';
+  const normalizedMethod = method || 'unknown';
+  const normalizedClientRequestId = clientRequestId || 'none';
+  return `${normalizedOrigin}:${normalizedTabId}:${normalizedMethod}:${normalizedClientRequestId}`;
+}
+
+export function findPendingRequestByClientKey(clientRequestKey) {
+  if (!clientRequestKey) return null;
+  for (const [requestId, request] of state.pendingRequests.entries()) {
+    if (request?.clientRequestKey !== clientRequestKey) continue;
+    return { requestId, request };
+  }
+  return null;
+}
+
+export async function ensureApprovalRequestVisible(requestId, fallback = {}) {
+  const request = state.pendingRequests.get(requestId);
+  if (!request) {
+    return null;
+  }
+
+  if (request.response) {
+    return request;
+  }
+
+  if (Number.isFinite(request.windowId)) {
+    try {
+      await chrome.windows.update(request.windowId, { focused: true });
+      return request;
+    } catch (error) {
+      request.windowId = null;
+      request.windowTabId = null;
+    }
+  }
+
+  await openApprovalWindow({
+    requestId,
+    requestType: fallback.requestType || request.approvalType || request.type,
+    origin: fallback.origin || request.origin,
+    tabId: Number.isFinite(fallback.tabId) ? fallback.tabId : request.tabId,
+    reuseSession: fallback.reuseSession ?? Boolean(request.reuseSession)
+  });
+
+  return state.pendingRequests.get(requestId) || null;
+}
+
+export function recordApprovalResponse(requestId, response) {
+  const request = state.pendingRequests.get(requestId);
+  if (!request) {
+    return false;
+  }
+
+  request.response = {
+    approved: Boolean(response?.approved),
+    account: response?.account || null,
+    submittedAt: Date.now()
+  };
+  updateApprovalState();
+  resolveApprovalWaiters(requestId, request.response);
+  return true;
+}
+
+export function waitForApprovalResponse(requestId, options = {}) {
+  const request = state.pendingRequests.get(requestId);
+  if (!request) {
+    return Promise.reject(new Error('Approval request not found'));
+  }
+  if (request.response) {
+    return Promise.resolve(request.response);
+  }
+
+  const now = Date.now();
+  const expiresAt = Number.isFinite(request.expiresAt)
+    ? request.expiresAt
+    : (Number.isFinite(request.timestamp) ? request.timestamp + TIMEOUTS.REQUEST : now + TIMEOUTS.REQUEST);
+  request.expiresAt = expiresAt;
+  updateApprovalState();
+
+  const timeoutMs = Math.max(0, expiresAt - now);
+  if (timeoutMs === 0) {
+    const error = createErrorFromPlainObject({ message: 'Approval request timeout', code: -32005 }, 'Approval request timeout');
+    removePendingRequest(requestId, { error });
+    return Promise.reject(error);
+  }
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const timeoutError = createErrorFromPlainObject(
+        { message: 'Approval request timeout', code: -32005 },
+        'Approval request timeout'
+      );
+      const activeRequest = state.pendingRequests.get(requestId);
+      if (!activeRequest || activeRequest.response) {
+        return;
+      }
+      if (Number.isFinite(activeRequest.windowId)) {
+        chrome.windows.remove(activeRequest.windowId).catch(() => { });
+      }
+      removePendingRequest(requestId, { error: timeoutError });
+    }, timeoutMs);
+
+    const waiters = approvalWaiters.get(requestId) || [];
+    waiters.push({ resolve, reject, timer });
+    approvalWaiters.set(requestId, waiters);
+  });
+}
+
+export function getPendingRequestById(requestId) {
+  return state.pendingRequests.get(requestId) || null;
+}
+
+export function getActiveApprovalSummary() {
+  let selected = null;
+
+  for (const [requestId, request] of state.pendingRequests.entries()) {
+    if (request?.response) continue;
+    const session = request?.sessionKey ? state.approvalSessions.get(request.sessionKey) : null;
+    const updatedAt = session?.updatedAt || request?.timestamp || 0;
+    if (!selected || updatedAt > selected.updatedAt) {
+      selected = {
+        requestId,
+        requestType: request.approvalType || request.type,
+        origin: request.origin || '',
+        tabId: request.tabId,
+        windowId: session?.windowId || request.windowId || null,
+        sessionKey: request.sessionKey || null,
+        updatedAt
+      };
+    }
+  }
+
+  return selected;
 }
 
 export async function openApprovalWindow(options) {

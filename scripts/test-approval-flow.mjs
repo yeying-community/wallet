@@ -290,7 +290,13 @@ async function run() {
   const { state, resetState } = stateModule.namespace;
   const {
     addPendingRequest,
+    ensureApprovalRequestVisible,
+    ensureApprovalStateHydrated,
+    findPendingRequestByClientKey,
+    getActiveApprovalSummary,
     removePendingRequest,
+    recordApprovalResponse,
+    waitForApprovalResponse,
     openApprovalWindow,
     hasActiveApprovalForSession
   } = approvalModule.namespace;
@@ -587,12 +593,66 @@ async function run() {
     );
   }
 
+  async function testPersistAndRestorePendingApprovalAcrossRestart() {
+    resetAll();
+
+    addPendingRequest('req-restore', {
+      type: 'sign_message',
+      approvalType: 'sign_message',
+      origin: 'https://restore.example',
+      tabId: 88,
+      reuseSession: true,
+      clientRequestKey: 'https://restore.example:88:personal_sign:rpc-1',
+      expiresAt: Date.now() + 60_000,
+      data: {
+        accountId: 'acct-1',
+        message: 'hello',
+        origin: 'https://restore.example'
+      },
+      timestamp: Date.now()
+    });
+
+    const popup = await openApprovalWindow({
+      requestId: 'req-restore',
+      requestType: 'sign_message',
+      origin: 'https://restore.example',
+      tabId: 88,
+      reuseSession: true
+    });
+
+    assert.equal(popup.reused, false, 'initial approval should create a popup');
+
+    resetState();
+    await ensureApprovalStateHydrated({ force: true });
+
+    const restored = findPendingRequestByClientKey('https://restore.example:88:personal_sign:rpc-1');
+    assert.ok(restored, 'pending approval should be restored from storage');
+    assert.equal(restored.requestId, 'req-restore');
+
+    const activeApproval = getActiveApprovalSummary();
+    assert.ok(activeApproval, 'restored approval should be surfaced to popup entry');
+    assert.equal(activeApproval.windowId, popup.windowId, 'restored approval should keep the original popup window');
+
+    await ensureApprovalRequestVisible('req-restore', {
+      requestType: 'sign_message',
+      origin: 'https://restore.example',
+      tabId: 88,
+      reuseSession: true
+    });
+
+    const waitPromise = waitForApprovalResponse('req-restore');
+    assert.equal(recordApprovalResponse('req-restore', { approved: true }), true);
+    const response = await waitPromise;
+    assert.equal(response.approved, true, 'restored approval should still resolve after popup response');
+  }
+
   const tests = [
     ['create and reuse approval popup', testCreateAndReuseWindow],
     ['queue follow-up approval while current one is active', testQueueFollowupWhileCurrentApprovalIsActive],
     ['fallback to new popup when reuse fails', testFallbackToNewWindowWhenReuseFails],
     ['clear session after popup close', testWindowRemovalCleansSession],
-    ['reuse unlock popup for follow-up approval', testUnlockPopupIsReusedByFollowupApproval]
+    ['reuse unlock popup for follow-up approval', testUnlockPopupIsReusedByFollowupApproval],
+    ['persist and restore pending approval across restart', testPersistAndRestorePendingApprovalAcrossRestart]
   ];
 
   for (const [name, testFn] of tests) {

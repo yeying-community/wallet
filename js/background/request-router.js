@@ -27,10 +27,14 @@ import { getTimestamp } from '../common/utils/time-utils.js';
 import { handleUcanSession, handleUcanSign } from './ucan.js';
 import {
   addPendingRequest,
+  ensureApprovalRequestVisible,
+  ensureApprovalStateHydrated,
   findPendingRequest,
+  findPendingRequestByClientKey,
   focusPendingWindow,
-  openApprovalWindow,
-  removePendingRequest
+  getClientRequestKey,
+  removePendingRequest,
+  waitForApprovalResponse
 } from './approval-flow.js';
 
 async function isActiveTab(tabId) {
@@ -83,6 +87,45 @@ async function ensureSiteAuthorized(origin) {
   }
 }
 
+async function waitForApprovalAndExecute({
+  existingPending,
+  createPending,
+  requestType,
+  origin,
+  tabId,
+  reuseSession = false,
+  onApproved,
+  onRejectedMessage = 'User rejected the request'
+}) {
+  let requestId = existingPending?.requestId || null;
+
+  if (!requestId) {
+    requestId = createPending();
+  }
+
+  await ensureApprovalRequestVisible(requestId, {
+    requestType,
+    origin,
+    tabId,
+    reuseSession
+  });
+
+  const response = await waitForApprovalResponse(requestId);
+  if (!response?.approved) {
+    removePendingRequest(requestId);
+    throw createUserRejectedError(onRejectedMessage);
+  }
+
+  try {
+    const result = await onApproved(response);
+    removePendingRequest(requestId, { activateNext: true });
+    return result;
+  } catch (error) {
+    removePendingRequest(requestId);
+    throw error;
+  }
+}
+
 /**
  * 路由请求到对应的处理器
  * @param {string} method - RPC 方法名
@@ -91,11 +134,12 @@ async function ensureSiteAuthorized(origin) {
  * @returns {Promise<any>} 处理结果
  */
 export async function routeRequest(method, params, metadata) {
-  const { origin, tabId } = metadata;
+  const { origin, tabId, clientRequestId } = metadata;
   const paramsArray = Array.isArray(params) ? params : (params == null ? [] : [params]);
   const rpcParams = params == null ? [] : params;
 
   console.log(`📍 Routing request: ${method}`, { origin, params });
+  await ensureApprovalStateHydrated();
 
   // ==================== 不需要解锁的方法 ====================
   
@@ -173,7 +217,7 @@ export async function routeRequest(method, params, metadata) {
   // ==================== 账户相关 ====================
 
   if (method === 'eth_requestAccounts') {
-    return handleEthRequestAccounts(origin, tabId);
+    return handleEthRequestAccounts(origin, tabId, clientRequestId);
   }
 
   if (method === 'wallet_requestPermissions') {
@@ -209,19 +253,19 @@ export async function routeRequest(method, params, metadata) {
   // ==================== 签名相关 ====================
 
   if (method === 'eth_sendTransaction') {
-    return handleSendTransaction(account.id, paramsArray, origin, tabId);
+    return handleSendTransaction(account.id, paramsArray, origin, tabId, clientRequestId);
   }
 
   if (method === 'eth_signTransaction') {
-    return handleSignTransaction(account.id, paramsArray, origin, tabId);
+    return handleSignTransaction(account.id, paramsArray, origin, tabId, clientRequestId);
   }
 
   if (method === 'personal_sign' || method === 'eth_sign') {
-    return handlePersonalSign(account.id, paramsArray, origin, tabId);
+    return handlePersonalSign(account.id, paramsArray, origin, tabId, method, clientRequestId);
   }
 
   if (method === 'eth_signTypedData' || method === 'eth_signTypedData_v4') {
-    return handleSignTypedData(account.id, paramsArray, origin, tabId);
+    return handleSignTypedData(account.id, paramsArray, origin, tabId, method, clientRequestId);
   }
 
   // ==================== RPC 转发 ====================
@@ -367,7 +411,7 @@ async function handleWatchAsset(origin, params, tabId) {
  * @param {number} tabId - 标签页 ID
  * @returns {Promise<string>} 交易哈希
  */
-async function handleSendTransaction(accountId, params, origin, tabId) {
+async function handleSendTransaction(accountId, params, origin, tabId, clientRequestId) {
   const [transaction] = params;
 
   if (!transaction || typeof transaction !== 'object') {
@@ -375,113 +419,42 @@ async function handleSendTransaction(accountId, params, origin, tabId) {
   }
 
   const pending = findPendingRequest('transaction', origin, tabId);
-  if (pending) {
+  const clientRequestKey = getClientRequestKey(origin, tabId, 'eth_sendTransaction', clientRequestId);
+  const existingPending = findPendingRequestByClientKey(clientRequestKey);
+  if (pending && !existingPending) {
     focusPendingWindow(pending);
     throw createError(-32002, 'Transaction approval already pending');
   }
 
-  // 🔑 创建签名请求
-  const requestId = `tx_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
-
-  addPendingRequest(requestId, {
-    type: 'transaction',
+  return waitForApprovalAndExecute({
+    existingPending,
+    requestType: 'transaction',
     origin,
     tabId,
-    data: {
-      accountId,
-      transaction,
-      origin
+    createPending: () => {
+      const requestId = `tx_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
+      addPendingRequest(requestId, {
+        type: 'transaction',
+        approvalType: 'transaction',
+        origin,
+        tabId,
+        clientRequestKey,
+        expiresAt: Date.now() + TIMEOUTS.REQUEST,
+        data: {
+          accountId,
+          transaction,
+          origin
+        },
+        timestamp: getTimestamp()
+      });
+      return requestId;
     },
-    timestamp: getTimestamp()
-  });
-
-  console.log('📝 Opening approval window for transaction:', requestId);
-
-  // 🪟 打开授权弹窗
-  return new Promise(async (resolve, reject) => {
-    const windowOptions = await withPopupBoundsAsync({
-      url: `html/approval.html?requestId=${requestId}&type=transaction`,
-      type: 'popup',
-      width: POPUP_DIMENSIONS.width,
-      height: POPUP_DIMENSIONS.height,
-      focused: true
-    });
-
-    chrome.windows.create(windowOptions, (window) => {
-      if (!window) {
-        removePendingRequest(requestId);
-        reject(createInternalError('Failed to open approval window'));
-        return;
-      }
-
-      const pendingRequest = state.pendingRequests.get(requestId);
-      if (pendingRequest) {
-        pendingRequest.windowId = window.id;
-      }
-
-      console.log('✅ Approval window opened:', window.id);
-
-      // 监听窗口关闭（用户取消）
-      const windowRemovedListener = (windowId) => {
-        if (windowId === window.id) {
-          console.log('🚪 Approval window closed by user');
-
-          chrome.windows.onRemoved.removeListener(windowRemovedListener);
-          chrome.runtime.onMessage.removeListener(messageListener);
-
-          if (state.pendingRequests.has(requestId)) {
-            removePendingRequest(requestId);
-            reject(createUserRejectedError('User closed approval window'));
-          }
-        }
-      };
-
-      // 监听授权结果
-      const messageListener = async (message, sender) => {
-        if (message.type === ApprovalMessageType.APPROVAL_RESPONSE && message.requestId === requestId) {
-          console.log('📨 Received approval response:', message);
-
-          chrome.windows.onRemoved.removeListener(windowRemovedListener);
-          chrome.runtime.onMessage.removeListener(messageListener);
-
-          removePendingRequest(requestId);
-
-          if (message.approved) {
-            try {
-              console.log('✅ Transaction approved, signing...');
-              const result = await signTransaction(accountId, transaction);
-              resolve(result.hash);
-            } catch (error) {
-              console.error('❌ Transaction signing failed:', error);
-              reject(error);
-            }
-          } else {
-            console.log('❌ Transaction rejected');
-            reject(createUserRejectedError('User rejected the transaction'));
-          }
-        }
-      };
-
-      chrome.windows.onRemoved.addListener(windowRemovedListener);
-      chrome.runtime.onMessage.addListener(messageListener);
-
-      // 超时处理
-      setTimeout(() => {
-        if (state.pendingRequests.has(requestId)) {
-          console.log('⏰ Approval timeout:', requestId);
-
-          chrome.windows.onRemoved.removeListener(windowRemovedListener);
-          chrome.runtime.onMessage.removeListener(messageListener);
-
-          removePendingRequest(requestId);
-
-          // 尝试关闭窗口
-          chrome.windows.remove(window.id).catch(() => { });
-
-          reject(createTimeoutError('Approval request timeout'));
-        }
-      }, 300000); // 5 分钟超时
-    });
+    onApproved: async () => {
+      console.log('✅ Transaction approved, signing...');
+      const result = await signTransaction(accountId, transaction);
+      return result.hash;
+    },
+    onRejectedMessage: 'User rejected the transaction'
   });
 }
 
@@ -493,7 +466,7 @@ async function handleSendTransaction(accountId, params, origin, tabId) {
  * @param {number} tabId - 标签页 ID
  * @returns {Promise<string>} 签名后的交易
  */
-async function handleSignTransaction(accountId, params, origin, tabId) {
+async function handleSignTransaction(accountId, params, origin, tabId, clientRequestId) {
   // 与 handleSendTransaction 类似，但只返回签名后的交易，不发送
   const [transaction] = params;
 
@@ -502,93 +475,38 @@ async function handleSignTransaction(accountId, params, origin, tabId) {
   }
 
   const pending = findPendingRequest('sign_transaction', origin, tabId);
-  if (pending) {
+  const clientRequestKey = getClientRequestKey(origin, tabId, 'eth_signTransaction', clientRequestId);
+  const existingPending = findPendingRequestByClientKey(clientRequestKey);
+  if (pending && !existingPending) {
     focusPendingWindow(pending);
     throw createError(-32002, 'Sign transaction request already pending');
   }
 
-  // 创建签名请求
-  const requestId = `sign_tx_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
-
-  addPendingRequest(requestId, {
-    type: 'sign_transaction',
+  return waitForApprovalAndExecute({
+    existingPending,
+    requestType: 'sign_transaction',
     origin,
     tabId,
-    data: {
-      accountId,
-      transaction,
-      origin
+    createPending: () => {
+      const requestId = `sign_tx_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
+      addPendingRequest(requestId, {
+        type: 'sign_transaction',
+        approvalType: 'sign_transaction',
+        origin,
+        tabId,
+        clientRequestKey,
+        expiresAt: Date.now() + TIMEOUTS.REQUEST,
+        data: {
+          accountId,
+          transaction,
+          origin
+        },
+        timestamp: getTimestamp()
+      });
+      return requestId;
     },
-    timestamp: getTimestamp()
-  });
-
-  // 打开授权弹窗
-  return new Promise(async (resolve, reject) => {
-    const windowOptions = await withPopupBoundsAsync({
-      url: `html/approval.html?requestId=${requestId}&type=sign_transaction`,
-      type: 'popup',
-      width: POPUP_DIMENSIONS.width,
-      height: POPUP_DIMENSIONS.height,
-      focused: true
-    });
-
-    chrome.windows.create(windowOptions, (window) => {
-      if (!window) {
-        removePendingRequest(requestId);
-        reject(createInternalError('Failed to open approval window'));
-        return;
-      }
-
-      const pendingRequest = state.pendingRequests.get(requestId);
-      if (pendingRequest) {
-        pendingRequest.windowId = window.id;
-      }
-
-      const windowRemovedListener = (windowId) => {
-        if (windowId === window.id) {
-          chrome.windows.onRemoved.removeListener(windowRemovedListener);
-          chrome.runtime.onMessage.removeListener(messageListener);
-
-          if (state.pendingRequests.has(requestId)) {
-            removePendingRequest(requestId);
-            reject(createUserRejectedError('User closed approval window'));
-          }
-        }
-      };
-
-      const messageListener = async (message, sender) => {
-        if (message.type === ApprovalMessageType.APPROVAL_RESPONSE && message.requestId === requestId) {
-          chrome.windows.onRemoved.removeListener(windowRemovedListener);
-          chrome.runtime.onMessage.removeListener(messageListener);
-
-          removePendingRequest(requestId);
-
-          if (message.approved) {
-            try {
-              const result = await signTransaction(accountId, transaction);
-              resolve(result);
-            } catch (error) {
-              reject(error);
-            }
-          } else {
-            reject(createUserRejectedError('User rejected the transaction'));
-          }
-        }
-      };
-
-      chrome.windows.onRemoved.addListener(windowRemovedListener);
-      chrome.runtime.onMessage.addListener(messageListener);
-
-      setTimeout(() => {
-        if (state.pendingRequests.has(requestId)) {
-          chrome.windows.onRemoved.removeListener(windowRemovedListener);
-          chrome.runtime.onMessage.removeListener(messageListener);
-          removePendingRequest(requestId);
-          chrome.windows.remove(window.id).catch(() => { });
-          reject(createTimeoutError('Approval request timeout'));
-        }
-      }, 300000);
-    });
+    onApproved: async () => signTransaction(accountId, transaction),
+    onRejectedMessage: 'User rejected the transaction'
   });
 }
 
@@ -600,7 +518,7 @@ async function handleSignTransaction(accountId, params, origin, tabId) {
  * @param {number} tabId - 标签页 ID
  * @returns {Promise<string>} 签名
  */
-async function handlePersonalSign(accountId, params, origin, tabId) {
+async function handlePersonalSign(accountId, params, origin, tabId, method, clientRequestId) {
   // personal_sign 参数顺序: [message, address]
   // eth_sign 参数顺序: [address, message]
   let messageToSign, address;
@@ -619,88 +537,40 @@ async function handlePersonalSign(accountId, params, origin, tabId) {
   }
 
   const pending = findPendingRequest('sign_message', origin, tabId);
-  if (pending) {
+  const clientRequestKey = getClientRequestKey(origin, tabId, method, clientRequestId);
+  const existingPending = findPendingRequestByClientKey(clientRequestKey);
+  if (pending && !existingPending) {
     focusPendingWindow(pending);
     throw createError(-32002, 'Sign message request already pending');
   }
 
-  // 创建签名请求
-  const requestId = `sign_msg_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
-
-  addPendingRequest(requestId, {
-    type: 'sign_message',
+  return waitForApprovalAndExecute({
+    existingPending,
+    requestType: 'sign_message',
     origin,
     tabId,
     reuseSession: true,
-    data: {
-      accountId,
-      message: messageToSign,
-      origin
-    },
-    timestamp: getTimestamp()
-  });
-
-  // 打开授权弹窗
-  return new Promise(async (resolve, reject) => {
-    let approvalWindow;
-    try {
-      approvalWindow = await openApprovalWindow({
-        requestId,
-        requestType: 'sign_message',
+    createPending: () => {
+      const requestId = `sign_msg_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
+      addPendingRequest(requestId, {
+        type: 'sign_message',
+        approvalType: 'sign_message',
         origin,
         tabId,
-        reuseSession: true
+        reuseSession: true,
+        clientRequestKey,
+        expiresAt: Date.now() + TIMEOUTS.REQUEST,
+        data: {
+          accountId,
+          message: messageToSign,
+          origin
+        },
+        timestamp: getTimestamp()
       });
-    } catch (error) {
-      removePendingRequest(requestId);
-      reject(error);
-      return;
-    }
-
-    const windowRemovedListener = (windowId) => {
-      if (windowId === approvalWindow.windowId) {
-        chrome.windows.onRemoved.removeListener(windowRemovedListener);
-        chrome.runtime.onMessage.removeListener(messageListener);
-
-        if (state.pendingRequests.has(requestId)) {
-          removePendingRequest(requestId);
-          reject(createUserRejectedError('User closed approval window'));
-        }
-      }
-    };
-
-    const messageListener = async (responseMessage, sender) => {
-      if (responseMessage.type === ApprovalMessageType.APPROVAL_RESPONSE && responseMessage.requestId === requestId) {
-        chrome.windows.onRemoved.removeListener(windowRemovedListener);
-        chrome.runtime.onMessage.removeListener(messageListener);
-
-        removePendingRequest(requestId);
-
-        if (responseMessage.approved) {
-          try {
-            const signature = await signMessage(accountId, messageToSign);
-            resolve(signature);
-          } catch (error) {
-            reject(error);
-          }
-        } else {
-          reject(createInternalError('User rejected the signature request'));
-        }
-      }
-    };
-
-    chrome.windows.onRemoved.addListener(windowRemovedListener);
-    chrome.runtime.onMessage.addListener(messageListener);
-
-    setTimeout(() => {
-      if (state.pendingRequests.has(requestId)) {
-        chrome.windows.onRemoved.removeListener(windowRemovedListener);
-        chrome.runtime.onMessage.removeListener(messageListener);
-        removePendingRequest(requestId);
-        chrome.windows.remove(approvalWindow.windowId).catch(() => { });
-        reject(createTimeoutError('Approval request timeout'));
-      }
-    }, 300000);
+      return requestId;
+    },
+    onApproved: async () => signMessage(accountId, messageToSign),
+    onRejectedMessage: 'User rejected the signature request'
   });
 }
 
@@ -712,7 +582,7 @@ async function handlePersonalSign(accountId, params, origin, tabId) {
  * @param {number} tabId - 标签页 ID
  * @returns {Promise<string>} 签名
  */
-async function handleSignTypedData(accountId, params, origin, tabId) {
+async function handleSignTypedData(accountId, params, origin, tabId, method, clientRequestId) {
   // eth_signTypedData_v4 参数: [address, typedData]
   const [address, typedDataJson] = params;
 
@@ -728,88 +598,42 @@ async function handleSignTypedData(accountId, params, origin, tabId) {
   }
 
   const pending = findPendingRequest('sign_typed_data', origin, tabId);
-  if (pending) {
+  const clientRequestKey = getClientRequestKey(origin, tabId, method, clientRequestId);
+  const existingPending = findPendingRequestByClientKey(clientRequestKey);
+  if (pending && !existingPending) {
     focusPendingWindow(pending);
     throw createError(-32002, 'Sign typed data request already pending');
   }
 
-  // 创建签名请求
-  const requestId = `sign_typed_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
-
-  addPendingRequest(requestId, {
-    type: 'sign_typed_data',
+  return waitForApprovalAndExecute({
+    existingPending,
+    requestType: 'sign_typed_data',
     origin,
     tabId,
     reuseSession: true,
-    data: {
-      accountId,
-      typedData,
-      origin
-    },
-    timestamp: getTimestamp()
-  });
-
-  // 打开授权弹窗
-  return new Promise(async (resolve, reject) => {
-    let approvalWindow;
-    try {
-      approvalWindow = await openApprovalWindow({
-        requestId,
-        requestType: 'sign_typed_data',
+    createPending: () => {
+      const requestId = `sign_typed_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
+      addPendingRequest(requestId, {
+        type: 'sign_typed_data',
+        approvalType: 'sign_typed_data',
         origin,
         tabId,
-        reuseSession: true
+        reuseSession: true,
+        clientRequestKey,
+        expiresAt: Date.now() + TIMEOUTS.REQUEST,
+        data: {
+          accountId,
+          typedData,
+          origin
+        },
+        timestamp: getTimestamp()
       });
-    } catch (error) {
-      removePendingRequest(requestId);
-      reject(error);
-      return;
-    }
-
-    const windowRemovedListener = (windowId) => {
-      if (windowId === approvalWindow.windowId) {
-        chrome.windows.onRemoved.removeListener(windowRemovedListener);
-        chrome.runtime.onMessage.removeListener(messageListener);
-
-        if (state.pendingRequests.has(requestId)) {
-          removePendingRequest(requestId);
-          reject(createUserRejectedError('User closed approval window'));
-        }
-      }
-    };
-
-    const messageListener = async (message, sender) => {
-      if (message.type === ApprovalMessageType.APPROVAL_RESPONSE && message.requestId === requestId) {
-        chrome.windows.onRemoved.removeListener(windowRemovedListener);
-        chrome.runtime.onMessage.removeListener(messageListener);
-
-        removePendingRequest(requestId);
-
-        if (message.approved) {
-          try {
-            const { domain, types, message: value } = typedData;
-            const signature = await signTypedData(accountId, domain, types, value);
-            resolve(signature);
-          } catch (error) {
-            reject(error);
-          }
-        } else {
-          reject(createUserRejectedError('User rejected the signature request'));
-        }
-      }
-    };
-
-    chrome.windows.onRemoved.addListener(windowRemovedListener);
-    chrome.runtime.onMessage.addListener(messageListener);
-
-    setTimeout(() => {
-      if (state.pendingRequests.has(requestId)) {
-        chrome.windows.onRemoved.removeListener(windowRemovedListener);
-        chrome.runtime.onMessage.removeListener(messageListener);
-        removePendingRequest(requestId);
-        chrome.windows.remove(approvalWindow.windowId).catch(() => { });
-        reject(createTimeoutError('Approval request timeout'));
-      }
-    }, 300000);
+      return requestId;
+    },
+    onApproved: async () => {
+      const { domain, types, message: value } = typedData;
+      return signTypedData(accountId, domain, types, value);
+    },
+    onRejectedMessage: 'User rejected the signature request'
   });
 }
