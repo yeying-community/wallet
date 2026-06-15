@@ -15,6 +15,14 @@ let unlockWindowId = null;
 let unlockWindowCreated = false;
 let unlockApprovalTabId = null;
 
+export function focusUnlockWindow() {
+  if (!unlockWindowId) {
+    return false;
+  }
+  chrome.windows.update(unlockWindowId, { focused: true }).catch(() => { });
+  return true;
+}
+
 async function resolveWindowTabId(windowId) {
   if (!Number.isFinite(windowId)) return null;
   try {
@@ -74,9 +82,7 @@ export function requestUnlock(context = {}) {
   }
 
   if (unlockPromise) {
-    if (unlockWindowId) {
-      chrome.windows.update(unlockWindowId, { focused: true }).catch(() => { });
-    }
+    focusUnlockWindow();
     return unlockPromise;
   }
 

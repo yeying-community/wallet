@@ -20,7 +20,7 @@ import { handleEthChainId, handleNetVersion, handleSwitchChain, handleAddEthereu
 import { handleRpcMethod } from './rpc-handler.js';
 import { signTransaction, signMessage, signTypedData } from './signing.js';
 import { getSelectedAccount, isAuthorized, updateUserSetting } from '../storage/index.js';
-import { requestUnlock } from './unlock-flow.js';
+import { focusUnlockWindow, requestUnlock } from './unlock-flow.js';
 import { withPopupBoundsAsync } from './window-utils.js';
 import { POPUP_DIMENSIONS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
@@ -32,10 +32,45 @@ import {
   findPendingRequest,
   findPendingRequestByClientKey,
   focusPendingWindow,
+  getActiveApprovalSummary,
   getClientRequestKey,
   removePendingRequest,
   waitForApprovalResponse
 } from './approval-flow.js';
+
+async function handleFocusPendingApproval(origin, tabId) {
+  await ensureApprovalStateHydrated();
+
+  const approval = getActiveApprovalSummary();
+  if (approval?.windowId) {
+    chrome.windows.update(approval.windowId, { focused: true }).catch(() => { });
+    return {
+      focused: true,
+      type: approval.requestType || 'approval',
+      requestId: approval.requestId || null,
+      origin: approval.origin || '',
+      tabId: Number.isFinite(approval.tabId) ? approval.tabId : null
+    };
+  }
+
+  if (focusUnlockWindow()) {
+    return {
+      focused: true,
+      type: 'unlock',
+      requestId: null,
+      origin: origin || '',
+      tabId: Number.isFinite(tabId) ? tabId : null
+    };
+  }
+
+  return {
+    focused: false,
+    type: null,
+    requestId: null,
+    origin: '',
+    tabId: null
+  };
+}
 
 async function isActiveTab(tabId) {
   if (!Number.isFinite(tabId)) return false;
@@ -140,6 +175,10 @@ export async function routeRequest(method, params, metadata) {
 
   console.log(`📍 Routing request: ${method}`, { origin, params });
   await ensureApprovalStateHydrated();
+
+  if (method === 'wallet_focusPendingApproval') {
+    return handleFocusPendingApproval(origin, tabId);
+  }
 
   // ==================== 不需要解锁的方法 ====================
   
