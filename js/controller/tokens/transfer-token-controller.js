@@ -2,6 +2,7 @@ export class TransferTokenController {
   constructor({ wallet, networkController } = {}) {
     this.wallet = wallet;
     this.networkController = networkController || null;
+    this.onTokenChanged = null;
     this.transferTokenMap = new Map();
     this.currentTransferToken = null;
     this.boundTokenDocClick = false;
@@ -9,6 +10,10 @@ export class TransferTokenController {
 
   setNetworkController(controller) {
     this.networkController = controller;
+  }
+
+  setTokenChangedHandler(handler) {
+    this.onTokenChanged = typeof handler === 'function' ? handler : null;
   }
 
   bindEvents() {
@@ -198,5 +203,6 @@ export class TransferTokenController {
       : (token?.symbol || '原生代币');
     labelEl.dataset.value = selectedId;
     this.updateTransferTokenSelection();
+    this.onTokenChanged?.(token || null);
   }
 }

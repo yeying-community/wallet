@@ -63,6 +63,26 @@ body {
   padding: 12px 20px 20px;
 }
 
+.transfer-fee-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 38px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+  color: #4b5563;
+  font-size: 13px;
+}
+
+#transferFeeEstimate {
+  color: #111827;
+  font-weight: 600;
+  text-align: right;
+}
+
 /* ========== 创建钱包页面布局（中间可滚动） ========== */
 #setPasswordPage {
   padding: 0;

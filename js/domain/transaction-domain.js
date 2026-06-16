@@ -29,13 +29,40 @@ export class TransactionDomain extends BaseDomain {
    * @returns {string} Wei 数量（十六进制）
    */
   parseEther(ether) {
-    const value = typeof ether === 'string' ? parseFloat(ether) : ether;
-    if (isNaN(value) || value < 0) {
-      throw new Error('无效的 ETH 数量');
+    return this.parseUnits(ether, 18, 'ETH');
+  }
+
+  /**
+   * 代币数量转换为最小单位
+   * @param {string|number} amount - 数量
+   * @param {number} decimals - 小数位
+   * @param {string} label - 单位标签
+   * @returns {string} 最小单位（十六进制）
+   */
+  parseUnits(amount, decimals = 18, label = 'token') {
+    const raw = String(amount ?? '').trim();
+    const parsedDecimals = Number(decimals);
+    const decimalPlaces = Number.isInteger(parsedDecimals) && parsedDecimals >= 0 ? parsedDecimals : 18;
+    if (!raw || decimalPlaces < 0) {
+      throw new Error(`无效的 ${label} 数量`);
     }
-    // 转换为 Wei
-    const wei = BigInt(Math.floor(value * 1e18));
-    return '0x' + wei.toString(16);
+    if (!/^\d+(\.\d+)?$/.test(raw)) {
+      throw new Error(`无效的 ${label} 数量`);
+    }
+
+    const [integerPart, fractionPart = ''] = raw.split('.');
+    if (fractionPart.length > decimalPlaces) {
+      throw new Error(`${label} 最多支持 ${decimalPlaces} 位小数`);
+    }
+
+    const paddedFraction = fractionPart.padEnd(decimalPlaces, '0');
+    const integerValue = BigInt(integerPart || '0') * (10n ** BigInt(decimalPlaces));
+    const fractionValue = paddedFraction ? BigInt(paddedFraction) : 0n;
+    const value = integerValue + fractionValue;
+    if (value <= 0n) {
+      throw new Error(`无效的 ${label} 数量`);
+    }
+    return `0x${value.toString(16)}`;
   }
 
   /**
@@ -44,14 +71,32 @@ export class TransactionDomain extends BaseDomain {
    * @returns {string} ETH 数量
    */
   formatEther(wei) {
+    return this.formatUnits(wei, 18);
+  }
+
+  /**
+   * 最小单位转换为代币数量
+   * @param {string} value - 最小单位（十六进制或十进制）
+   * @param {number} decimals - 小数位
+   * @returns {string} 格式化数量
+   */
+  formatUnits(value, decimals = 18) {
     try {
-      if (wei === null || wei === undefined || wei === '') {
+      if (value === null || value === undefined || value === '') {
         return '0.000000';
       }
-      const normalized = typeof wei === 'string' ? wei.trim() : wei;
-      const weiBigInt = BigInt(normalized);
-      const ether = Number(weiBigInt) / 1e18;
-      return ether.toFixed(6);
+      const normalized = typeof value === 'string' ? value.trim() : value;
+      const raw = BigInt(normalized);
+      const decimalPlaces = Number.isInteger(Number(decimals)) && Number(decimals) >= 0 ? Number(decimals) : 18;
+      const base = 10n ** BigInt(decimalPlaces);
+      const integer = raw / base;
+      const fraction = raw % base;
+      if (decimalPlaces === 0) {
+        return integer.toString();
+      }
+      const fractionText = fraction.toString().padStart(decimalPlaces, '0').slice(0, 6);
+      const formatted = `${integer}.${fractionText}`.replace(/\.?0+$/, '');
+      return formatted || '0';
     } catch (error) {
       return '0.000000';
     }
@@ -86,7 +131,7 @@ export class TransactionDomain extends BaseDomain {
    * @returns {Promise<string>} 交易哈希
    */
   async sendTransaction(txParams) {
-    const { from, to, value, data, gas, chainId, rpcUrl } = txParams;
+    const { from, to, value, data, gas, chainId, rpcUrl, token } = txParams;
 
     // 参数验证
     if (!from || !isValidAddress(from)) {
@@ -108,7 +153,8 @@ export class TransactionDomain extends BaseDomain {
       data: data || '0x',
       gas: gas || undefined,
       chainId,
-      rpcUrl
+      rpcUrl,
+      token: token || null
     });
 
     // 添加到交易记录
@@ -117,6 +163,7 @@ export class TransactionDomain extends BaseDomain {
       from,
       to,
       value,
+      token: token || null,
       timestamp: getTimestamp(),
       status: 'pending',
       chainId: chainId || null
@@ -181,10 +228,11 @@ export class TransactionDomain extends BaseDomain {
 
   /**
    * 获取当前 Gas 价格
+   * @param {Object} params - 网络参数
    * @returns {Promise<string>} 当前 Gas 价格（十六进制）
    */
-  async getGasPrice() {
-    const result = await this._sendMessage(TransactionMessageType.GET_GAS_PRICE);
+  async getGasPrice(params = {}) {
+    const result = await this._sendMessage(TransactionMessageType.GET_GAS_PRICE, params);
     return result.gasPrice;
   }
 

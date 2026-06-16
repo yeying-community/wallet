@@ -27,6 +27,10 @@ export class TokensListController {
     return this.transferController.getCurrentTransferToken();
   }
 
+  setTransferTokenChangedHandler(handler) {
+    this.transferController.setTokenChangedHandler(handler);
+  }
+
   async loadTokenBalances() {
     try {
       if (!this.wallet || !this.token) {

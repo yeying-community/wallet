@@ -73,8 +73,9 @@ export class TransactionListController {
         const isSent = normalizedCurrent
           ? from.toLowerCase() === normalizedCurrent
           : Boolean(tx?.hash);
-        const counterparty = isSent ? to : from;
-        const amountText = this.transaction.formatTransactionValue(tx?.value || '0', isSent);
+        const token = tx?.token || null;
+        const counterparty = token?.recipient || (isSent ? to : from);
+        const amountText = this.formatTransactionAmount(tx, isSent);
         const statusText = this.transaction.getStatusText(tx?.status || 'pending');
         const timeValue = tx?.timestamp ? tx.timestamp : getTimestamp();
         return `
@@ -102,6 +103,17 @@ export class TransactionListController {
     });
 
     container.scrollTop = previousScrollTop;
+  }
+
+  formatTransactionAmount(tx, isSent) {
+    const token = tx?.token || null;
+    if (token?.amount) {
+      const decimals = Number.isFinite(Number(token.decimals)) ? Number(token.decimals) : 18;
+      const value = this.transaction?.formatUnits?.(token.amount, decimals) || '0';
+      const prefix = isSent ? '-' : '+';
+      return `${prefix}${value} ${token.symbol || 'TOKEN'}`;
+    }
+    return this.transaction.formatTransactionValue(tx?.value || '0', isSent);
   }
 
   openTransactionDetail(txHash) {
