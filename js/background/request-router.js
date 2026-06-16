@@ -22,7 +22,7 @@ import { signTransaction, signMessage, signTypedData } from './signing.js';
 import { getSelectedAccount, isAuthorized, updateUserSetting } from '../storage/index.js';
 import { focusUnlockWindow, requestUnlock } from './unlock-flow.js';
 import { withPopupBoundsAsync } from './window-utils.js';
-import { POPUP_DIMENSIONS } from '../config/index.js';
+import { POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { handleUcanSession, handleUcanSign } from './ucan.js';
 import {
