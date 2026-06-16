@@ -228,10 +228,11 @@ export class TransactionDomain extends BaseDomain {
 
   /**
    * 获取当前 Gas 价格
+   * @param {Object} params - 网络参数
    * @returns {Promise<string>} 当前 Gas 价格（十六进制）
    */
-  async getGasPrice() {
-    const result = await this._sendMessage(TransactionMessageType.GET_GAS_PRICE);
+  async getGasPrice(params = {}) {
+    const result = await this._sendMessage(TransactionMessageType.GET_GAS_PRICE, params);
     return result.gasPrice;
   }
 

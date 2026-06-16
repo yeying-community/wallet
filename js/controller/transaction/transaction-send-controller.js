@@ -11,6 +11,8 @@ export class TransactionSendController {
     this.network = network;
     this.balanceController = balanceController || null;
     this.transactionListController = transactionListController || null;
+    this.feeEstimateTimer = null;
+    this.feeEstimateSeq = 0;
   }
 
   setBalanceController(controller) {
@@ -115,6 +117,113 @@ export class TransactionSendController {
     }
   }
 
+  scheduleFeeEstimate(token = null) {
+    if (this.feeEstimateTimer) {
+      clearTimeout(this.feeEstimateTimer);
+    }
+    this.feeEstimateTimer = setTimeout(() => {
+      void this.updateFeeEstimate(token);
+    }, 350);
+  }
+
+  async updateFeeEstimate(token = null) {
+    const seq = ++this.feeEstimateSeq;
+    const recipientInput = document.getElementById('recipientAddress');
+    const amountInput = document.getElementById('amount');
+    const recipient = recipientInput?.value.trim();
+    const amount = amountInput?.value;
+
+    if (!recipient || !isValidAddress(recipient) || !amount || Number(amount) <= 0) {
+      this.setFeeEstimateText('-');
+      return;
+    }
+    this.setFeeEstimateText('预估中...');
+
+    try {
+      const account = await this.wallet.getCurrentAccount();
+      if (!account) {
+        this.setFeeEstimateText('-');
+        return;
+      }
+      const chainId = await this.network.getChainId();
+      const rpcUrl = await this.network.getRpcUrl();
+      const txParams = this.buildTransactionParams({
+        from: account.address,
+        recipient,
+        amount,
+        chainId,
+        rpcUrl,
+        token
+      });
+
+      const [gasHex, gasPriceHex] = await Promise.all([
+        this.transaction.estimateGas(txParams),
+        this.transaction.getGasPrice({
+          chainId,
+          rpcUrl
+        })
+      ]);
+      if (seq !== this.feeEstimateSeq) {
+        return;
+      }
+      this.setFeeEstimateText(this.formatFeeEstimate(gasHex, gasPriceHex));
+    } catch (error) {
+      if (seq !== this.feeEstimateSeq) {
+        return;
+      }
+      this.setFeeEstimateText(this.formatFeeEstimateError(error));
+    }
+  }
+
+  setFeeEstimateText(text) {
+    const el = document.getElementById('transferFeeEstimate');
+    if (el) {
+      el.textContent = text || '-';
+    }
+  }
+
+  formatFeeEstimate(gasHex, gasPriceHex) {
+    try {
+      const gas = BigInt(gasHex);
+      const gasPrice = BigInt(gasPriceHex);
+      const feeWei = gas * gasPrice;
+      const fee = this.transaction.formatEther(`0x${feeWei.toString(16)}`);
+      return `${fee} ETH`;
+    } catch {
+      return '-';
+    }
+  }
+
+  formatFeeEstimateError(error) {
+    const rawMessage = this.getErrorMessage(error);
+    const revertMessage = this.extractRevertMessage(rawMessage);
+    const message = revertMessage || rawMessage;
+    const normalized = message.toLowerCase();
+
+    if (normalized.includes('transfer amount exceeds balance')) {
+      return '通证余额不足';
+    }
+    if (normalized.includes('insufficient funds')) {
+      return '余额不足';
+    }
+    if (normalized.includes('user rejected') || normalized.includes('user denied')) {
+      return '用户已取消';
+    }
+    if (this.isNetworkEstimateError(normalized)) {
+      return 'RPC 不可用';
+    }
+    if (normalized.includes('execution reverted')) {
+      const reason = this.sanitizeShortError(message.replace(/^execution reverted:?\s*/i, ''));
+      return reason ? `交易会失败: ${reason}` : '交易会失败';
+    }
+    if (revertMessage) {
+      return `交易会失败: ${this.sanitizeShortError(revertMessage)}`;
+    }
+
+    const shortMessage = this.sanitizeShortError(message);
+    return shortMessage ? `预估失败: ${shortMessage}` : '预估失败';
+  }
+
   buildTransactionParams({ from, recipient, amount, chainId, rpcUrl, token }) {
     if (!token || token.isNative) {
       return {
@@ -153,7 +262,7 @@ export class TransactionSendController {
   }
 
   formatTransactionError(error) {
-    const rawMessage = String(error?.reason || error?.shortMessage || error?.message || error || '').trim();
+    const rawMessage = this.getErrorMessage(error);
     const revertMessage = this.extractRevertMessage(rawMessage);
     const message = revertMessage || rawMessage;
     const normalized = message.toLowerCase();
@@ -175,6 +284,39 @@ export class TransactionSendController {
     }
 
     return `发送失败: ${message || '交易提交失败'}`;
+  }
+
+  getErrorMessage(error) {
+    return String(error?.reason || error?.shortMessage || error?.message || error || '').trim();
+  }
+
+  isNetworkEstimateError(normalizedMessage) {
+    return normalizedMessage.includes('rpc url not configured')
+      || normalizedMessage.includes('failed to fetch')
+      || normalizedMessage.includes('network')
+      || normalizedMessage.includes('timeout')
+      || normalizedMessage.includes('http ')
+      || normalizedMessage.includes('rpc error')
+      || normalizedMessage.includes('disconnected')
+      || normalizedMessage.includes('could not establish connection')
+      || normalizedMessage.includes('message port closed')
+      || normalizedMessage.includes('receiving end does not exist');
+  }
+
+  sanitizeShortError(message) {
+    const cleaned = String(message || '')
+      .replace(/\s*\(action=.*$/i, '')
+      .replace(/\s*\{.*$/s, '')
+      .replace(/^error:\s*/i, '')
+      .replace(/^estimate gas failed:?\s*/i, '')
+      .replace(/^交易预估失败[:：]?\s*/i, '')
+      .trim();
+
+    if (!cleaned || cleaned === '[object Object]') {
+      return '';
+    }
+
+    return cleaned.length > 48 ? `${cleaned.slice(0, 48)}...` : cleaned;
   }
 
   extractRevertMessage(message) {

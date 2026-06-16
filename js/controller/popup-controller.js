@@ -84,6 +84,9 @@ export class PopupController {
       onNetworkChanged: () => this.handleNetworkChanged()
     });
     this.tokensListController.setNetworkController(this.networkController);
+    this.tokensListController.setTransferTokenChangedHandler((token) => {
+      this.transactionSendController.scheduleFeeEstimate(token);
+    });
     this.addTokenController.setNetworkController(this.networkController);
     this.accountsListController = null;
     this.accountDetailController = new AccountDetailController({
@@ -611,6 +614,10 @@ export class PopupController {
     showPage('transferPage');
     await this.tokensListController?.prepareTransferSelectors?.();
     await this.contactsController?.loadContacts?.();
+    this.transactionSendController.setFeeEstimateText('-');
+    this.transactionSendController.scheduleFeeEstimate(
+      this.tokensListController?.getCurrentTransferToken?.() || null
+    );
   }
 
   async lockWallet() {
@@ -707,6 +714,22 @@ export class PopupController {
         this.closeWalletHeaderMenu();
         await this.openTransferPage();
       });
+    }
+
+    const updateTransferFee = () => {
+      this.transactionSendController.scheduleFeeEstimate(
+        this.tokensListController?.getCurrentTransferToken?.() || null
+      );
+    };
+    const recipientInput = document.getElementById('recipientAddress');
+    if (recipientInput && !recipientInput.dataset.feeEstimateBound) {
+      recipientInput.dataset.feeEstimateBound = '1';
+      recipientInput.addEventListener('input', updateTransferFee);
+    }
+    const amountInput = document.getElementById('amount');
+    if (amountInput && !amountInput.dataset.feeEstimateBound) {
+      amountInput.dataset.feeEstimateBound = '1';
+      amountInput.addEventListener('input', updateTransferFee);
     }
 
     const walletHeaderMenuBtn = document.getElementById('walletHeaderMenuBtn');

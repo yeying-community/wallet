@@ -352,6 +352,121 @@ async function handleSendTransactionMessage(data) {
   }
 }
 
+async function handleEstimateGasMessage(data) {
+  const { from, to, value, data: txData, gas, gasLimit, chainId, rpcUrl } = data || {};
+  if (!from || !to) {
+    return { success: false, error: 'Invalid transaction params' };
+  }
+
+  try {
+    const estimateRpcUrl = await resolveTransactionRpcUrl({ chainId, rpcUrl });
+    const tx = {
+      from,
+      to,
+      value: value || '0x0',
+      data: txData || '0x'
+    };
+    const limit = gasLimit || gas;
+    if (limit) {
+      tx.gas = limit;
+    }
+    const gasEstimate = await callJsonRpc(estimateRpcUrl, 'eth_estimateGas', [tx]);
+    return { success: true, gas: gasEstimate };
+  } catch (error) {
+    return { success: false, error: normalizeRpcUiError(error, 'Estimate gas failed') };
+  }
+}
+
+async function handleGetGasPriceMessage(data = {}) {
+  try {
+    const { chainId, rpcUrl } = data || {};
+    const gasRpcUrl = await resolveTransactionRpcUrl({ chainId, rpcUrl });
+    const gasPrice = await callJsonRpc(gasRpcUrl, 'eth_gasPrice', []);
+    return { success: true, gasPrice };
+  } catch (error) {
+    return { success: false, error: normalizeRpcUiError(error, 'Failed to get gas price') };
+  }
+}
+
+async function resolveTransactionRpcUrl({ chainId = null, rpcUrl = null } = {}) {
+  if (rpcUrl) {
+    return rpcUrl;
+  }
+
+  if (chainId) {
+    const network = await getStoredNetworkByChainId(chainId);
+    const networkRpcUrl = network?.rpcUrl || network?.rpc;
+    if (networkRpcUrl) {
+      return networkRpcUrl;
+    }
+  }
+
+  const resolvedRpcUrl = await resolveRpcUrl();
+  if (!resolvedRpcUrl) {
+    throw new Error('RPC URL not configured');
+  }
+  return resolvedRpcUrl;
+}
+
+async function callJsonRpc(rpcUrl, method, params) {
+  if (!rpcUrl) {
+    throw new Error('RPC URL not configured');
+  }
+
+  const response = await fetch(rpcUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: getTimestamp(),
+      method,
+      params
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const payload = await response.json();
+  if (payload.error) {
+    throw new Error(payload.error.message || 'RPC error');
+  }
+
+  return payload.result;
+}
+
+function normalizeRpcUiError(error, fallbackMessage) {
+  const rawMessage = String(error?.reason || error?.shortMessage || error?.message || error || fallbackMessage || '').trim();
+  const reason = extractRpcRevertReason(rawMessage);
+  const message = reason || rawMessage || fallbackMessage;
+  return truncateRpcUiError(message);
+}
+
+function extractRpcRevertReason(message) {
+  if (!message) return '';
+  const reasonMatch = message.match(/reason="([^"]+)"/);
+  if (reasonMatch?.[1]) return reasonMatch[1];
+  const revertedQuotedMatch = message.match(/execution reverted:\s*"([^"]+)"/i);
+  if (revertedQuotedMatch?.[1]) return revertedQuotedMatch[1];
+  const revertedTextMatch = message.match(/execution reverted:?\s*([^(]+)?/i);
+  if (revertedTextMatch?.[1]) return revertedTextMatch[1].trim();
+  const argsMatch = message.match(/"args":\s*\[\s*"([^"]+)"/);
+  if (argsMatch?.[1]) return argsMatch[1];
+  return '';
+}
+
+function truncateRpcUiError(message) {
+  const cleaned = String(message || '')
+    .replace(/\s*\(action=.*$/i, '')
+    .replace(/\s*\{.*$/s, '')
+    .trim();
+  if (!cleaned) {
+    return 'RPC error';
+  }
+  return cleaned.length > 120 ? `${cleaned.slice(0, 120)}...` : cleaned;
+}
+
 async function resolveRpcUrl(chainIdOverride = null) {
   const targetChainId = chainIdOverride || state.currentChainId;
   let rpcUrl = state.currentRpcUrl;
@@ -901,6 +1016,14 @@ export async function handlePopupMessage(message, response) {
 
       case TransactionMessageType.SEND_TRANSACTION:
         response(await handleSendTransactionMessage(data));
+        break;
+
+      case TransactionMessageType.ESTIMATE_GAS:
+        response(await handleEstimateGasMessage(data));
+        break;
+
+      case TransactionMessageType.GET_GAS_PRICE:
+        response(await handleGetGasPriceMessage(data));
         break;
 
       case TransactionMessageType.GET_TRANSACTIONS:
