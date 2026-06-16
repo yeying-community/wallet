@@ -21,6 +21,7 @@ export {
 export {
   DEFAULT_NETWORK,
   NETWORKS,
+  BUILTIN_TOKENS_BY_CHAIN_ID,
   NETWORK_TYPES,
   RPC_CONFIG,
   getNetworkConfig,
@@ -147,4 +148,3 @@ export {
   validateUrl,
   validateNumberRange
 } from './validation-rules.js';
-

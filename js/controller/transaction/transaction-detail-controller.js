@@ -40,12 +40,13 @@ export class TransactionDetailController {
 
     this.setDetailValueWithTitle('txDetailHash', formatTxHash(tx?.hash || ''), tx?.hash || '');
     this.setDetailValueWithTitle('txDetailFrom', shortenAddress(tx?.from || ''), tx?.from || '');
-    this.setDetailValueWithTitle('txDetailTo', shortenAddress(tx?.to || ''), tx?.to || '');
+    const displayTo = tx?.token?.recipient || tx?.to || '';
+    this.setDetailValueWithTitle('txDetailTo', shortenAddress(displayTo), displayTo);
 
     const networkMeta = await this.getNetworkMeta(tx?.chainId);
     const symbol = networkMeta?.symbol || await this.getCurrentNetworkSymbol();
-    const amount = this.transaction?.formatEther?.(tx?.value || '0') || '0';
-    this.setDetailValue('txDetailValue', `${amount} ${symbol}`);
+    const amountInfo = this.formatTransactionAmount(tx, symbol);
+    this.setDetailValue('txDetailValue', amountInfo);
 
     const timeValue = tx?.timestamp ? tx.timestamp : getTimestamp();
     this.setDetailValue('txDetailTime', formatLocaleDateTime(timeValue));
@@ -104,6 +105,17 @@ export class TransactionDetailController {
     const row = document.getElementById(id);
     if (!row) return;
     row.classList.toggle('hidden', !show);
+  }
+
+  formatTransactionAmount(tx, nativeSymbol) {
+    const token = tx?.token || null;
+    if (token?.amount) {
+      const decimals = Number.isFinite(Number(token.decimals)) ? Number(token.decimals) : 18;
+      const amount = this.transaction?.formatUnits?.(token.amount, decimals) || '0';
+      return `${amount} ${token.symbol || 'TOKEN'}`;
+    }
+    const amount = this.transaction?.formatEther?.(tx?.value || '0') || '0';
+    return `${amount} ${nativeSymbol}`;
   }
 
   bindDetailActions() {

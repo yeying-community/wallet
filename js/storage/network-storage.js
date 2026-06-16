@@ -142,11 +142,13 @@ export async function ensureDefaultNetworks(defaults) {
       }
     }
 
-    if (!merged || merged.length === 0) {
-      merged = Object.entries(defaults || {}).map(([key, network]) => ({
-        ...network,
-        key
-      }));
+    const defaultNetworks = Object.entries(defaults || {}).map(([key, network]) => ({
+      ...network,
+      key
+    }));
+    const mergedDefaults = mergeNetworks(merged, defaultNetworks);
+    if (mergedDefaults.length !== merged.length) {
+      merged = mergedDefaults;
       changed = true;
     }
 

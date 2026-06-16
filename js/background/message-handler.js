@@ -302,7 +302,7 @@ async function resolveAccountIdByAddress(address) {
 }
 
 async function handleSendTransactionMessage(data) {
-  const { from, to, value, data: txData, gas, gasLimit, chainId } = data || {};
+  const { from, to, value, data: txData, gas, gasLimit, chainId, token } = data || {};
   if (!from || !to || !value) {
     return { success: false, error: 'Invalid transaction params' };
   }
@@ -338,6 +338,7 @@ async function handleSendTransactionMessage(data) {
       from,
       to,
       value: result?.value ?? value,
+      token: token || null,
       timestamp: getTimestamp(),
       status: 'pending',
       chainId: normalizedChainId || state.currentChainId || null

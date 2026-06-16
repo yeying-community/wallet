@@ -59,7 +59,7 @@ import { getCachedPassword, cachePassword, refreshPasswordCache, clearPasswordCa
 import { resetLockTimer, lockWallet } from './keyring.js';
 import { normalizeChainId } from '../common/chain/index.js';
 import { broadcastEvent, sendEvent } from './connection.js';
-import { TIMEOUTS, LIMITS, NETWORKS, DEFAULT_NETWORK, isDeveloperFeatureEnabled } from '../config/index.js';
+import { TIMEOUTS, LIMITS, NETWORKS, DEFAULT_NETWORK, BUILTIN_TOKENS_BY_CHAIN_ID, isDeveloperFeatureEnabled } from '../config/index.js';
 import { notifyUnlocked } from './unlock-flow.js';
 import { updateKeepAlive } from './offscreen.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
@@ -69,6 +69,30 @@ import { mpcService } from './mpc-service.js';
 
 const CUSTOM_TOKENS_KEY = 'custom_tokens';
 const MIN_PASSWORD_LENGTH = 8;
+
+function getCurrentTokenChainId() {
+  const chainId = state.currentChainId || '0x1';
+  try {
+    return normalizeChainId(chainId);
+  } catch {
+    return chainId;
+  }
+}
+
+function mergeTokenLists(builtinTokens, customTokens) {
+  const byAddress = new Map();
+  [...(builtinTokens || []), ...(customTokens || [])].forEach((token) => {
+    const address = token?.address?.toLowerCase();
+    if (!address) return;
+    const previous = byAddress.get(address) || {};
+    byAddress.set(address, {
+      ...previous,
+      ...token,
+      address
+    });
+  });
+  return Array.from(byAddress.values());
+}
 
 /**
  * 检查钱包是否已初始化
@@ -708,7 +732,7 @@ export async function handleAddToken(token) {
     return { success: false, error: validation.errors?.[0] || 'invalid token' };
   }
 
-  const chainId = token.chainId || state.currentChainId || '0x1';
+  const chainId = token.chainId || getCurrentTokenChainId();
   const normalizedAddress = token.address.toLowerCase();
   const decimals = Number.isFinite(token.decimals)
     ? token.decimals
@@ -761,11 +785,15 @@ export async function handleGetTokenBalances(address) {
     return { success: false, error: addressValidation.error || 'invalid address' };
   }
 
-  const chainId = state.currentChainId || '0x1';
+  const chainId = getCurrentTokenChainId();
 
   try {
     const allTokens = await getUserSetting(CUSTOM_TOKENS_KEY, {});
-    const tokens = Array.isArray(allTokens[chainId]) ? allTokens[chainId] : [];
+    const customTokens = Array.isArray(allTokens[chainId]) ? allTokens[chainId] : [];
+    const builtinTokens = Array.isArray(BUILTIN_TOKENS_BY_CHAIN_ID[chainId])
+      ? BUILTIN_TOKENS_BY_CHAIN_ID[chainId]
+      : [];
+    const tokens = mergeTokenLists(builtinTokens, customTokens);
 
     if (tokens.length === 0) {
       return { success: true, tokens: [] };

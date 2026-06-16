@@ -24,7 +24,47 @@ export const NETWORKS = {
       symbol: 'YYT',
       decimals: 18
     }
+  },
+  ethereum: {
+    id: 'ethereum',
+    name: 'Ethereum Mainnet',
+    rpc: 'https://ethereum-rpc.publicnode.com',
+    rpcUrl: 'https://ethereum-rpc.publicnode.com',
+    chainId: 1,
+    chainIdHex: '0x1',
+    symbol: 'ETH',
+    decimals: 18,
+    explorer: 'https://etherscan.io',
+    type: 'mainnet',
+    isTestnet: false,
+    nativeCurrency: {
+      name: 'Ether',
+      symbol: 'ETH',
+      decimals: 18
+    }
   }
+};
+
+// ==================== 内置通证配置 ====================
+export const BUILTIN_TOKENS_BY_CHAIN_ID = {
+  '0x1': [
+    {
+      address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+      symbol: 'USDC',
+      name: 'USD Coin',
+      decimals: 6,
+      chainId: '0x1',
+      builtin: true
+    },
+    {
+      address: '0xdac17f958d2ee523a2206206994597c13d831ec7',
+      symbol: 'USDT',
+      name: 'Tether USD',
+      decimals: 6,
+      chainId: '0x1',
+      builtin: true
+    }
+  ]
 };
 
 // ==================== 网络类型 ====================

@@ -771,13 +771,10 @@ export class PopupController {
     if (sendBtn) {
       sendBtn.addEventListener('click', async () => {
         const selectedToken = this.tokensListController?.getCurrentTransferToken?.();
-        if (selectedToken && !selectedToken.isNative) {
-          showError('暂不支持通证转账');
-          return;
-        }
         await this.transactionSendController.handleSendTransaction({
           requestPassword: () => this.promptWalletPassword(),
           silentBalanceRefresh: true,
+          token: selectedToken || null,
           onSuccess: async () => {
             showPage('walletPage');
             this.switchWalletTab('activity');
