@@ -9,6 +9,7 @@
 
 ## 文档
 
+- [钱包用户使用手册](./docs/钱包用户使用手册.md)
 - [DApp 接入手册](./docs/DApp接入手册.md)
 - [SIWE 协议说明与使用指南](./docs/SIWE协议说明.md)
 - [UCAN 协议说明与使用指南（Chat / Router / WebDAV 模板）](./docs/UCAN协议说明.md)

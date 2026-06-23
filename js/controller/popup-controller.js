@@ -25,6 +25,8 @@ import {
 import { NetworkStorageKeys, SettingsStorageKeys, onStorageChanged } from '../storage/index.js';
 import { ApprovalMessageType } from '../protocol/extension-protocol.js';
 
+const USER_GUIDE_URL = 'https://github.com/yeying-community/wallet/blob/main/docs/%E9%92%B1%E5%8C%85%E7%94%A8%E6%88%B7%E4%BD%BF%E7%94%A8%E6%89%8B%E5%86%8C.md';
+
 export class PopupController {
   constructor({ wallet, transaction, network, token }) {
     this.wallet = wallet;
@@ -506,6 +508,19 @@ export class PopupController {
     button.setAttribute('aria-expanded', 'false');
   }
 
+  async openUserGuide() {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+        await chrome.tabs.create({ url: USER_GUIDE_URL });
+        return;
+      }
+      window.open(USER_GUIDE_URL, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      console.error('[PopupController] 打开帮助文档失败:', error);
+      showError('打开帮助文档失败');
+    }
+  }
+
   bindBackEvents() {
     document.querySelectorAll('.back-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -771,6 +786,14 @@ export class PopupController {
       networkManageBtn.addEventListener('click', async () => {
         this.closeWalletHeaderMenu();
         await this.networkController?.handleOpenNetworkManage?.();
+      });
+    }
+
+    const helpDocBtn = document.getElementById('helpDocBtn');
+    if (helpDocBtn) {
+      helpDocBtn.addEventListener('click', async () => {
+        this.closeWalletHeaderMenu();
+        await this.openUserGuide();
       });
     }
 
