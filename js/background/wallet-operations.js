@@ -25,12 +25,15 @@ import {
   saveAccount,
   getWallet,
   getWallets,
+  getAccounts,
   getWalletAccounts,
   updateAccount,
   deleteAccount,
   deleteWallet,
   clearSelectedAccount,
   getMap,
+  setStorage,
+  WalletStorageKeys,
   getAuthorizationList,
   deleteAuthorization,
   clearAllAuthorizations,
@@ -403,9 +406,14 @@ export async function handleCreateSubAccount(walletId, accountName, password) {
       return { success: false, error: '只有 HD 钱包支持创建子账户' };
     }
 
-    // 计算新账户索引
+    // 计算新账户索引：取现有最大 index + 1，避免删除中间子账户后用 length 复用
+    // 已存在的 index（相同 derivationPath/地址/account-id 会覆盖旧账户）。
     const walletAccounts = await getWalletAccounts(walletId);
-    const newIndex = walletAccounts.length;
+    const maxIndex = walletAccounts.reduce(
+      (max, account) => Math.max(max, Number.isFinite(account.index) ? account.index : 0),
+      -1
+    );
+    const newIndex = maxIndex + 1;
 
     // 调用 vault.js 派生子账户
     const subAccount = await deriveSubAccount(
@@ -900,7 +908,12 @@ export async function changePassword(oldPassword, newPassword) {
     throw new Error('钱包不存在');
   }
 
-  const updates = [];
+  // 1) 先在内存中重加密所有钱包与账户。任一步失败立即抛出，此时尚未写入任何存储，
+  //    状态保持旧密码不变（天然回滚）。
+  const nextWalletsMap = { ...walletsMap };
+  const nextAccountsMap = { ...(await getAccounts()) };
+  let updatedWallets = 0;
+  let updatedAccounts = 0;
 
   for (const wallet of wallets) {
     if (!wallet?.id) continue;
@@ -915,22 +928,30 @@ export async function changePassword(oldPassword, newPassword) {
       oldPassword,
       newPassword
     );
-    updates.push(updated);
-  }
 
-  await mpcService.reencryptDeviceKeys(oldPassword, newPassword);
-
-  let updatedWallets = 0;
-  let updatedAccounts = 0;
-  for (const updated of updates) {
     if (updated?.wallet) {
-      await saveWallet(updated.wallet);
+      nextWalletsMap[updated.wallet.id] = updated.wallet;
       updatedWallets += 1;
     }
     for (const account of updated?.accounts || []) {
-      await updateAccount(account);
+      nextAccountsMap[account.id] = account;
       updatedAccounts += 1;
     }
+  }
+
+  // 2) 一次性原子写入钱包与账户。chrome.storage.local.set 对多 key 是单次原子提交，
+  //    避免逐账户写入被 Service Worker 回收打断、造成新旧密码混杂导致导出/解锁失败。
+  await setStorage({
+    [WalletStorageKeys.WALLETS]: nextWalletsMap,
+    [WalletStorageKeys.ACCOUNTS]: nextAccountsMap
+  });
+
+  // 3) 钱包密钥一致后再迁移 MPC 设备密钥。MPC 为独立存储，失败不应回退已成功的钱包改密，
+  //    仅记录告警，由 MPC 流程单独重试。
+  try {
+    await mpcService.reencryptDeviceKeys(oldPassword, newPassword);
+  } catch (error) {
+    console.warn('[ChangePassword] MPC 设备密钥重加密失败，钱包密码已更新:', error?.message || error);
   }
 
   cachePassword(newPassword, TIMEOUTS.PASSWORD);

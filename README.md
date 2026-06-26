@@ -15,6 +15,7 @@
 - [UCAN 协议说明与使用指南（Chat / Router / WebDAV 模板）](./docs/UCAN协议说明.md)
 - [WebDAV 备份同步说明](./docs/WebDAV备份同步说明.md)
 - [MPC 门限钱包方案](./docs/MPC门限钱包方案.md)
+- [V1 架构基线](./docs/V1架构基线.md)
 
 
 ## 标准 / EIP 支持矩阵
@@ -68,4 +69,8 @@ curl -o qrcode.min.js https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js
 
 ## 回归检查
 
-- 审批弹窗复用回归脚本：`node --experimental-vm-modules scripts/test-approval-flow.mjs`
+> 本项目零运行时/构建依赖，测试同样不引入第三方框架，统一使用 Node 内置 test runner 与 `assert`。
+
+- 单元测试（crypto / vault / keyring，Node 内置 runner）：`node --test --test-force-exit "tests/*.test.mjs"`
+  - `--test-force-exit`：keyring 会经 sync/mpc 单例留下定时器，强制退出避免事件循环挂起。
+- 审批弹窗复用回归脚本：`node --experimental-vm-modules tests/test-approval-flow.mjs`
