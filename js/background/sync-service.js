@@ -23,54 +23,40 @@ import {
 } from '../storage/index.js';
 import { WALLET_TYPE, deriveSubAccount, getWalletMnemonic } from './vault.js';
 import { getCachedPassword } from './password-cache.js';
-
-const SYNC_PAYLOAD_VERSION = 1;
-const SYNC_FILENAME = 'payload.json.enc';
-const SYNC_DEBOUNCE_MS = 1500;
-const DEFAULT_SYNC_ENDPOINT = 'https://webdav.yeying.pub/dav';
-const LEGACY_DEFAULT_APP_ID = 'yeying-wallet';
-const DEFAULT_UCAN_ACTION = 'write';
-const APP_SCOPE_PREFIX = 'apps';
-const LEGACY_UCAN_RESOURCES = new Set([
-  'profile',
-  'webdav/*',
-  'webdav#access',
-  'webdav/access',
-  'webdav'
-]);
-const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
-const AUTO_SYNC_JITTER_MS = 30 * 1000;
-const AUTO_SYNC_MAX_BACKOFF_MS = 15 * 60 * 1000;
-const DEFAULT_LOG_MAX_COUNT = 100000;
-const DEFAULT_LOG_RETENTION_DAYS = 30;
-const LOG_MAX_COUNT_MIN = 50;
-const LOG_MAX_COUNT_MAX = 100000;
-const LOG_RETENTION_MIN_DAYS = 1;
-const LOG_RETENTION_MAX_DAYS = 365;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-const SETTINGS_KEYS = {
-  enabled: 'backupSyncEnabled',
-  endpoint: 'backupSyncEndpoint',
-  authMode: 'backupSyncAuthMode',
-  authToken: 'backupSyncAuthToken',
-  authTokenExpiresAt: 'backupSyncAuthTokenExpiresAt',
-  ucanToken: 'backupSyncUcanToken',
-  ucanResource: 'backupSyncUcanResource',
-  ucanAction: 'backupSyncUcanAction',
-  ucanAudience: 'backupSyncUcanAudience',
-  basicAuth: 'backupSyncBasicAuth',
-  dirty: 'backupSyncDirty',
-  lastPullAt: 'backupSyncLastPullAt',
-  lastPushAt: 'backupSyncLastPushAt',
-  pendingDelete: 'backupSyncPendingDelete',
-  networkIds: 'backupSyncNetworkIds',
-  conflicts: 'backupSyncConflicts',
-  remoteMeta: 'backupSyncRemoteMeta',
-  logs: 'backupSyncLogs',
-  logMaxCount: 'backupSyncLogMaxCount',
-  logRetentionDays: 'backupSyncLogRetentionDays'
-};
+import {
+  SYNC_PAYLOAD_VERSION,
+  SYNC_FILENAME,
+  SYNC_DEBOUNCE_MS,
+  DEFAULT_SYNC_ENDPOINT,
+  LEGACY_DEFAULT_APP_ID,
+  DEFAULT_UCAN_ACTION,
+  APP_SCOPE_PREFIX,
+  LEGACY_UCAN_RESOURCES,
+  AUTO_SYNC_INTERVAL_MS,
+  AUTO_SYNC_JITTER_MS,
+  AUTO_SYNC_MAX_BACKOFF_MS,
+  DEFAULT_LOG_MAX_COUNT,
+  DEFAULT_LOG_RETENTION_DAYS,
+  LOG_MAX_COUNT_MIN,
+  LOG_MAX_COUNT_MAX,
+  LOG_RETENTION_MIN_DAYS,
+  LOG_RETENTION_MAX_DAYS,
+  DAY_MS,
+  SETTINGS_KEYS
+} from './sync/constants.js';
+import {
+  joinUrl,
+  buildPayloadFilename,
+  isLegacyUcanResource,
+  normalizeUcanResource,
+  normalizeUcanAction,
+  normalizeLogMaxCount,
+  normalizeLogRetentionDays,
+  extractAppIdFromResource,
+  getDefaultUcanAppId,
+  getDefaultUcanResource,
+  normalizeBearerToken
+} from './sync/sync-utils.js';
 
 class BackupSyncService {
   constructor() {
@@ -1152,96 +1138,6 @@ class BackupSyncService {
   _dirPath(path) {
     return path.endsWith('/') ? path : `${path}/`;
   }
-}
-
-function joinUrl(base, path) {
-  if (!base) return path;
-  const normalizedBase = base.endsWith('/') ? base : `${base}/`;
-  const normalizedPath = path.replace(/^\/+/, '');
-  return new URL(normalizedPath, normalizedBase).toString();
-}
-
-function buildPayloadFilename(fingerprint) {
-  const safe = String(fingerprint || '').trim();
-  if (!safe) return SYNC_FILENAME;
-  return `payload.${safe}.json.enc`;
-}
-
-function isLegacyUcanResource(value) {
-  const trimmed = String(value || '').trim();
-  if (!trimmed) return true;
-  const normalized = trimmed.toLowerCase();
-  if (LEGACY_UCAN_RESOURCES.has(normalized)) return true;
-  const legacyResource = `app:${LEGACY_DEFAULT_APP_ID}`;
-  if (normalized === legacyResource) {
-    return normalized !== getDefaultUcanResource().toLowerCase();
-  }
-  return false;
-}
-
-function normalizeUcanResource(value) {
-  const trimmed = String(value || '').trim();
-  if (!trimmed || isLegacyUcanResource(trimmed)) {
-    return getDefaultUcanResource();
-  }
-  return trimmed;
-}
-
-function normalizeUcanAction(value, { forceDefault = false } = {}) {
-  const trimmed = String(value || '').trim();
-  if (forceDefault || !trimmed || trimmed === '*') {
-    return DEFAULT_UCAN_ACTION;
-  }
-  return trimmed;
-}
-
-function normalizeLogMaxCount(value) {
-  const numberValue = Number(value);
-  if (!Number.isFinite(numberValue)) return DEFAULT_LOG_MAX_COUNT;
-  const rounded = Math.floor(numberValue);
-  if (rounded < LOG_MAX_COUNT_MIN) return LOG_MAX_COUNT_MIN;
-  if (rounded > LOG_MAX_COUNT_MAX) return LOG_MAX_COUNT_MAX;
-  return rounded;
-}
-
-function normalizeLogRetentionDays(value) {
-  const numberValue = Number(value);
-  if (!Number.isFinite(numberValue)) return DEFAULT_LOG_RETENTION_DAYS;
-  const rounded = Math.floor(numberValue);
-  if (rounded < LOG_RETENTION_MIN_DAYS) return LOG_RETENTION_MIN_DAYS;
-  if (rounded > LOG_RETENTION_MAX_DAYS) return LOG_RETENTION_MAX_DAYS;
-  return rounded;
-}
-
-function extractAppIdFromResource(resource) {
-  const trimmed = String(resource || '').trim();
-  if (!trimmed.toLowerCase().startsWith('app:')) return '';
-  const appId = trimmed.slice(4).trim();
-  if (!appId || appId.includes('*')) return '';
-  return appId;
-}
-
-function getDefaultUcanAppId() {
-  try {
-    const id = typeof chrome !== 'undefined' ? chrome?.runtime?.id : '';
-    if (id) return String(id).toLowerCase();
-  } catch {
-    // ignore
-  }
-  return LEGACY_DEFAULT_APP_ID;
-}
-
-function getDefaultUcanResource() {
-  return `app:${getDefaultUcanAppId()}`;
-}
-
-function normalizeBearerToken(value) {
-  const trimmed = String(value || '').trim();
-  if (!trimmed) return '';
-  return trimmed
-    .replace(/^Bearer\s+/i, '')
-    .replace(/^UCAN\s+/i, '')
-    .trim();
 }
 
 export const backupSyncService = new BackupSyncService();
