@@ -14,6 +14,10 @@ export const LOG_RETENTION_MIN_DAYS = 1;
 export const LOG_RETENTION_MAX_DAYS = 365;
 export const DEFAULT_MPC_UCAN_RESOURCE = 'mpc';
 export const DEFAULT_MPC_UCAN_ACTION = 'coordinate';
+export const DEFAULT_MPC_AUTH_SCHEME = 'ucan';
+export const DEFAULT_MPC_E2E_SUITE = 'x25519-aes-gcm';
+export const DEFAULT_MPC_REFRESH_POLICY = 'manual';
+export const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
 export const LEGACY_UCAN_RESOURCES = new Set([
   'profile',
   'webdav/*',
