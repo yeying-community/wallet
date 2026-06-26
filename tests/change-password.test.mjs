@@ -37,7 +37,7 @@ globalThis.chrome = {
   }
 };
 
-const ops = await import('../js/background/wallet-operations.js');
+const ops = await import('../js/background/operations/wallet.js');
 const keyring = await import('../js/background/keyring.js');
 
 const P = 'Pass-1111';

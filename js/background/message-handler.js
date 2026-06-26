@@ -22,26 +22,39 @@ import {
   handleGetAccountById,
   handleUpdateAccountName,
   handleDeleteAccount,
-  handleGetBalance,
-  handleAddToken,
-  handleGetTokenBalances,
   handleExportPrivateKey,
   handleExportMnemonic,
+  handleResetWallet,
+  changePassword
+} from './operations/wallet.js';
+import {
+  handleGetBalance,
+  handleAddToken,
+  handleGetTokenBalances
+} from './operations/tokens.js';
+import {
   handleGetAuthorizedSites,
   handleGetSiteUcanSession,
   handleRevokeSite,
-  handleClearAllAuthorizations,
-  handleResetWallet,
+  handleClearAllAuthorizations
+} from './operations/sites.js';
+import {
   handleGetContacts,
   handleAddContact,
   handleUpdateContact,
-  handleDeleteContact,
+  handleDeleteContact
+} from './operations/contacts.js';
+import {
   handleGetBackupSyncSettings,
   handleUpdateBackupSyncSettings,
   handleBackupSyncNow,
   handleBackupSyncClearRemote,
   handleBackupSyncClearLogs,
   handleBackupSyncLogEvent,
+  handleResolveBackupSyncConflict
+} from './operations/backup-sync.js';
+import {
+  handleCreateMpcWallet,
   handleGetMpcSettings,
   handleUpdateMpcSettings,
   handleGenerateMpcCoordinatorUcan,
@@ -60,11 +73,8 @@ import {
   handleMpcGetAuditExportConfig,
   handleMpcUpdateAuditExportConfig,
   handleMpcExportAuditLogs,
-  handleMpcFlushAuditExportQueue,
-  handleCreateMpcWallet,
-  handleResolveBackupSyncConflict,
-  changePassword
-} from './wallet-operations.js';
+  handleMpcFlushAuditExportQueue
+} from './operations/mpc.js';
 import { state } from './state.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
 import { normalizeChainId } from '../common/chain/index.js';
