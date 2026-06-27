@@ -632,20 +632,37 @@ const INJECT_SCRIPT_URL = import.meta.url;
   window.web3.currentProvider = provider;
 
   // EIP-6963: 多钱包发现标准
-  const EIP6963_INFO = {
-    uuid: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+  // uuid 按规范每次页面加载随机生成，标识本次 provider 会话（同一加载内多次公告复用）。
+  const EIP6963_UUID = (() => {
+    try {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+      }
+    } catch (error) {
+      // ignore，落到下方回退实现
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  })();
+
+  // info 与 ProviderDetail 按规范冻结，避免 DApp 侧篡改。
+  const EIP6963_INFO = Object.freeze({
+    uuid: EIP6963_UUID,
     name: 'YeYing Wallet',
     icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNiIgZmlsbD0iIzYzNjZGMSIvPjwvc3ZnPg==',
     rdns: 'io.github.yeying'
-  };
+  });
 
   function announceProvider() {
     window.dispatchEvent(
       new CustomEvent('eip6963:announceProvider', {
-        detail: {
+        detail: Object.freeze({
           info: EIP6963_INFO,
           provider
-        }
+        })
       })
     );
   }

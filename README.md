@@ -26,6 +26,7 @@
 | --- | --- | --- |
 | EIP-1193 Provider API | ✅ 已支持 | `request` + 连接/链/账户事件（`connect`/`disconnect`/`accountsChanged`/`chainChanged`） |
 | EIP-1193 错误码 | ✅ 已支持 | 标准化错误返回 |
+| EIP-6963 多 Provider 发现 | ✅ 已支持 | `eip6963:announceProvider` / `eip6963:requestProvider`；uuid 按加载随机生成、info/detail 冻结 |
 | EIP-2255 Permissions | ✅ 已支持 | `wallet_requestPermissions` / `wallet_getPermissions` / `wallet_revokePermissions`（仅 `eth_accounts`） |
 | EIP-3326 | ✅ 已支持 | `wallet_switchEthereumChain` |
 | EIP-3085 | ✅ 已支持 | `wallet_addEthereumChain` |
