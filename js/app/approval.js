@@ -1412,9 +1412,9 @@ class ApprovalApp {
     setText('siweVersion', siweInfo.version, 'siweVersionRow');
     setText('siweChainId', siweInfo.chainId, 'siweChainIdRow');
     setText('siweNonce', siweInfo.nonce, 'siweNonceRow');
-    setText('siweIssuedAt', siweInfo.issuedAt, 'siweIssuedAtRow');
-    setText('siweExpiration', siweInfo.expirationTime, 'siweExpirationRow');
-    setText('siweNotBefore', siweInfo.notBefore, 'siweNotBeforeRow');
+    setText('siweIssuedAt', this.formatSiweTime(siweInfo.issuedAt), 'siweIssuedAtRow');
+    setText('siweExpiration', this.formatSiweTime(siweInfo.expirationTime), 'siweExpirationRow');
+    setText('siweNotBefore', this.formatSiweTime(siweInfo.notBefore), 'siweNotBeforeRow');
     setText('siweRequestId', siweInfo.requestId, 'siweRequestIdRow');
 
     const statementRow = document.getElementById('siweStatementRow');
@@ -1540,6 +1540,28 @@ class ApprovalApp {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return null;
     return date;
+  }
+
+  // SIWE 时间字段（issuedAt/expirationTime/notBefore）原文是 UTC ISO，
+  // 展示时转为浏览器本地时区并附时区名；原始 UTC 仍可在完整消息原文中查看。
+  // 解析失败则原样返回，避免吞掉异常格式。
+  formatSiweTime(value) {
+    const date = this.safeParseDate(value);
+    if (!date) return value || '';
+    try {
+      return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+        timeZoneName: 'short',
+      });
+    } catch {
+      return value || '';
+    }
   }
 
   renderAddChainRequest() {
