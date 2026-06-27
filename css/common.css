@@ -5,14 +5,37 @@
   box-sizing: border-box;
 }
 
+:root {
+  /* 英文观感统一：跨平台系统字体兜底，中文走各平台原生中文栈。
+     解决旧栈 'SF Pro Text'（仅 macOS）在 Windows/Linux 上完全回退到 Segoe UI
+     导致中英文字重/字距不齐的问题。 */
+  --font-sans:
+    system-ui,
+    -apple-system, BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto, 'Helvetica Neue', Arial,
+    'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', '微软雅黑',
+    sans-serif;
+
+  /* 等宽字体栈：用于地址 / 交易哈希 / 私钥 / 助记词展示。
+     解决旧栈只有 'Courier New'，在现代系统上字距/字形过时的观感。 */
+  --font-mono:
+    'SF Mono', 'JetBrains Mono', 'Cascadia Code', Menlo, Consolas,
+    'Courier New', monospace;
+}
+
 body {
   width: 380px;
   min-height: 600px;
-  font-family: 'SF Pro Text', 'SF Pro Display', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Segoe UI', sans-serif;
+  font-family: var(--font-sans);
+  /* 余额/地址/价格等数字在等宽数字下对齐：避免「100」「1000」参差 */
+  font-variant-numeric: tabular-nums;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: #111827;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 .container {
@@ -409,7 +432,7 @@ select.input:disabled,
 textarea.input {
   resize: vertical;
   min-height: 80px;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   line-height: 1.5;
 }
 
