@@ -8,7 +8,7 @@ import { cleanupConnections } from './connection.js';
 import { state } from './state.js';
 import { updateKeepAlive } from './offscreen.js';
 import { NETWORKS, DEFAULT_NETWORK } from '../config/index.js';
-import { getSelectedNetworkName, getUserSetting, ensureDefaultNetworks, getNetworkConfigByKey } from '../storage/index.js';
+import { getSelectedNetworkName, getUserSetting, ensureDefaultNetworks, getNetworkConfigByKey, initStorageBackend } from '../storage/index.js';
 import { normalizeChainId } from '../common/chain/index.js';
 import { normalizePopupBounds } from './window-utils.js';
 import { backupSyncService } from './sync-service.js';
@@ -31,8 +31,19 @@ async function init() {
   console.log('🚀 YeYing Wallet Background Script Starting...');
 
   try {
-    await ensureApprovalStateHydrated();
     await diagnostics.init();
+    // 必须在任何依赖后端的存储读写（ensureDefaultNetworks / backupSyncService.init /
+    // mpcService.init 等）之前完成迁移决策；失败则保持 chrome 后端，资产可见。
+    const backend = await initStorageBackend({
+      onError: (error) => diagnostics.record({
+        category: 'storage',
+        level: 'error',
+        action: 'migrate-idb',
+        message: error?.message || 'migration failed'
+      })
+    });
+    console.log('🗄️ Storage backend:', backend);
+    await ensureApprovalStateHydrated();
     await updateKeepAlive();
     await backupSyncService.init();
     await mpcService.init();
