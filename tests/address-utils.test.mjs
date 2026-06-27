@@ -175,12 +175,15 @@ test('isValidEnsName：合法 / 非法', () => {
   assert.equal(isValidEnsName('trailing-.eth'), false, 'label 以 - 结尾');
   assert.equal(isValidEnsName('A.eth'), false, '大写非法（实现要求小写）');
   assert.equal(isValidEnsName(null), false);
-});
-
-test('★ isValidEnsName：当前实现未做 3-100 长度限制（待补）', () => {
-  // ENS 规范要求 3-100 字符；此实现只用正则不限长度。锁定现状。
-  const veryLong = 'a'.repeat(200) + '.eth';
-  assert.equal(isValidEnsName(veryLong), true, '当前未拒超长；后续补长度限制');
+  // 长度边界（实现 < 3 || > 100 拒绝）
+  assert.equal(isValidEnsName('a.b'), true, '长度 == 3 通过');
+  assert.equal(isValidEnsName('ab.c'), true, '长度 4 通过');
+  assert.equal(isValidEnsName('a.x'), true, '最短 3 字符');
+  assert.equal(isValidEnsName('a.'), false, '长度 2 被拒');
+  const tooLong = 'a'.repeat(99) + '.eth'; // 103 字符
+  assert.equal(isValidEnsName(tooLong), false, '长度 > 100 被拒');
+  const ok100 = 'a'.repeat(96) + '.eth'; // 100 字符
+  assert.equal(isValidEnsName(ok100), true, '长度 == 100 通过');
 });
 
 // ==================== isValidUnstoppableDomain ====================
@@ -206,13 +209,8 @@ test('isValidUnstoppableDomain：非法后缀 / 非法 label', () => {
 test('validateAddressOrEns：地址 / ENS / UD / 非法', () => {
   assert.deepEqual(validateAddressOrEns(HARDHAT_0), { valid: true, type: 'address' });
   assert.deepEqual(validateAddressOrEns('vitalik.eth'), { valid: true, type: 'ens' });
+  assert.deepEqual(validateAddressOrEns('brad.crypto'), { valid: true, type: 'ud' }, 'UD 优先于 ENS');
+  assert.deepEqual(validateAddressOrEns('brad.wallet'), { valid: true, type: 'ud' });
   assert.deepEqual(validateAddressOrEns('not-anything'), { valid: false, type: null });
   assert.deepEqual(validateAddressOrEns(''), { valid: false, type: null });
-});
-
-test('★ validateAddressOrEns：UD 域名（.crypto）被 ENS 分支抢先匹配（当前实现问题）', () => {
-  // 实现顺序：先 isValidEnsName 再 isValidUnstoppableDomain。ENS 正则过宽
-  // （任何 label.label 都过），所以 'brad.crypto' 永远走 ENS 分支，UD 检测
-  // 实质上是死代码。锁定现状以便后续修复。
-  assert.deepEqual(validateAddressOrEns('brad.crypto'), { valid: true, type: 'ens' });
 });
