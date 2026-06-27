@@ -105,6 +105,7 @@ import {
   getActiveApprovalSummary,
   recordApprovalResponse
 } from './approval-flow.js';
+import { diagnostics } from './diagnostics.js';
 
 async function persistPopupBounds(bounds) {
   const normalized = normalizePopupBounds(bounds);
@@ -835,6 +836,12 @@ const popupHandlers = new Map([
   // ==================== 导出密钥 ====================
   [WalletMessageType.EXPORT_PRIVATE_KEY, async (data) => await handleExportPrivateKey(data?.accountId, data?.password)],
   [WalletMessageType.EXPORT_MNEMONIC, async (data) => await handleExportMnemonic(data?.walletId, data?.password)],
+
+  // ==================== 诊断（可观测） ====================
+  [WalletMessageType.GET_DIAGNOSTICS, async () => ({ success: true, enabled: diagnostics.isEnabled(), entries: diagnostics.getEntries() })],
+  [WalletMessageType.CLEAR_DIAGNOSTICS, async () => { diagnostics.clear(); return { success: true }; }],
+  [WalletMessageType.GET_DIAGNOSTICS_SETTINGS, async () => ({ success: true, enabled: diagnostics.isEnabled() })],
+  [WalletMessageType.UPDATE_DIAGNOSTICS_SETTINGS, async (data) => ({ success: true, enabled: await diagnostics.setEnabled(Boolean(data?.enabled)) })],
 
   // ==================== 密码管理（含内层 try/catch，与原行为一致） ====================
   ['CHANGE_PASSWORD', async (data) => {

@@ -15,6 +15,7 @@ import { notifyUnlocked } from './unlock-flow.js';
 import { updateKeepAlive } from './offscreen.js';
 import { backupSyncService } from './sync-service.js';
 import { mpcService } from './mpc-service.js';
+import { diagnostics } from './diagnostics.js';
 
 /**
  * 解锁钱包
@@ -76,6 +77,7 @@ export async function unlockWallet(password, accountId, source = 'unknown') {
     });
 
     console.log('✅ Wallet unlocked');
+    diagnostics.record({ category: 'unlock', action: 'unlock', message: 'wallet unlocked', meta: { source, accountId: account.id } });
 
     return {
       success: true,
@@ -89,6 +91,7 @@ export async function unlockWallet(password, accountId, source = 'unknown') {
 
   } catch (error) {
     console.error('❌ Unlock wallet failed:', error);
+    diagnostics.record({ category: 'unlock', level: 'error', action: 'unlock', message: error?.message || 'unlock failed', meta: { source, code: error?.code } });
     throw error;
   }
 }
@@ -128,6 +131,7 @@ export async function lockWallet() {
     });
 
     console.log('✅ Wallet locked');
+    diagnostics.record({ category: 'unlock', action: 'lock', message: 'wallet locked' });
 
     return { success: true };
 

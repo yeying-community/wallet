@@ -8,6 +8,7 @@ import { createRpcError, createNetworkError } from '../common/errors/index.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
 import { getNetworkByChainId, getNetworkConfigByKey } from '../storage/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
+import { diagnostics } from './diagnostics.js';
 
 /**
  * 处理 RPC 方法
@@ -64,6 +65,7 @@ async function rpcCall(method, params) {
     return data.result;
   } catch (error) {
     console.log(`Throw error ${error.message}`)
+    diagnostics.record({ category: 'rpc', level: 'error', action: method, message: error?.message || 'rpc failed', meta: { method, code: error?.code } });
     if (error.code) throw error;
     throw createNetworkError(error.message);
   }

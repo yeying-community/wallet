@@ -14,6 +14,7 @@ import { normalizePopupBounds } from './window-utils.js';
 import { backupSyncService } from './sync-service.js';
 import { mpcService } from './mpc-service.js';
 import { ensureApprovalStateHydrated } from './approval-flow.js';
+import { diagnostics } from './diagnostics.js';
 
 const INJECTABLE_TAB_URLS = [
   'http://*/*',
@@ -31,6 +32,7 @@ async function init() {
 
   try {
     await ensureApprovalStateHydrated();
+    await diagnostics.init();
     await updateKeepAlive();
     await backupSyncService.init();
     await mpcService.init();
