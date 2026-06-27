@@ -16,6 +16,7 @@
 - [WebDAV 备份同步说明](./docs/WebDAV备份同步说明.md)
 - [MPC 门限钱包方案](./docs/MPC门限钱包方案.md)
 - [V1 架构基线](./docs/V1架构基线.md)
+- [存储架构（chrome + idb 双后端 + 迁移 + 回退）](./docs/存储架构.md)
 
 
 ## 标准 / EIP 支持矩阵

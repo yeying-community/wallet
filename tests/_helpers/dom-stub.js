@@ -97,6 +97,11 @@ export function createElement(init = {}) {
     parent: init.parent || null,
     listeners: {},
     disabled: !!init.disabled,
+    // input/textarea 默认 value 为空串（模拟真实 DOM），避免调用者读到 undefined
+    value: 'value' in init ? init.value : (init.tagName === 'input' || init.tagName === 'textarea' ? '' : undefined),
+    textContent: 'textContent' in init ? init.textContent : '',
+    innerHTML: 'innerHTML' in init ? init.innerHTML : '',
+    checked: !!init.checked,
     ...init
   };
   el.children.forEach((c) => { c.parent = el; });
