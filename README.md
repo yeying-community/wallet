@@ -77,6 +77,7 @@ curl -o qrcode.min.js https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js
   - `--test-force-exit`：keyring/sync/mpc 单例会留 setTimeout，强制退出避免事件循环挂起。
 - sync-service 集成测试（mock fetch + chrome + fake-indexeddb，必须**单进程顺序跑**——其单例与 IDB 连接无法跨 worker 序列化）：`npm run test:sync`
 - 一键全部跑：`npm run test:all`
+- CI：`.github/workflows/ci.yml` 自动跑 `npm test` + `npm run test:sync` + `npm run test:approval` + `npm run typecheck`（Node 22.x）。
 - 审批弹窗复用回归脚本：`node --experimental-vm-modules tests/test-approval-flow.mjs`
 - 类型检查（JSDoc + `// @ts-check`，按需临时拉 tsc，不入库 node_modules）：`npx -y -p typescript@5 tsc -p tsconfig.json`
   - `tsconfig.json` 设 `checkJs:false`，仅检查带 `// @ts-check` 的文件；新增注解文件自动纳入。
