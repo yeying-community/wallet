@@ -1,6 +1,6 @@
 /**
  * AuthorizedSitesController — 设置页「授权站点」tab 子控制器
- * 从 SettingsController 拆出：列表/详情/UCAN 会话/撤销/清除全部授权。
+ * 从 SettingController 拆出：列表/详情/UCAN 会话/撤销/清除全部授权。
  *
  * 依赖通过构造参数注入：{ wallet }
  */

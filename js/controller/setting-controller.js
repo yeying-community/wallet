@@ -3,7 +3,7 @@ import { MpcSettingsController } from './setting/mpc-settings-controller.js';
 import { AuthorizedSitesController } from './setting/authorized-sites-controller.js';
 import { AccountSettingsController } from './setting/account-settings-controller.js';
 
-export class SettingsController {
+export class SettingController {
   constructor({ wallet, transaction, requestPassword }) {
     this.wallet = wallet;
     this.transaction = transaction;

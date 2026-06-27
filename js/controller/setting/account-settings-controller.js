@@ -1,6 +1,6 @@
 /**
  * AccountSettingsController — 设置页「账户设置」子控制器
- * 从 SettingsController 拆出：修改密码、重置钱包、清除所有授权按钮。
+ * 从 SettingController 拆出：修改密码、重置钱包、清除所有授权按钮。
  *
  * 依赖通过构造参数注入：{ wallet }
  */
@@ -10,7 +10,7 @@ export class AccountSettingsController {
   constructor({ wallet, onClearAllAuthorizations }) {
     this.wallet = wallet;
     this.resetConfirmKeyword = 'RESET';
-    // 清除全部授权的回调由 SettingsController 注入（实际逻辑在 AuthorizedSitesController），
+    // 清除全部授权的回调由 SettingController 注入（实际逻辑在 AuthorizedSitesController），
     // 避免 sub-controller 之间互相依赖。
     this.onClearAllAuthorizations = typeof onClearAllAuthorizations === 'function'
       ? onClearAllAuthorizations

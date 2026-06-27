@@ -1,6 +1,6 @@
 /**
  * BackupSyncSettingsController — 备份与同步（WebDAV）设置子控制器
- * 从 SettingsController 拆出：连接点 / 认证模式 / SIWE / UCAN / Basic / 立即同步 /
+ * 从 SettingController 拆出：连接点 / 认证模式 / SIWE / UCAN / Basic / 立即同步 /
  * 清理远端 / 冲突解决 / 活动日志 / 留存策略。
  *
  * 依赖通过构造参数注入：{ wallet, transaction, requestPassword }

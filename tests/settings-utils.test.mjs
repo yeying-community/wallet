@@ -2,7 +2,7 @@
  * settings-utils 纯函数单测（零依赖，Node 内置 runner）
  * 运行：node --test --test-force-exit "tests/*.test.mjs"
  *
- * 这些函数从 SettingsController 拆出，供 backup/mpc 设置子控制器复用，
+ * 这些函数从 SettingController 拆出，供 backup/mpc 设置子控制器复用，
  * 决定 UCAN 资源/动作归一化、日志留存 clamp、Basic 凭证编码等行为。
  */
 

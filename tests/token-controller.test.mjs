@@ -1,5 +1,5 @@
 /**
- * TokensController DOM 集成测试
+ * TokenController DOM 集成测试
  * 运行：npm test
  *
  * 覆盖：loadTokenBalances（合并 native + ERC20、缓存 lastTokenList、容错）、
@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { createDocument } from './_helpers/dom-stub.js';
 
 let elements;
-let TokensController;
+let TokenController;
 
 function setupDom() {
   const doc = createDocument({
@@ -30,8 +30,8 @@ function teardown() {
 
 test.beforeEach(async () => {
   setupDom();
-  if (!TokensController) {
-    TokensController = (await import('../js/controller/token/tokens-controller.js')).TokensController;
+  if (!TokenController) {
+    TokenController = (await import('../js/controller/token/token-controller.js')).TokenController;
   }
 });
 test.afterEach(() => { teardown(); });
@@ -48,14 +48,14 @@ function fakeWallet(account = { address: '0x111111111111111111111111111111111111
 }
 
 test('loadTokenBalances：无 wallet/token → 渲染空、返回 []', async () => {
-  const c = new TokensController({});
+  const c = new TokenController({});
   const result = await c.loadTokenBalances();
   assert.deepEqual(result, []);
   assert.match(elements.tokenList.innerHTML, /暂无通证/);
 });
 
 test('loadTokenBalances：无当前账户 → 空', async () => {
-  const c = new TokensController({ wallet: fakeWallet(null), token: fakeToken() });
+  const c = new TokenController({ wallet: fakeWallet(null), token: fakeToken() });
   const result = await c.loadTokenBalances();
   assert.deepEqual(result, []);
 });
@@ -65,7 +65,7 @@ test('loadTokenBalances：native + ERC20 合并，native 在前', async () => {
   const tokens = [
     { symbol: 'USDC', name: 'USD Coin', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', balance: '100' }
   ];
-  const c = new TokensController({ wallet: fakeWallet(), token: fakeToken({ native, tokens }) });
+  const c = new TokenController({ wallet: fakeWallet(), token: fakeToken({ native, tokens }) });
   const list = await c.loadTokenBalances();
   assert.equal(list.length, 2);
   assert.equal(list[0].symbol, 'ETH', 'native 应在第一个');
@@ -75,7 +75,7 @@ test('loadTokenBalances：native + ERC20 合并，native 在前', async () => {
 
 test('loadTokenBalances：无 native（getNativeToken 返 null）→ 仅 ERC20', async () => {
   const tokens = [{ symbol: 'DAI', address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', balance: '5' }];
-  const c = new TokensController({ wallet: fakeWallet(), token: fakeToken({ native: null, tokens }) });
+  const c = new TokenController({ wallet: fakeWallet(), token: fakeToken({ native: null, tokens }) });
   const list = await c.loadTokenBalances();
   assert.equal(list.length, 1);
   assert.equal(list[0].symbol, 'DAI');
@@ -83,20 +83,20 @@ test('loadTokenBalances：无 native（getNativeToken 返 null）→ 仅 ERC20',
 
 test('loadTokenBalances：token 域抛错 → 渲染空、返回 []（容错）', async () => {
   const token = { getNativeToken: async () => { throw new Error('rpc down'); }, getTokenBalances: async () => [] };
-  const c = new TokensController({ wallet: fakeWallet(), token });
+  const c = new TokenController({ wallet: fakeWallet(), token });
   const result = await c.loadTokenBalances();
   assert.deepEqual(result, []);
   assert.match(elements.tokenList.innerHTML, /暂无通证/);
 });
 
 test('renderTokenBalances：空数组 → 空态', () => {
-  const c = new TokensController({});
+  const c = new TokenController({});
   c.renderTokenBalances([]);
   assert.match(elements.tokenList.innerHTML, /暂无通证/);
 });
 
 test('renderTokenBalances：渲染 symbol/balance/原生标记', () => {
-  const c = new TokensController({});
+  const c = new TokenController({});
   c.renderTokenBalances([
     { symbol: 'ETH', name: 'Ether', balance: '2.0', isNative: true },
     { symbol: 'USDC', name: 'USD Coin', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', balance: '100' }
@@ -111,19 +111,19 @@ test('renderTokenBalances：渲染 symbol/balance/原生标记', () => {
 });
 
 test('renderTokenBalances：缺 balance 显示 0', () => {
-  const c = new TokensController({});
+  const c = new TokenController({});
   c.renderTokenBalances([{ symbol: 'FOO', name: 'Foo' }]);
   assert.match(elements.tokenList.innerHTML, /0/);
 });
 
 test('getCurrentTransferToken：委派给 transferController', () => {
-  const c = new TokensController({});
+  const c = new TokenController({});
   c.transferController.getCurrentTransferToken = () => ({ symbol: 'MOCK' });
   assert.deepEqual(c.getCurrentTransferToken(), { symbol: 'MOCK' });
 });
 
 test('setNetworkController：同步设置自身与 transferController', () => {
-  const c = new TokensController({});
+  const c = new TokenController({});
   let transferSet = null;
   c.transferController.setNetworkController = (ctrl) => { transferSet = ctrl; };
   const ctrl = { id: 'net-ctrl' };

@@ -1,6 +1,6 @@
 /**
  * MpcSettingsController — MPC 门限钱包设置子控制器
- * 从 SettingsController 拆出：协调器设置 / UCAN 生成 / Keygen / Join / 消息发送与轮询 /
+ * 从 SettingController 拆出：协调器设置 / UCAN 生成 / Keygen / Join / 消息发送与轮询 /
  * 会话列表与详情 / 审计日志与导出。
  *
  * 依赖通过构造参数注入：{ wallet, requestPassword }

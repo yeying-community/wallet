@@ -91,16 +91,16 @@ test('openAccountsPage：调 accountsListController.loadWalletList', async () =>
   const c = new PopupController({ wallet: fakeWallet(), transaction: {}, network: {}, token: {} });
   await c.openAccountsPage();
   // accountsListController 是真实子 controller；只需验证不抛 + 内部 list 被读
-  assert.equal(typeof c.accountsListController, 'object');
+  assert.equal(typeof c.accountListController, 'object');
 });
 
 test('openSettingsPage：委派三个 load 到 settingsController', async () => {
   const wallet = fakeWallet();
   const spy = { backup: 0, mpc: 0, mpcSess: 0 };
   const c = new PopupController({ wallet, transaction: {}, network: {}, token: {} });
-  c.settingsController.loadBackupSyncSettings = async () => { spy.backup++; };
-  c.settingsController.loadMpcSettings = async () => { spy.mpc++; };
-  c.settingsController.loadMpcSessions = async () => { spy.mpcSess++; };
+  c.settingController.loadBackupSyncSettings = async () => { spy.backup++; };
+  c.settingController.loadMpcSettings = async () => { spy.mpc++; };
+  c.settingController.loadMpcSessions = async () => { spy.mpcSess++; };
   await c.openSettingsPage();
   assert.equal(spy.backup, 1);
   assert.equal(spy.mpc, 1);
@@ -111,7 +111,7 @@ test('openSitesPage：调 settingsController.loadAuthorizedSites', async () => {
   const wallet = fakeWallet();
   const c = new PopupController({ wallet, transaction: {}, network: {}, token: {} });
   let called = 0;
-  c.settingsController.loadAuthorizedSites = async () => { called++; };
+  c.settingController.loadAuthorizedSites = async () => { called++; };
   await c.openSitesPage();
   assert.equal(called, 1);
 });
@@ -128,9 +128,9 @@ test('openContactsPage：调 contactsController.loadContacts', async () => {
 test('openBackupSyncSettings：先 openSettingsPage 再请求 scrollIntoView', async () => {
   const wallet = fakeWallet();
   const c = new PopupController({ wallet, transaction: {}, network: {}, token: {} });
-  c.settingsController.loadBackupSyncSettings = async () => {};
-  c.settingsController.loadMpcSettings = async () => {};
-  c.settingsController.loadMpcSessions = async () => {};
+  c.settingController.loadBackupSyncSettings = async () => {};
+  c.settingController.loadMpcSettings = async () => {};
+  c.settingController.loadMpcSessions = async () => {};
   elements.backupSyncSection.scrollIntoView = () => { c.__scrolled = true; };
   await c.openBackupSyncSettings();
   // requestAnimationFrame 异步 → 等 microtask
@@ -156,7 +156,7 @@ test('handleNetworkChanged：委派给 accountHeader/balance/tokens 三个子 co
   const calls = { account: 0, balance: 0, tokens: 0 };
   c.accountHeaderController.refreshHeader = async () => { calls.account++; };
   c.tokenBalanceController.refreshBalanceSilently = async () => { calls.balance++; };
-  c.tokensController.loadTokenBalances = async () => { calls.tokens++; };
+  c.tokenController.loadTokenBalances = async () => { calls.tokens++; };
   await c.handleNetworkChanged();
   assert.equal(calls.account, 1);
   assert.equal(calls.balance, 1);
@@ -171,7 +171,7 @@ test('refreshWalletData：调 4 个 refresh（accountHeader/balance/network/toke
   c.tokenBalanceController.refreshBalanceSilently = async () => { calls.balance++; };
   c.networkController.refreshNetworkState = async () => { calls.network++; };
   c.updateBackupSyncStatus = async () => { calls.backup++; };
-  c.tokensController.loadTokenBalances = async () => { calls.tokens++; };
+  c.tokenController.loadTokenBalances = async () => { calls.tokens++; };
   // 让 tokensContent 不 hidden 才会触发 loadTokenBalances
   elements.tokensContent.classList.remove('hidden');
   await c.refreshWalletData();
@@ -186,7 +186,7 @@ test('refreshWalletData：tokensContent 隐藏时不调 loadTokenBalances', asyn
   const wallet = fakeWallet();
   const c = new PopupController({ wallet, transaction: {}, network: {}, token: {} });
   let tokens = 0;
-  c.tokensController.loadTokenBalances = async () => { tokens++; };
+  c.tokenController.loadTokenBalances = async () => { tokens++; };
   elements.tokensContent.classList.add('hidden');
   await c.refreshWalletData();
   assert.equal(tokens, 0);

@@ -4,16 +4,16 @@ import { POLLING_CONFIG } from '../config/index.js';
 import { WelcomeController } from './welcome-controller.js';
 import { UnlockWalletController } from './wallet/unlock-wallet-controller.js';
 import { NetworkController } from './network-controller.js';
-import { TokensController } from './token/tokens-controller.js';
+import { TokenController } from './token/token-controller.js';
 import { AddTokenController } from './token/add-token-controller.js';
 import {
-  AccountsListController,
+  AccountListController,
   AccountDetailController,
   AccountModalsController,
   AccountHeaderController
 } from './account/index.js';
 import { TokenBalanceController } from './token/index.js';
-import { SettingsController } from './settings-controller.js';
+import { SettingController } from './setting-controller.js';
 import { ContactController } from './contact-controller.js';
 import { ImportWalletController } from './wallet/import-wallet-controller.js';
 import { CreateWalletController } from './wallet/create-wallet-controller.js';
@@ -41,7 +41,7 @@ export class PopupController {
       wallet: this.wallet,
       onUnlocked: () => this.refreshWalletData()
     });
-    this.settingsController = new SettingsController({
+    this.settingController = new SettingController({
       wallet: this.wallet,
       transaction: this.transaction,
       requestPassword: () => this.promptWalletPassword()
@@ -70,7 +70,7 @@ export class PopupController {
       balanceController: this.tokenBalanceController,
       transactionListController: this.transactionListController
     });
-    this.tokensController = new TokensController({
+    this.tokenController = new TokenController({
       token: this.token,
       wallet: this.wallet,
       networkController: null
@@ -79,29 +79,29 @@ export class PopupController {
       token: this.token,
       network: this.network,
       networkController: null,
-      onTokenAdded: () => this.tokensController.loadTokenBalances()
+      onTokenAdded: () => this.tokenController.loadTokenBalances()
     });
     this.networkController = new NetworkController({
       network: this.network,
       onNetworkChanged: () => this.handleNetworkChanged()
     });
-    this.tokensController.setNetworkController(this.networkController);
-    this.tokensController.setTransferTokenChangedHandler((token) => {
+    this.tokenController.setNetworkController(this.networkController);
+    this.tokenController.setTransferTokenChangedHandler((token) => {
       this.transactionSendController.scheduleFeeEstimate(token);
     });
     this.addTokenController.setNetworkController(this.networkController);
-    this.accountsListController = null;
+    this.accountListController = null;
     this.accountDetailController = new AccountDetailController({
       wallet: this.wallet,
-      onWalletListRefresh: () => this.accountsListController?.loadWalletList()
+      onWalletListRefresh: () => this.accountListController?.loadWalletList()
     });
     this.accountModalsController = new AccountModalsController({
       wallet: this.wallet,
-      onWalletListRefresh: () => this.accountsListController?.loadWalletList(),
+      onWalletListRefresh: () => this.accountListController?.loadWalletList(),
       onWalletUpdated: () => this.refreshWalletData(),
-      onAccountSelected: (accountId) => this.accountsListController?.handleSelectAccount(accountId)
+      onAccountSelected: (accountId) => this.accountListController?.handleSelectAccount(accountId)
     });
-    this.accountsListController = new AccountsListController({
+    this.accountListController = new AccountListController({
       wallet: this.wallet,
       onWalletUpdated: () => this.refreshWalletData(),
       onOpenAccountDetails: (accountId) => this.accountDetailController.openAccountDetails(accountId),
@@ -119,7 +119,7 @@ export class PopupController {
       wallet: this.wallet,
       onCreated: async () => {
         await this.refreshWalletData();
-        await this.accountsListController?.loadWalletList();
+        await this.accountListController?.loadWalletList();
       }
     });
   }
@@ -276,13 +276,13 @@ export class PopupController {
     this.unlockWalletController.bindEvents();
     this.transactionListController.bindEvents();
     this.transactionDetailController.bindEvents();
-    this.tokensController.bindEvents();
+    this.tokenController.bindEvents();
     this.addTokenController.bindEvents();
     this.networkController.bindEvents();
-    this.accountsListController.bindEvents();
+    this.accountListController.bindEvents();
     this.accountDetailController.bindEvents();
     this.accountModalsController.bindEvents();
-    this.settingsController.bindEvents();
+    this.settingController.bindEvents();
     this.contactController.bindEvents();
     this.importWalletController.bindEvents();
     this.createWalletController.bindEvents();
@@ -587,15 +587,15 @@ export class PopupController {
   async openAccountsPage() {
     this.stopTransactionPolling();
     showPage('accountsPage');
-    await this.accountsListController.loadWalletList();
+    await this.accountListController.loadWalletList();
   }
 
   async openSettingsPage() {
     this.stopTransactionPolling();
     showPage('settingsPage');
-    await this.settingsController.loadBackupSyncSettings();
-    await this.settingsController.loadMpcSettings();
-    await this.settingsController.loadMpcSessions();
+    await this.settingController.loadBackupSyncSettings();
+    await this.settingController.loadMpcSettings();
+    await this.settingController.loadMpcSessions();
   }
 
   async openBackupSyncSettings() {
@@ -615,7 +615,7 @@ export class PopupController {
     if (searchInput) {
       searchInput.value = '';
     }
-    await this.settingsController.loadAuthorizedSites();
+    await this.settingController.loadAuthorizedSites();
   }
 
   async openContactsPage() {
@@ -627,11 +627,11 @@ export class PopupController {
   async openTransferPage() {
     this.stopTransactionPolling();
     showPage('transferPage');
-    await this.tokensController?.prepareTransferSelectors?.();
+    await this.tokenController?.prepareTransferSelectors?.();
     await this.contactController?.loadContacts?.();
     this.transactionSendController.setFeeEstimateText('-');
     this.transactionSendController.scheduleFeeEstimate(
-      this.tokensController?.getCurrentTransferToken?.() || null
+      this.tokenController?.getCurrentTransferToken?.() || null
     );
   }
 
@@ -666,7 +666,7 @@ export class PopupController {
 
     const tokensContent = document.getElementById('tokensContent');
     if (tokensContent && !tokensContent.classList.contains('hidden')) {
-      await this.tokensController?.loadTokenBalances?.();
+      await this.tokenController?.loadTokenBalances?.();
     }
   }
 
@@ -690,7 +690,7 @@ export class PopupController {
   async handleNetworkChanged() {
     await this.accountHeaderController?.refreshHeader?.();
     await this.tokenBalanceController?.refreshBalanceSilently?.();
-    await this.tokensController?.loadTokenBalances?.();
+    await this.tokenController?.loadTokenBalances?.();
   }
 
   bindWalletPageEvents() {
@@ -733,7 +733,7 @@ export class PopupController {
 
     const updateTransferFee = () => {
       this.transactionSendController.scheduleFeeEstimate(
-        this.tokensController?.getCurrentTransferToken?.() || null
+        this.tokenController?.getCurrentTransferToken?.() || null
       );
     };
     const recipientInput = document.getElementById('recipientAddress');
@@ -816,7 +816,7 @@ export class PopupController {
     const sendBtn = document.getElementById('sendBtn');
     if (sendBtn) {
       sendBtn.addEventListener('click', async () => {
-        const selectedToken = this.tokensController?.getCurrentTransferToken?.();
+        const selectedToken = this.tokenController?.getCurrentTransferToken?.();
         await this.transactionSendController.handleSendTransaction({
           requestPassword: () => this.promptWalletPassword(),
           silentBalanceRefresh: true,
@@ -840,7 +840,7 @@ export class PopupController {
     if (tokensTab) {
       tokensTab.addEventListener('click', async () => {
         this.switchWalletTab('tokens');
-        await this.tokensController?.loadTokenBalances?.();
+        await this.tokenController?.loadTokenBalances?.();
       });
     }
 
