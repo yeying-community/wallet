@@ -120,7 +120,7 @@ test('openContactsPage：调 contactsController.loadContacts', async () => {
   const wallet = fakeWallet();
   const c = new PopupController({ wallet, transaction: {}, network: {}, token: {} });
   let called = 0;
-  c.contactsController.loadContacts = async () => { called++; };
+  c.contactController.loadContacts = async () => { called++; };
   await c.openContactsPage();
   assert.equal(called, 1);
 });

@@ -14,7 +14,7 @@ import {
 } from './accounts/index.js';
 import { TokenBalanceController } from './tokens/index.js';
 import { SettingsController } from './settings-controller.js';
-import { ContactsController } from './contacts-controller.js';
+import { ContactController } from './contact-controller.js';
 import { ImportWalletController } from './wallet/import-wallet-controller.js';
 import { CreateWalletController } from './wallet/create-wallet-controller.js';
 import {
@@ -46,7 +46,7 @@ export class PopupController {
       transaction: this.transaction,
       requestPassword: () => this.promptWalletPassword()
     });
-    this.contactsController = new ContactsController({ wallet: this.wallet });
+    this.contactController = new ContactController({ wallet: this.wallet });
     this.transactionDetailController = new TransactionDetailController({
       transaction: this.transaction,
       network: this.network
@@ -283,7 +283,7 @@ export class PopupController {
     this.accountDetailController.bindEvents();
     this.accountModalsController.bindEvents();
     this.settingsController.bindEvents();
-    this.contactsController.bindEvents();
+    this.contactController.bindEvents();
     this.importWalletController.bindEvents();
     this.createWalletController.bindEvents();
   }
@@ -621,14 +621,14 @@ export class PopupController {
   async openContactsPage() {
     this.stopTransactionPolling();
     showPage('contactsPage');
-    await this.contactsController.loadContacts();
+    await this.contactController.loadContacts();
   }
 
   async openTransferPage() {
     this.stopTransactionPolling();
     showPage('transferPage');
     await this.tokensController?.prepareTransferSelectors?.();
-    await this.contactsController?.loadContacts?.();
+    await this.contactController?.loadContacts?.();
     this.transactionSendController.setFeeEstimateText('-');
     this.transactionSendController.scheduleFeeEstimate(
       this.tokensController?.getCurrentTransferToken?.() || null
