@@ -144,7 +144,7 @@ export function validateGasPrice(gasPrice) {
   if (gasPrice > GAS_CONFIG.MAX_GAS_PRICE) {
     return {
       valid: false,
-      error: `Gas price must not exceed ${GAS__CONFIG.MAX_GAS_PRICE} Gwei`
+      error: `Gas price must not exceed ${GAS_CONFIG.MAX_GAS_PRICE} Gwei`
     };
   }
   
