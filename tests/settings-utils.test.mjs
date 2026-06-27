@@ -26,7 +26,7 @@ import {
   LOG_MAX_COUNT_MAX,
   LOG_RETENTION_MIN_DAYS,
   LOG_RETENTION_MAX_DAYS
-} from '../js/controller/settings/settings-utils.js';
+} from '../js/controller/setting/settings-utils.js';
 
 test('normalizeBasicAuth：原样 Basic / user:pass 编码 / 裸值加前缀', () => {
   assert.equal(normalizeBasicAuth('Basic abc'), 'Basic abc');

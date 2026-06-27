@@ -1,7 +1,7 @@
-import { BackupSyncSettingsController } from './settings/backup-sync-settings-controller.js';
-import { MpcSettingsController } from './settings/mpc-settings-controller.js';
-import { AuthorizedSitesController } from './settings/authorized-sites-controller.js';
-import { AccountSettingsController } from './settings/account-settings-controller.js';
+import { BackupSyncSettingsController } from './setting/backup-sync-settings-controller.js';
+import { MpcSettingsController } from './setting/mpc-settings-controller.js';
+import { AuthorizedSitesController } from './setting/authorized-sites-controller.js';
+import { AccountSettingsController } from './setting/account-settings-controller.js';
 
 export class SettingsController {
   constructor({ wallet, transaction, requestPassword }) {

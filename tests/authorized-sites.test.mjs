@@ -50,7 +50,7 @@ function teardown() {
 test.beforeEach(async () => {
   setupDom();
   if (!AuthorizedSitesController) {
-    AuthorizedSitesController = (await import('../js/controller/settings/authorized-sites-controller.js')).AuthorizedSitesController;
+    AuthorizedSitesController = (await import('../js/controller/setting/authorized-sites-controller.js')).AuthorizedSitesController;
   }
 });
 test.afterEach(() => { teardown(); });

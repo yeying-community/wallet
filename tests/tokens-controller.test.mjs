@@ -31,7 +31,7 @@ function teardown() {
 test.beforeEach(async () => {
   setupDom();
   if (!TokensController) {
-    TokensController = (await import('../js/controller/tokens/tokens-controller.js')).TokensController;
+    TokensController = (await import('../js/controller/token/tokens-controller.js')).TokensController;
   }
 });
 test.afterEach(() => { teardown(); });

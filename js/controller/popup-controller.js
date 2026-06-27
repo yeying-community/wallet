@@ -4,15 +4,15 @@ import { POLLING_CONFIG } from '../config/index.js';
 import { WelcomeController } from './welcome-controller.js';
 import { UnlockWalletController } from './wallet/unlock-wallet-controller.js';
 import { NetworkController } from './network-controller.js';
-import { TokensController } from './tokens/tokens-controller.js';
-import { AddTokenController } from './tokens/add-token-controller.js';
+import { TokensController } from './token/tokens-controller.js';
+import { AddTokenController } from './token/add-token-controller.js';
 import {
   AccountsListController,
   AccountDetailController,
   AccountModalsController,
   AccountHeaderController
-} from './accounts/index.js';
-import { TokenBalanceController } from './tokens/index.js';
+} from './account/index.js';
+import { TokenBalanceController } from './token/index.js';
 import { SettingsController } from './settings-controller.js';
 import { ContactController } from './contact-controller.js';
 import { ImportWalletController } from './wallet/import-wallet-controller.js';

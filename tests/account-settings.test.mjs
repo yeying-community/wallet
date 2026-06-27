@@ -81,7 +81,7 @@ test.beforeEach(async () => {
   setupDom();
   patchTimers();
   if (!AccountSettingsController) {
-    AccountSettingsController = (await import('../js/controller/settings/account-settings-controller.js')).AccountSettingsController;
+    AccountSettingsController = (await import('../js/controller/setting/account-settings-controller.js')).AccountSettingsController;
   }
 });
 test.afterEach(() => { teardown(); });
