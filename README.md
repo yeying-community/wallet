@@ -75,3 +75,5 @@ curl -o qrcode.min.js https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js
 - 单元测试（crypto / vault / keyring，Node 内置 runner）：`node --test --test-force-exit "tests/*.test.mjs"`
   - `--test-force-exit`：keyring 会经 sync/mpc 单例留下定时器，强制退出避免事件循环挂起。
 - 审批弹窗复用回归脚本：`node --experimental-vm-modules tests/test-approval-flow.mjs`
+- 类型检查（JSDoc + `// @ts-check`，按需临时拉 tsc，不入库 node_modules）：`npx -y -p typescript@5 tsc -p tsconfig.json`
+  - `tsconfig.json` 设 `checkJs:false`，仅检查带 `// @ts-check` 的文件；新增注解文件自动纳入。

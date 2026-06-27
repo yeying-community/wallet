@@ -1,5 +1,7 @@
+// @ts-check
 /**
  * Extension internal protocol definitions.
+ * popup ↔ background 内部消息类型常量（值即线上消息 type 字符串）。
  */
 
 export const WalletMessageType = {
