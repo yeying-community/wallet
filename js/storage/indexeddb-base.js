@@ -6,7 +6,8 @@
 import { logError } from '../common/errors/index.js';
 
 const DB_NAME = 'yeying_wallet_db';
-const DB_VERSION = 1;
+// v2：新增 wallets/accounts/networks store；事务历史 store 保留（v1）。
+const DB_VERSION = 2;
 const storeRegistry = new Map();
 
 function ensureIndexedDb() {
@@ -36,10 +37,10 @@ function applyStoreDefinition(db, transaction, definition) {
  * 注册对象仓库（需要在首次打开数据库前注册）
  * 如需新增/修改索引，请提升 DB_VERSION
  * @param {string} name
- * @param {Object} options
- * @param {string} options.keyPath
- * @param {boolean} options.autoIncrement
- * @param {Array} options.indexes
+ * @param {Object} [options]
+ * @param {string} [options.keyPath]
+ * @param {boolean} [options.autoIncrement]
+ * @param {Array} [options.indexes]
  */
 export function registerStore(name, options = {}) {
   if (!name) {
@@ -124,6 +125,61 @@ export async function runStoreTransaction(storeName, mode, handler) {
 
     try {
       handler(store, tx, (value) => {
+        result = value;
+      });
+    } catch (error) {
+      tx.abort();
+      db.close();
+      reject(error);
+    }
+  });
+}
+
+/**
+ * 跨多个对象仓库的原子事务（如 changePassword 同时改 wallets + accounts）。
+ * 任何一个 store 写失败 → 整事务回滚。
+ * @param {string[]} storeNames
+ * @param {'readonly'|'readwrite'} mode
+ * @param {Function} handler 接收 (stores: {[name]: IDBObjectStore}, tx, setResult)
+ * @returns {Promise<any>}
+ */
+export async function runMultiStoreTransaction(storeNames, mode, handler) {
+  for (const name of storeNames) {
+    if (!storeRegistry.has(name)) {
+      const error = new Error(`IndexedDB store not registered: ${name}`);
+      logError('indexeddb-store-missing', error);
+      throw error;
+    }
+  }
+  const db = await openDatabase();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeNames, mode);
+    const stores = {};
+    for (const name of storeNames) {
+      stores[name] = tx.objectStore(name);
+    }
+    let result;
+
+    tx.oncomplete = () => {
+      db.close();
+      resolve(result);
+    };
+    tx.onerror = () => {
+      const error = tx.error || new Error('IndexedDB transaction failed');
+      logError('indexeddb-transaction', error);
+      db.close();
+      reject(error);
+    };
+    tx.onabort = () => {
+      const error = tx.error || new Error('IndexedDB transaction aborted');
+      logError('indexeddb-transaction', error);
+      db.close();
+      reject(error);
+    };
+
+    try {
+      handler(stores, tx, (value) => {
         result = value;
       });
     } catch (error) {
