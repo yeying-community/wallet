@@ -4,7 +4,7 @@ import { POLLING_CONFIG } from '../config/index.js';
 import { WelcomeController } from './welcome-controller.js';
 import { UnlockWalletController } from './wallet/unlock-wallet-controller.js';
 import { NetworkController } from './network-controller.js';
-import { TokensListController } from './tokens/tokens-list-controller.js';
+import { TokensController } from './tokens/tokens-controller.js';
 import { AddTokenController } from './tokens/add-token-controller.js';
 import {
   AccountsListController,
@@ -70,7 +70,7 @@ export class PopupController {
       balanceController: this.tokenBalanceController,
       transactionListController: this.transactionListController
     });
-    this.tokensListController = new TokensListController({
+    this.tokensController = new TokensController({
       token: this.token,
       wallet: this.wallet,
       networkController: null
@@ -79,14 +79,14 @@ export class PopupController {
       token: this.token,
       network: this.network,
       networkController: null,
-      onTokenAdded: () => this.tokensListController.loadTokenBalances()
+      onTokenAdded: () => this.tokensController.loadTokenBalances()
     });
     this.networkController = new NetworkController({
       network: this.network,
       onNetworkChanged: () => this.handleNetworkChanged()
     });
-    this.tokensListController.setNetworkController(this.networkController);
-    this.tokensListController.setTransferTokenChangedHandler((token) => {
+    this.tokensController.setNetworkController(this.networkController);
+    this.tokensController.setTransferTokenChangedHandler((token) => {
       this.transactionSendController.scheduleFeeEstimate(token);
     });
     this.addTokenController.setNetworkController(this.networkController);
@@ -276,7 +276,7 @@ export class PopupController {
     this.unlockWalletController.bindEvents();
     this.transactionListController.bindEvents();
     this.transactionDetailController.bindEvents();
-    this.tokensListController.bindEvents();
+    this.tokensController.bindEvents();
     this.addTokenController.bindEvents();
     this.networkController.bindEvents();
     this.accountsListController.bindEvents();
@@ -627,11 +627,11 @@ export class PopupController {
   async openTransferPage() {
     this.stopTransactionPolling();
     showPage('transferPage');
-    await this.tokensListController?.prepareTransferSelectors?.();
+    await this.tokensController?.prepareTransferSelectors?.();
     await this.contactsController?.loadContacts?.();
     this.transactionSendController.setFeeEstimateText('-');
     this.transactionSendController.scheduleFeeEstimate(
-      this.tokensListController?.getCurrentTransferToken?.() || null
+      this.tokensController?.getCurrentTransferToken?.() || null
     );
   }
 
@@ -666,7 +666,7 @@ export class PopupController {
 
     const tokensContent = document.getElementById('tokensContent');
     if (tokensContent && !tokensContent.classList.contains('hidden')) {
-      await this.tokensListController?.loadTokenBalances?.();
+      await this.tokensController?.loadTokenBalances?.();
     }
   }
 
@@ -690,7 +690,7 @@ export class PopupController {
   async handleNetworkChanged() {
     await this.accountHeaderController?.refreshHeader?.();
     await this.tokenBalanceController?.refreshBalanceSilently?.();
-    await this.tokensListController?.loadTokenBalances?.();
+    await this.tokensController?.loadTokenBalances?.();
   }
 
   bindWalletPageEvents() {
@@ -733,7 +733,7 @@ export class PopupController {
 
     const updateTransferFee = () => {
       this.transactionSendController.scheduleFeeEstimate(
-        this.tokensListController?.getCurrentTransferToken?.() || null
+        this.tokensController?.getCurrentTransferToken?.() || null
       );
     };
     const recipientInput = document.getElementById('recipientAddress');
@@ -816,7 +816,7 @@ export class PopupController {
     const sendBtn = document.getElementById('sendBtn');
     if (sendBtn) {
       sendBtn.addEventListener('click', async () => {
-        const selectedToken = this.tokensListController?.getCurrentTransferToken?.();
+        const selectedToken = this.tokensController?.getCurrentTransferToken?.();
         await this.transactionSendController.handleSendTransaction({
           requestPassword: () => this.promptWalletPassword(),
           silentBalanceRefresh: true,
@@ -840,7 +840,7 @@ export class PopupController {
     if (tokensTab) {
       tokensTab.addEventListener('click', async () => {
         this.switchWalletTab('tokens');
-        await this.tokensListController?.loadTokenBalances?.();
+        await this.tokensController?.loadTokenBalances?.();
       });
     }
 

@@ -156,7 +156,7 @@ test('handleNetworkChanged：委派给 accountHeader/balance/tokens 三个子 co
   const calls = { account: 0, balance: 0, tokens: 0 };
   c.accountHeaderController.refreshHeader = async () => { calls.account++; };
   c.tokenBalanceController.refreshBalanceSilently = async () => { calls.balance++; };
-  c.tokensListController.loadTokenBalances = async () => { calls.tokens++; };
+  c.tokensController.loadTokenBalances = async () => { calls.tokens++; };
   await c.handleNetworkChanged();
   assert.equal(calls.account, 1);
   assert.equal(calls.balance, 1);
@@ -171,7 +171,7 @@ test('refreshWalletData：调 4 个 refresh（accountHeader/balance/network/toke
   c.tokenBalanceController.refreshBalanceSilently = async () => { calls.balance++; };
   c.networkController.refreshNetworkState = async () => { calls.network++; };
   c.updateBackupSyncStatus = async () => { calls.backup++; };
-  c.tokensListController.loadTokenBalances = async () => { calls.tokens++; };
+  c.tokensController.loadTokenBalances = async () => { calls.tokens++; };
   // 让 tokensContent 不 hidden 才会触发 loadTokenBalances
   elements.tokensContent.classList.remove('hidden');
   await c.refreshWalletData();
@@ -186,7 +186,7 @@ test('refreshWalletData：tokensContent 隐藏时不调 loadTokenBalances', asyn
   const wallet = fakeWallet();
   const c = new PopupController({ wallet, transaction: {}, network: {}, token: {} });
   let tokens = 0;
-  c.tokensListController.loadTokenBalances = async () => { tokens++; };
+  c.tokensController.loadTokenBalances = async () => { tokens++; };
   elements.tokensContent.classList.add('hidden');
   await c.refreshWalletData();
   assert.equal(tokens, 0);
