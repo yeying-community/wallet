@@ -72,8 +72,11 @@ curl -o qrcode.min.js https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js
 
 > 本项目零运行时/构建依赖，测试同样不引入第三方框架，统一使用 Node 内置 test runner 与 `assert`。
 
-- 单元测试（crypto / vault / keyring / IDB 集成，Node 内置 runner）：`npm install && npm test`
-  - `fake-indexeddb@6` 是**仅测试用的 devDependency**（`lib/` 仍 vendored 运行时库，扩展本身零运行时依赖）。`--test-force-exit`：keyring 会经 sync/mpc 单例留下定时器，强制退出避免事件循环挂起。
+- 单元测试（crypto / vault / keyring / IDB 集成，Node 内置 runner，默认 worker 隔离）：`npm install && npm test`
+  - `fake-indexeddb@6` 是**仅测试用的 devDependency**（`lib/` 仍 vendored 运行时库，扩展本身零运行时依赖）。
+  - `--test-force-exit`：keyring/sync/mpc 单例会留 setTimeout，强制退出避免事件循环挂起。
+- sync-service 集成测试（mock fetch + chrome + fake-indexeddb，必须**单进程顺序跑**——其单例与 IDB 连接无法跨 worker 序列化）：`npm run test:sync`
+- 一键全部跑：`npm run test:all`
 - 审批弹窗复用回归脚本：`node --experimental-vm-modules tests/test-approval-flow.mjs`
 - 类型检查（JSDoc + `// @ts-check`，按需临时拉 tsc，不入库 node_modules）：`npx -y -p typescript@5 tsc -p tsconfig.json`
   - `tsconfig.json` 设 `checkJs:false`，仅检查带 `// @ts-check` 的文件；新增注解文件自动纳入。
