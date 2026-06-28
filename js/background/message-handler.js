@@ -7,7 +7,7 @@ import { MessageValidator, PORT_NAME, EventType } from '../protocol/dapp-protoco
 import { ApprovalMessageType, WalletMessageType, NetworkMessageType, TransactionMessageType } from '../protocol/extension-protocol.js';
 import { sendResponse, sendError, registerConnection, unregisterConnection, checkSessionAndNotify } from './connection.js';
 import { routeRequest } from './request-router.js';
-import { unlockWallet, lockWallet } from './keyring.js';
+import { unlockWallet, lockWallet, isAccountUnlocked } from './keyring.js';
 import { signMessage, signTransaction } from './signing.js';
 import { ethers } from '../../lib/ethers-6.16.esm.min.js';
 import {
@@ -707,9 +707,10 @@ const popupHandlers = new Map([
   // ==================== 状态查询 ====================
   ['GET_WALLET_STATE', async () => {
     const lastUnlockRequest = await getUserSetting('lastUnlockRequest', null);
+    const account = await getSelectedAccount();
     return {
       success: true,
-      unlocked: state.keyring !== null,
+      unlocked: isAccountUnlocked(account?.id),
       chainId: state.currentChainId,
       lastUnlockRequest
     };

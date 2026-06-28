@@ -47,14 +47,9 @@ export async function checkSessionAndNotify(port, origin) {
       return;
     }
 
-    // 钱包未解锁时，不主动触发 accountsChanged，避免短暂重连造成误判
-    if (!state.keyring) {
-      return;
-    }
-
     // 获取当前账户
     const account = await getSelectedAccount();
-    if (!account) {
+    if (!account || !state.keyring?.has(account.id)) {
       return;
     }
 

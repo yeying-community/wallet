@@ -41,6 +41,7 @@ globalThis.chrome = {
 const vault = await import('../js/background/vault.js');
 const storage = await import('../js/storage/index.js');
 const keyring = await import('../js/background/keyring.js');
+const walletOps = await import('../js/background/operations/wallet.js');
 
 const PASSWORD = 'Correct-Horse-9';
 const WRONG_PASSWORD = 'Correct-Horse-8';
@@ -66,6 +67,16 @@ test('正确密码解锁后私钥进入内存 keyring', async () => {
   assert.equal(instance.address.toLowerCase(), mainAccount.address.toLowerCase());
 });
 
+test('未指定账户解锁时按实际账户 ID 写入 keyring', async () => {
+  await keyring.lockWallet();
+  const res = await keyring.unlockWallet(PASSWORD, null, 'popup');
+  assert.equal(res.success, true);
+  assert.equal(res.account.id, mainAccount.id);
+
+  const instance = keyring.getWalletInstance(mainAccount.id);
+  assert.equal(instance.address.toLowerCase(), mainAccount.address.toLowerCase());
+});
+
 test('错误密码解锁失败且不改变锁定态', async () => {
   await keyring.lockWallet();
   await assert.rejects(() => keyring.unlockWallet(WRONG_PASSWORD, mainAccount.id, 'popup'));
@@ -85,4 +96,13 @@ test('未知账户取实例抛错（即使已解锁其它账户）', async () =>
   await keyring.unlockWallet(PASSWORD, mainAccount.id, 'popup');
   assert.throws(() => keyring.getWalletInstance('non-existent-account-id'));
   await keyring.lockWallet();
+});
+
+test('新建 HD 钱包后新账户立即进入内存 keyring', async () => {
+  await keyring.lockWallet();
+  const res = await walletOps.handleCreateHDWallet('Fresh', PASSWORD);
+  assert.equal(res.success, true);
+
+  const instance = keyring.getWalletInstance(res.account.id);
+  assert.equal(instance.address.toLowerCase(), res.account.address.toLowerCase());
 });

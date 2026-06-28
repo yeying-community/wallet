@@ -228,7 +228,14 @@ export async function routeRequest(method, params, metadata) {
     throw createError(-32002, 'Wallet popup is currently open. Close it and retry.');
   }
 
-  if (!state.keyring && unlockMethods.has(method)) {
+  const selectedAccountBeforeUnlock = unlockMethods.has(method)
+    ? await getSelectedAccount()
+    : null;
+  const selectedAccountUnlocked = Boolean(
+    selectedAccountBeforeUnlock?.id && state.keyring?.has(selectedAccountBeforeUnlock.id)
+  );
+
+  if (unlockMethods.has(method) && !selectedAccountUnlocked) {
     const active = await isActiveTab(tabId);
     if (!active) {
       throw createUserRejectedError('Unlock requires active tab');
@@ -239,18 +246,23 @@ export async function routeRequest(method, params, metadata) {
       tabId: Number.isFinite(tabId) ? tabId : null,
       timestamp: getTimestamp()
     });
-    await requestUnlock({ origin, tabId, method });
-  }
-
-  // 检查钱包是否已解锁
-  if (!state.keyring) {
-    throw createWalletLockedError();
+    await requestUnlock({
+      origin,
+      tabId,
+      method,
+      accountId: selectedAccountBeforeUnlock?.id || null
+    });
   }
 
   // 获取当前账户
   const account = await getSelectedAccount();
   if (!account) {
     throw createAccountNotFoundError('No account selected');
+  }
+
+  // 检查当前账户是否已解锁
+  if (unlockMethods.has(method) && !state.keyring?.has(account.id)) {
+    throw createWalletLockedError();
   }
 
   // ==================== 账户相关 ====================

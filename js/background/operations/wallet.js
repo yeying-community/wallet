@@ -54,6 +54,21 @@ import { mpcService } from '../mpc-service.js';
 
 const MIN_PASSWORD_LENGTH = 8;
 
+async function rememberUnlockedAccount(account, password) {
+  if (!account?.id || !password) {
+    return;
+  }
+
+  const walletInstance = await createWalletInstance(account, password);
+  if (!state.keyring) {
+    state.keyring = new Map();
+  }
+  state.keyring.set(account.id, walletInstance);
+  cachePassword(password, TIMEOUTS.PASSWORD);
+  resetLockTimer();
+  updateKeepAlive();
+}
+
 /**
  * 检查钱包是否已初始化
  * @returns {Promise<Object>} { success, initialized }
@@ -159,6 +174,7 @@ export async function handleCreateHDWallet(accountName, password) {
 
     // 设置为当前账户
     await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
 
     console.log('✅ HD wallet created and saved:', wallet.id);
 
@@ -195,6 +211,8 @@ export async function handleImportHDWallet(accountName, mnemonic, password) {
     // 保存到存储
     await saveWallet(wallet);
     await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
 
     console.log('✅ HD wallet imported and saved:', wallet.id);
 
@@ -230,6 +248,8 @@ export async function handleImportPrivateKeyWallet(accountName, privateKey, pass
     // 保存到存储
     await saveWallet(wallet);
     await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
 
     console.log('✅ Private key wallet imported and saved:', wallet.id);
 

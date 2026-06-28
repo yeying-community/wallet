@@ -54,7 +54,7 @@ export async function unlockWallet(password, accountId, source = 'unknown') {
     if (!state.keyring) {
       state.keyring = new Map();
     }
-    state.keyring.set(accountId, walletInstance);
+    state.keyring.set(account.id, walletInstance);
 
     // 保存当前选择的账户 ID
     await setSelectedAccountId(account.id);
@@ -174,10 +174,17 @@ export function getWalletInstance(accountId) {
   return state.keyring.get(accountId);
 }
 
+export function isAccountUnlocked(accountId) {
+  return Boolean(accountId && state.keyring?.has(accountId));
+}
+
 /**
  * 检查钱包是否已解锁
  * @returns {boolean}
  */
-export function isWalletUnlocked() {
-  return state.keyring !== null;
+export function isWalletUnlocked(accountId = null) {
+  if (accountId) {
+    return isAccountUnlocked(accountId);
+  }
+  return Boolean(state.keyring && state.keyring.size > 0);
 }
