@@ -5,8 +5,6 @@
 
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { clearStorage, getAllStorage, setStorage } from './storage-base.js';
-import { runStoreTransaction } from './indexeddb-base.js';
-import { WalletStorageKeys, NetworkStorageKeys } from './storage-keys.js';
 
 // ==================== 存储键 ====================
 export {
@@ -41,24 +39,12 @@ export {
   onStorageChanged
 } from './storage-base.js';
 
-// ==================== IndexedDB 基础 ====================
+// ==================== IndexedDB 基础（交易历史 transaction-storage 使用） ====================
 export {
   registerStore,
   openDatabase,
-  runStoreTransaction,
-  runMultiStoreTransaction
+  runStoreTransaction
 } from './indexeddb-base.js';
-
-// ==================== 存储后端 / 变更事件 ====================
-export {
-  getStorageBackend,
-  initStorageBackend,
-  migrateCollectionsToIdb
-} from './backend.js';
-export {
-  notifyMutation,
-  onMutation
-} from './mutation-events.js';
 
 // ==================== 钱包存储 ====================
 export {
@@ -245,14 +231,6 @@ export async function importAllData(backup) {
 export async function clearAllData() {
   try {
     await clearStorage();
-    // 迁移到 IndexedDB 的集合不在 chrome.storage 内，需单独清空，否则重置后残留旧数据。
-    await Promise.all(
-      [WalletStorageKeys.WALLETS, WalletStorageKeys.ACCOUNTS, NetworkStorageKeys.NETWORKS].map((storeName) =>
-        runStoreTransaction(storeName, 'readwrite', (store) => store.clear()).catch((error) => {
-          console.warn('[storage] clear IDB store failed:', storeName, error?.message || error);
-        })
-      )
-    );
     console.log('✅ All data cleared');
   } catch (error) {
     console.error('❌ Clear all data failed:', error);

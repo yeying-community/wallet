@@ -67,7 +67,6 @@ function fakeWallet() {
     getTransactions: async () => [],
     getNetworkConfigByKey: async () => null,
     isAuthorized: async () => false,
-    getStorageBackend: async () => 'chrome',
     getMpcAuditLogs: async () => ({ logs: [] }),
     getMpcAuditExportConfig: async () => ({ config: {} }),
     isDeveloperFeatureEnabled: () => false,

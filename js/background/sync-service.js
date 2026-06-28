@@ -15,7 +15,6 @@ import {
   getUserSetting,
   updateUserSetting,
   onStorageChanged,
-  onMutation,
   getContactList,
   saveContact,
   WalletStorageKeys,
@@ -641,15 +640,6 @@ class BackupSyncService {
       ].includes(key));
 
       if (relevant) {
-        this.markDirty('storage-change');
-      }
-    });
-
-    // wallets/accounts/networks 迁到 IndexedDB 后不再触发 chrome.storage.onChanged，
-    // 改由 mutation-events 标脏。仍尊重 _suppressStorageEvents（避免 pull 回写触发自身）。
-    onMutation((collection) => {
-      if (this._suppressStorageEvents) return;
-      if (collection === 'accounts' || collection === 'wallets' || collection === 'networks') {
         this.markDirty('storage-change');
       }
     });

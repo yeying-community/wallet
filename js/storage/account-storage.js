@@ -3,11 +3,7 @@
  * 账户存储
  * 管理账户数据的存储和读取
  *
- * 双后端（chrome.storage / IndexedDB）：默认 chrome，由 getStorageBackend() 决定。
- * 写成功后 notifyMutation('accounts')，sync-service 据此标脏。
- *
- * 选中账户（SELECTED_ACCOUNT_ID）保留在 chrome.storage —— 单标量、不迁移、保留
- * chrome.storage.onChanged 路径以兼容 popup-controller 监听。
+ * 存储后端：chrome.storage.local（关键密钥数据，不放 IndexedDB）。
  */
 
 import { WalletStorageKeys } from './storage-keys.js';
@@ -20,116 +16,12 @@ import {
   getValue,
   setValue
 } from './storage-base.js';
-import { registerStore, runStoreTransaction } from './indexeddb-base.js';
-import { getStorageBackend } from './backend.js';
-import { notifyMutation } from './mutation-events.js';
 import { logError } from '../common/errors/index.js';
 
-const STORE = WalletStorageKeys.ACCOUNTS; // 'accounts', IDB store keyPath='id', index='by_wallet'(walletId)
-const SELECTED_KEY = WalletStorageKeys.SELECTED_ACCOUNT_ID; // chrome.storage 保留
-
-registerStore(STORE, { keyPath: 'id', indexes: [{ name: 'by_wallet', keyPath: 'walletId' }] });
-
-// ==================== chrome.storage 实现（默认） ====================
-
-async function saveAccountChrome(account) {
-  await setMapItem(STORE, account.id, account);
-}
-
-async function getAccountChrome(accountId) {
-  return await getMapItem(STORE, accountId);
-}
-
-async function getAccountsChrome() {
-  return await getMap(STORE);
-}
-
-async function updateAccountChrome(account) {
-  await setMapItem(STORE, account.id, account);
-}
-
-async function deleteAccountChrome(accountId) {
-  await deleteMapItem(STORE, accountId);
-}
-
-async function deleteAccountsChrome(accountIds) {
-  await deleteMapItems(STORE, accountIds);
-}
-
-// ==================== IndexedDB 实现 ====================
-
-async function saveAccountIdb(account) {
-  await runStoreTransaction(STORE, 'readwrite', (store) => {
-    store.put(account);
-  });
-}
-
-async function getAccountIdb(accountId) {
-  let result = null;
-  await runStoreTransaction(STORE, 'readonly', (store, _tx, setResult) => {
-    const req = store.get(accountId);
-    req.onsuccess = () => {
-      result = req.result || null;
-      setResult(result);
-    };
-  });
-  return result;
-}
-
-async function getAccountsIdb() {
-  let result = {};
-  await runStoreTransaction(STORE, 'readonly', (store, _tx, setResult) => {
-    const req = store.getAll();
-    req.onsuccess = () => {
-      const records = Array.isArray(req.result) ? req.result : [];
-      for (const a of records) {
-        if (a && a.id) result[a.id] = a;
-      }
-      setResult(result);
-    };
-  });
-  return result;
-}
-
-async function updateAccountIdb(account) {
-  await runStoreTransaction(STORE, 'readwrite', (store) => {
-    store.put(account);
-  });
-}
-
-async function deleteAccountIdb(accountId) {
-  await runStoreTransaction(STORE, 'readwrite', (store) => {
-    store.delete(accountId);
-  });
-}
-
-async function deleteAccountsIdb(accountIds) {
-  if (!Array.isArray(accountIds) || accountIds.length === 0) return;
-  await runStoreTransaction(STORE, 'readwrite', (store) => {
-    for (const id of accountIds) {
-      store.delete(id);
-    }
-  });
-}
-
-async function getWalletAccountsIdb(walletId) {
-  let result = [];
-  await runStoreTransaction(STORE, 'readonly', (store, _tx, setResult) => {
-    const index = store.index('by_wallet');
-    const req = index.getAll(IDBKeyRange.only(walletId));
-    req.onsuccess = () => {
-      result = Array.isArray(req.result) ? req.result : [];
-      setResult(result);
-    };
-  });
-  return result;
-}
+const STORE = WalletStorageKeys.ACCOUNTS; // 'accounts'
+const SELECTED_KEY = WalletStorageKeys.SELECTED_ACCOUNT_ID;
 
 // ==================== 公共 API ====================
-
-function isIdb() {
-  return getStorageBackend() === 'idb';
-}
 
 /**
  * 保存账户
@@ -141,10 +33,8 @@ export async function saveAccount(account) {
     if (!account || !account.id) {
       throw new Error('Invalid account object');
     }
-    if (isIdb()) await saveAccountIdb(account);
-    else await saveAccountChrome(account);
+    await setMapItem(STORE, account.id, account);
     console.log('✅ Account saved:', account.id);
-    notifyMutation('accounts', { id: account.id });
   } catch (error) {
     logError('account-storage-save', error);
     throw error;
@@ -158,7 +48,7 @@ export async function saveAccount(account) {
  */
 export async function getAccount(accountId) {
   try {
-    return isIdb() ? await getAccountIdb(accountId) : await getAccountChrome(accountId);
+    return await getMapItem(STORE, accountId);
   } catch (error) {
     logError('account-storage-get', error);
     return null;
@@ -171,7 +61,7 @@ export async function getAccount(accountId) {
  */
 export async function getAccounts() {
   try {
-    return isIdb() ? await getAccountsIdb() : await getAccountsChrome();
+    return await getMap(STORE);
   } catch (error) {
     logError('account-storage-get-all', error);
     return {};
@@ -193,10 +83,7 @@ export async function getAccountList() {
  */
 export async function getWalletAccounts(walletId) {
   try {
-    if (isIdb()) {
-      return await getWalletAccountsIdb(walletId);
-    }
-    const all = await getAccountsChrome();
+    const all = await getAccounts();
     return Object.values(all).filter((account) => account.walletId === walletId);
   } catch (error) {
     logError('account-storage-get-wallet-accounts', error);
@@ -214,10 +101,8 @@ export async function updateAccount(account) {
     if (!account || !account.id) {
       throw new Error('Invalid account object');
     }
-    if (isIdb()) await updateAccountIdb(account);
-    else await updateAccountChrome(account);
+    await setMapItem(STORE, account.id, account);
     console.log('✅ Account updated:', account.id);
-    notifyMutation('accounts', { id: account.id, op: 'update' });
   } catch (error) {
     logError('account-storage-update', error);
     throw error;
@@ -231,10 +116,8 @@ export async function updateAccount(account) {
  */
 export async function deleteAccount(accountId) {
   try {
-    if (isIdb()) await deleteAccountIdb(accountId);
-    else await deleteAccountChrome(accountId);
+    await deleteMapItem(STORE, accountId);
     console.log('✅ Account deleted:', accountId);
-    notifyMutation('accounts', { id: accountId, op: 'delete' });
   } catch (error) {
     logError('account-storage-delete', error);
     throw error;
@@ -248,10 +131,8 @@ export async function deleteAccount(accountId) {
  */
 export async function deleteAccounts(accountIds) {
   try {
-    if (isIdb()) await deleteAccountsIdb(accountIds);
-    else await deleteAccountsChrome(accountIds);
+    await deleteMapItems(STORE, accountIds);
     console.log('✅ Accounts deleted:', accountIds?.length || 0);
-    notifyMutation('accounts', { op: 'delete-batch', count: accountIds?.length || 0 });
   } catch (error) {
     logError('account-storage-delete-batch', error);
     throw error;
@@ -287,7 +168,7 @@ export async function accountExists(accountId) {
   }
 }
 
-// ==================== 选中账户管理（始终 chrome.storage） ====================
+// ==================== 选中账户管理 ====================
 
 export async function setSelectedAccountId(accountId) {
   try {

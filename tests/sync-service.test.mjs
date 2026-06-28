@@ -157,7 +157,6 @@ async function seedDomainData() {
   const PASSWORD = 'TestPassword123';
   const encryptedMnemonic = await encryptString(TEST_MNEMONIC, PASSWORD);
 
-  await ops.initStorageBackend();
   await ops.clearAllData();
 
   await ops.saveWallet({ id: 'w1', name: 'HD Wallet', type: 'hd', accountCount: 1, createdAt: 1, encryptedMnemonic });

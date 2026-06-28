@@ -2,24 +2,18 @@
  * 网络存储
  * 管理网络配置的存储和读取（统一 networks 列表）
  *
- * 双后端（chrome.storage / IndexedDB）：networks 始终整组读写（getNetworks/saveNetworks），
- * 故只需对这两个原语分发；其余 add/update/delete 经它们自动适配。selectedNetwork（单标量）
- * 保留 chrome.storage（不迁移，兼容 popup-controller 的 onStorageChanged 监听）。
+ * 存储后端：chrome.storage.local。networks 整组读写（getNetworks/saveNetworks），
+ * add/update/delete 经它们自动适配。
  */
 
 import { NetworkStorageKeys } from './storage-keys.js';
 import { getValue, setValue, getArray, setArray } from './storage-base.js';
-import { registerStore, runStoreTransaction } from './indexeddb-base.js';
-import { getStorageBackend } from './backend.js';
-import { notifyMutation } from './mutation-events.js';
 import { logError } from '../common/errors/index.js';
 import { normalizeChainId } from '../common/chain/index.js';
 
 const LEGACY_CUSTOM_NETWORKS_KEY = 'customNetworks';
 const LEGACY_CONFIG_NETWORKS_KEY = 'networkConfigs';
-const STORE = NetworkStorageKeys.NETWORKS; // 'networks', IDB store keyPath='chainId'
-
-registerStore(STORE, { keyPath: 'chainId' });
+const STORE = NetworkStorageKeys.NETWORKS; // 'networks'
 
 function getChainIdKey(network) {
   if (!network) return null;
@@ -108,19 +102,8 @@ export async function saveNetworks(networks) {
     if (!Array.isArray(networks)) {
       throw new Error('Networks must be an array');
     }
-    if (getStorageBackend() === 'idb') {
-      // 整组替换：清空后批量写入（避免 chainId 变更残留旧记录）
-      await runStoreTransaction(STORE, 'readwrite', (store) => {
-        store.clear();
-        for (const network of networks) {
-          store.put(network);
-        }
-      });
-    } else {
-      await setArray(STORE, networks);
-    }
+    await setArray(STORE, networks);
     console.log('✅ Networks saved:', networks.length);
-    notifyMutation('networks', { count: networks.length });
   } catch (error) {
     logError('network-storage-save', error);
     throw error;
@@ -133,17 +116,6 @@ export async function saveNetworks(networks) {
  */
 export async function getNetworks() {
   try {
-    if (getStorageBackend() === 'idb') {
-      let result = [];
-      await runStoreTransaction(STORE, 'readonly', (store, _tx, setResult) => {
-        const req = store.getAll();
-        req.onsuccess = () => {
-          result = Array.isArray(req.result) ? req.result : [];
-          setResult(result);
-        };
-      });
-      return result;
-    }
     return await getArray(STORE);
   } catch (error) {
     logError('network-storage-get', error);

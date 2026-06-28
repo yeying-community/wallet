@@ -34,9 +34,6 @@ import {
   clearSelectedAccount,
   setStorage,
   WalletStorageKeys,
-  getStorageBackend,
-  runMultiStoreTransaction,
-  notifyMutation,
   clearAllData,
   getMpcWalletList,
   clearTransactionsByAddress,
@@ -688,26 +685,11 @@ export async function changePassword(oldPassword, newPassword) {
   }
 
   // 2) 一次性原子写入钱包与账户，避免逐账户写入被 Service Worker 回收打断、
-  //    造成新旧密码混杂导致导出/解锁失败。chrome 后端用单次 set；idb 后端用跨 store 单事务。
-  if (getStorageBackend() === 'idb') {
-    await runMultiStoreTransaction(
-      [WalletStorageKeys.WALLETS, WalletStorageKeys.ACCOUNTS],
-      'readwrite',
-      (stores) => {
-        const walletStore = stores[WalletStorageKeys.WALLETS];
-        const accountStore = stores[WalletStorageKeys.ACCOUNTS];
-        for (const wallet of Object.values(nextWalletsMap)) walletStore.put(wallet);
-        for (const account of Object.values(nextAccountsMap)) accountStore.put(account);
-      }
-    );
-    notifyMutation('wallets');
-    notifyMutation('accounts');
-  } else {
-    await setStorage({
-      [WalletStorageKeys.WALLETS]: nextWalletsMap,
-      [WalletStorageKeys.ACCOUNTS]: nextAccountsMap
-    });
-  }
+  //    造成新旧密码混杂导致导出/解锁失败。chrome.storage.local.set 单次写多个 key 即为原子。
+  await setStorage({
+    [WalletStorageKeys.WALLETS]: nextWalletsMap,
+    [WalletStorageKeys.ACCOUNTS]: nextAccountsMap
+  });
 
   // 3) 钱包密钥一致后再迁移 MPC 设备密钥。MPC 为独立存储，失败不应回退已成功的钱包改密，
   //    仅记录告警，由 MPC 流程单独重试。

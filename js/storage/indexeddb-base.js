@@ -6,7 +6,9 @@
 import { logError } from '../common/errors/index.js';
 
 const DB_NAME = 'yeying_wallet_db';
-// v2：新增 wallets/accounts/networks store；事务历史 store 保留（v1）。
+// IDB 仅承载交易历史（transactions）。钱包/账户/网络已退回 chrome.storage.local
+// （IndexedDB best-effort 持久性会被浏览器驱逐，不适合关键密钥数据）。
+// DB_VERSION 维持 2：IndexedDB 不可降版本，老用户库里残留的空 wallets/accounts/networks store 无害。
 const DB_VERSION = 2;
 const storeRegistry = new Map();
 
@@ -125,61 +127,6 @@ export async function runStoreTransaction(storeName, mode, handler) {
 
     try {
       handler(store, tx, (value) => {
-        result = value;
-      });
-    } catch (error) {
-      tx.abort();
-      db.close();
-      reject(error);
-    }
-  });
-}
-
-/**
- * 跨多个对象仓库的原子事务（如 changePassword 同时改 wallets + accounts）。
- * 任何一个 store 写失败 → 整事务回滚。
- * @param {string[]} storeNames
- * @param {'readonly'|'readwrite'} mode
- * @param {Function} handler 接收 (stores: {[name]: IDBObjectStore}, tx, setResult)
- * @returns {Promise<any>}
- */
-export async function runMultiStoreTransaction(storeNames, mode, handler) {
-  for (const name of storeNames) {
-    if (!storeRegistry.has(name)) {
-      const error = new Error(`IndexedDB store not registered: ${name}`);
-      logError('indexeddb-store-missing', error);
-      throw error;
-    }
-  }
-  const db = await openDatabase();
-
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeNames, mode);
-    const stores = {};
-    for (const name of storeNames) {
-      stores[name] = tx.objectStore(name);
-    }
-    let result;
-
-    tx.oncomplete = () => {
-      db.close();
-      resolve(result);
-    };
-    tx.onerror = () => {
-      const error = tx.error || new Error('IndexedDB transaction failed');
-      logError('indexeddb-transaction', error);
-      db.close();
-      reject(error);
-    };
-    tx.onabort = () => {
-      const error = tx.error || new Error('IndexedDB transaction aborted');
-      logError('indexeddb-transaction', error);
-      db.close();
-      reject(error);
-    };
-
-    try {
-      handler(stores, tx, (value) => {
         result = value;
       });
     } catch (error) {
