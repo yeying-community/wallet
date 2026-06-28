@@ -26,6 +26,11 @@ import { POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { handleUcanSession, handleUcanSign } from './ucan.js';
 import {
+  handleYeyingEncrypt,
+  handleYeyingDecrypt,
+  handleYeyingGetCipherSuites
+} from './operations/crypto-service.js';
+import {
   addPendingRequest,
   ensureApprovalRequestVisible,
   ensureApprovalStateHydrated,
@@ -213,7 +218,9 @@ export async function routeRequest(method, params, metadata) {
     'eth_signTypedData',
     'eth_signTypedData_v4',
     'yeying_ucan_session',
-    'yeying_ucan_sign'
+    'yeying_ucan_sign',
+    'yeying_encrypt',
+    'yeying_decrypt'
   ]);
 
   const blockedWhilePopupOpenMethods = new Set([
@@ -285,6 +292,23 @@ export async function routeRequest(method, params, metadata) {
   if (method === 'yeying_ucan_sign') {
     await ensureSiteAuthorized(origin);
     return handleUcanSign(origin, account, params);
+  }
+
+  // ==================== 加密服务 ====================
+
+  if (method === 'yeying_getCipherSuites') {
+    // 读取套件列表（只读元数据，无需 unlock / site auth）
+    return handleYeyingGetCipherSuites(origin, account, params);
+  }
+
+  if (method === 'yeying_encrypt') {
+    await ensureSiteAuthorized(origin);
+    return handleYeyingEncrypt(origin, account, params);
+  }
+
+  if (method === 'yeying_decrypt') {
+    await ensureSiteAuthorized(origin);
+    return handleYeyingDecrypt(origin, account, params);
   }
 
   // ==================== 链相关 ====================
