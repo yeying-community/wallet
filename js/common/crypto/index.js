@@ -77,6 +77,14 @@ export {
   validateSignature
 } from './validation.js';
 
+// ==================== 命名安全套件 ====================
+export {
+  getSupportedSuites,
+  encryptData,
+  decryptData
+} from './crypto-suites.js';
+export { SUITE_DEFINITIONS, DEFAULT_SUITE } from './crypto-constants.js';
+
 // ==================== 便捷方法 ====================
 
 /**
