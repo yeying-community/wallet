@@ -178,13 +178,39 @@
   - `DEVELOPER_FEATURES.ENABLE_DEBUG_MODE = true`
 - 设置页会出现“模拟冲突”按钮，点击会生成一条账户冲突（以及可用时的联系人冲突）。
 
-## 14. 待确认清单（请逐项确认）
+## 14. 已确认决策
 
-1) WebDAV 路径：是否采用 `/apps/<appId>/payload.<srpFingerprint>.json.enc`？
-2) 认证优先级：默认 UCAN，SIWE 作为备用，是否保留 Basic？
-3) Payload 字段：是否需要同步联系人与 Network IDs 在 MVP？
-4) 冲突策略：是否允许“保留双版本”还是只记录冲突供用户处理？
-5) 多钱包场景：同一设备多个 HD 钱包是否都开启同步？
-6) 是否需要对 payload 进行版本化迁移（v1 → v2）？
+1) **WebDAV 路径**
+
+采用 `/apps/<appId>/payload.<srpFingerprint>.json.enc` 作为 UCAN app scope 下的默认路径。
+当未配置 app scope 时，payload 文件退回到 WebDAV endpoint 根路径下的 `payload.<srpFingerprint>.json.enc`。
+
+2) **认证优先级**
+
+默认认证方式为 UCAN。SIWE 和 Basic 保留为备用模式，由用户在设置页选择当前 `authMode`，请求时只使用当前模式对应的认证头。
+
+3) **MVP 同步字段**
+
+MVP 同步联系人和 Network IDs。Payload v1 固定包含：
+
+- `accountCount`
+- `accounts`
+- `contacts`
+- `networkIds`
+- `networksUpdatedAt`
+
+仍然不纳入同步：私钥、助记词、私钥导入账户、交易记录、授权站点和代币余额。
+
+4) **冲突策略**
+
+不在 payload 中保留双版本。账户名称和联系人按更新时间做 LWW；时间戳相同但内容不同则记录到 `backupSyncConflicts`，由 UI 展示并让用户选择“用本地”或“用远端”。存在未处理冲突时，自动同步暂停，直到用户处理冲突。
+
+5) **多钱包场景**
+
+同一设备上的多个 HD 钱包都参与同步。每个 HD 钱包使用自己的 SRP fingerprint 和 syncKey，写入独立 payload 文件。私钥导入钱包不参与同步。
+
+6) **Payload 版本迁移**
+
+当前 payload 固定为 `version: 1`，读取侧按 v1 结构处理。暂不实现 v1 → v2 迁移逻辑；后续新增字段必须兼容 v1，只有出现破坏性结构调整时再引入明确的版本迁移函数。
 
 ---

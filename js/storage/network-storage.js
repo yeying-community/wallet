@@ -1,6 +1,9 @@
 /**
  * 网络存储
  * 管理网络配置的存储和读取（统一 networks 列表）
+ *
+ * 存储后端：chrome.storage.local。networks 整组读写（getNetworks/saveNetworks），
+ * add/update/delete 经它们自动适配。
  */
 
 import { NetworkStorageKeys } from './storage-keys.js';
@@ -10,6 +13,7 @@ import { normalizeChainId } from '../common/chain/index.js';
 
 const LEGACY_CUSTOM_NETWORKS_KEY = 'customNetworks';
 const LEGACY_CONFIG_NETWORKS_KEY = 'networkConfigs';
+const STORE = NetworkStorageKeys.NETWORKS; // 'networks'
 
 function getChainIdKey(network) {
   if (!network) return null;
@@ -98,7 +102,7 @@ export async function saveNetworks(networks) {
     if (!Array.isArray(networks)) {
       throw new Error('Networks must be an array');
     }
-    await setArray(NetworkStorageKeys.NETWORKS, networks);
+    await setArray(STORE, networks);
     console.log('✅ Networks saved:', networks.length);
   } catch (error) {
     logError('network-storage-save', error);
@@ -112,7 +116,7 @@ export async function saveNetworks(networks) {
  */
 export async function getNetworks() {
   try {
-    return await getArray(NetworkStorageKeys.NETWORKS);
+    return await getArray(STORE);
   } catch (error) {
     logError('network-storage-get', error);
     return [];

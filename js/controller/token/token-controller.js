@@ -1,7 +1,7 @@
 import { shortenAddress } from '../../common/chain/index.js';
 import { TransferTokenController } from './transfer-token-controller.js';
 
-export class TokensListController {
+export class TokenController {
   constructor({ token, wallet, networkController } = {}) {
     this.token = token;
     this.wallet = wallet;
@@ -52,7 +52,7 @@ export class TokensListController {
       this.renderTokenBalances(this.lastTokenList);
       return this.lastTokenList;
     } catch (error) {
-      console.error('[TokensListController] 加载通证余额失败:', error);
+      console.error('[TokenController] 加载通证余额失败:', error);
       this.renderTokenBalances([]);
       return [];
     }

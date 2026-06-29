@@ -1,11 +1,18 @@
+// @ts-check
 /**
  * 钱包存储
  * 管理钱包数据的存储和读取
+ *
+ * 存储后端：chrome.storage.local。钱包/账户/网络属于关键密钥数据，必须放在
+ * 扩展可靠持久的 chrome.storage.local，不能放 IndexedDB（best-effort 持久性，
+ * 可能被浏览器在会话间驱逐，曾导致钱包数据丢失）。
  */
 
 import { WalletStorageKeys } from './storage-keys.js';
 import { getMap, setMapItem, getMapItem, deleteMapItem } from './storage-base.js';
 import { logError } from '../common/errors/index.js';
+
+const STORE = WalletStorageKeys.WALLETS; // 'wallets'
 
 /**
  * 保存钱包
@@ -17,10 +24,8 @@ export async function saveWallet(wallet) {
     if (!wallet || !wallet.id) {
       throw new Error('Invalid wallet object');
     }
-
-    await setMapItem(WalletStorageKeys.WALLETS, wallet.id, wallet);
+    await setMapItem(STORE, wallet.id, wallet);
     console.log('✅ Wallet saved:', wallet.id);
-
   } catch (error) {
     logError('wallet-storage-save', error);
     throw error;
@@ -34,7 +39,7 @@ export async function saveWallet(wallet) {
  */
 export async function getWallet(walletId) {
   try {
-    return await getMapItem(WalletStorageKeys.WALLETS, walletId);
+    return await getMapItem(STORE, walletId);
   } catch (error) {
     logError('wallet-storage-get', error);
     return null;
@@ -47,7 +52,7 @@ export async function getWallet(walletId) {
  */
 export async function getWallets() {
   try {
-    return await getMap(WalletStorageKeys.WALLETS);
+    return await getMap(STORE);
   } catch (error) {
     logError('wallet-storage-get-all', error);
     return {};
@@ -61,7 +66,7 @@ export async function getWallets() {
  */
 export async function deleteWallet(walletId) {
   try {
-    await deleteMapItem(WalletStorageKeys.WALLETS, walletId);
+    await deleteMapItem(STORE, walletId);
     console.log('✅ Wallet deleted:', walletId);
   } catch (error) {
     logError('wallet-storage-delete', error);
@@ -83,4 +88,3 @@ export async function walletExists(walletId) {
     return false;
   }
 }
-

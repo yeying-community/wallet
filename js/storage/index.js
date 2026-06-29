@@ -39,7 +39,7 @@ export {
   onStorageChanged
 } from './storage-base.js';
 
-// ==================== IndexedDB 基础 ====================
+// ==================== IndexedDB 基础（交易历史 transaction-storage 使用） ====================
 export {
   registerStore,
   openDatabase,

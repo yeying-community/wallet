@@ -508,7 +508,7 @@ body {
   border-radius: 8px;
   margin: 15px 0;
   word-break: break-all;
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   max-height: none;
   overflow: visible;
@@ -566,7 +566,7 @@ body {
 }
 
 .recap-action-name {
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: #333;
   white-space: nowrap;
 }

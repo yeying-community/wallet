@@ -24,6 +24,55 @@ export const AES_GCM_CONFIG = {
   ivLength: 12              // IV 长度（字节）
 };
 
+/**
+ * 命名安全套件（MVP）
+ * 暴露面只列名字 + 描述；算法参数（key size / iv / iter / mac len）全部锁死，
+ * 业务侧不能选裸算法参数——这是规避 R10/GAS-config 同类教训。
+ */
+export const SUITE_DEFINITIONS = {
+  'aes-256-gcm': {
+    name: 'aes-256-gcm',
+    description: 'AES-256-GCM + PBKDF2-SHA256 210k（国际默认）',
+    mode: 'symmetric',
+    requiresKey: true,
+    algorithm: 'AES-GCM',
+    keyLength: 256,
+    ivLength: 12,
+    pbkdf2: { hash: 'SHA-256', iterations: 210000, saltLength: 16 }
+  },
+  'sm4-cbc-hmac-sm3': {
+    name: 'sm4-cbc-hmac-sm3',
+    description: 'SM4-CBC + HMAC-SM3（国密对称，encrypt-then-MAC）',
+    mode: 'symmetric',
+    requiresKey: true,
+    algorithm: 'SM4-CBC',
+    keyLength: 128,
+    blockLength: 16,
+    ivLength: 16,
+    mac: { algorithm: 'HMAC-SM3', length: 256 },
+    pbkdf2: { hash: 'SHA-256', iterations: 210000, saltLength: 16 }
+  },
+  'sha-256': {
+    name: 'sha-256',
+    description: 'SHA-256 哈希',
+    mode: 'hash',
+    requiresKey: false,
+    algorithm: 'SHA-256',
+    outputLength: 32
+  },
+  'sm3': {
+    name: 'sm3',
+    description: 'SM3 哈希（国密）',
+    mode: 'hash',
+    requiresKey: false,
+    algorithm: 'SM3',
+    outputLength: 32
+  }
+};
+
+/** 默认套件 */
+export const DEFAULT_SUITE = 'aes-256-gcm';
+
 // ==================== 密码强度配置 ====================
 
 /**

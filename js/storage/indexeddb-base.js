@@ -6,7 +6,10 @@
 import { logError } from '../common/errors/index.js';
 
 const DB_NAME = 'yeying_wallet_db';
-const DB_VERSION = 1;
+// IDB 仅承载交易历史（transactions）。钱包/账户/网络已退回 chrome.storage.local
+// （IndexedDB best-effort 持久性会被浏览器驱逐，不适合关键密钥数据）。
+// DB_VERSION 维持 2：IndexedDB 不可降版本，老用户库里残留的空 wallets/accounts/networks store 无害。
+const DB_VERSION = 2;
 const storeRegistry = new Map();
 
 function ensureIndexedDb() {
@@ -36,10 +39,10 @@ function applyStoreDefinition(db, transaction, definition) {
  * 注册对象仓库（需要在首次打开数据库前注册）
  * 如需新增/修改索引，请提升 DB_VERSION
  * @param {string} name
- * @param {Object} options
- * @param {string} options.keyPath
- * @param {boolean} options.autoIncrement
- * @param {Array} options.indexes
+ * @param {Object} [options]
+ * @param {string} [options.keyPath]
+ * @param {boolean} [options.autoIncrement]
+ * @param {Array} [options.indexes]
  */
 export function registerStore(name, options = {}) {
   if (!name) {

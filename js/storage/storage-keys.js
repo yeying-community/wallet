@@ -1,6 +1,52 @@
+// @ts-check
 /**
  * 存储键定义
  * 集中管理所有存储键，避免硬编码
+ */
+
+/**
+ * HD/导入钱包（密钥容器）。HD 钱包含加密助记词，导入钱包仅含账户私钥。
+ * @typedef {Object} StoredWallet
+ * @property {string} id
+ * @property {string} name
+ * @property {'hd'|'imported'} type
+ * @property {string} [encryptedMnemonic] HD 钱包：AES-GCM 加密的助记词（Base64）
+ * @property {number} createdAt
+ * @property {number} accountCount
+ */
+
+/**
+ * 钱包下的一个账户（地址）。
+ * @typedef {Object} StoredAccount
+ * @property {string} id  形如 `${walletId}_${index}`
+ * @property {string} walletId
+ * @property {string} name
+ * @property {'main'|'sub'} type
+ * @property {number} index
+ * @property {string} [derivationPath]
+ * @property {string} address
+ * @property {string} encryptedPrivateKey AES-GCM 加密的私钥（Base64）
+ * @property {number} createdAt
+ * @property {number} [nameUpdatedAt]
+ */
+
+/**
+ * 站点授权记录（connected_sites 的值）。
+ * @typedef {Object} StoredPermission
+ * @property {string} origin
+ * @property {string[]} [accounts]
+ * @property {number} [connectedAt]
+ */
+
+/**
+ * 联系人。
+ * @typedef {Object} StoredContact
+ * @property {string} id
+ * @property {string} name
+ * @property {string} address
+ * @property {string} [note]
+ * @property {number} createdAt
+ * @property {number} updatedAt
  */
 
 // ==================== 钱包相关 ====================

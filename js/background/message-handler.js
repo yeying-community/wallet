@@ -7,7 +7,7 @@ import { MessageValidator, PORT_NAME, EventType } from '../protocol/dapp-protoco
 import { ApprovalMessageType, WalletMessageType, NetworkMessageType, TransactionMessageType } from '../protocol/extension-protocol.js';
 import { sendResponse, sendError, registerConnection, unregisterConnection, checkSessionAndNotify } from './connection.js';
 import { routeRequest } from './request-router.js';
-import { unlockWallet, lockWallet } from './keyring.js';
+import { unlockWallet, lockWallet, isAccountUnlocked } from './keyring.js';
 import { signMessage, signTransaction } from './signing.js';
 import { ethers } from '../../lib/ethers-6.16.esm.min.js';
 import {
@@ -22,26 +22,39 @@ import {
   handleGetAccountById,
   handleUpdateAccountName,
   handleDeleteAccount,
-  handleGetBalance,
-  handleAddToken,
-  handleGetTokenBalances,
   handleExportPrivateKey,
   handleExportMnemonic,
+  handleResetWallet,
+  changePassword
+} from './operations/wallet.js';
+import {
+  handleGetBalance,
+  handleAddToken,
+  handleGetTokenBalances
+} from './operations/tokens.js';
+import {
   handleGetAuthorizedSites,
   handleGetSiteUcanSession,
   handleRevokeSite,
-  handleClearAllAuthorizations,
-  handleResetWallet,
+  handleClearAllAuthorizations
+} from './operations/sites.js';
+import {
   handleGetContacts,
   handleAddContact,
   handleUpdateContact,
-  handleDeleteContact,
+  handleDeleteContact
+} from './operations/contacts.js';
+import {
   handleGetBackupSyncSettings,
   handleUpdateBackupSyncSettings,
   handleBackupSyncNow,
   handleBackupSyncClearRemote,
   handleBackupSyncClearLogs,
   handleBackupSyncLogEvent,
+  handleResolveBackupSyncConflict
+} from './operations/backup-sync.js';
+import {
+  handleCreateMpcWallet,
   handleGetMpcSettings,
   handleUpdateMpcSettings,
   handleGenerateMpcCoordinatorUcan,
@@ -60,11 +73,8 @@ import {
   handleMpcGetAuditExportConfig,
   handleMpcUpdateAuditExportConfig,
   handleMpcExportAuditLogs,
-  handleMpcFlushAuditExportQueue,
-  handleCreateMpcWallet,
-  handleResolveBackupSyncConflict,
-  changePassword
-} from './wallet-operations.js';
+  handleMpcFlushAuditExportQueue
+} from './operations/mpc.js';
 import { state } from './state.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
 import { normalizeChainId } from '../common/chain/index.js';
@@ -95,6 +105,7 @@ import {
   getActiveApprovalSummary,
   recordApprovalResponse
 } from './approval-flow.js';
+import { diagnostics } from './diagnostics.js';
 
 async function persistPopupBounds(bounds) {
   const normalized = normalizePopupBounds(bounds);
@@ -670,481 +681,244 @@ export async function handleContentMessage(message, port, origin, tabId) {
  * @param {Object} message - 消息对象
  * @param {Function} response - 响应函数
  */
+/**
+ * Popup message handler registry.
+ * 每个 handler 签名：async (data, ctx) => any，其中 ctx.message 是完整消息对象（用于读取非 data 字段）。
+ * 返回值直接作为 response body 发送。抛错由外层 handlePopupMessage 的 try/catch 统一兜底。
+ */
+const popupHandlers = new Map([
+  // ==================== 钱包管理 ====================
+  ['IS_WALLET_INITIALIZED', async () => await isWalletInitialized()],
+  ['GET_ALL_WALLETS', async () => await HandleGetWalletList()],
+  ['CREATE_HD_WALLET', async (data) => await handleCreateHDWallet(data.accountName, data.password)],
+  ['IMPORT_HD_WALLET', async (data) => await handleImportHDWallet(data.accountName, data.mnemonic, data.password)],
+  ['IMPORT_PRIVATE_KEY_WALLET', async (data) => await handleImportPrivateKeyWallet(data.accountName, data.privateKey, data.password)],
+  ['CREATE_MPC_WALLET', async (data) => await handleCreateMpcWallet(data)],
+  ['CREATE_SUB_ACCOUNT', async (data) => await handleCreateSubAccount(data.walletId, data.accountName, data.password)],
+  ['SWITCH_ACCOUNT', async (data) => await handleSwitchAccount(data.accountId, data.password)],
+
+  // ==================== 解锁/锁定 ====================
+  ['UNLOCK_WALLET', async (data) => {
+    const unlockSource = typeof data?.source === 'string' ? data.source : 'unknown';
+    return await unlockWallet(data.password, data.accountId, unlockSource);
+  }],
+  ['LOCK_WALLET', async () => await lockWallet()],
+
+  // ==================== 状态查询 ====================
+  ['GET_WALLET_STATE', async () => {
+    const lastUnlockRequest = await getUserSetting('lastUnlockRequest', null);
+    const account = await getSelectedAccount();
+    return {
+      success: true,
+      unlocked: isAccountUnlocked(account?.id),
+      chainId: state.currentChainId,
+      lastUnlockRequest
+    };
+  }],
+  [WalletMessageType.UPDATE_POPUP_BOUNDS, async (data) => {
+    if (data) {
+      await persistPopupBounds(data);
+    }
+    return { success: true };
+  }],
+  [WalletMessageType.GET_CURRENT_ACCOUNT, async () => await handleGetCurrentAccount()],
+
+  [NetworkMessageType.GET_CURRENT_CHAIN_ID, async () => {
+    if (!state.currentChainId) {
+      const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+      state.currentChainId = fallbackConfig?.chainIdHex
+        || (fallbackConfig?.chainId ? normalizeChainId(fallbackConfig.chainId) : null)
+        || state.currentChainId;
+    }
+    return { success: true, chainId: state.currentChainId };
+  }],
+  [NetworkMessageType.GET_CURRENT_RPC_URL, async () => {
+    let rpcUrl = state.currentRpcUrl;
+    if (!rpcUrl) {
+      const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+      rpcUrl = fallbackConfig?.rpcUrl || fallbackConfig?.rpc || '';
+      if (rpcUrl) {
+        state.currentRpcUrl = rpcUrl;
+      }
+    }
+    return { success: true, rpcUrl };
+  }],
+  [NetworkMessageType.SWITCH_NETWORK, async (data) => await handleSwitchNetworkMessage(data)],
+  [NetworkMessageType.ADD_CUSTOM_NETWORK, async (data) => await handleAddCustomNetworkMessage(data)],
+  [NetworkMessageType.UPDATE_CUSTOM_NETWORK, async (data) => await handleUpdateCustomNetworkMessage(data)],
+  [NetworkMessageType.GET_SUPPORTED_NETWORKS, async () => await handleGetSupportedNetworksMessage()],
+  [NetworkMessageType.GET_NETWORK_INFO, async () => await handleGetNetworkInfoMessage()],
+  [NetworkMessageType.GET_CUSTOM_NETWORKS, async () => await handleGetNetworksMessage()],
+  [NetworkMessageType.REMOVE_CUSTOM_NETWORK, async (data) => await handleRemoveCustomNetworkMessage(data?.chainId)],
+
+  // ==================== 审批 ====================
+  [ApprovalMessageType.GET_PENDING_REQUEST, async (data) => {
+    await ensureApprovalStateHydrated();
+    const pendingRequest = getPendingRequestById(data.requestId);
+    return { success: true, request: pendingRequest || null };
+  }],
+  [ApprovalMessageType.GET_ACTIVE_APPROVAL, async () => {
+    await ensureApprovalStateHydrated();
+    const approval = getActiveApprovalSummary();
+    if (approval?.windowId) {
+      chrome.windows.update(approval.windowId, { focused: true }).catch(() => { });
+    }
+    return { success: true, approval };
+  }],
+  [ApprovalMessageType.APPROVAL_RESPONSE, async (_data, ctx) => {
+    await ensureApprovalStateHydrated();
+    const { message } = ctx;
+    return {
+      success: recordApprovalResponse(message.requestId, {
+        approved: message.approved,
+        account: message.account || null
+      })
+    };
+  }],
+  // background -> approval 页面提示消息；若回流到 background，直接忽略
+  [ApprovalMessageType.APPROVAL_QUEUE_UPDATE, async () => ({ success: true })],
+
+  // ==================== 账户 / 授权 ====================
+  [WalletMessageType.GET_ACCOUNT_BY_ID, async (data) => await handleGetAccountById(data?.accountId)],
+  [WalletMessageType.UPDATE_ACCOUNT_NAME, async (data) => await handleUpdateAccountName(data?.accountId, data?.newName)],
+  [WalletMessageType.DELETE_ACCOUNT, async (data) => await handleDeleteAccount(data?.accountId, data?.password)],
+  [WalletMessageType.GET_BALANCE, async (data) => await handleGetBalance(data?.address)],
+  [WalletMessageType.GET_TOKEN_BALANCES, async (data) => await handleGetTokenBalances(data?.address)],
+  [WalletMessageType.ADD_TOKEN, async (data) => await handleAddToken(data?.token)],
+  [WalletMessageType.GET_AUTHORIZED_SITES, async () => await handleGetAuthorizedSites()],
+  [WalletMessageType.GET_SITE_UCAN_SESSION, async (data) => await handleGetSiteUcanSession(data?.origin, data?.address)],
+  [WalletMessageType.REVOKE_SITE, async (data) => await handleRevokeSite(data?.origin)],
+  [WalletMessageType.CLEAR_ALL_AUTHORIZATIONS, async () => await handleClearAllAuthorizations()],
+  [WalletMessageType.RESET_WALLET, async () => await handleResetWallet()],
+
+  // ==================== 联系人 ====================
+  [WalletMessageType.GET_CONTACTS, async () => await handleGetContacts()],
+  [WalletMessageType.ADD_CONTACT, async (data) => await handleAddContact(data)],
+  [WalletMessageType.UPDATE_CONTACT, async (data) => await handleUpdateContact(data)],
+  [WalletMessageType.DELETE_CONTACT, async (data) => await handleDeleteContact(data?.id)],
+
+  // ==================== 备份同步 ====================
+  [WalletMessageType.GET_BACKUP_SYNC_SETTINGS, async () => await handleGetBackupSyncSettings()],
+  [WalletMessageType.UPDATE_BACKUP_SYNC_SETTINGS, async (data) => await handleUpdateBackupSyncSettings(data?.updates)],
+  [WalletMessageType.BACKUP_SYNC_NOW, async () => await handleBackupSyncNow()],
+  [WalletMessageType.BACKUP_SYNC_CLEAR_REMOTE, async () => await handleBackupSyncClearRemote()],
+  [WalletMessageType.BACKUP_SYNC_CLEAR_LOGS, async () => await handleBackupSyncClearLogs()],
+  [WalletMessageType.BACKUP_SYNC_LOG_EVENT, async (data) => await handleBackupSyncLogEvent(data)],
+  [WalletMessageType.RESOLVE_BACKUP_SYNC_CONFLICT, async (data) => await handleResolveBackupSyncConflict(data)],
+
+  // ==================== MPC ====================
+  [WalletMessageType.GET_MPC_SETTINGS, async () => await handleGetMpcSettings()],
+  [WalletMessageType.UPDATE_MPC_SETTINGS, async (data) => await handleUpdateMpcSettings(data?.updates)],
+  [WalletMessageType.GENERATE_MPC_COORDINATOR_UCAN, async (data) => await handleGenerateMpcCoordinatorUcan(data)],
+  [WalletMessageType.MPC_GET_DEVICE_INFO, async () => await handleMpcGetDeviceInfo()],
+  [WalletMessageType.MPC_CREATE_SESSION, async (data) => await handleMpcCreateSession(data)],
+  [WalletMessageType.MPC_JOIN_SESSION, async (data) => await handleMpcJoinSession(data)],
+  [WalletMessageType.MPC_SEND_SESSION_MESSAGE, async (data) => await handleMpcSendSessionMessage(data)],
+  [WalletMessageType.MPC_DECRYPT_MESSAGE, async (data) => await handleMpcDecryptMessage(data)],
+  [WalletMessageType.MPC_FETCH_SESSION_MESSAGES, async (data) => await handleMpcFetchSessionMessages(data)],
+  [WalletMessageType.MPC_GET_SESSION, async (data) => await handleMpcGetSession(data?.sessionId)],
+  [WalletMessageType.MPC_GET_SESSIONS, async () => await handleMpcGetSessions()],
+  [WalletMessageType.MPC_START_STREAM, async (data) => await handleMpcStartStream(data)],
+  [WalletMessageType.MPC_STOP_STREAM, async (data) => await handleMpcStopStream(data)],
+  [WalletMessageType.MPC_GET_AUDIT_LOGS, async () => await handleMpcGetAuditLogs()],
+  [WalletMessageType.MPC_CLEAR_AUDIT_LOGS, async () => await handleMpcClearAuditLogs()],
+  [WalletMessageType.MPC_GET_AUDIT_EXPORT_CONFIG, async () => await handleMpcGetAuditExportConfig()],
+  [WalletMessageType.MPC_UPDATE_AUDIT_EXPORT_CONFIG, async (data) => await handleMpcUpdateAuditExportConfig(data?.updates)],
+  [WalletMessageType.MPC_EXPORT_AUDIT_LOGS, async (data) => await handleMpcExportAuditLogs(data)],
+  [WalletMessageType.MPC_FLUSH_AUDIT_EXPORT_QUEUE, async () => await handleMpcFlushAuditExportQueue()],
+
+  // ==================== 交易 ====================
+  [TransactionMessageType.SEND_TRANSACTION, async (data) => await handleSendTransactionMessage(data)],
+  [TransactionMessageType.ESTIMATE_GAS, async (data) => await handleEstimateGasMessage(data)],
+  [TransactionMessageType.GET_GAS_PRICE, async (data) => await handleGetGasPriceMessage(data)],
+  [TransactionMessageType.GET_TRANSACTIONS, async (data) => await handleGetTransactionsMessage(data)],
+  [TransactionMessageType.CLEAR_TRANSACTIONS, async (data) => await handleClearTransactionsMessage(data)],
+
+  // ==================== 导出密钥 ====================
+  [WalletMessageType.EXPORT_PRIVATE_KEY, async (data) => await handleExportPrivateKey(data?.accountId, data?.password)],
+  [WalletMessageType.EXPORT_MNEMONIC, async (data) => await handleExportMnemonic(data?.walletId, data?.password)],
+
+  // ==================== 诊断（可观测） ====================
+  [WalletMessageType.GET_DIAGNOSTICS, async () => ({ success: true, enabled: diagnostics.isEnabled(), entries: diagnostics.getEntries() })],
+  [WalletMessageType.CLEAR_DIAGNOSTICS, async () => { diagnostics.clear(); return { success: true }; }],
+  [WalletMessageType.GET_DIAGNOSTICS_SETTINGS, async () => ({ success: true, enabled: diagnostics.isEnabled() })],
+  [WalletMessageType.UPDATE_DIAGNOSTICS_SETTINGS, async (data) => ({ success: true, enabled: await diagnostics.setEnabled(Boolean(data?.enabled)) })],
+
+  // ==================== 密码管理（含内层 try/catch，与原行为一致） ====================
+  ['CHANGE_PASSWORD', async (data) => {
+    try {
+      await changePassword(data.oldPassword, data.newPassword);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }],
+
+  // 注：原 switch 中另有一个 case 'SWITCH_NETWORK'（调用未定义的 switchNetwork），
+  // 因与 NetworkMessageType.SWITCH_NETWORK 同值（'SWITCH_NETWORK'）且位于其后，
+  // 在 switch 语义下是永不执行的死代码，此处不再保留，统一走 handleSwitchNetworkMessage。
+
+  // ==================== 签名（含 locked + requirePassword 早返分支） ====================
+  ['SIGN_MESSAGE', async (data) => {
+    try {
+      const account = await getSelectedAccount();
+      if (!account?.id) {
+        throw new Error('Account not found');
+      }
+      if (!state.keyring || !state.keyring.has(account.id)) {
+        if (!data?.password) {
+          return { success: false, error: 'Wallet is locked', requirePassword: true };
+        }
+        await unlockWallet(data.password, account.id, 'popup');
+      }
+      const signature = await signMessage(account.id, data.message);
+      return { success: true, signature };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }],
+  ['SIGN_TRANSACTION', async (data) => {
+    try {
+      const account = await getSelectedAccount();
+      if (!account?.id) {
+        throw new Error('Account not found');
+      }
+      if (!state.keyring || !state.keyring.has(account.id)) {
+        if (!data?.password) {
+          return { success: false, error: 'Wallet is locked', requirePassword: true };
+        }
+        await unlockWallet(data.password, account.id, 'popup');
+      }
+      const signedTransaction = await signTransaction(account.id, data.transaction);
+      return { success: true, signedTransaction };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }]
+]);
+
+/**
+ * 处理来自 popup 的消息
+ * @param {Object} message - 消息对象
+ * @param {Function} response - 响应函数
+ */
 export async function handlePopupMessage(message, response) {
   const { type, data } = message;
 
   console.log('📨 Received popup message:', type);
 
+  const handler = popupHandlers.get(type);
+  if (!handler) {
+    console.warn('⚠️ Unknown message type:', type);
+    response({ success: false, error: 'Unknown message type' });
+    return;
+  }
+
   try {
-    switch (type) {
-      // ==================== 钱包管理 ====================
-      case 'IS_WALLET_INITIALIZED':
-        const intializeResult = await isWalletInitialized();
-        response(intializeResult);
-        break;
-      case 'GET_ALL_WALLETS':
-        const getWalletsResult = await HandleGetWalletList();
-        response(getWalletsResult);
-        break;
-
-      case 'CREATE_HD_WALLET':
-        const createResult = await handleCreateHDWallet(data.accountName, data.password);
-        response(createResult);
-        break;
-
-      case 'IMPORT_HD_WALLET':
-        const importHDResult = await handleImportHDWallet(data.accountName, data.mnemonic, data.password);
-        response(importHDResult);
-        break;
-
-      case 'IMPORT_PRIVATE_KEY_WALLET':
-        const importPKResult = await handleImportPrivateKeyWallet(data.accountName, data.privateKey, data.password);
-        response(importPKResult);
-        break;
-
-      case 'CREATE_MPC_WALLET':
-        const createMpcResult = await handleCreateMpcWallet(data);
-        response(createMpcResult);
-        break;
-
-      case 'CREATE_SUB_ACCOUNT':
-        const subAccountResult = await handleCreateSubAccount(data.walletId, data.accountName, data.password);
-        response(subAccountResult);
-        break;
-
-      case 'SWITCH_ACCOUNT':
-        const switchResult = await handleSwitchAccount(data.accountId, data.password);
-        response(switchResult);
-        break;
-
-      // ==================== 解锁/锁定 ====================
-
-      case 'UNLOCK_WALLET':
-        {
-          const unlockSource = typeof data?.source === 'string' ? data.source : 'unknown';
-          const unlockResult = await unlockWallet(data.password, data.accountId, unlockSource);
-          response(unlockResult);
-        }
-        break;
-
-      case 'LOCK_WALLET':
-        const lockResult = await lockWallet();
-        response(lockResult);
-        break;
-
-      // ==================== 状态查询 ====================
-
-      case 'GET_WALLET_STATE':
-        const lastUnlockRequest = await getUserSetting('lastUnlockRequest', null);
-        response({
-          success: true,
-          unlocked: state.keyring !== null,
-          chainId: state.currentChainId,
-          lastUnlockRequest
-        });
-        break;
-
-      case WalletMessageType.UPDATE_POPUP_BOUNDS:
-        if (data) {
-          await persistPopupBounds(data);
-        }
-        response({ success: true });
-        break;
-
-      case WalletMessageType.GET_CURRENT_ACCOUNT:
-        response(await handleGetCurrentAccount());
-        break;
-
-      case NetworkMessageType.GET_CURRENT_CHAIN_ID:
-        if (!state.currentChainId) {
-          const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
-          state.currentChainId = fallbackConfig?.chainIdHex
-            || (fallbackConfig?.chainId ? normalizeChainId(fallbackConfig.chainId) : null)
-            || state.currentChainId;
-        }
-        response({
-          success: true,
-          chainId: state.currentChainId
-        });
-        break;
-
-      case NetworkMessageType.GET_CURRENT_RPC_URL:
-        {
-          let rpcUrl = state.currentRpcUrl;
-          if (!rpcUrl) {
-            const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
-            rpcUrl = fallbackConfig?.rpcUrl || fallbackConfig?.rpc || '';
-            if (rpcUrl) {
-              state.currentRpcUrl = rpcUrl;
-            }
-          }
-          response({ success: true, rpcUrl });
-        }
-        break;
-
-      case NetworkMessageType.SWITCH_NETWORK:
-        response(await handleSwitchNetworkMessage(data));
-        break;
-
-      case NetworkMessageType.ADD_CUSTOM_NETWORK:
-        response(await handleAddCustomNetworkMessage(data));
-        break;
-
-      case NetworkMessageType.UPDATE_CUSTOM_NETWORK:
-        response(await handleUpdateCustomNetworkMessage(data));
-        break;
-
-      case NetworkMessageType.GET_SUPPORTED_NETWORKS:
-        response(await handleGetSupportedNetworksMessage());
-        break;
-
-      case NetworkMessageType.GET_NETWORK_INFO:
-        response(await handleGetNetworkInfoMessage());
-        break;
-
-      case NetworkMessageType.GET_CUSTOM_NETWORKS:
-        response(await handleGetNetworksMessage());
-        break;
-
-      case NetworkMessageType.REMOVE_CUSTOM_NETWORK:
-        response(await handleRemoveCustomNetworkMessage(data?.chainId));
-        break;
-
-      case ApprovalMessageType.GET_PENDING_REQUEST:
-        await ensureApprovalStateHydrated();
-        const pendingRequest = getPendingRequestById(data.requestId);
-        response({
-          success: true,
-          request: pendingRequest || null
-        });
-        break;
-
-      case ApprovalMessageType.GET_ACTIVE_APPROVAL:
-        await ensureApprovalStateHydrated();
-        {
-          const approval = getActiveApprovalSummary();
-          if (approval?.windowId) {
-            chrome.windows.update(approval.windowId, { focused: true }).catch(() => { });
-          }
-          response({
-            success: true,
-            approval
-          });
-        }
-        break;
-
-      case ApprovalMessageType.APPROVAL_RESPONSE:
-        await ensureApprovalStateHydrated();
-        response({
-          success: recordApprovalResponse(message.requestId, {
-            approved: message.approved,
-            account: message.account || null
-          })
-        });
-        break;
-
-      case ApprovalMessageType.APPROVAL_QUEUE_UPDATE:
-        // background -> approval 页面提示消息；若回流到 background，直接忽略
-        response({ success: true });
-        break;
-
-      case WalletMessageType.GET_ACCOUNT_BY_ID:
-        response(await handleGetAccountById(data?.accountId));
-        break;
-
-      case WalletMessageType.UPDATE_ACCOUNT_NAME:
-        response(await handleUpdateAccountName(data?.accountId, data?.newName));
-        break;
-
-      case WalletMessageType.DELETE_ACCOUNT:
-        response(await handleDeleteAccount(data?.accountId, data?.password));
-        break;
-
-      case WalletMessageType.GET_BALANCE:
-        response(await handleGetBalance(data?.address));
-        break;
-
-      case WalletMessageType.GET_TOKEN_BALANCES:
-        response(await handleGetTokenBalances(data?.address));
-        break;
-
-      case WalletMessageType.ADD_TOKEN:
-        response(await handleAddToken(data?.token));
-        break;
-
-      case WalletMessageType.GET_AUTHORIZED_SITES:
-        response(await handleGetAuthorizedSites());
-        break;
-
-      case WalletMessageType.GET_SITE_UCAN_SESSION:
-        response(await handleGetSiteUcanSession(data?.origin, data?.address));
-        break;
-
-      case WalletMessageType.REVOKE_SITE:
-        response(await handleRevokeSite(data?.origin));
-        break;
-
-      case WalletMessageType.CLEAR_ALL_AUTHORIZATIONS:
-        response(await handleClearAllAuthorizations());
-        break;
-
-      case WalletMessageType.RESET_WALLET:
-        response(await handleResetWallet());
-        break;
-
-      case WalletMessageType.GET_CONTACTS:
-        response(await handleGetContacts());
-        break;
-
-      case WalletMessageType.ADD_CONTACT:
-        response(await handleAddContact(data));
-        break;
-
-      case WalletMessageType.UPDATE_CONTACT:
-        response(await handleUpdateContact(data));
-        break;
-
-      case WalletMessageType.DELETE_CONTACT:
-        response(await handleDeleteContact(data?.id));
-        break;
-
-      case WalletMessageType.GET_BACKUP_SYNC_SETTINGS:
-        response(await handleGetBackupSyncSettings());
-        break;
-
-      case WalletMessageType.UPDATE_BACKUP_SYNC_SETTINGS:
-        response(await handleUpdateBackupSyncSettings(data?.updates));
-        break;
-
-      case WalletMessageType.BACKUP_SYNC_NOW:
-        response(await handleBackupSyncNow());
-        break;
-
-      case WalletMessageType.BACKUP_SYNC_CLEAR_REMOTE:
-        response(await handleBackupSyncClearRemote());
-        break;
-
-      case WalletMessageType.BACKUP_SYNC_CLEAR_LOGS:
-        response(await handleBackupSyncClearLogs());
-        break;
-
-      case WalletMessageType.BACKUP_SYNC_LOG_EVENT:
-        response(await handleBackupSyncLogEvent(data));
-        break;
-
-      case WalletMessageType.GET_MPC_SETTINGS:
-        response(await handleGetMpcSettings());
-        break;
-
-      case WalletMessageType.UPDATE_MPC_SETTINGS:
-        response(await handleUpdateMpcSettings(data?.updates));
-        break;
-
-      case WalletMessageType.GENERATE_MPC_COORDINATOR_UCAN:
-        response(await handleGenerateMpcCoordinatorUcan(data));
-        break;
-
-      case WalletMessageType.MPC_GET_DEVICE_INFO:
-        response(await handleMpcGetDeviceInfo());
-        break;
-
-      case WalletMessageType.MPC_CREATE_SESSION:
-        response(await handleMpcCreateSession(data));
-        break;
-
-      case WalletMessageType.MPC_JOIN_SESSION:
-        response(await handleMpcJoinSession(data));
-        break;
-
-      case WalletMessageType.MPC_SEND_SESSION_MESSAGE:
-        response(await handleMpcSendSessionMessage(data));
-        break;
-
-      case WalletMessageType.MPC_DECRYPT_MESSAGE:
-        response(await handleMpcDecryptMessage(data));
-        break;
-
-      case WalletMessageType.MPC_FETCH_SESSION_MESSAGES:
-        response(await handleMpcFetchSessionMessages(data));
-        break;
-
-      case WalletMessageType.MPC_GET_SESSION:
-        response(await handleMpcGetSession(data?.sessionId));
-        break;
-
-      case WalletMessageType.MPC_GET_SESSIONS:
-        response(await handleMpcGetSessions());
-        break;
-
-      case WalletMessageType.MPC_START_STREAM:
-        response(await handleMpcStartStream(data));
-        break;
-
-      case WalletMessageType.MPC_STOP_STREAM:
-        response(await handleMpcStopStream(data));
-        break;
-
-      case WalletMessageType.MPC_GET_AUDIT_LOGS:
-        response(await handleMpcGetAuditLogs());
-        break;
-
-      case WalletMessageType.MPC_CLEAR_AUDIT_LOGS:
-        response(await handleMpcClearAuditLogs());
-        break;
-
-      case WalletMessageType.MPC_GET_AUDIT_EXPORT_CONFIG:
-        response(await handleMpcGetAuditExportConfig());
-        break;
-
-      case WalletMessageType.MPC_UPDATE_AUDIT_EXPORT_CONFIG:
-        response(await handleMpcUpdateAuditExportConfig(data?.updates));
-        break;
-
-      case WalletMessageType.MPC_EXPORT_AUDIT_LOGS:
-        response(await handleMpcExportAuditLogs(data));
-        break;
-
-      case WalletMessageType.MPC_FLUSH_AUDIT_EXPORT_QUEUE:
-        response(await handleMpcFlushAuditExportQueue());
-        break;
-
-      case WalletMessageType.RESOLVE_BACKUP_SYNC_CONFLICT:
-        response(await handleResolveBackupSyncConflict(data));
-        break;
-
-      // ==================== 交易 ====================
-
-      case TransactionMessageType.SEND_TRANSACTION:
-        response(await handleSendTransactionMessage(data));
-        break;
-
-      case TransactionMessageType.ESTIMATE_GAS:
-        response(await handleEstimateGasMessage(data));
-        break;
-
-      case TransactionMessageType.GET_GAS_PRICE:
-        response(await handleGetGasPriceMessage(data));
-        break;
-
-      case TransactionMessageType.GET_TRANSACTIONS:
-        response(await handleGetTransactionsMessage(data));
-        break;
-
-      case TransactionMessageType.CLEAR_TRANSACTIONS:
-        response(await handleClearTransactionsMessage(data));
-        break;
-
-      // ==================== 导出密钥 ====================
-
-      case WalletMessageType.EXPORT_PRIVATE_KEY:
-        response(await handleExportPrivateKey(data?.accountId, data?.password));
-        break;
-
-      case WalletMessageType.EXPORT_MNEMONIC:
-        response(await handleExportMnemonic(data?.walletId, data?.password));
-        break;
-
-      // ==================== 密码管理 ====================
-
-      case 'CHANGE_PASSWORD':
-        try {
-          await changePassword(data.oldPassword, data.newPassword);
-          response({
-            success: true
-          });
-        } catch (error) {
-          response({
-            success: false,
-            error: error.message
-          });
-        }
-        break;
-
-      // ==================== 网络管理 ====================
-
-      case 'SWITCH_NETWORK':
-        try {
-          await switchNetwork(data.networkKey);
-          response({
-            success: true
-          });
-        } catch (error) {
-          response({
-            success: false,
-            error: error.message
-          });
-        }
-        break;
-
-      // ==================== 签名 ====================
-
-      case 'SIGN_MESSAGE':
-        try {
-          const account = await getSelectedAccount();
-          if (!account?.id) {
-            throw new Error('Account not found');
-          }
-          if (!state.keyring || !state.keyring.has(account.id)) {
-            if (!data?.password) {
-              response({
-                success: false,
-                error: 'Wallet is locked',
-                requirePassword: true
-              });
-              break;
-            }
-            await unlockWallet(data.password, account.id, 'popup');
-          }
-          const signature = await signMessage(account.id, data.message);
-          response({
-            success: true,
-            signature
-          });
-        } catch (error) {
-          response({
-            success: false,
-            error: error.message
-          });
-        }
-        break;
-
-      case 'SIGN_TRANSACTION':
-        try {
-          const account = await getSelectedAccount();
-          if (!account?.id) {
-            throw new Error('Account not found');
-          }
-          if (!state.keyring || !state.keyring.has(account.id)) {
-            if (!data?.password) {
-              response({
-                success: false,
-                error: 'Wallet is locked',
-                requirePassword: true
-              });
-              break;
-            }
-            await unlockWallet(data.password, account.id, 'popup');
-          }
-          const signedTransaction = await signTransaction(account.id, data.transaction);
-          response({
-            success: true,
-            signedTransaction
-          });
-        } catch (error) {
-          response({
-            success: false,
-            error: error.message
-          });
-        }
-        break;
-
-      // ==================== 默认 ====================
-
-      default:
-        console.warn('⚠️ Unknown message type:', type);
-        response({ success: false, error: 'Unknown message type' });
+    const result = await handler(data, { message });
+    if (typeof result !== 'undefined') {
+      response(result);
     }
-
   } catch (error) {
     console.error(`❌ Error handling popup message ${type}:`, error);
     response({

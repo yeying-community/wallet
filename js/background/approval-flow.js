@@ -10,6 +10,7 @@ import { state } from './state.js';
 import { updateKeepAlive } from './offscreen.js';
 import { withPopupBoundsAsync } from './window-utils.js';
 import { getValue, setValue } from '../storage/index.js';
+import { diagnostics } from './diagnostics.js';
 
 let windowCleanupBound = false;
 let approvalStateHydrationPromise = null;
@@ -443,6 +444,12 @@ export function recordApprovalResponse(requestId, response) {
     account: response?.account || null,
     submittedAt: Date.now()
   };
+  diagnostics.record({
+    category: 'approval',
+    action: request.response.approved ? 'approved' : 'rejected',
+    message: `${request.approvalType || request.type || 'approval'} ${request.response.approved ? 'approved' : 'rejected'}`,
+    meta: { type: request.approvalType || request.type || '', origin: request.origin || '' }
+  });
   updateApprovalState();
   resolveApprovalWaiters(requestId, request.response);
   return true;

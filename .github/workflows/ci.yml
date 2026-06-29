@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# 显式权限：默认 GITHUB_TOKEN 即可（无 release/deploy 动作）
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test + typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      matrix:
+        node-version: [22.x]
+      fail-fast: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        # devDependencies only：fake-indexeddb@6。运行时扩展本身零 npm 依赖
+        # （lib/ 仍 vendored），故不需要 build/打包步骤。
+        run: npm ci --no-audit --no-fund
+
+      - name: Run unit tests (worker-isolated, 119 cases)
+        # 默认 worker 隔离，跳过 sync-service（与单进程测试不兼容）
+        run: npm test
+
+      - name: Run sync-service integration tests (single-process, 8 cases)
+        # sync-service 单例 + fake-indexeddb 连接跨 worker 不可序列化，必须单进程顺序跑
+        run: npm run test:sync
+
+      - name: Run approval-flow regression
+        # 旧 vm-modules 风格回归（独立校验流）
+        run: npm run test:approval
+
+      - name: TypeScript typecheck
+        # tsc 按需临时拉取（npx -y），不入仓；不产出，仅检查 @ts-check 文件
+        run: npm run typecheck

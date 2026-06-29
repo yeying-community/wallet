@@ -11,7 +11,7 @@ import {
   createError
 } from '../common/errors/index.js';
 import { getSelectedAccount, saveAuthorization, getAuthorization, deleteAuthorization, isAuthorized } from '../storage/index.js';
-import { resetLockTimer } from './keyring.js';
+import { isAccountUnlocked, resetLockTimer } from './keyring.js';
 import { refreshPasswordCache } from './password-cache.js';
 import { sendEvent } from './connection.js';
 import { TIMEOUTS } from '../config/index.js';
@@ -55,9 +55,9 @@ function buildEthAccountsPermission(accounts) {
  */
 export async function handleEthAccounts(origin) {
   try {
-    // 检查会话是否解锁
-    const unlocked = state.keyring !== null;
-    if (!unlocked) {
+    // 获取选择的账户信息
+    const account = await getSelectedAccount();
+    if (!account || !isAccountUnlocked(account.id)) {
       return [];
     }
 
@@ -67,12 +67,6 @@ export async function handleEthAccounts(origin) {
 
     const isConnected = state.connectedSites.has(origin) || await isAuthorized(origin);
     if (!isConnected) {
-      return [];
-    }
-
-    // 获取选择的账户信息
-    const account = await getSelectedAccount();
-    if (!account) {
       return [];
     }
 

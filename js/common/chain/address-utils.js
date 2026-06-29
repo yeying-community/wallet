@@ -208,8 +208,12 @@ export function isValidEnsName(ensName) {
   if (!ensName || typeof ensName !== 'string') {
     return false;
   }
-  
+
   // ENS 域名规则：长度 3-100，以 . 分隔，至少有一个 .
+  if (ensName.length < 3 || ensName.length > 100) {
+    return false;
+  }
+
   const ensRegex = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
   return ensRegex.test(ensName) && ensName.includes('.');
 }
@@ -238,14 +242,15 @@ export function validateAddressOrEns(value) {
   if (isValidAddress(value)) {
     return { valid: true, type: 'address' };
   }
-  
-  if (isValidEnsName(value)) {
-    return { valid: true, type: 'ens' };
-  }
-  
+
+  // UD 正则更特化（限定后缀白名单），先判定以避免被 ENS 通用正则抢匹配。
   if (isValidUnstoppableDomain(value)) {
     return { valid: true, type: 'ud' };
   }
-  
+
+  if (isValidEnsName(value)) {
+    return { valid: true, type: 'ens' };
+  }
+
   return { valid: false, type: null };
 }

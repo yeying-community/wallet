@@ -33,8 +33,15 @@ async function resolveWindowTabId(windowId) {
   }
 }
 
-function waitForUnlock(timeout = 0) {
-  if (state.keyring) {
+function hasUnlockedAccount(accountId = null) {
+  if (accountId) {
+    return Boolean(state.keyring?.has(accountId));
+  }
+  return Boolean(state.keyring && state.keyring.size > 0);
+}
+
+function waitForUnlock(accountId = null, timeout = 0) {
+  if (hasUnlockedAccount(accountId)) {
     return Promise.resolve(true);
   }
 
@@ -77,7 +84,8 @@ export function notifyUnlocked(source = 'approval') {
 }
 
 export function requestUnlock(context = {}) {
-  if (state.keyring) {
+  const accountId = context?.accountId || null;
+  if (hasUnlockedAccount(accountId)) {
     return Promise.resolve(true);
   }
 
@@ -114,7 +122,7 @@ export function requestUnlock(context = {}) {
           }
         }).catch(() => { });
 
-        waitForUnlockWithWindow()
+        waitForUnlockWithWindow(accountId)
           .then(resolve)
           .catch(reject);
       });
@@ -124,7 +132,7 @@ export function requestUnlock(context = {}) {
   return unlockPromise;
 }
 
-function waitForUnlockWithWindow() {
+function waitForUnlockWithWindow(accountId = null) {
   return new Promise((resolve, reject) => {
     const cleanup = (options = {}) => {
       const { closeWindow = false } = options;
@@ -147,7 +155,7 @@ function waitForUnlockWithWindow() {
 
     chrome.windows.onRemoved.addListener(windowRemovedListener);
 
-    waitForUnlock(0)
+    waitForUnlock(accountId, 0)
       .then(() => {
         cleanup();
         resolve(true);

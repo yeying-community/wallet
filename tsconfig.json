@@ -1,0 +1,16 @@
+{
+  "//": "仅用于类型检查（npx -p typescript tsc -p tsconfig.json），不产出、不入库 node_modules。checkJs:false 表示只检查带 // @ts-check 的文件，其余文件仅解析不报错。",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "strict": false,
+    "lib": ["es2022", "dom", "dom.iterable"]
+  },
+  "include": ["js/**/*.js", "inject.js", "content.js"],
+  "exclude": ["lib/**", "output/**", "examples/**", "scripts/**", "tests/**", "node_modules"]
+}

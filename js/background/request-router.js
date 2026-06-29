@@ -26,6 +26,11 @@ import { POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { handleUcanSession, handleUcanSign } from './ucan.js';
 import {
+  handleYeyingEncrypt,
+  handleYeyingDecrypt,
+  handleYeyingGetCipherSuites
+} from './operations/crypto-service.js';
+import {
   addPendingRequest,
   ensureApprovalRequestVisible,
   ensureApprovalStateHydrated,
@@ -213,7 +218,9 @@ export async function routeRequest(method, params, metadata) {
     'eth_signTypedData',
     'eth_signTypedData_v4',
     'yeying_ucan_session',
-    'yeying_ucan_sign'
+    'yeying_ucan_sign',
+    'yeying_encrypt',
+    'yeying_decrypt'
   ]);
 
   const blockedWhilePopupOpenMethods = new Set([
@@ -228,7 +235,14 @@ export async function routeRequest(method, params, metadata) {
     throw createError(-32002, 'Wallet popup is currently open. Close it and retry.');
   }
 
-  if (!state.keyring && unlockMethods.has(method)) {
+  const selectedAccountBeforeUnlock = unlockMethods.has(method)
+    ? await getSelectedAccount()
+    : null;
+  const selectedAccountUnlocked = Boolean(
+    selectedAccountBeforeUnlock?.id && state.keyring?.has(selectedAccountBeforeUnlock.id)
+  );
+
+  if (unlockMethods.has(method) && !selectedAccountUnlocked) {
     const active = await isActiveTab(tabId);
     if (!active) {
       throw createUserRejectedError('Unlock requires active tab');
@@ -239,18 +253,23 @@ export async function routeRequest(method, params, metadata) {
       tabId: Number.isFinite(tabId) ? tabId : null,
       timestamp: getTimestamp()
     });
-    await requestUnlock({ origin, tabId, method });
-  }
-
-  // 检查钱包是否已解锁
-  if (!state.keyring) {
-    throw createWalletLockedError();
+    await requestUnlock({
+      origin,
+      tabId,
+      method,
+      accountId: selectedAccountBeforeUnlock?.id || null
+    });
   }
 
   // 获取当前账户
   const account = await getSelectedAccount();
   if (!account) {
     throw createAccountNotFoundError('No account selected');
+  }
+
+  // 检查当前账户是否已解锁
+  if (unlockMethods.has(method) && !state.keyring?.has(account.id)) {
+    throw createWalletLockedError();
   }
 
   // ==================== 账户相关 ====================
@@ -273,6 +292,23 @@ export async function routeRequest(method, params, metadata) {
   if (method === 'yeying_ucan_sign') {
     await ensureSiteAuthorized(origin);
     return handleUcanSign(origin, account, params);
+  }
+
+  // ==================== 加密服务 ====================
+
+  if (method === 'yeying_getCipherSuites') {
+    // 读取套件列表（只读元数据，无需 unlock / site auth）
+    return handleYeyingGetCipherSuites(origin, account, params);
+  }
+
+  if (method === 'yeying_encrypt') {
+    await ensureSiteAuthorized(origin);
+    return handleYeyingEncrypt(origin, account, params);
+  }
+
+  if (method === 'yeying_decrypt') {
+    await ensureSiteAuthorized(origin);
+    return handleYeyingDecrypt(origin, account, params);
   }
 
   // ==================== 链相关 ====================

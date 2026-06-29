@@ -1,6 +1,39 @@
+// @ts-check
 /**
  * Dapp protocol definitions (no dependencies).
  * This file can be injected into Dapp pages.
+ */
+
+/**
+ * @typedef {Object} ErrorObject
+ * @property {number} code
+ * @property {string} message
+ * @property {any} [data]
+ */
+
+/**
+ * @typedef {Object} MessageMetadata
+ * @property {string} id
+ * @property {number} timestamp
+ * @property {string} [requestId]
+ * @property {string} [origin]
+ * @property {string} [bridgeToken]
+ */
+
+/**
+ * 跨边界（page ↔ content ↔ background）统一消息信封。
+ * @typedef {Object} WalletMessage
+ * @property {string} type
+ * @property {string} version
+ * @property {string} category
+ * @property {Object} payload
+ * @property {MessageMetadata} metadata
+ */
+
+/**
+ * @typedef {Object} ValidationResult
+ * @property {boolean} valid
+ * @property {string} [error]
  */
 
 export const PROTOCOL_VERSION = '1.0.0';
@@ -33,6 +66,10 @@ function generateId(prefix = 'id') {
   return `${prefix}_${timestamp}_${random}`;
 }
 
+/**
+ * @param {any} error
+ * @returns {ErrorObject}
+ */
 function normalizeError(error) {
   if (error && typeof error === 'object') {
     if (typeof error.code === 'number' && error.message) {

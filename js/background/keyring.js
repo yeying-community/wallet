@@ -15,6 +15,7 @@ import { notifyUnlocked } from './unlock-flow.js';
 import { updateKeepAlive } from './offscreen.js';
 import { backupSyncService } from './sync-service.js';
 import { mpcService } from './mpc-service.js';
+import { diagnostics } from './diagnostics.js';
 
 /**
  * 解锁钱包
@@ -53,7 +54,7 @@ export async function unlockWallet(password, accountId, source = 'unknown') {
     if (!state.keyring) {
       state.keyring = new Map();
     }
-    state.keyring.set(accountId, walletInstance);
+    state.keyring.set(account.id, walletInstance);
 
     // 保存当前选择的账户 ID
     await setSelectedAccountId(account.id);
@@ -76,6 +77,7 @@ export async function unlockWallet(password, accountId, source = 'unknown') {
     });
 
     console.log('✅ Wallet unlocked');
+    diagnostics.record({ category: 'unlock', action: 'unlock', message: 'wallet unlocked', meta: { source, accountId: account.id } });
 
     return {
       success: true,
@@ -89,6 +91,7 @@ export async function unlockWallet(password, accountId, source = 'unknown') {
 
   } catch (error) {
     console.error('❌ Unlock wallet failed:', error);
+    diagnostics.record({ category: 'unlock', level: 'error', action: 'unlock', message: error?.message || 'unlock failed', meta: { source, code: error?.code } });
     throw error;
   }
 }
@@ -128,6 +131,7 @@ export async function lockWallet() {
     });
 
     console.log('✅ Wallet locked');
+    diagnostics.record({ category: 'unlock', action: 'lock', message: 'wallet locked' });
 
     return { success: true };
 
@@ -170,10 +174,17 @@ export function getWalletInstance(accountId) {
   return state.keyring.get(accountId);
 }
 
+export function isAccountUnlocked(accountId) {
+  return Boolean(accountId && state.keyring?.has(accountId));
+}
+
 /**
  * 检查钱包是否已解锁
  * @returns {boolean}
  */
-export function isWalletUnlocked() {
-  return state.keyring !== null;
+export function isWalletUnlocked(accountId = null) {
+  if (accountId) {
+    return isAccountUnlocked(accountId);
+  }
+  return Boolean(state.keyring && state.keyring.size > 0);
 }

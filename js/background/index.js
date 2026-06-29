@@ -14,6 +14,7 @@ import { normalizePopupBounds } from './window-utils.js';
 import { backupSyncService } from './sync-service.js';
 import { mpcService } from './mpc-service.js';
 import { ensureApprovalStateHydrated } from './approval-flow.js';
+import { diagnostics } from './diagnostics.js';
 
 const INJECTABLE_TAB_URLS = [
   'http://*/*',
@@ -30,6 +31,7 @@ async function init() {
   console.log('🚀 YeYing Wallet Background Script Starting...');
 
   try {
+    await diagnostics.init();
     await ensureApprovalStateHydrated();
     await updateKeepAlive();
     await backupSyncService.init();

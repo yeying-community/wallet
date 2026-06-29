@@ -1,7 +1,7 @@
 import { showPage, showError, setPageOrigin, showWaiting, hideWaiting } from '../../common/ui/index.js';
 import { shortenAddress, generateAvatar } from '../../common/chain/index.js';
 
-export class AccountsListController {
+export class AccountListController {
   constructor({
     wallet,
     onWalletUpdated,
@@ -118,7 +118,7 @@ export class AccountsListController {
         (accountId) => this.onViewPrivateKey?.(accountId)
       );
     } catch (error) {
-      console.error('[AccountsListController] 加载钱包列表失败:', error);
+      console.error('[AccountListController] 加载钱包列表失败:', error);
       this.renderWalletList([]);
     }
   }
@@ -164,7 +164,7 @@ export class AccountsListController {
         return;
       }
 
-      console.error('[AccountsListController] 切换账户失败:', error);
+      console.error('[AccountListController] 切换账户失败:', error);
       const message = error?.requirePassword
         ? '请输入密码以继续切换账户'
         : error?.message || '切换失败';

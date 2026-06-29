@@ -1,5 +1,7 @@
+// @ts-check
 /**
  * Extension internal protocol definitions.
+ * popup ↔ background 内部消息类型常量（值即线上消息 type 字符串）。
  */
 
 export const WalletMessageType = {
@@ -60,7 +62,11 @@ export const WalletMessageType = {
   RESOLVE_BACKUP_SYNC_CONFLICT: 'RESOLVE_BACKUP_SYNC_CONFLICT',
   UPDATE_POPUP_BOUNDS: 'UPDATE_POPUP_BOUNDS',
   SHOW_UNLOCK_PAGE: 'SHOW_UNLOCK_PAGE',
-  RESET_WALLET: 'RESET_WALLET'
+  RESET_WALLET: 'RESET_WALLET',
+  GET_DIAGNOSTICS: 'GET_DIAGNOSTICS',
+  CLEAR_DIAGNOSTICS: 'CLEAR_DIAGNOSTICS',
+  GET_DIAGNOSTICS_SETTINGS: 'GET_DIAGNOSTICS_SETTINGS',
+  UPDATE_DIAGNOSTICS_SETTINGS: 'UPDATE_DIAGNOSTICS_SETTINGS'
 };
 
 export const TransactionMessageType = {

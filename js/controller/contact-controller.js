@@ -2,7 +2,7 @@ import { showSuccess, showError, showPage } from '../common/ui/index.js';
 import { copyAddressToClipboard } from '../common/ui/clipboard-ui.js';
 import { shortenAddress } from '../common/chain/index.js';
 
-export class ContactsController {
+export class ContactController {
   constructor({ wallet, onContactsUpdated } = {}) {
     this.wallet = wallet;
     this.onContactsUpdated = onContactsUpdated;
@@ -146,7 +146,7 @@ export class ContactsController {
       this.renderContactSelect(contacts);
       this.onContactsUpdated?.(contacts);
     } catch (error) {
-      console.error('[ContactsController] 加载联系人失败:', error);
+      console.error('[ContactController] 加载联系人失败:', error);
       this.cachedContacts = [];
       this.renderContacts([]);
       this.renderContactSelect([]);
@@ -182,7 +182,7 @@ export class ContactsController {
       await this.loadContacts();
       this.closeEditorModal();
     } catch (error) {
-      console.error('[ContactsController] 添加联系人失败:', error);
+      console.error('[ContactController] 添加联系人失败:', error);
       showError(error.message || '添加失败');
     }
   }
@@ -265,7 +265,7 @@ export class ContactsController {
       showSuccess('联系人已删除');
       await this.loadContacts();
     } catch (error) {
-      console.error('[ContactsController] 删除联系人失败:', error);
+      console.error('[ContactController] 删除联系人失败:', error);
       showError(error.message || '删除失败');
     }
   }
@@ -289,7 +289,7 @@ export class ContactsController {
       URL.revokeObjectURL(url);
       showSuccess('联系人已导出');
     } catch (error) {
-      console.error('[ContactsController] 导出失败:', error);
+      console.error('[ContactController] 导出失败:', error);
       showError('导出失败: ' + error.message);
     }
   }
@@ -344,7 +344,7 @@ export class ContactsController {
       await this.loadContacts();
       showSuccess(`导入完成：新增 ${added}，更新 ${updated}，失败 ${failed}`);
     } catch (error) {
-      console.error('[ContactsController] 导入失败:', error);
+      console.error('[ContactController] 导入失败:', error);
       showError('导入失败: ' + error.message);
     }
   }

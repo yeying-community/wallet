@@ -434,6 +434,28 @@ export class WalletDomain extends BaseDomain {
     });
   }
 
+  // ==================== 诊断（可观测） ====================
+
+  /** 获取诊断日志（含开关状态与最近条目）。 */
+  async getDiagnostics() {
+    return await this._sendMessage(WalletMessageType.GET_DIAGNOSTICS);
+  }
+
+  /** 清空诊断日志。 */
+  async clearDiagnostics() {
+    return await this._sendMessage(WalletMessageType.CLEAR_DIAGNOSTICS);
+  }
+
+  /** 获取诊断开关状态。 */
+  async getDiagnosticsSettings() {
+    return await this._sendMessage(WalletMessageType.GET_DIAGNOSTICS_SETTINGS);
+  }
+
+  /** 开启/关闭诊断（关闭会清空已记录条目）。 */
+  async setDiagnosticsEnabled(enabled) {
+    return await this._sendMessage(WalletMessageType.UPDATE_DIAGNOSTICS_SETTINGS, { enabled: Boolean(enabled) });
+  }
+
   // ==================== 授权管理 ====================
 
   /**

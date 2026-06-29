@@ -52,6 +52,42 @@ export function stringToBytes(str) {
 }
 
 /**
+ * 归一化二进制输入，兼容跨 realm 的 TypedArray / ArrayBuffer / DataView。
+ * @param {unknown} data - 原始输入
+ * @returns {string|Uint8Array|null}
+ */
+export function normalizeBinaryInput(data) {
+  if (typeof data === 'string') {
+    return data;
+  }
+  if (data instanceof Uint8Array) {
+    return data;
+  }
+  if (data instanceof ArrayBuffer) {
+    return new Uint8Array(data);
+  }
+  if (ArrayBuffer.isView(data)) {
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  }
+  if (Array.isArray(data) && data.every((value) => Number.isInteger(value) && value >= 0 && value <= 255)) {
+    return new Uint8Array(data);
+  }
+  if (data && typeof data === 'object') {
+    const keys = Object.keys(data);
+    if (keys.length > 0 && keys.every((key) => /^(0|[1-9]\d*)$/.test(key))) {
+      const sortedKeys = keys.map((key) => Number(key)).sort((a, b) => a - b);
+      if (sortedKeys.every((key, index) => key === index)) {
+        const values = sortedKeys.map((key) => data[key]);
+        if (values.every((value) => Number.isInteger(value) && value >= 0 && value <= 255)) {
+          return new Uint8Array(values);
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Uint8Array 转字符串
  * @param {Uint8Array} bytes - 字节数组
  * @returns {string}
@@ -155,7 +191,11 @@ export function secureWipe(data) {
  */
 export async function hash(data, algorithm = 'SHA-256') {
   try {
-    const bytes = typeof data === 'string' ? stringToBytes(data) : data;
+    const normalized = normalizeBinaryInput(data);
+    if (normalized == null) {
+      throw createCryptoError('Failed to normalize binary input');
+    }
+    const bytes = typeof normalized === 'string' ? stringToBytes(normalized) : normalized;
     const hashBuffer = await crypto.subtle.digest(algorithm, bytes);
     return new Uint8Array(hashBuffer);
   } catch (error) {
@@ -193,4 +233,3 @@ export async function verifyIntegrity(data, expectedHash, algorithm = 'SHA-256')
     return false;
   }
 }
-

@@ -99,21 +99,31 @@ export const INPUT_VALIDATION = {
 
 /**
  * 验证以太坊地址
+ *
+ * EIP-55：纯小写 / 纯大写地址视为"无校验和"，合法；混合大小写**必须**通过 EIP-55
+ * 校验和（否则极可能是手抄/复制时改了某一位）。ethers.isAddress 正好实现该语义，
+ * 故默认路径即用它兜住混合大小写的坏校验和（此前仅正则匹配，会放过这类错误地址）。
+ * requireChecksum=true 时进一步要求传入的地址本身就是规范校验和形式（拒绝纯小写）。
  * @param {string} address - 地址
- * @param {boolean} requireChecksum - 是否需要校验和
+ * @param {boolean} requireChecksum - 是否强制规范校验和形式
  * @returns {{valid: boolean, error?: string}}
  */
 export function validateEthereumAddress(address, requireChecksum = false) {
   if (!address) {
     return { valid: false, error: 'Address is required' };
   }
-  
-  // 基本格式检查
+
+  // 基本格式检查（长度 / 字符集）
   if (!ADDRESS_VALIDATION.ETHEREUM.pattern.test(address)) {
     return { valid: false, error: 'Invalid address format' };
   }
-  
-  // 校验和检查（如果需要）
+
+  // EIP-55：混合大小写必须校验和正确；纯大小写放行。ethers.isAddress 即此语义。
+  if (!ethers.isAddress(address)) {
+    return { valid: false, error: 'Invalid EIP-55 checksum' };
+  }
+
+  // 强校验：要求传入地址已是规范校验和形式（拒绝纯小写/纯大写）
   if (requireChecksum && ADDRESS_VALIDATION.ETHEREUM.checksum) {
     try {
       const checksummed = ethers.getAddress(address);
@@ -124,7 +134,7 @@ export function validateEthereumAddress(address, requireChecksum = false) {
       return { valid: false, error: 'Invalid address checksum' };
     }
   }
-  
+
   return { valid: true };
 }
 

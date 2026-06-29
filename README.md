@@ -15,6 +15,8 @@
 - [UCAN 协议说明与使用指南（Chat / Router / WebDAV 模板）](./docs/UCAN协议说明.md)
 - [WebDAV 备份同步说明](./docs/WebDAV备份同步说明.md)
 - [MPC 门限钱包方案](./docs/MPC门限钱包方案.md)
+- [V1 架构基线](./docs/V1架构基线.md)
+- [存储架构（chrome + idb 双后端 + 迁移 + 回退）](./docs/存储架构.md)
 
 
 ## 标准 / EIP 支持矩阵
@@ -25,6 +27,7 @@
 | --- | --- | --- |
 | EIP-1193 Provider API | ✅ 已支持 | `request` + 连接/链/账户事件（`connect`/`disconnect`/`accountsChanged`/`chainChanged`） |
 | EIP-1193 错误码 | ✅ 已支持 | 标准化错误返回 |
+| EIP-6963 多 Provider 发现 | ✅ 已支持 | `eip6963:announceProvider` / `eip6963:requestProvider`；uuid 按加载随机生成、info/detail 冻结 |
 | EIP-2255 Permissions | ✅ 已支持 | `wallet_requestPermissions` / `wallet_getPermissions` / `wallet_revokePermissions`（仅 `eth_accounts`） |
 | EIP-3326 | ✅ 已支持 | `wallet_switchEthereumChain` |
 | EIP-3085 | ✅ 已支持 | `wallet_addEthereumChain` |
@@ -35,7 +38,7 @@
 | EIP-4361 (SIWE) | ✅ 已支持 | 解析并展示 SIWE 文本 |
 | EIP-5573 (ReCap) | ✅ 已支持 | 解析 `urn:recap:` 并结构化展示能力 |
 | ERC-20 | ✅ 基础支持 | 添加代币 + 余额展示 |
-| EIP-55 | ⚠️ 部分支持 | 校验和校验尚未完整实现 |
+| EIP-55 | ✅ 已支持 | 地址校验和校验：纯大小写放行，混合大小写强制 EIP-55 校验和（拒绝改了某一位的错误地址） |
 
 ### 标准支持更新约定
 - 新增/变更 EIP 或标准时，请在此矩阵补充条目并写明状态与说明。
@@ -68,4 +71,14 @@ curl -o qrcode.min.js https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js
 
 ## 回归检查
 
-- 审批弹窗复用回归脚本：`node --experimental-vm-modules scripts/test-approval-flow.mjs`
+> 本项目零运行时/构建依赖，测试同样不引入第三方框架，统一使用 Node 内置 test runner 与 `assert`。
+
+- 单元测试（crypto / vault / keyring / IDB 集成，Node 内置 runner，默认 worker 隔离）：`npm install && npm test`
+  - `fake-indexeddb@6` 是**仅测试用的 devDependency**（`lib/` 仍 vendored 运行时库，扩展本身零运行时依赖）。
+  - `--test-force-exit`：keyring/sync/mpc 单例会留 setTimeout，强制退出避免事件循环挂起。
+- sync-service 集成测试（mock fetch + chrome + fake-indexeddb，必须**单进程顺序跑**——其单例与 IDB 连接无法跨 worker 序列化）：`npm run test:sync`
+- 一键全部跑：`npm run test:all`
+- CI：`.github/workflows/ci.yml` 自动跑 `npm test` + `npm run test:sync` + `npm run test:approval` + `npm run typecheck`（Node 22.x）。
+- 审批弹窗复用回归脚本：`node --experimental-vm-modules tests/test-approval-flow.mjs`
+- 类型检查（JSDoc + `// @ts-check`，按需临时拉 tsc，不入库 node_modules）：`npx -y -p typescript@5 tsc -p tsconfig.json`
+  - `tsconfig.json` 设 `checkJs:false`，仅检查带 `// @ts-check` 的文件；新增注解文件自动纳入。
