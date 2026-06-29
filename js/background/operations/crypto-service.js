@@ -12,6 +12,7 @@
 
 import { createInvalidParams } from '../../common/errors/index.js';
 import { encryptData, decryptData, getSupportedSuites } from '../../common/crypto/index.js';
+import { normalizeBinaryInput } from '../../common/crypto/crypto-utils.js';
 
 function getOptions(params) {
   return Array.isArray(params) ? params[0] || {} : params || {};
@@ -51,10 +52,11 @@ export async function handleYeyingEncrypt(origin, account, params) {
   if (typeof password !== 'string' || password.length === 0) {
     throw createInvalidParams('password is required');
   }
-  if (typeof data !== 'string' && !(data instanceof Uint8Array)) {
+  const normalizedData = normalizeBinaryInput(data);
+  if (normalizedData == null) {
     throw createInvalidParams('data must be string or Uint8Array');
   }
-  const ciphertext = await encryptData({ data, password, suite });
+  const ciphertext = await encryptData({ data: normalizedData, password, suite });
   return { ciphertext, suite: suite || 'aes-256-gcm' };
 }
 

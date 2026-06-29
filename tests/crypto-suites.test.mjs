@@ -224,6 +224,19 @@ test('encryptData：Uint8Array 输入也能 round-trip', async () => {
   assert.equal(hex(pt), hex(data));
 });
 
+test('encryptData：ArrayBuffer / TypedArray / DataView 输入也能 round-trip', async () => {
+  const expected = new Uint8Array([0, 1, 2, 3, 250, 251, 252, 253, 254, 255]);
+  const arrayBuffer = expected.buffer.slice(0);
+  const typedArray = new Uint16Array([0x0100, 0x0302, 0xfbfa, 0xfdfc, 0xfffe]);
+  const dataView = new DataView(expected.buffer.slice(0));
+
+  for (const data of [arrayBuffer, typedArray, dataView]) {
+    const ct = await encryptData({ data, password: 'p', suite: 'aes-256-gcm' });
+    const pt = await decryptData({ ciphertext: ct, password: 'p' });
+    assert.equal(hex(pt), hex(expected));
+  }
+});
+
 test('encryptData：相同明文+相同密码，两次输出不同（salt/iv 随机）', async () => {
   const a = await encryptData({ data: 'same', password: 'p', suite: 'aes-256-gcm' });
   const b = await encryptData({ data: 'same', password: 'p', suite: 'aes-256-gcm' });

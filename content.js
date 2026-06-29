@@ -61,6 +61,29 @@
   let reconnectAttempts = 0;
   const requestQueue = new Map();
 
+  function serializeRuntimeMessage(value) {
+    if (value == null || typeof value !== 'object') {
+      return value;
+    }
+    if (value instanceof Uint8Array) {
+      return Array.from(value);
+    }
+    if (value instanceof ArrayBuffer) {
+      return Array.from(new Uint8Array(value));
+    }
+    if (ArrayBuffer.isView(value)) {
+      return Array.from(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => serializeRuntimeMessage(item));
+    }
+    const out = {};
+    for (const [key, nested] of Object.entries(value)) {
+      out[key] = serializeRuntimeMessage(nested);
+    }
+    return out;
+  }
+
   function initConnection() {
     if (bridgeState.disposed) return;
     // 检查扩展上下文是否有效
@@ -154,7 +177,7 @@
       }
 
       try {
-        port.postMessage(message);
+        port.postMessage(serializeRuntimeMessage(message));
       } catch (error) {
         console.error('❌ Failed to flush queued message:', error);
         sendErrorToPage(requestId, {
@@ -235,7 +258,7 @@
 
     // 转发到 background
     try {
-      port.postMessage(message);
+      port.postMessage(serializeRuntimeMessage(message));
     } catch (error) {
       console.error('❌ Failed to send message:', error);
       sendErrorToPage(message.metadata?.id, {

@@ -23,6 +23,7 @@ export {
   generateIV,
   stringToBytes,
   bytesToString,
+  normalizeBinaryInput,
   base64Encode,
   base64Decode,
   concatBytes,

@@ -14,7 +14,8 @@ import {
   generateRandomBytes,
   base64Encode,
   base64Decode,
-  stringToBytes
+  stringToBytes,
+  normalizeBinaryInput
 } from './crypto-utils.js';
 import { SUITE_DEFINITIONS, DEFAULT_SUITE } from './crypto-constants.js';
 import { sm3Hash, sm4CbcEncrypt, sm4CbcDecrypt, hmacSm3 } from './sm-crypto.js';
@@ -110,7 +111,7 @@ async function deriveRaw32(password, salt, iterations) {
 /**
  * 加密 → v1 格式密文 base64 字符串
  * @param {Object} args
- * @param {string|Uint8Array} args.data
+ * @param {string|Uint8Array|ArrayBuffer|ArrayBufferView|number[]} args.data
  * @param {string} args.password
  * @param {string} [args.suite] 默认 'aes-256-gcm'
  * @returns {Promise<string>}
@@ -119,19 +120,23 @@ export async function encryptData({ data, password, suite }) {
   if (typeof password !== 'string' || password.length === 0) {
     throw createCryptoError('Password is required');
   }
+  const normalizedData = normalizeBinaryInput(data);
+  if (normalizedData == null) {
+    throw createCryptoError('Data must be string or binary');
+  }
   const suiteName = suite || DEFAULT_SUITE;
   const def = SUITE_DEFINITIONS[suiteName];
   if (!def) throw unsupportedSuite(suiteName);
 
   if (def.mode === 'hash') {
     // 哈希套件：直接返回 hash
-    const input = typeof data === 'string' ? stringToBytes(data) : data;
+    const input = typeof normalizedData === 'string' ? stringToBytes(normalizedData) : normalizedData;
     const h = suiteName === 'sm3' ? sm3Hash(input) : new Uint8Array(await crypto.subtle.digest('SHA-256', bs(input)));
     return `${CIPHERTEXT_VERSION}:${suiteName}:${base64Encode(h)}`;
   }
 
   // 对称加密套件
-  const input = typeof data === 'string' ? stringToBytes(data) : data;
+  const input = typeof normalizedData === 'string' ? stringToBytes(normalizedData) : normalizedData;
   const salt = generateRandomBytes(def.pbkdf2.saltLength);
   const iv = generateRandomBytes(def.ivLength);
 

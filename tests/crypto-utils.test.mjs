@@ -15,6 +15,7 @@ import {
   generateIV,
   stringToBytes,
   bytesToString,
+  normalizeBinaryInput,
   base64Encode,
   base64Decode,
   concatBytes,
@@ -55,6 +56,27 @@ test('stringToBytes / bytesToString ASCII 往返', () => {
 test('stringToBytes / bytesToString UTF-8（中文 + emoji）往返', () => {
   const text = '夜莺钱包🐦';
   assert.equal(bytesToString(stringToBytes(text)), text);
+});
+
+test('normalizeBinaryInput：接受 Uint8Array / ArrayBuffer / TypedArray / DataView / byte array', () => {
+  const uint8 = new Uint8Array([1, 2, 3, 4]);
+  const arrayBuffer = uint8.buffer.slice(0);
+  const uint16 = new Uint16Array([0x0201, 0x0403]);
+  const dataView = new DataView(uint8.buffer.slice(0));
+  const byteArray = [1, 2, 3, 4];
+  const byteRecord = { 0: 1, 1: 2, 2: 3, 3: 4 };
+
+  assert.deepEqual([...normalizeBinaryInput(uint8)], [1, 2, 3, 4]);
+  assert.deepEqual([...normalizeBinaryInput(arrayBuffer)], [1, 2, 3, 4]);
+  assert.deepEqual([...normalizeBinaryInput(uint16)], [1, 2, 3, 4]);
+  assert.deepEqual([...normalizeBinaryInput(dataView)], [1, 2, 3, 4]);
+  assert.deepEqual([...normalizeBinaryInput(byteArray)], [1, 2, 3, 4]);
+  assert.deepEqual([...normalizeBinaryInput(byteRecord)], [1, 2, 3, 4]);
+});
+
+test('normalizeBinaryInput：非法输入返回 null', () => {
+  assert.equal(normalizeBinaryInput({ foo: 'bar' }), null);
+  assert.equal(normalizeBinaryInput([256]), null);
 });
 
 // ==================== base64 ====================
