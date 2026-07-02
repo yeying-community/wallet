@@ -88,6 +88,18 @@ test('base64Encode / base64Decode 往返', () => {
   assert.deepEqual([...base64Decode(b64)], [0, 1, 2, 254, 255]);
 });
 
+test('base64Encode：大字节数组分块编码，避免参数数量上限', () => {
+  const bytes = new Uint8Array(256 * 1024);
+  for (let i = 0; i < bytes.length; i += 1) {
+    bytes[i] = i & 0xff;
+  }
+  const b64 = base64Encode(bytes);
+  const restored = base64Decode(b64);
+  assert.equal(restored.length, bytes.length);
+  assert.deepEqual([...restored.slice(0, 512)], [...bytes.slice(0, 512)]);
+  assert.deepEqual([...restored.slice(-512)], [...bytes.slice(-512)]);
+});
+
 test('base64：经 string→bytes→base64→bytes→string 全链路', () => {
   const text = '助记词 mnemonic';
   const restored = bytesToString(base64Decode(base64Encode(stringToBytes(text))));
