@@ -109,7 +109,13 @@ export function bytesToString(bytes) {
  */
 export function base64Encode(bytes) {
   try {
-    return btoa(String.fromCharCode(...bytes));
+    const chunkSize = 0x8000;
+    let binary = '';
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      const chunk = bytes.subarray(offset, offset + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    return btoa(binary);
   } catch (error) {
     logError('crypto-base64-encode', error);
     throw createCryptoError('Failed to encode base64');

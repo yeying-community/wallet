@@ -1,5 +1,6 @@
 import { showPage, showError, setPageOrigin, showWaiting, hideWaiting } from '../../common/ui/index.js';
 import { shortenAddress, generateAvatar } from '../../common/chain/index.js';
+import { clearImportWalletForm } from '../wallet/import-wallet-controller.js';
 
 export class AccountListController {
   constructor({
@@ -102,6 +103,7 @@ export class AccountListController {
     if (passwordInput) {
       passwordInput.placeholder = '输入当前密码';
     }
+    clearImportWalletForm();
   }
 
   async loadWalletList() {

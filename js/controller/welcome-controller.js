@@ -1,4 +1,5 @@
 import { showPage, setPageOrigin } from '../common/ui/index.js';
+import { clearImportWalletForm } from './wallet/import-wallet-controller.js';
 
 export class WelcomeController {
   constructor() {}
@@ -79,6 +80,7 @@ export class WelcomeController {
     if (passwordInput) {
       passwordInput.placeholder = '至少8位字符';
     }
+    clearImportWalletForm();
   }
 
   resetCreateWalletForm() {

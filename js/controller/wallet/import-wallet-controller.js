@@ -1,5 +1,36 @@
 import { showPage, showError, showSuccess, showWaiting, getPageOrigin } from '../../common/ui/index.js';
 
+const IMPORT_FIELD_IDS = [
+  'importAccountName',
+  'importMnemonic',
+  'importPrivateKey',
+  'importWalletPassword'
+];
+
+export function clearImportWalletForm({ resetType = true } = {}) {
+  IMPORT_FIELD_IDS.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.value = '';
+    }
+  });
+
+  if (!resetType) {
+    return;
+  }
+
+  const tabs = Array.from(document.querySelectorAll('.import-tab'));
+  const mnemonicTab = tabs.find((tab) => tab?.dataset?.type === 'mnemonic');
+  const privateKeyTab = tabs.find((tab) => tab?.dataset?.type === 'privateKey');
+  const mnemonicSection = document.getElementById('mnemonicImportSection');
+  const privateKeySection = document.getElementById('privateKeyImportSection');
+
+  mnemonicTab?.classList.add('active');
+  privateKeyTab?.classList.remove('active');
+  mnemonicSection?.classList.remove('hidden');
+  privateKeySection?.classList.add('hidden');
+}
+
 export class ImportWalletController {
   constructor({ wallet, onImportSuccess }) {
     this.wallet = wallet;
@@ -86,6 +117,7 @@ export class ImportWalletController {
       }
 
       showSuccess('导入成功！');
+      clearImportWalletForm();
 
       setTimeout(() => {
         showPage('walletPage');
@@ -100,6 +132,7 @@ export class ImportWalletController {
 
   handleCancel() {
     const origin = getPageOrigin('importPage', 'welcome');
+    clearImportWalletForm();
     if (origin === 'accounts') {
       showPage('accountsPage');
       return;
