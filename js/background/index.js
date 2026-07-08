@@ -80,11 +80,9 @@ async function init() {
 }
 
 // 启动
-init()
-  .then(() => reinjectContentScripts('background_init'))
-  .catch((error) => {
-    console.warn('⚠️ Background init finished with reinjection skipped:', error);
-  });
+init().catch((error) => {
+  console.error('❌ Background init failed:', error);
+});
 
 async function reinjectContentScripts(reason) {
   if (!chrome.scripting?.executeScript) {
@@ -134,6 +132,5 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  console.log('🚀 Extension startup, checking existing tabs');
-  reinjectContentScripts('startup');
+  console.log('🚀 Extension startup');
 });

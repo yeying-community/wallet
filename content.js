@@ -20,6 +20,7 @@
 
   const MAX_RECONNECT_ATTEMPTS = 3;
   const RECONNECT_DELAY_BASE = 1000; // 基础延迟 1 秒
+  const CONNECTION_STABLE_MS = 5000;
   const QUEUE_MAX_AGE = 15000; // 请求排队超时
   const QUEUE_MAX_SIZE = 100; // 最大排队请求数
   const bridgeToken =
@@ -59,6 +60,8 @@
 
   let port = null;
   let reconnectAttempts = 0;
+  let reconnectTimer = null;
+  let stableConnectionTimer = null;
   const requestQueue = new Map();
 
   function serializeRuntimeMessage(value) {
@@ -97,12 +100,12 @@
 
     try {
       port = chrome.runtime.connect({ name: PORT_NAME });
-      reconnectAttempts = 0;
 
       port.onMessage.addListener(handleBackgroundMessage);
       port.onDisconnect.addListener(handleDisconnect);
 
       console.debug('Bridge connected to background');
+      scheduleReconnectAttemptReset();
 
       flushQueuedRequests();
     } catch (error) {
@@ -116,7 +119,7 @@
         console.debug(
           `🔄 Reconnecting in ${delay}ms... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`
         );
-        setTimeout(initConnection, delay);
+        scheduleReconnect(delay);
       } else {
         console.error('❌ Max reconnection attempts reached');
         sendEventToPage(EventType.DISCONNECT, {
@@ -128,7 +131,7 @@
 
   function handleDisconnect() {
     if (bridgeState.disposed) return;
-    console.warn('⚠️ Port disconnected');
+    clearStableConnectionTimer();
 
     const error = chrome.runtime.lastError;
     if (error) {
@@ -152,13 +155,36 @@
       console.debug(
         `🔄 Reconnecting in ${delay}ms... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`
       );
-      setTimeout(initConnection, delay);
+      scheduleReconnect(delay);
     } else {
       console.error('❌ Max reconnection attempts reached');
       sendEventToPage(EventType.DISCONNECT, {
         reason: 'max_reconnect_attempts'
       });
     }
+  }
+
+  function scheduleReconnect(delay) {
+    if (bridgeState.disposed || reconnectTimer) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      initConnection();
+    }, delay);
+  }
+
+  function clearStableConnectionTimer() {
+    if (stableConnectionTimer) {
+      clearTimeout(stableConnectionTimer);
+      stableConnectionTimer = null;
+    }
+  }
+
+  function scheduleReconnectAttemptReset() {
+    clearStableConnectionTimer();
+    stableConnectionTimer = setTimeout(() => {
+      stableConnectionTimer = null;
+      reconnectAttempts = 0;
+    }, CONNECTION_STABLE_MS);
   }
 
   function flushQueuedRequests() {
@@ -313,6 +339,11 @@
     bridgeState.disposed = true;
     window.removeEventListener('message', handlePageMessage);
     requestQueue.clear();
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    clearStableConnectionTimer();
     if (port) {
       try {
         port.disconnect();
