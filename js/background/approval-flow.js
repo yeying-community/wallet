@@ -4,7 +4,7 @@
  */
 
 import { createInternalError } from '../common/errors/index.js';
-import { ApprovalMessageType } from '../protocol/extension-protocol.js';
+import { ApprovalMessageType, ApprovalPortMessageType } from '../protocol/extension-protocol.js';
 import { POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
 import { state } from './state.js';
 import { updateKeepAlive } from './offscreen.js';
@@ -15,6 +15,9 @@ import { diagnostics } from './diagnostics.js';
 let windowCleanupBound = false;
 let approvalStateHydrationPromise = null;
 const approvalWaiters = new Map();
+const approvalChannels = new Map();
+const approvalTransitionWaiters = new Map();
+const APPROVAL_TRANSITION_TIMEOUT_MS = 750;
 const APPROVAL_STORAGE_KEYS = {
   PENDING_REQUESTS: 'approval_pending_requests',
   APPROVAL_SESSIONS: 'approval_sessions'
@@ -195,6 +198,90 @@ function notifyQueuedApproval(sessionKey, activeRequestId, queuedRequestId, queu
       queueSize
     }
   }).catch(() => { });
+}
+
+function settleApprovalTransition(transitionId, success, port = null) {
+  const waiter = approvalTransitionWaiters.get(transitionId);
+  if (!waiter) return;
+  if (port && waiter.port !== port) return;
+  approvalTransitionWaiters.delete(transitionId);
+  clearTimeout(waiter.timer);
+  waiter.resolve(Boolean(success));
+}
+
+function settleApprovalTransitionsForPort(port) {
+  approvalTransitionWaiters.forEach((waiter, transitionId) => {
+    if (waiter.port === port) settleApprovalTransition(transitionId, false, port);
+  });
+}
+
+export function registerApprovalChannel(port) {
+  const tabId = port?.sender?.tab?.id;
+  const senderUrl = String(port?.sender?.url || '');
+  const approvalUrl = chrome.runtime.getURL('html/approval.html');
+  let isApprovalPage = false;
+  try {
+    const sender = new URL(senderUrl);
+    const approval = new URL(approvalUrl);
+    isApprovalPage = sender.origin === approval.origin && sender.pathname === approval.pathname;
+  } catch (error) {
+    isApprovalPage = false;
+  }
+  if (!Number.isFinite(tabId) || !isApprovalPage) {
+    port?.disconnect?.();
+    return false;
+  }
+
+  const previous = approvalChannels.get(tabId)?.port;
+  if (previous && previous !== port) {
+    try { previous.disconnect(); } catch (error) { /* replaced channel */ }
+  }
+  const channel = { port, ready: false };
+  approvalChannels.set(tabId, channel);
+
+  port.onMessage.addListener((message) => {
+    if (message?.type === ApprovalPortMessageType.READY) {
+      channel.ready = true;
+      return;
+    }
+    if (message?.type === ApprovalPortMessageType.ACTIVATE_RESULT) {
+      settleApprovalTransition(message.transitionId, message.success, port);
+    }
+  });
+  port.onDisconnect.addListener(() => {
+    settleApprovalTransitionsForPort(port);
+    if (approvalChannels.get(tabId)?.port === port) {
+      approvalChannels.delete(tabId);
+    }
+  });
+  return true;
+}
+
+async function notifyApprovalRequestActivated(session, requestId, requestType) {
+  const channel = approvalChannels.get(session?.tabId);
+  if (!channel?.ready) return false;
+  const { port } = channel;
+
+  const transitionId = `${requestId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  const resultPromise = new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      approvalTransitionWaiters.delete(transitionId);
+      resolve(false);
+    }, APPROVAL_TRANSITION_TIMEOUT_MS);
+    approvalTransitionWaiters.set(transitionId, { resolve, timer, port });
+  });
+
+  try {
+    port.postMessage({
+      type: ApprovalPortMessageType.ACTIVATE_REQUEST,
+      transitionId,
+      requestId,
+      requestType
+    });
+  } catch (error) {
+    settleApprovalTransition(transitionId, false, port);
+  }
+  return resultPromise;
 }
 
 export function getApprovalSessionKey(origin, tabId) {
@@ -565,9 +652,7 @@ export async function openApprovalWindow(options) {
     }
 
     if (session && !state.pendingRequests.has(session.activeRequestId)) {
-      const nextUrl = `html/approval.html?requestId=${requestId}&type=${requestType}`;
       try {
-        await chrome.tabs.update(session.tabId, { url: nextUrl });
         await chrome.windows.update(session.windowId, { focused: true }).catch(() => { });
 
         updatePendingRequestWindow(requestId, session.windowId, session.tabId);
@@ -579,10 +664,18 @@ export async function openApprovalWindow(options) {
           updatedAt: Date.now()
         });
 
+        const delivered = await notifyApprovalRequestActivated(session, requestId, requestType);
+        if (!delivered) {
+          await chrome.tabs.update(session.tabId, {
+            url: `html/approval.html?requestId=${requestId}&type=${requestType}`
+          });
+        }
+
         return {
           windowId: session.windowId,
           tabId: session.tabId,
-          reused: true
+          reused: true,
+          activatedInPage: delivered
         };
       } catch (error) {
         state.approvalSessions.delete(sessionKey);

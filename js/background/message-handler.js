@@ -4,7 +4,7 @@
  */
 
 import { MessageValidator, PORT_NAME, EventType } from '../protocol/dapp-protocol.js';
-import { ApprovalMessageType, WalletMessageType, NetworkMessageType, TransactionMessageType } from '../protocol/extension-protocol.js';
+import { APPROVAL_PORT_NAME, ApprovalMessageType, WalletMessageType, NetworkMessageType, TransactionMessageType } from '../protocol/extension-protocol.js';
 import { sendResponse, sendError, registerConnection, unregisterConnection, checkSessionAndNotify } from './connection.js';
 import { routeRequest } from './request-router.js';
 import { unlockWallet, lockWallet, isAccountUnlocked } from './keyring.js';
@@ -110,7 +110,8 @@ import {
   ensureApprovalStateHydrated,
   getPendingRequestById,
   getActiveApprovalSummary,
-  recordApprovalResponse
+  recordApprovalResponse,
+  registerApprovalChannel
 } from './approval-flow.js';
 import { diagnostics } from './diagnostics.js';
 
@@ -784,7 +785,6 @@ const popupHandlers = new Map([
   }],
   // background -> approval 页面提示消息；若回流到 background，直接忽略
   [ApprovalMessageType.APPROVAL_QUEUE_UPDATE, async () => ({ success: true })],
-
   // ==================== 账户 / 授权 ====================
   [WalletMessageType.GET_ACCOUNT_BY_ID, async (data) => await handleGetAccountById(data?.accountId)],
   [WalletMessageType.UPDATE_ACCOUNT_NAME, async (data) => await handleUpdateAccountName(data?.accountId, data?.newName)],
@@ -950,6 +950,11 @@ export function initMessageListeners() {
   // 监听来自 content script 的长连接
   chrome.runtime.onConnect.addListener((port) => {
     console.log('🔌 New connection:', port.name);
+
+    if (port.name === APPROVAL_PORT_NAME) {
+      registerApprovalChannel(port);
+      return;
+    }
 
     if (port.name !== PORT_NAME) {
       return;

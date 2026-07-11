@@ -39,7 +39,8 @@ function createChromeMock() {
   const stats = {
     windowsCreated: 0,
     windowsFocused: 0,
-    tabsUpdated: 0
+    tabsUpdated: 0,
+    approvalActivations: 0
   };
 
   const failTabUpdates = new Set();
@@ -69,18 +70,21 @@ function createChromeMock() {
   const chrome = {
     __stats: stats,
     __failTabUpdates: failTabUpdates,
+    __approvalActivations: [],
     __windows: windows,
     __tabs: tabs,
     __reset() {
       windows.clear();
       tabs.clear();
       failTabUpdates.clear();
+      chrome.__approvalActivations.length = 0;
       Object.keys(storageData).forEach((key) => delete storageData[key]);
       nextWindowId = 100;
       nextTabId = 1000;
       stats.windowsCreated = 0;
       stats.windowsFocused = 0;
       stats.tabsUpdated = 0;
+      stats.approvalActivations = 0;
     },
     runtime: {
       id: 'test-extension-id',
@@ -270,6 +274,7 @@ async function run() {
   const chrome = createChromeMock();
   const context = createVmContext(chrome);
   const moduleCache = new Map();
+  const approvalPorts = new Set();
 
   const stateModule = await loadModule(
     path.join(repoRoot, 'js/background/state.js'),
@@ -298,7 +303,8 @@ async function run() {
     recordApprovalResponse,
     waitForApprovalResponse,
     openApprovalWindow,
-    hasActiveApprovalForSession
+    hasActiveApprovalForSession,
+    registerApprovalChannel
   } = approvalModule.namespace;
   const {
     requestUnlock,
@@ -306,8 +312,60 @@ async function run() {
   } = unlockModule.namespace;
 
   function resetAll() {
+    approvalPorts.forEach((port) => port.disconnect());
+    approvalPorts.clear();
     resetState();
     chrome.__reset();
+  }
+
+  function attachApprovalChannel(tabId, options = {}) {
+    const onMessage = createListenerStore();
+    const onDisconnect = createListenerStore();
+    const port = {
+      sender: {
+        tab: { id: tabId },
+        url: 'chrome-extension://test-extension-id/html/approval.html'
+      },
+      onMessage,
+      onDisconnect,
+      postMessage(message) {
+        if (message?.type !== 'APPROVAL_ACTIVATE_REQUEST') return;
+        chrome.__stats.approvalActivations += 1;
+        chrome.__approvalActivations.push({ tabId, message });
+        if (options.ack === false) return;
+        queueMicrotask(() => {
+          onMessage.emit({
+            type: 'APPROVAL_ACTIVATE_RESULT',
+            transitionId: message.transitionId,
+            success: options.success !== false
+          });
+        });
+      },
+      disconnect() {
+        onDisconnect.emit();
+      }
+    };
+    assert.equal(registerApprovalChannel(port), true);
+    onMessage.emit({ type: 'APPROVAL_READY' });
+    approvalPorts.add(port);
+    return port;
+  }
+
+  function testRejectNonApprovalChannel() {
+    resetAll();
+    let disconnected = false;
+    const port = {
+      sender: {
+        tab: { id: 1000 },
+        url: 'chrome-extension://test-extension-id/html/approval.html.evil'
+      },
+      disconnect() {
+        disconnected = true;
+      }
+    };
+
+    assert.equal(registerApprovalChannel(port), false);
+    assert.equal(disconnected, true, 'invalid approval channel should be disconnected');
   }
 
   async function waitFor(check, message, timeoutMs = 200) {
@@ -356,6 +414,7 @@ async function run() {
     assert.equal(state.pendingRequests.get('req-1').windowTabId, first.tabId);
 
     removePendingRequest('req-1');
+    attachApprovalChannel(first.tabId);
 
     const idleSession = state.approvalSessions.get('https://app.example:11');
     assert.equal(idleSession.activeRequestId, null, 'session should become idle after response');
@@ -378,14 +437,21 @@ async function run() {
     });
 
     assert.equal(reused.reused, true, 'follow-up approval should reuse the popup');
+    assert.equal(reused.activatedInPage, true, 'reused popup should switch request in-page');
     assert.equal(chrome.__stats.windowsCreated, 1, 'reuse should not create extra popups');
-    assert.equal(chrome.__stats.tabsUpdated, 1, 'reused popup should navigate existing tab');
+    assert.equal(chrome.__stats.tabsUpdated, 0, 'in-page reuse should not reload the approval tab');
     assert.equal(reused.windowId, first.windowId, 'reused popup should keep same window');
     assert.equal(reused.tabId, first.tabId, 'reused popup should keep same tab');
     assert.match(
       chrome.__tabs.get(first.tabId).url,
-      /requestId=req-2/,
-      'reused popup tab should navigate to the next approval request'
+      /requestId=req-1/,
+      'reused popup keeps the original URL because the page switches request without reload'
+    );
+    assert.ok(
+      chrome.__approvalActivations.some(({ tabId, message }) =>
+        tabId === first.tabId && message?.requestId === 'req-2'
+      ),
+      'reused popup should receive an in-page activation message'
     );
   }
 
@@ -407,6 +473,7 @@ async function run() {
       tabId: 44,
       reuseSession: true
     });
+    attachApprovalChannel(first.tabId);
 
     addPendingRequest('req-sign', {
       type: 'sign_message',
@@ -449,10 +516,17 @@ async function run() {
       [],
       'queue should be drained after promotion'
     );
+    assert.equal(chrome.__stats.tabsUpdated, 0, 'queued promotion should not reload the approval tab');
     assert.match(
       chrome.__tabs.get(first.tabId).url,
-      /requestId=req-sign/,
-      'after connect resolves, popup should navigate to queued sign request'
+      /requestId=req-connect/,
+      'after connect resolves, popup keeps its URL while the page switches to queued sign request'
+    );
+    assert.ok(
+      chrome.__approvalActivations.some(({ tabId, message }) =>
+        tabId === first.tabId && message?.requestId === 'req-sign'
+      ),
+      'queued promotion should be delivered to the approval page in-place'
     );
   }
 
@@ -500,6 +574,47 @@ async function run() {
 
     const session = state.approvalSessions.get('https://fallback.example:22');
     assert.equal(session.windowId, fallback.windowId, 'session should point to replacement popup');
+  }
+
+  async function testActivationTimeoutFallsBackToTabNavigation() {
+    resetAll();
+
+    addPendingRequest('req-timeout-a', {
+      type: 'connect',
+      origin: 'https://timeout.example',
+      tabId: 23,
+      reuseSession: true,
+      data: {}
+    });
+    const initial = await openApprovalWindow({
+      requestId: 'req-timeout-a',
+      requestType: 'connect',
+      origin: 'https://timeout.example',
+      tabId: 23,
+      reuseSession: true
+    });
+    removePendingRequest('req-timeout-a');
+    attachApprovalChannel(initial.tabId, { ack: false });
+
+    addPendingRequest('req-timeout-b', {
+      type: 'sign_message',
+      origin: 'https://timeout.example',
+      tabId: 23,
+      reuseSession: true,
+      data: {}
+    });
+    const reused = await openApprovalWindow({
+      requestId: 'req-timeout-b',
+      requestType: 'sign_message',
+      origin: 'https://timeout.example',
+      tabId: 23,
+      reuseSession: true
+    });
+
+    assert.equal(reused.reused, true);
+    assert.equal(reused.activatedInPage, false, 'missing ACK should use reload fallback');
+    assert.equal(chrome.__stats.tabsUpdated, 1, 'timeout should navigate the existing tab');
+    assert.match(chrome.__tabs.get(initial.tabId).url, /requestId=req-timeout-b/);
   }
 
   async function testWindowRemovalCleansSession() {
@@ -560,6 +675,7 @@ async function run() {
 
     notifyUnlocked();
     await unlockPromise;
+    attachApprovalChannel(createdTab.id);
 
     assert.equal(
       chrome.__windows.has(createdWindow.id),
@@ -584,12 +700,20 @@ async function run() {
     });
 
     assert.equal(reused.reused, true, 'approval after unlock should reuse the unlock popup');
+    assert.equal(reused.activatedInPage, true, 'approval after unlock should switch in-page');
     assert.equal(reused.windowId, createdWindow.id, 'reused approval should keep unlock popup window');
     assert.equal(chrome.__stats.windowsCreated, 1, 'unlock + connect should still use one popup window');
+    assert.equal(chrome.__stats.tabsUpdated, 0, 'unlock + connect should not reload the approval tab');
     assert.match(
       chrome.__tabs.get(createdTab.id).url,
-      /requestId=req-after-unlock/,
-      'same unlock popup tab should transition into follow-up approval request'
+      /type=unlock/,
+      'same unlock popup tab keeps its URL while transitioning in-page'
+    );
+    assert.ok(
+      chrome.__approvalActivations.some(({ tabId, message }) =>
+        tabId === createdTab.id && message?.requestId === 'req-after-unlock'
+      ),
+      'unlock follow-up should be delivered to the approval page in-place'
     );
   }
 
@@ -647,9 +771,11 @@ async function run() {
   }
 
   const tests = [
+    ['reject non-approval page channel', testRejectNonApprovalChannel],
     ['create and reuse approval popup', testCreateAndReuseWindow],
     ['queue follow-up approval while current one is active', testQueueFollowupWhileCurrentApprovalIsActive],
     ['fallback to new popup when reuse fails', testFallbackToNewWindowWhenReuseFails],
+    ['fallback to tab navigation when activation ACK times out', testActivationTimeoutFallsBackToTabNavigation],
     ['clear session after popup close', testWindowRemovalCleansSession],
     ['reuse unlock popup for follow-up approval', testUnlockPopupIsReusedByFollowupApproval],
     ['persist and restore pending approval across restart', testPersistAndRestorePendingApprovalAcrossRestart]
