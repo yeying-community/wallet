@@ -61,6 +61,7 @@ function fakeWallet() {
     getNetworks: async () => [],
     getBackupSyncSettings: async () => ({}),
     getMpcSettings: async () => ({}),
+    getCustodySettings: async () => ({}),
     getMpcSessions: async () => ({ success: true, sessions: [] }),
     getAuthorizedSites: async () => [],
     getContacts: async () => [],
@@ -93,16 +94,18 @@ test('openAccountsPage：调 accountsListController.loadWalletList', async () =>
   assert.equal(typeof c.accountListController, 'object');
 });
 
-test('openSettingsPage：委派三个 load 到 settingsController', async () => {
+test('openSettingsPage：委派设置页 load 到 settingsController', async () => {
   const wallet = fakeWallet();
-  const spy = { backup: 0, mpc: 0, mpcSess: 0 };
+  const spy = { backup: 0, mpc: 0, custody: 0, mpcSess: 0 };
   const c = new PopupController({ wallet, transaction: {}, network: {}, token: {} });
   c.settingController.loadBackupSyncSettings = async () => { spy.backup++; };
   c.settingController.loadMpcSettings = async () => { spy.mpc++; };
+  c.settingController.loadCustodySettings = async () => { spy.custody++; };
   c.settingController.loadMpcSessions = async () => { spy.mpcSess++; };
   await c.openSettingsPage();
   assert.equal(spy.backup, 1);
   assert.equal(spy.mpc, 1);
+  assert.equal(spy.custody, 1);
   assert.equal(spy.mpcSess, 1);
 });
 

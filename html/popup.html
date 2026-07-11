@@ -1042,6 +1042,58 @@
             <p class="settings-hint">查看同步日志，支持搜索与翻页</p>
           </div>
 
+          <!-- 密钥托管 -->
+          <div class="settings-section" id="custodySettingsSection">
+            <h3>🛡️ 密钥托管</h3>
+            <div class="settings-row">
+              <label class="settings-toggle">
+                <input type="checkbox" id="custodyEnabledToggle" />
+                <span>启用密钥托管服务</span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label>托管服务地址</label>
+              <input
+                type="url"
+                id="custodyEndpointInput"
+                class="input"
+                placeholder="https://node.yeying.pub"
+              />
+            </div>
+            <div class="form-group">
+              <label>UCAN Resource</label>
+              <input
+                type="text"
+                id="custodyUcanResourceInput"
+                class="input"
+                placeholder="custody"
+              />
+            </div>
+            <div class="form-group">
+              <label>UCAN Action</label>
+              <input
+                type="text"
+                id="custodyUcanActionInput"
+                class="input"
+                placeholder="write"
+              />
+            </div>
+            <div class="form-group">
+              <label>UCAN Audience</label>
+              <input
+                type="text"
+                id="custodyUcanAudienceInput"
+                class="input"
+                placeholder="did:web:node.yeying.pub"
+              />
+            </div>
+            <div class="settings-row">
+              <button id="custodySaveBtn" class="btn btn-secondary btn-small">保存配置</button>
+              <button id="custodyStatusBtn" class="btn btn-secondary btn-small">检查通行证</button>
+            </div>
+            <p class="settings-hint" id="custodyStatusText">启用前需要当前钱包地址已绑定通行证。</p>
+          </div>
+
           <!-- MPC 门限钱包设置 -->
           <div class="settings-section" id="mpcSettingsSection">
             <h3>🧩 MPC 门限钱包</h3>

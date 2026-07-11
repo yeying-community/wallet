@@ -595,6 +595,7 @@ export class PopupController {
     showPage('settingsPage');
     await this.settingController.loadBackupSyncSettings();
     await this.settingController.loadMpcSettings();
+    await this.settingController.loadCustodySettings();
     await this.settingController.loadMpcSessions();
   }
 

@@ -18,6 +18,9 @@ export const DEFAULT_MPC_AUTH_SCHEME = 'ucan';
 export const DEFAULT_MPC_E2E_SUITE = 'x25519-aes-gcm';
 export const DEFAULT_MPC_REFRESH_POLICY = 'manual';
 export const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
+export const DEFAULT_CUSTODY_ENDPOINT = 'https://node.yeying.pub';
+export const DEFAULT_CUSTODY_UCAN_RESOURCE = 'custody';
+export const DEFAULT_CUSTODY_UCAN_ACTION = 'write';
 export const LEGACY_UCAN_RESOURCES = new Set([
   'profile',
   'webdav/*',

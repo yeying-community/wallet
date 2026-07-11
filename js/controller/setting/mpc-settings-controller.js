@@ -16,7 +16,10 @@ import {
   DEFAULT_MPC_AUTH_SCHEME,
   DEFAULT_MPC_E2E_SUITE,
   DEFAULT_MPC_REFRESH_POLICY,
-  DEFAULT_MPC_COORDINATOR_ENDPOINT
+  DEFAULT_MPC_COORDINATOR_ENDPOINT,
+  DEFAULT_CUSTODY_ENDPOINT,
+  DEFAULT_CUSTODY_UCAN_RESOURCE,
+  DEFAULT_CUSTODY_UCAN_ACTION
 } from './settings-utils.js';
 
 export class MpcSettingsController {
@@ -24,6 +27,7 @@ export class MpcSettingsController {
     this.wallet = wallet;
     this.requestPassword = requestPassword;
     this.mpcSettings = null;
+    this.custodySettings = null;
     this.mpcLogs = [];
     this.mpcLogQuery = '';
     this.mpcLogFiltered = [];
@@ -135,6 +139,27 @@ export class MpcSettingsController {
     if (mpcCoordinatorUcanGenerateBtn) {
       mpcCoordinatorUcanGenerateBtn.addEventListener('click', async () => {
         await this.handleMpcCoordinatorUcanGenerate();
+      });
+    }
+
+    const custodyEnabledToggle = document.getElementById('custodyEnabledToggle');
+    if (custodyEnabledToggle) {
+      custodyEnabledToggle.addEventListener('change', async () => {
+        await this.handleCustodyToggle(custodyEnabledToggle.checked);
+      });
+    }
+
+    const custodySaveBtn = document.getElementById('custodySaveBtn');
+    if (custodySaveBtn) {
+      custodySaveBtn.addEventListener('click', async () => {
+        await this.handleCustodySave();
+      });
+    }
+
+    const custodyStatusBtn = document.getElementById('custodyStatusBtn');
+    if (custodyStatusBtn) {
+      custodyStatusBtn.addEventListener('click', async () => {
+        await this.handleCustodyStatusCheck();
       });
     }
 
@@ -262,6 +287,16 @@ export class MpcSettingsController {
     }
   }
 
+  async loadCustodySettings() {
+    try {
+      const settings = await this.wallet.getCustodySettings();
+      this.custodySettings = settings || {};
+      this.renderCustodySettings(this.custodySettings);
+    } catch (error) {
+      console.error('[MpcSettings] 获取托管设置失败:', error);
+    }
+  }
+
   renderMpcSettings(settings = {}) {
     const authSelect = document.getElementById('mpcAuthSchemeSelect');
     const suiteSelect = document.getElementById('mpcE2eSuiteSelect');
@@ -316,6 +351,128 @@ export class MpcSettingsController {
     } catch (error) {
       console.error('[MpcSettings] 更新 MPC 设置失败:', error);
       showError('保存失败: ' + error.message);
+    }
+  }
+
+  renderCustodySettings(settings = {}) {
+    const enabledToggle = document.getElementById('custodyEnabledToggle');
+    const endpointInput = document.getElementById('custodyEndpointInput');
+    const resourceInput = document.getElementById('custodyUcanResourceInput');
+    const actionInput = document.getElementById('custodyUcanActionInput');
+    const audienceInput = document.getElementById('custodyUcanAudienceInput');
+    const statusText = document.getElementById('custodyStatusText');
+
+    const endpoint = settings.endpoint || DEFAULT_CUSTODY_ENDPOINT;
+    if (enabledToggle) enabledToggle.checked = Boolean(settings.enabled);
+    if (endpointInput) endpointInput.value = endpoint;
+    if (resourceInput) resourceInput.value = settings.ucanResource || DEFAULT_CUSTODY_UCAN_RESOURCE;
+    if (actionInput) actionInput.value = settings.ucanAction || DEFAULT_CUSTODY_UCAN_ACTION;
+    if (audienceInput) audienceInput.value = settings.ucanAudience || deriveUcanAudience(endpoint);
+
+    if (statusText) {
+      const status = settings.lastStatus || {};
+      const passkey = status.passkeyBound ? '已绑定通行证' : '未绑定通行证';
+      const enabled = settings.enabled ? '托管已开启' : '托管未开启';
+      const count = Number.isFinite(status.recordCount) ? ` · ${status.recordCount} 份托管记录` : '';
+      const last = settings.lastBackupAt ? ` · 最近备份 ${formatLocaleDateTime(settings.lastBackupAt)}` : '';
+      statusText.textContent = `${enabled} · ${passkey}${count}${last}`;
+    }
+  }
+
+  readCustodyForm() {
+    const endpoint = String(document.getElementById('custodyEndpointInput')?.value || '').trim();
+    if (endpoint) {
+      try {
+        new URL(endpoint);
+      } catch {
+        throw new Error('托管服务地址格式不正确');
+      }
+    }
+    const resource = String(document.getElementById('custodyUcanResourceInput')?.value || '').trim() || DEFAULT_CUSTODY_UCAN_RESOURCE;
+    const action = String(document.getElementById('custodyUcanActionInput')?.value || '').trim() || DEFAULT_CUSTODY_UCAN_ACTION;
+    const audience = String(document.getElementById('custodyUcanAudienceInput')?.value || '').trim() || deriveUcanAudience(endpoint || DEFAULT_CUSTODY_ENDPOINT);
+    return {
+      endpoint: endpoint || DEFAULT_CUSTODY_ENDPOINT,
+      ucanResource: resource,
+      ucanAction: action,
+      ucanAudience: audience
+    };
+  }
+
+  async saveCustodyFormSettings() {
+    const updates = this.readCustodyForm();
+    const result = await this.wallet.updateCustodySettings(updates);
+    if (!result?.success) {
+      throw new Error(result?.error || '保存失败');
+    }
+    this.custodySettings = result.settings || {};
+    this.renderCustodySettings(this.custodySettings);
+    return updates;
+  }
+
+  async handleCustodySave() {
+    try {
+      await this.saveCustodyFormSettings();
+      showSuccess('托管配置已保存');
+    } catch (error) {
+      console.error('[MpcSettings] 保存托管配置失败:', error);
+      showError('保存失败: ' + error.message);
+    }
+  }
+
+  async handleCustodyStatusCheck() {
+    try {
+      const form = await this.saveCustodyFormSettings();
+      const password = await this.requestPassword?.();
+      if (!password) return;
+      showWaiting();
+      const result = await this.wallet.getCustodyStatus({
+        endpoint: form.endpoint,
+        password
+      });
+      if (!result?.success) {
+        throw new Error(result?.error || '检查失败');
+      }
+      if (result.settings) {
+        this.custodySettings = result.settings;
+        this.renderCustodySettings(result.settings);
+      }
+      showSuccess(result.status?.passkeyBound ? '通行证已绑定' : '尚未绑定通行证');
+    } catch (error) {
+      console.error('[MpcSettings] 检查托管状态失败:', error);
+      showError('检查失败: ' + error.message);
+    } finally {
+      hideWaiting();
+    }
+  }
+
+  async handleCustodyToggle(enabled) {
+    const toggle = document.getElementById('custodyEnabledToggle');
+    try {
+      const form = await this.saveCustodyFormSettings();
+      const password = await this.requestPassword?.();
+      if (!password) {
+        if (toggle) toggle.checked = !enabled;
+        return;
+      }
+      showWaiting();
+      const result = enabled
+        ? await this.wallet.enableCustody({ ...form, password })
+        : await this.wallet.disableCustody({ endpoint: form.endpoint, password });
+      if (!result?.success) {
+        throw new Error(result?.error || (enabled ? '开启失败' : '关闭失败'));
+      }
+      if (result.settings) {
+        this.custodySettings = result.settings;
+        this.renderCustodySettings(result.settings);
+      }
+      showSuccess(enabled ? '密钥托管已开启' : '密钥托管已关闭');
+    } catch (error) {
+      console.error('[MpcSettings] 更新托管开关失败:', error);
+      if (toggle) toggle.checked = !enabled;
+      showError((enabled ? '开启失败: ' : '关闭失败: ') + error.message);
+    } finally {
+      hideWaiting();
     }
   }
 
