@@ -758,6 +758,29 @@ export class WalletDomain extends BaseDomain {
     return await this._sendMessage(WalletMessageType.MPC_FLUSH_AUDIT_EXPORT_QUEUE);
   }
 
+  // ==================== Key Custody ====================
+
+  async getCustodySettings() {
+    const result = await this._sendMessage(WalletMessageType.CUSTODY_GET_SETTINGS);
+    return result.settings || {};
+  }
+
+  async updateCustodySettings(updates = {}) {
+    return await this._sendMessage(WalletMessageType.CUSTODY_UPDATE_SETTINGS, { updates });
+  }
+
+  async getCustodyStatus(options = {}) {
+    return await this._sendMessage(WalletMessageType.CUSTODY_GET_STATUS, options);
+  }
+
+  async enableCustody(options = {}) {
+    return await this._sendMessage(WalletMessageType.CUSTODY_ENABLE, options);
+  }
+
+  async disableCustody(options = {}) {
+    return await this._sendMessage(WalletMessageType.CUSTODY_DISABLE, options);
+  }
+
   /**
    * 写入同步日志事件
    * @param {Object} payload

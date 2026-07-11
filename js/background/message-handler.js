@@ -75,6 +75,13 @@ import {
   handleMpcExportAuditLogs,
   handleMpcFlushAuditExportQueue
 } from './operations/mpc.js';
+import {
+  handleGetCustodySettings,
+  handleUpdateCustodySettings,
+  handleGetCustodyStatus,
+  handleEnableCustody,
+  handleDisableCustody
+} from './operations/custody.js';
 import { state } from './state.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
 import { normalizeChainId } from '../common/chain/index.js';
@@ -826,6 +833,13 @@ const popupHandlers = new Map([
   [WalletMessageType.MPC_UPDATE_AUDIT_EXPORT_CONFIG, async (data) => await handleMpcUpdateAuditExportConfig(data?.updates)],
   [WalletMessageType.MPC_EXPORT_AUDIT_LOGS, async (data) => await handleMpcExportAuditLogs(data)],
   [WalletMessageType.MPC_FLUSH_AUDIT_EXPORT_QUEUE, async () => await handleMpcFlushAuditExportQueue()],
+
+  // ==================== 密钥托管 ====================
+  [WalletMessageType.CUSTODY_GET_SETTINGS, async () => await handleGetCustodySettings()],
+  [WalletMessageType.CUSTODY_UPDATE_SETTINGS, async (data) => await handleUpdateCustodySettings(data?.updates)],
+  [WalletMessageType.CUSTODY_GET_STATUS, async (data) => await handleGetCustodyStatus(data)],
+  [WalletMessageType.CUSTODY_ENABLE, async (data) => await handleEnableCustody(data)],
+  [WalletMessageType.CUSTODY_DISABLE, async (data) => await handleDisableCustody(data)],
 
   // ==================== 交易 ====================
   [TransactionMessageType.SEND_TRANSACTION, async (data) => await handleSendTransactionMessage(data)],
