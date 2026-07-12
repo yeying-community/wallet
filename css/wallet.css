@@ -1032,6 +1032,14 @@ body {
 
 /* ==================== 导入页面样式 ==================== */
 
+#importPage {
+  height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
 .import-tabs {
   display: flex;
   gap: 8px;
@@ -1043,7 +1051,8 @@ body {
 
 .import-tab {
   flex: 1;
-  padding: 8px 16px;
+  min-width: 0;
+  padding: 8px;
   border: none;
   background: transparent;
   border-radius: 6px;
@@ -1052,6 +1061,24 @@ body {
   color: #666;
   cursor: pointer;
   transition: all 0.2s;
+}
+
+#importAccountsFile {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+}
+
+.import-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 18px;
+}
+
+.import-actions .btn {
+  margin: 0;
 }
 
 .import-tab:hover {

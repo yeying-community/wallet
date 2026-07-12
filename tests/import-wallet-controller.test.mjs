@@ -25,6 +25,8 @@ function setupDom() {
     importMnemonic: { tagName: 'textarea' },
     importPrivateKey: { tagName: 'input' },
     importWalletPassword: { tagName: 'input' },
+    importWalletNameGroup: { tagName: 'div' },
+    fileImportSection: { tagName: 'div', _classes: 'hidden' },
     importPasswordLabel: { tagName: 'label' },
     mnemonicImportSection: { tagName: 'div' },
     privateKeyImportSection: { tagName: 'div' },
@@ -33,7 +35,8 @@ function setupDom() {
     welcomeImportWalletBtn: { tagName: 'button' },
     accountsImportWalletBtn: { tagName: 'button' },
     mnemonicTab: { tagName: 'button', _classes: 'import-tab active', dataset: { type: 'mnemonic' } },
-    privateKeyTab: { tagName: 'button', _classes: 'import-tab', dataset: { type: 'privateKey' } }
+    privateKeyTab: { tagName: 'button', _classes: 'import-tab', dataset: { type: 'privateKey' } },
+    fileTab: { tagName: 'button', _classes: 'import-tab', dataset: { type: 'file' } }
   });
   elements = doc.elements;
 
@@ -69,7 +72,17 @@ function assertImportFormCleared() {
   assert.ok(!elements.privateKeyTab.classList.contains('active'));
   assert.ok(!elements.mnemonicImportSection.classList.contains('hidden'));
   assert.ok(elements.privateKeyImportSection.classList.contains('hidden'));
+  assert.ok(elements.fileImportSection.classList.contains('hidden'));
+  assert.ok(!elements.importWalletNameGroup.classList.contains('hidden'));
 }
+
+test('切换到备份文件时隐藏钱包名称', () => {
+  const c = new ImportWalletController({ wallet: {} });
+  c.bindEvents();
+  elements.fileTab.click();
+  assert.ok(elements.importWalletNameGroup.classList.contains('hidden'));
+  assert.ok(!elements.fileImportSection.classList.contains('hidden'));
+});
 
 test('clearImportWalletForm：清空助记词/私钥/密码并重置到助记词页签', () => {
   fillImportSecrets();

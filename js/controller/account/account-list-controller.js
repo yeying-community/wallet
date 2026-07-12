@@ -1,4 +1,4 @@
-import { showPage, showError, setPageOrigin, showWaiting, hideWaiting } from '../../common/ui/index.js';
+import { showPage, showError, showSuccess, setPageOrigin, showWaiting, hideWaiting } from '../../common/ui/index.js';
 import { shortenAddress, generateAvatar } from '../../common/chain/index.js';
 import { clearImportWalletForm } from '../wallet/import-wallet-controller.js';
 
@@ -24,6 +24,7 @@ export class AccountListController {
   }
 
   bindEvents() {
+    document.getElementById('accountsExportBtn')?.addEventListener('click', () => this.handleExportAccounts());
     const createBtn = document.getElementById('accountsCreateWalletBtn');
     if (createBtn) {
       createBtn.addEventListener('click', () => {
@@ -44,6 +45,37 @@ export class AccountListController {
         showPage('importPage');
         this.prepareImportFormForExistingWallet();
       });
+    }
+  }
+
+  async handleExportAccounts() {
+    if (!this.promptPassword) return;
+    const password = await this.promptPassword({
+      title: '导出所有账户',
+      confirmText: '加密导出',
+      placeholder: '输入当前钱包密码',
+      onConfirm: async (value) => {
+        if (!value || value.length < 8) throw new Error('密码至少需要8位字符');
+      }
+    });
+    if (!password) return;
+    try {
+      showWaiting();
+      const result = await this.wallet.exportAccountsFile(password);
+      const blob = new Blob([JSON.stringify(result.file, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `yeying-accounts-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      showSuccess(`已加密导出 ${result.accountCount} 个账户`);
+    } catch (error) {
+      showError('导出失败: ' + (error?.message || '未知错误'));
+    } finally {
+      hideWaiting();
     }
   }
 

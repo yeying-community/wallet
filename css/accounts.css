@@ -16,6 +16,17 @@
   overflow: hidden;
 }
 
+#accountsPage .page-actions {
+  margin-left: auto;
+}
+
+#accountsPage .page-actions .btn {
+  width: auto;
+  min-width: 64px;
+  margin: 0;
+  padding: 8px 12px;
+}
+
 /* ==================== 账户管理页面布局 ==================== */
 .account-manage-container {
   display: flex;

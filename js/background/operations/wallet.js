@@ -16,6 +16,7 @@ import {
   getWalletMnemonic,
   changeWalletPassword
 } from '../vault.js';
+import { encryptObject, decryptObject } from '../../common/crypto/index.js';
 import {
   getAccount,
   setSelectedAccountId,
@@ -563,6 +564,130 @@ export async function handleUpdateProfileEmail(email) {
   const emailUpdatedAt = getTimestamp();
   await updateUserSettings({ profileEmail: value, profileEmailUpdatedAt: emailUpdatedAt });
   return { success: true, profile: { email: value, emailUpdatedAt, emailVerified: false } };
+}
+
+export async function handleExportAccountsFile(password) {
+  if (!password || password.length < MIN_PASSWORD_LENGTH) {
+    return { success: false, error: 'password is required' };
+  }
+  try {
+    const wallets = await getWallets();
+    const exportedWallets = [];
+    for (const wallet of Object.values(wallets || {})) {
+      if (wallet.type !== WALLET_TYPE.HD && wallet.type !== WALLET_TYPE.IMPORTED) continue;
+      const accounts = (await getWalletAccounts(wallet.id)).sort((a, b) => (a.index || 0) - (b.index || 0));
+      if (accounts.length === 0) continue;
+      const entry = {
+        type: wallet.type,
+        name: wallet.name || '',
+        accounts: accounts.map(account => ({
+          index: Number.isInteger(account.index) ? account.index : 0,
+          name: account.name || '',
+          username: account.username || '',
+          usernameUpdatedAt: account.usernameUpdatedAt || 0
+        }))
+      };
+      if (wallet.type === WALLET_TYPE.HD) {
+        entry.mnemonic = await getWalletMnemonic(wallet, password);
+      } else {
+        entry.privateKeys = [];
+        for (const account of accounts) {
+          entry.privateKeys.push(await getAccountPrivateKey(account, password));
+        }
+      }
+      exportedWallets.push(entry);
+    }
+    if (exportedWallets.length === 0) return { success: false, error: '没有可导出的本地账户' };
+    const payload = {
+      format: 'yeying-wallet-accounts',
+      version: 1,
+      exportedAt: getTimestamp(),
+      wallets: exportedWallets
+    };
+    return {
+      success: true,
+      file: {
+        format: payload.format,
+        version: payload.version,
+        cipher: 'AES-GCM',
+        ciphertext: await encryptObject(payload, password)
+      },
+      walletCount: exportedWallets.length,
+      accountCount: exportedWallets.reduce((sum, wallet) => sum + wallet.accounts.length, 0)
+    };
+  } catch (error) {
+    return { success: false, error: error.message || '导出账户失败' };
+  }
+}
+
+export async function handleImportAccountsFile(file, password) {
+  if (!file || file.format !== 'yeying-wallet-accounts' || file.version !== 1 || !file.ciphertext) {
+    return { success: false, error: '不支持的账户备份文件' };
+  }
+  if (!password || password.length < MIN_PASSWORD_LENGTH) {
+    return { success: false, error: 'password is required' };
+  }
+  try {
+    const payload = await decryptObject(file.ciphertext, password);
+    if (payload?.format !== 'yeying-wallet-accounts' || payload?.version !== 1 || !Array.isArray(payload.wallets)) {
+      return { success: false, error: '账户备份内容无效' };
+    }
+    const existingAddresses = new Set(
+      Object.values(await getAccounts()).map(account => String(account.address || '').toLowerCase()).filter(Boolean)
+    );
+    let imported = 0;
+    let skipped = 0;
+
+    for (const source of payload.wallets) {
+      const sourceAccounts = Array.isArray(source.accounts) ? source.accounts : [];
+      if (source.type === WALLET_TYPE.HD && source.mnemonic) {
+        const firstMeta = sourceAccounts.find(account => account.index === 0) || sourceAccounts[0] || {};
+        const preview = await importHDWallet(firstMeta.name || '导入账户', source.mnemonic, password);
+        if (existingAddresses.has(preview.mainAccount.address.toLowerCase())) {
+          skipped += sourceAccounts.length || 1;
+          continue;
+        }
+        preview.wallet.name = source.name || preview.wallet.name;
+        await saveWallet(preview.wallet);
+        Object.assign(preview.mainAccount, {
+          name: firstMeta.name || preview.mainAccount.name,
+          username: firstMeta.username || '',
+          usernameUpdatedAt: firstMeta.usernameUpdatedAt || 0
+        });
+        await saveAccount(preview.mainAccount);
+        existingAddresses.add(preview.mainAccount.address.toLowerCase());
+        imported += 1;
+        for (const meta of sourceAccounts.filter(account => Number.isInteger(account.index) && account.index > 0).sort((a, b) => a.index - b.index)) {
+          const account = await deriveSubAccount(preview.wallet, meta.index, meta.name, password);
+          if (existingAddresses.has(account.address.toLowerCase())) { skipped += 1; continue; }
+          account.username = meta.username || '';
+          account.usernameUpdatedAt = meta.usernameUpdatedAt || 0;
+          await saveAccount(account);
+          existingAddresses.add(account.address.toLowerCase());
+          imported += 1;
+          preview.wallet.accountCount = Math.max(preview.wallet.accountCount || 1, meta.index + 1);
+        }
+        await saveWallet(preview.wallet);
+      } else if (source.type === WALLET_TYPE.IMPORTED && Array.isArray(source.privateKeys)) {
+        for (let index = 0; index < source.privateKeys.length; index += 1) {
+          const meta = sourceAccounts[index] || {};
+          const preview = await importPrivateKeyWallet(meta.name || '导入账户', source.privateKeys[index], password);
+          if (existingAddresses.has(preview.mainAccount.address.toLowerCase())) { skipped += 1; continue; }
+          preview.wallet.name = source.name || preview.wallet.name;
+          preview.mainAccount.username = meta.username || '';
+          preview.mainAccount.usernameUpdatedAt = meta.usernameUpdatedAt || 0;
+          await saveWallet(preview.wallet);
+          await saveAccount(preview.mainAccount);
+          existingAddresses.add(preview.mainAccount.address.toLowerCase());
+          imported += 1;
+        }
+      }
+    }
+    if (imported === 0 && skipped === 0) return { success: false, error: '备份文件中没有可导入的账户' };
+    return { success: true, imported, skipped };
+  } catch (error) {
+    return { success: false, error: error.message || '密码错误或备份文件损坏' };
+  }
 }
 
 /**

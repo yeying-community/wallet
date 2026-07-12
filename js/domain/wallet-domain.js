@@ -427,6 +427,16 @@ export class WalletDomain extends BaseDomain {
     return result.mnemonic;
   }
 
+  async exportAccountsFile(password) {
+    if (!password || password.length < 8) throw new Error('密码至少需要8位字符');
+    return this._sendMessage(WalletMessageType.EXPORT_ACCOUNTS_FILE, { password });
+  }
+
+  async importAccountsFile(file, password) {
+    if (!password || password.length < 8) throw new Error('密码至少需要8位字符');
+    return this._sendMessage(WalletMessageType.IMPORT_ACCOUNTS_FILE, { file, password });
+  }
+
   // ==================== 密码管理 ====================
 
   /**

@@ -563,10 +563,11 @@
         <div class="import-tabs">
           <button class="import-tab active" data-type="mnemonic">助记词</button>
           <button class="import-tab" data-type="privateKey">私钥</button>
+          <button class="import-tab" data-type="file">备份文件</button>
         </div>
 
         <!-- 钱包名称 -->
-        <div class="form-group">
+        <div class="form-group" id="importWalletNameGroup">
           <label>钱包名称</label>
           <input
             type="text"
@@ -599,6 +600,13 @@
           </div>
         </div>
 
+        <div id="fileImportSection" class="hidden">
+          <div class="form-group">
+            <label for="importAccountsFile">加密账户文件</label>
+            <input id="importAccountsFile" type="file" accept="application/json,.json" />
+          </div>
+        </div>
+
         <!-- 密码 -->
         <div class="form-group">
           <label id="importPasswordLabel">密码</label>
@@ -609,8 +617,10 @@
           />
         </div>
 
-        <button id="importBtn" class="btn btn-primary">导入钱包</button>
-        <button id="cancelImportBtn" class="btn btn-secondary">取消</button>
+        <div class="import-actions">
+          <button id="cancelImportBtn" class="btn btn-secondary">取消</button>
+          <button id="importBtn" class="btn btn-primary">导入钱包</button>
+        </div>
       </div>
 
       <!-- 账户管理页面 -->
@@ -618,6 +628,11 @@
         <div class="page-header">
           <button class="back-btn">←</button>
           <h2>账户管理</h2>
+          <div class="page-actions">
+            <button class="btn btn-secondary btn-small" id="accountsExportBtn" title="导出加密账户文件">
+              导出
+            </button>
+          </div>
         </div>
 
         <div class="account-manage-container">
