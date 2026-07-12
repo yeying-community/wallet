@@ -120,6 +120,28 @@
         </div>
       </div>
 
+      <div id="profileRequest" class="request-view hidden">
+        <div class="request-header">
+          <h2>共享账户资料</h2>
+          <div class="site-info">
+            <div class="site-url" id="profileOrigin"></div>
+          </div>
+        </div>
+        <div class="request-body">
+          <div class="permission-list">
+            <h3>此网站请求读取：</h3>
+            <div id="profileFieldList"></div>
+          </div>
+          <div class="warning-box">邮箱和用户名将提供给此网站，请确认网站可信。</div>
+        </div>
+        <div class="request-footer">
+          <div class="button-group">
+            <button id="rejectProfile" class="btn btn-secondary">拒绝</button>
+            <button id="approveProfile" class="btn btn-primary">允许</button>
+          </div>
+        </div>
+      </div>
+
       <!-- 交易确认 -->
       <div id="transactionRequest" class="request-view hidden">
         <div class="request-header">

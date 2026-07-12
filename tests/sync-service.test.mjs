@@ -161,7 +161,7 @@ async function seedDomainData() {
 
   await ops.saveWallet({ id: 'w1', name: 'HD Wallet', type: 'hd', accountCount: 1, createdAt: 1, encryptedMnemonic });
   await ops.saveAccount({
-    id: 'w1_0', walletId: 'w1', name: 'Account 1', type: 'main', index: 0,
+    id: 'w1_0', walletId: 'w1', name: 'Account 1', index: 0,
     address: '0x1111111111111111111111111111111111111111',
     encryptedPrivateKey: 'encA', createdAt: 1, nameUpdatedAt: 1000
   });

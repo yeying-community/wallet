@@ -72,6 +72,11 @@ export const TOKEN_VALIDATION = {
 
 // ==================== 输入验证规则 ====================
 export const INPUT_VALIDATION = {
+  USERNAME: {
+    MIN_LENGTH: 3,
+    MAX_LENGTH: 32,
+    PATTERN: /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/
+  },
   ACCOUNT_NAME: {
     MIN_LENGTH: 1,
     MAX_LENGTH: 50,
@@ -92,6 +97,22 @@ export const INPUT_VALIDATION = {
     MAX_LENGTH: 500
   }
 };
+
+export function validateUsername(username) {
+  if (!username) return { valid: false, error: 'Username is required' };
+  if (username.length < 3) return { valid: false, error: 'Username must be at least 3 characters' };
+  if (username.length > 32) return { valid: false, error: 'Username must not exceed 32 characters' };
+  if (!INPUT_VALIDATION.USERNAME.PATTERN.test(username)) return { valid: false, error: 'Username contains invalid characters' };
+  return { valid: true };
+}
+
+export function validateEmail(email) {
+  if (!email) return { valid: true };
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { valid: false, error: 'Invalid email address' };
+  }
+  return { valid: true };
+}
 
 // ==================== 工具函数 ====================
 

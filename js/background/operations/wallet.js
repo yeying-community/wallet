@@ -39,9 +39,11 @@ import {
   clearTransactionsByAddress,
   ensureDefaultNetworks,
   saveSelectedNetworkName,
-  getNetworkConfigByKey
+  getNetworkConfigByKey,
+  getUserSetting,
+  updateUserSettings
 } from '../../storage/index.js';
-import { validateAccountName } from '../../config/validation-rules.js';
+import { validateAccountName, validateUsername, validateEmail } from '../../config/validation-rules.js';
 import { getCachedPassword, cachePassword, refreshPasswordCache, clearPasswordCache } from '../password-cache.js';
 import { resetLockTimer, lockWallet } from '../keyring.js';
 import { normalizeChainId } from '../../common/chain/index.js';
@@ -443,8 +445,7 @@ export async function handleSwitchAccount(accountId, password = null) {
       account: {
         id: account.id,
         name: account.name,
-        address: account.address,
-        type: account.type
+        address: account.address
       }
     };
 
@@ -531,6 +532,37 @@ export async function handleUpdateAccountName(accountId, newName) {
   } catch (error) {
     return { success: false, error: error.message || 'Failed to update account name' };
   }
+}
+
+export async function handleUpdateAccountUsername(accountId, username) {
+  const value = String(username || '').trim();
+  if (!accountId) return { success: false, error: 'accountId is required' };
+  const validation = validateUsername(value);
+  if (!validation.valid) return { success: false, error: validation.error };
+  try {
+    const account = await getAccount(accountId);
+    if (!account) return { success: false, error: 'account not found' };
+    const updatedAccount = { ...account, username: value, usernameUpdatedAt: getTimestamp() };
+    await updateAccount(updatedAccount);
+    return { success: true, account: updatedAccount };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to update username' };
+  }
+}
+
+export async function handleGetProfile() {
+  const email = String(await getUserSetting('profileEmail', '') || '');
+  const emailUpdatedAt = Number(await getUserSetting('profileEmailUpdatedAt', 0)) || 0;
+  return { success: true, profile: { email, emailUpdatedAt, emailVerified: false } };
+}
+
+export async function handleUpdateProfileEmail(email) {
+  const value = String(email || '').trim().toLowerCase();
+  const validation = validateEmail(value);
+  if (!validation.valid) return { success: false, error: validation.error };
+  const emailUpdatedAt = getTimestamp();
+  await updateUserSettings({ profileEmail: value, profileEmailUpdatedAt: emailUpdatedAt });
+  return { success: true, profile: { email: value, emailUpdatedAt, emailVerified: false } };
 }
 
 /**

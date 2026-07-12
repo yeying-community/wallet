@@ -2,6 +2,7 @@ import { BackupSyncSettingsController } from './setting/backup-sync-settings-con
 import { MpcSettingsController } from './setting/mpc-settings-controller.js';
 import { AuthorizedSitesController } from './setting/authorized-sites-controller.js';
 import { AccountSettingsController } from './setting/account-settings-controller.js';
+import { ProfileSettingsController } from './setting/profile-settings-controller.js';
 
 export class SettingController {
   constructor({ wallet, transaction, requestPassword }) {
@@ -15,6 +16,7 @@ export class SettingController {
       wallet,
       onClearAllAuthorizations: () => this.sitesController.handleClearAllAuthorizations()
     });
+    this.profileController = new ProfileSettingsController({ wallet });
   }
 
   bindEvents() {
@@ -22,6 +24,7 @@ export class SettingController {
     this.mpcController.bindEvents();
     this.sitesController.bindEvents();
     this.accountController.bindEvents();
+    this.profileController.bindEvents();
   }
 
   // ==================== 委托给子控制器（popup-controller 调用） ====================
@@ -31,6 +34,7 @@ export class SettingController {
   }
 
   async loadBackupSyncSettings() {
+    await this.profileController.load();
     return this.backupController.loadSettings();
   }
 

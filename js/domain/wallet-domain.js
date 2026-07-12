@@ -11,7 +11,7 @@
  */
 
 import { WalletMessageType } from '../protocol/extension-protocol.js';
-import { validateAccountName } from '../config/validation-rules.js';
+import { validateAccountName, validateUsername, validateEmail } from '../config/validation-rules.js';
 import { BaseDomain } from './base-domain.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 export { WalletMessageType };
@@ -278,6 +278,26 @@ export class WalletDomain extends BaseDomain {
     }
 
     return result;
+  }
+
+  async updateAccountUsername(accountId, username) {
+    const value = String(username || '').trim();
+    const validation = validateUsername(value);
+    if (!validation.valid) throw new Error(validation.error || '用户名不合法');
+    return this._sendMessage(WalletMessageType.UPDATE_ACCOUNT_USERNAME, { accountId, username: value });
+  }
+
+  async getProfile() {
+    const result = await this._sendMessage(WalletMessageType.GET_PROFILE);
+    return result.profile || {};
+  }
+
+  async updateProfileEmail(email) {
+    const value = String(email || '').trim().toLowerCase();
+    const validation = validateEmail(value);
+    if (!validation.valid) throw new Error(validation.error || '邮箱格式不正确');
+    const result = await this._sendMessage(WalletMessageType.UPDATE_PROFILE_EMAIL, { email: value });
+    return result.profile || {};
   }
 
   // ==================== 获取账户信息 ====================

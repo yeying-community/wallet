@@ -49,6 +49,13 @@ function buildEthAccountsPermission(accounts) {
   };
 }
 
+function buildProfilePermission(fields) {
+  return {
+    parentCapability: 'yeying_profile',
+    caveats: [{ type: 'restrictProfileFields', value: fields }]
+  };
+}
+
 /**
  * 处理 eth_accounts
  * @returns {Promise<Array<string>>} 账户地址数组
@@ -214,7 +221,11 @@ export async function handleWalletGetPermissions(origin) {
       return [];
     }
 
-    return [buildEthAccountsPermission(accounts)];
+    const permissions = [buildEthAccountsPermission(accounts)];
+    if (Array.isArray(stored?.profileFields) && stored.profileFields.length > 0) {
+      permissions.push(buildProfilePermission(stored.profileFields));
+    }
+    return permissions;
   } catch (error) {
     console.error('❌ Handle wallet_getPermissions failed:', error);
     return [];
@@ -230,9 +241,41 @@ export async function handleWalletGetPermissions(origin) {
  */
 export async function handleWalletRequestPermissions(origin, tabId, params) {
   const request = params?.[0];
-  if (!request || typeof request !== 'object' || !request.eth_accounts) {
-    throw createInvalidParams('Only eth_accounts permission is supported');
+  if (!request || typeof request !== 'object') {
+    throw createInvalidParams('Permission request is required');
   }
+
+  if (request.yeying_profile) {
+    const stored = await getAuthorization(origin);
+    if (!stored?.address) throw createError(4100, 'Connect the site before requesting profile access');
+    const requestedFields = request.yeying_profile?.fields;
+    if (!Array.isArray(requestedFields) || requestedFields.length === 0) {
+      throw createInvalidParams('yeying_profile.fields is required');
+    }
+    const fields = Array.from(new Set(requestedFields.map(String)));
+    if (fields.some(field => field !== 'username' && field !== 'email')) {
+      throw createInvalidParams('Only username and email profile fields are supported');
+    }
+
+    const requestId = `profile_${getTimestamp()}_${Math.random().toString(36).slice(2, 11)}`;
+    addPendingRequest(requestId, {
+      type: 'profile', approvalType: 'profile', origin, tabId,
+      expiresAt: Date.now() + TIMEOUTS.REQUEST,
+      data: { origin, fields }, timestamp: getTimestamp()
+    });
+    await ensureApprovalRequestVisible(requestId, { requestType: 'profile', origin, tabId });
+    const response = await waitForApprovalResponse(requestId);
+    if (!response?.approved) {
+      removePendingRequest(requestId);
+      throw createUserRejectedError('User rejected profile access');
+    }
+    const granted = Array.from(new Set([...(stored.profileFields || []), ...fields]));
+    await saveAuthorization(origin, stored.address, granted);
+    removePendingRequest(requestId, { activateNext: true });
+    return [buildProfilePermission(granted)];
+  }
+
+  if (!request.eth_accounts) throw createInvalidParams('Unsupported permission');
 
   const pending = findPendingRequest(EventType.CONNECT, origin, tabId);
   if (pending) {
@@ -252,6 +295,13 @@ export async function handleWalletRequestPermissions(origin, tabId, params) {
  */
 export async function handleWalletRevokePermissions(origin, params) {
   const request = params?.[0];
+  if (request && typeof request === 'object' && 'yeying_profile' in request) {
+    const stored = await getAuthorization(origin);
+    if (!stored?.address || !Array.isArray(stored.profileFields) || stored.profileFields.length === 0) return [];
+    const revoked = buildProfilePermission(stored.profileFields);
+    await saveAuthorization(origin, stored.address, []);
+    return [revoked];
+  }
   if (request && typeof request === 'object' && !('eth_accounts' in request)) {
     return [];
   }

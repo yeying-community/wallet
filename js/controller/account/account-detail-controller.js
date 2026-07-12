@@ -43,6 +43,9 @@ export class AccountDetailController {
         this.exitAccountNameEdit();
       }
     });
+    document.getElementById('saveAccountUsernameBtn')?.addEventListener('click', async () => {
+      await this.saveAccountUsername();
+    });
 
     const addressEl = document.getElementById('accountDetailAddress');
     if (addressEl) {
@@ -89,10 +92,11 @@ export class AccountDetailController {
 
       const nameEl = document.getElementById('accountDetailNameText');
       const nameInput = document.getElementById('accountDetailNameInput');
-      const typeEl = document.getElementById('accountDetailType');
+      const indexEl = document.getElementById('accountDetailIndex');
       const addressEl = document.getElementById('accountDetailAddress');
       const avatarEl = document.getElementById('accountDetailAvatar');
       const sizeSelect = document.getElementById('accountDetailQrSize');
+      const usernameInput = document.getElementById('accountUsernameInput');
 
       if (nameEl) {
         nameEl.textContent = account.name || '账户';
@@ -100,9 +104,11 @@ export class AccountDetailController {
       if (nameInput) {
         nameInput.value = account.name || '';
       }
-      if (typeEl) {
-        typeEl.textContent = this.formatAccountType(account.type);
+      if (indexEl) {
+        indexEl.textContent = Number.isInteger(account.index) ? `#${account.index}` : '';
+        indexEl.title = Number.isInteger(account.index) ? `派生索引 ${account.index}` : '';
       }
+      if (usernameInput) usernameInput.value = account.username || '';
       if (addressEl) {
         addressEl.textContent = account.address ? shortenAddress(account.address) : '';
       }
@@ -207,6 +213,17 @@ export class AccountDetailController {
     }
   }
 
+  async saveAccountUsername() {
+    if (!this.currentDetailAccountId) return;
+    const username = document.getElementById('accountUsernameInput')?.value.trim() || '';
+    try {
+      await this.wallet.updateAccountUsername(this.currentDetailAccountId, username);
+      showSuccess('公开用户名已更新');
+    } catch (error) {
+      showError('更新失败: ' + error.message);
+    }
+  }
+
   handleExportAccountQr() {
     const container = document.getElementById('accountDetailQr');
     if (!container) return;
@@ -239,10 +256,4 @@ export class AccountDetailController {
     showSuccess('二维码已导出');
   }
 
-  formatAccountType(type) {
-    if (!type) return 'HD';
-    if (type === 'hd') return 'HD';
-    if (type === 'imported') return '导入';
-    return type.toString().toUpperCase();
-  }
 }
