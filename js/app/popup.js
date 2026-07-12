@@ -20,6 +20,8 @@ class PopupApp {
   }
 
   async init() {
+    this.startPopupBoundsReporting();
+
     try {
       this.controller = new PopupController({
         wallet: this.wallet,
@@ -31,11 +33,16 @@ class PopupApp {
       await this.controller.init();
       this.bindRuntimeEvents();
 
-      this.reportPopupBounds();
     } catch (error) {
       console.error('初始化失败:', error);
       showToast('初始化失败: ' + error.message, 'error');
     }
+  }
+
+  startPopupBoundsReporting() {
+    [0, 100, 300, 700].forEach((delay) => {
+      setTimeout(() => this.reportPopupBounds(), delay);
+    });
   }
 
   bindRuntimeEvents() {
@@ -52,16 +59,13 @@ class PopupApp {
     });
   }
 
-  reportPopupBounds(attempt = 0) {
+  reportPopupBounds() {
     try {
       if (!chrome?.runtime?.sendMessage) return;
       const left = window.screenX;
       const top = window.screenY;
 
-      if ((!Number.isFinite(left) || !Number.isFinite(top)) && attempt < 3) {
-        setTimeout(() => this.reportPopupBounds(attempt + 1), 200);
-        return;
-      }
+      if (!Number.isFinite(left) || !Number.isFinite(top)) return;
       const bounds = {
         left,
         top,
@@ -72,9 +76,11 @@ class PopupApp {
           availHeight: window.screen?.availHeight ?? window.screen?.height ?? window.innerHeight ?? 0
         }
       };
-      chrome.runtime.sendMessage({
+      Promise.resolve(chrome.runtime.sendMessage({
         type: WalletMessageType.UPDATE_POPUP_BOUNDS,
         data: bounds
+      })).catch((error) => {
+        console.warn('[PopupApp] 上报弹窗位置失败:', error);
       });
     } catch (error) {
       console.warn('[PopupApp] 上报弹窗位置失败:', error);
