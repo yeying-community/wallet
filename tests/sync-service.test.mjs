@@ -1,6 +1,6 @@
 /**
  * sync-service 集成测试（mock fetch + storage + fake-indexeddb）
- * 运行：npm test 或 node --test --test-force-exit "tests/sync-service.test.mjs"
+ * 运行：npm run test:sync
  *
  * 覆盖：payload 构建（accounts/contacts/networkIds）/ WebDAV 请求（GET/PUT/HEAD/DELETE）
  * / remote-meta ETag 缓存 / syncAll 拉取合并 / onUnlocked/onLocked / 活动日志。
