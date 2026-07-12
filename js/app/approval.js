@@ -8,8 +8,12 @@ import { TransactionDomain } from '../domain/transaction-domain.js';
 import { NetworkDomain } from '../domain/network-domain.js';
 import { TokenDomain } from '../domain/token-domain.js';
 import { ethers } from '../../lib/ethers-6.16.esm.min.js';
-import { showToast } from '../common/ui/index.js';
-import { ApprovalMessageType } from '../protocol/extension-protocol.js';
+import { hideToast, hideWaiting, showToast } from '../common/ui/index.js';
+import {
+  APPROVAL_PORT_NAME,
+  ApprovalMessageType,
+  ApprovalPortMessageType
+} from '../protocol/extension-protocol.js';
 class ApprovalApp {
   constructor() {
     this.wallet = new WalletDomain();
@@ -20,6 +24,10 @@ class ApprovalApp {
     this.requestId = null;
     this.requestType = null;
     this.requestData = null;
+    this.approvalPort = null;
+    this.approvalReconnectTimer = null;
+    this.unloading = false;
+    this.beforeUnloadListener = null;
   }
 
   async init() {
@@ -29,49 +37,11 @@ class ApprovalApp {
       this.requestId = urlParams.get('requestId');
       this.requestType = this.normalizeRequestType(urlParams.get('type'));
 
-      if (!this.requestType || (this.requestType !== 'unlock' && !this.requestId)) {
-        showToast('无效的请求参数', 'error');
-        setTimeout(() => window.close(), 2000);
-        return;
-      }
-
-      if (this.requestType === 'unlock') {
-        const walletState = await this.wallet.getWalletState();
-        this.requestData = {
-          ...(walletState?.lastUnlockRequest || {}),
-          unlocked: Boolean(walletState?.unlocked)
-        };
-      } else {
-        // 从background获取请求详情
-        const response = await chrome.runtime.sendMessage({
-          type: ApprovalMessageType.GET_PENDING_REQUEST,
-          data: { requestId: this.requestId }
-        });
-
-        if (!response || !response.request) {
-          showToast('无法获取请求详情', 'error');
-          setTimeout(() => window.close(), 2000);
-          return;
-        }
-
-        this.requestData = response.request?.data || response.request;
-      }
-
-      // 根据类型显示对应界面
-      this.renderRequestUI();
-
-      // 初始化控制器
-      this.controller = new ApprovalController({
-        wallet: this.wallet,
-        transaction: this.transaction,
-        network: this.network,
-        token: this.token,
+      await this.loadAndRenderRequest({
         requestId: this.requestId,
-        requestType: this.requestType,
-        requestData: this.requestData
+        requestType: this.requestType
       });
-      
-      this.controller.bindEvents();
+      this.connectApprovalChannel();
       
     } catch (error) {
       console.error('初始化失败:', error);
@@ -89,6 +59,212 @@ class ApprovalApp {
       return 'transaction';
     }
     return type;
+  }
+
+  connectApprovalChannel() {
+    if (this.approvalPort || this.unloading) return;
+    if (this.approvalReconnectTimer) {
+      clearTimeout(this.approvalReconnectTimer);
+      this.approvalReconnectTimer = null;
+    }
+
+    const port = chrome.runtime.connect({ name: APPROVAL_PORT_NAME });
+    this.approvalPort = port;
+    port.onMessage.addListener((message) => {
+      if (message?.type !== ApprovalPortMessageType.ACTIVATE_REQUEST) return;
+      const requestType = this.normalizeRequestType(message.requestType);
+      this.loadAndRenderRequest({ requestId: message.requestId, requestType })
+        .then(() => {
+          port.postMessage({
+            type: ApprovalPortMessageType.ACTIVATE_RESULT,
+            transitionId: message.transitionId,
+            success: true
+          });
+        })
+        .catch((error) => {
+          console.error('切换审批请求失败:', error);
+          port.postMessage({
+            type: ApprovalPortMessageType.ACTIVATE_RESULT,
+            transitionId: message.transitionId,
+            success: false,
+            error: error?.message || String(error)
+          });
+        });
+    });
+    port.onDisconnect.addListener(() => {
+      if (this.approvalPort === port) this.approvalPort = null;
+      if (!this.unloading) {
+        this.approvalReconnectTimer = setTimeout(() => {
+          this.approvalReconnectTimer = null;
+          this.connectApprovalChannel();
+        }, 250);
+      }
+    });
+    port.postMessage({ type: ApprovalPortMessageType.READY });
+
+    this.beforeUnloadListener = () => {
+      this.unloading = true;
+      this.controller?.dispose?.();
+      if (this.approvalReconnectTimer) {
+        clearTimeout(this.approvalReconnectTimer);
+        this.approvalReconnectTimer = null;
+      }
+      try { port.disconnect(); } catch (error) { /* page is unloading */ }
+      this.approvalPort = null;
+    };
+    window.addEventListener('beforeunload', this.beforeUnloadListener, { once: true });
+  }
+
+  async loadAndRenderRequest({ requestId, requestType }) {
+    if (!requestType || (requestType !== 'unlock' && !requestId)) {
+      throw new Error('无效的请求参数');
+    }
+
+    let requestData;
+    if (requestType === 'unlock') {
+      const walletState = await this.wallet.getWalletState();
+      requestData = {
+        ...(walletState?.lastUnlockRequest || {}),
+        unlocked: Boolean(walletState?.unlocked)
+      };
+    } else {
+      const response = await chrome.runtime.sendMessage({
+        type: ApprovalMessageType.GET_PENDING_REQUEST,
+        data: { requestId }
+      });
+
+      if (!response || !response.request) {
+        throw new Error('无法获取请求详情');
+      }
+
+      requestData = response.request?.data || response.request;
+    }
+
+    this.controller?.dispose?.();
+    this.controller = null;
+    this.requestId = requestId;
+    this.requestType = requestType;
+    this.requestData = requestData;
+
+    this.resetRequestUI();
+    this.renderRequestUI();
+
+    this.controller = new ApprovalController({
+      wallet: this.wallet,
+      transaction: this.transaction,
+      network: this.network,
+      token: this.token,
+      requestId: this.requestId,
+      requestType: this.requestType,
+      requestData: this.requestData
+    });
+
+    this.controller.bindEvents();
+    this.syncRequestUrl();
+  }
+
+  syncRequestUrl() {
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.searchParams.set('type', this.requestType);
+    if (this.requestId) url.searchParams.set('requestId', this.requestId);
+    history.replaceState(null, '', url.toString());
+  }
+
+  resetRequestUI() {
+    hideToast();
+    hideWaiting();
+    document.querySelectorAll('.request-view').forEach((view) => {
+      view.classList.add('hidden');
+    });
+    document.querySelectorAll('button').forEach((button) => {
+      button.disabled = false;
+    });
+    document.querySelectorAll('input').forEach((input) => {
+      input.disabled = false;
+      input.value = '';
+    });
+
+    const connectHint = document.getElementById('connectFlowHint');
+    if (connectHint) {
+      connectHint.textContent = '';
+      connectHint.classList.add('hidden');
+    }
+
+    const txDataRow = document.getElementById('txDataRow');
+    if (txDataRow) {
+      txDataRow.style.display = 'none';
+    }
+
+    const signTitle = document.querySelector('#signRequest h2');
+    if (signTitle) {
+      signTitle.textContent = '签名请求';
+    }
+
+    const signMessage = document.getElementById('signMessage');
+    if (signMessage) {
+      signMessage.textContent = '';
+      delete signMessage.dataset.rendered;
+    }
+
+    const signMessageSection = document.getElementById('signMessageSection');
+    if (signMessageSection) {
+      signMessageSection.classList.remove('hidden');
+    }
+
+    [
+      'siweSection',
+      'recapSection',
+      'siweWarnings'
+    ].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('hidden');
+    });
+
+    [
+      'siweStatementRow',
+      'siweUriRow',
+      'siweVersionRow',
+      'siweChainIdRow',
+      'siweNonceRow',
+      'siweIssuedAtRow',
+      'siweExpirationRow',
+      'siweNotBeforeRow',
+      'siweRequestIdRow',
+      'siweResourcesRow',
+      'recapStatementRow'
+    ].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.classList.remove('hidden');
+        el.style.display = 'none';
+      }
+    });
+
+    [
+      'siweDomain',
+      'siweAddress',
+      'siweStatement',
+      'siweUri',
+      'siweVersion',
+      'siweChainId',
+      'siweNonce',
+      'siweIssuedAt',
+      'siweExpiration',
+      'siweNotBefore',
+      'siweRequestId',
+      'siweResources',
+      'siweWarningList',
+      'siweRaw',
+      'recapDomain',
+      'recapAddress',
+      'recapStatement',
+      'recapList',
+      'recapRaw'
+    ].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '';
+    });
   }
 
   renderRequestUI() {

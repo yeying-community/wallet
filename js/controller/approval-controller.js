@@ -34,6 +34,13 @@ export class ApprovalController {
     this.followupTimer = null;
     this.hasQueuedFollowup = false;
     this.runtimeMessageListener = null;
+    this.cleanupCallbacks = [];
+  }
+
+  addDomListener(target, type, listener, options) {
+    if (!target) return;
+    target.addEventListener(type, listener, options);
+    this.cleanupCallbacks.push(() => target.removeEventListener(type, listener, options));
   }
 
   /**
@@ -75,13 +82,13 @@ export class ApprovalController {
     const passwordInput = document.getElementById('unlockPassword');
 
     if (approveBtn) {
-      approveBtn.addEventListener('click', () => this.approveUnlock());
+      this.addDomListener(approveBtn, 'click', () => this.approveUnlock());
     }
     if (cancelBtn) {
-      cancelBtn.addEventListener('click', () => this.closeWindow());
+      this.addDomListener(cancelBtn, 'click', () => this.closeWindow());
     }
     if (passwordInput) {
-      passwordInput.addEventListener('keypress', async (event) => {
+      this.addDomListener(passwordInput, 'keypress', async (event) => {
         if (event.key === 'Enter') {
           await this.approveUnlock();
         }
@@ -193,10 +200,10 @@ export class ApprovalController {
     const rejectBtn = document.getElementById('rejectConnect');
 
     if (approveBtn) {
-      approveBtn.addEventListener('click', () => this.approveConnect());
+      this.addDomListener(approveBtn, 'click', () => this.approveConnect());
     }
     if (rejectBtn) {
-      rejectBtn.addEventListener('click', () => this.reject());
+      this.addDomListener(rejectBtn, 'click', () => this.reject());
     }
 
     this.bindApprovalQueueEvents();
@@ -221,8 +228,13 @@ export class ApprovalController {
       });
 
       showSuccess('已授权连接');
-      this.enterTransitionState({
-        closeAfterMs: this.hasQueuedFollowup ? 1500 : 300
+      this.showFollowupWaitingState({
+        title: '连接成功',
+        description: this.hasQueuedFollowup
+          ? '正在切换到后续确认'
+          : '如果网站继续发起登录签名，此窗口会直接切换到下一步。',
+        hint: '没有后续请求时可以直接关闭此窗口。',
+        timeoutMs: this.hasQueuedFollowup ? 8000 : 12000
       });
     } catch (error) {
       this.isProcessing = false;
@@ -240,7 +252,7 @@ export class ApprovalController {
       return;
     }
 
-    this.runtimeMessageListener = (message) => {
+    const runtimeMessageListener = (message) => {
       if (message?.type !== ApprovalMessageType.APPROVAL_QUEUE_UPDATE) {
         return;
       }
@@ -258,7 +270,14 @@ export class ApprovalController {
       hintEl.classList.remove('hidden');
     };
 
-    chrome.runtime.onMessage.addListener(this.runtimeMessageListener);
+    this.runtimeMessageListener = runtimeMessageListener;
+    chrome.runtime.onMessage.addListener(runtimeMessageListener);
+    this.cleanupCallbacks.push(() => {
+      chrome.runtime.onMessage.removeListener(runtimeMessageListener);
+      if (this.runtimeMessageListener === runtimeMessageListener) {
+        this.runtimeMessageListener = null;
+      }
+    });
   }
 
   // ==================== 交易签名请求 ====================
@@ -268,10 +287,10 @@ export class ApprovalController {
     const rejectBtn = document.getElementById('rejectTx');
 
     if (approveBtn) {
-      approveBtn.addEventListener('click', () => this.approveTransaction());
+      this.addDomListener(approveBtn, 'click', () => this.approveTransaction());
     }
     if (rejectBtn) {
-      rejectBtn.addEventListener('click', () => this.reject());
+      this.addDomListener(rejectBtn, 'click', () => this.reject());
     }
 
     // 加载交易详情
@@ -361,10 +380,10 @@ export class ApprovalController {
     const rejectBtn = document.getElementById('rejectSign');
 
     if (approveBtn) {
-      approveBtn.addEventListener('click', () => this.approveSign());
+      this.addDomListener(approveBtn, 'click', () => this.approveSign());
     }
     if (rejectBtn) {
-      rejectBtn.addEventListener('click', () => this.reject());
+      this.addDomListener(rejectBtn, 'click', () => this.reject());
     }
 
     // 显示签名消息
@@ -399,10 +418,10 @@ export class ApprovalController {
     const rejectBtn = document.getElementById('rejectAddChain');
 
     if (approveBtn) {
-      approveBtn.addEventListener('click', () => this.approveAddChain());
+      this.addDomListener(approveBtn, 'click', () => this.approveAddChain());
     }
     if (rejectBtn) {
-      rejectBtn.addEventListener('click', () => this.reject());
+      this.addDomListener(rejectBtn, 'click', () => this.reject());
     }
 
     // 显示网络详情
@@ -464,10 +483,10 @@ export class ApprovalController {
     const rejectBtn = document.getElementById('rejectWatchAsset');
 
     if (approveBtn) {
-      approveBtn.addEventListener('click', () => this.approveWatchAsset());
+      this.addDomListener(approveBtn, 'click', () => this.approveWatchAsset());
     }
     if (rejectBtn) {
-      rejectBtn.addEventListener('click', () => this.reject());
+      this.addDomListener(rejectBtn, 'click', () => this.reject());
     }
 
     // 显示代币详情
@@ -587,9 +606,8 @@ export class ApprovalController {
     if (hintEl) {
       hintEl.textContent = hint;
     }
-    if (closeBtn && !closeBtn.dataset.bound) {
-      closeBtn.addEventListener('click', () => this.closeWindow());
-      closeBtn.dataset.bound = 'true';
+    if (closeBtn) {
+      this.addDomListener(closeBtn, 'click', () => this.closeWindow());
     }
     if (waitingView) {
       waitingView.classList.remove('hidden');
@@ -616,6 +634,18 @@ export class ApprovalController {
     this.runtimeMessageListener = null;
   }
 
+  dispose() {
+    this.clearFollowupTimer();
+    this.clearRuntimeListeners();
+    this.cleanupCallbacks.splice(0).forEach((cleanup) => {
+      try {
+        cleanup();
+      } catch (error) {
+        // Ignore cleanup errors while switching approval requests.
+      }
+    });
+  }
+
   /**
    * 发送响应到 background
    */
@@ -640,8 +670,7 @@ export class ApprovalController {
    * 关闭当前窗口
    */
   closeWindow() {
-    this.clearFollowupTimer();
-    this.clearRuntimeListeners();
+    this.dispose();
     if (typeof window !== 'undefined') {
       window.close();
     }
