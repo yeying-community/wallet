@@ -466,7 +466,7 @@ export class PopupController {
         badge.className = 'sync-status-badge danger';
       } else if (!hasAuth) {
         statusText = '同步未登录';
-        badge.className = 'sync-status-badge warning';
+        badge.className = 'sync-status-badge sync-warning';
       } else {
         statusText = latestSyncAt > 0 && (Date.now() - latestSyncAt) >= staleSyncThresholdMs
           ? formatDate(latestSyncAt, 'relative')

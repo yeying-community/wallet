@@ -4,7 +4,8 @@ const IMPORT_FIELD_IDS = [
   'importAccountName',
   'importMnemonic',
   'importPrivateKey',
-  'importWalletPassword'
+  'importWalletPassword',
+  'importAccountsFile'
 ];
 
 export function clearImportWalletForm({ resetType = true } = {}) {
@@ -24,11 +25,15 @@ export function clearImportWalletForm({ resetType = true } = {}) {
   const privateKeyTab = tabs.find((tab) => tab?.dataset?.type === 'privateKey');
   const mnemonicSection = document.getElementById('mnemonicImportSection');
   const privateKeySection = document.getElementById('privateKeyImportSection');
+  const fileSection = document.getElementById('fileImportSection');
+  const nameGroup = document.getElementById('importWalletNameGroup');
 
   mnemonicTab?.classList.add('active');
   privateKeyTab?.classList.remove('active');
   mnemonicSection?.classList.remove('hidden');
   privateKeySection?.classList.add('hidden');
+  fileSection?.classList.add('hidden');
+  nameGroup?.classList.remove('hidden');
 }
 
 export class ImportWalletController {
@@ -48,13 +53,28 @@ export class ImportWalletController {
         const type = e.target.dataset.type;
         const mnemonicSection = document.getElementById('mnemonicImportSection');
         const privateKeySection = document.getElementById('privateKeyImportSection');
+        const fileSection = document.getElementById('fileImportSection');
+        const nameGroup = document.getElementById('importWalletNameGroup');
+        const importBtn = document.getElementById('importBtn');
 
         if (type === 'mnemonic') {
           mnemonicSection?.classList.remove('hidden');
           privateKeySection?.classList.add('hidden');
-        } else {
+          fileSection?.classList.add('hidden');
+          nameGroup?.classList.remove('hidden');
+          if (importBtn) importBtn.textContent = '导入钱包';
+        } else if (type === 'privateKey') {
           mnemonicSection?.classList.add('hidden');
           privateKeySection?.classList.remove('hidden');
+          fileSection?.classList.add('hidden');
+          nameGroup?.classList.remove('hidden');
+          if (importBtn) importBtn.textContent = '导入钱包';
+        } else {
+          mnemonicSection?.classList.add('hidden');
+          privateKeySection?.classList.add('hidden');
+          fileSection?.classList.remove('hidden');
+          nameGroup?.classList.add('hidden');
+          if (importBtn) importBtn.textContent = '导入备份';
         }
       });
     });
@@ -94,12 +114,15 @@ export class ImportWalletController {
           showError('请输入助记词');
           return;
         }
-      } else {
+      } else if (importType === 'privateKey') {
         const privateKey = document.getElementById('importPrivateKey')?.value.trim();
         if (!privateKey) {
           showError('请输入私钥');
           return;
         }
+      } else if (!document.getElementById('importAccountsFile')?.files?.[0]) {
+        showError('请选择账户备份文件');
+        return;
       }
 
       showWaiting();
@@ -111,12 +134,22 @@ export class ImportWalletController {
       if (importType === 'mnemonic') {
         const mnemonic = document.getElementById('importMnemonic')?.value.trim();
         await this.wallet.importFromMnemonic(name, mnemonic, password);
-      } else {
+      } else if (importType === 'privateKey') {
         const privateKey = document.getElementById('importPrivateKey')?.value.trim();
         await this.wallet.importFromPrivateKey(name, privateKey, password);
+      } else {
+        const file = document.getElementById('importAccountsFile')?.files?.[0];
+        let parsed;
+        try {
+          parsed = JSON.parse(await file.text());
+        } catch {
+          throw new Error('备份文件不是有效的 JSON');
+        }
+        const result = await this.wallet.importAccountsFile(parsed, password);
+        showSuccess(`导入 ${result.imported} 个账户，跳过 ${result.skipped} 个重复账户`);
       }
 
-      showSuccess('导入成功！');
+      if (importType !== 'file') showSuccess('导入成功！');
       clearImportWalletForm();
 
       setTimeout(() => {

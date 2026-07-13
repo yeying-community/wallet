@@ -16,6 +16,17 @@
   overflow: hidden;
 }
 
+#accountsPage .page-actions {
+  margin-left: auto;
+}
+
+#accountsPage .page-actions .btn {
+  width: auto;
+  min-width: 64px;
+  margin: 0;
+  padding: 8px 12px;
+}
+
 /* ==================== 账户管理页面布局 ==================== */
 .account-manage-container {
   display: flex;
@@ -304,17 +315,20 @@
 
 /* ==================== 账户详情页面 ==================== */
 .account-detail-card {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
-  padding: 20px;
+  gap: 14px;
+  padding: 14px;
   background: white;
-  border-radius: 16px;
+  border-radius: 8px;
   border: 1px solid #e5e7eb;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   flex-shrink: 0;
+}
+
+.account-detail-summary {
+  min-width: 0;
 }
 
 .account-detail-avatar {
@@ -345,25 +359,39 @@
   color: #2563eb;
 }
 
+.account-detail-index {
+  color: #9ca3af;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .account-detail-name-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .account-detail-name-edit {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   align-items: stretch;
 }
 
 .account-detail-name-actions {
   display: flex;
   gap: 8px;
-  justify-content: center;
+  justify-content: flex-start;
+}
+
+.account-detail-name-actions .btn {
+  width: auto;
+  min-width: 64px;
+  margin: 0;
+  padding: 7px 12px;
 }
 
 .detail-icon-btn {
@@ -387,7 +415,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  justify-content: center;
+  justify-content: flex-start;
+  margin-top: 5px;
 }
 
 .account-detail-address {
@@ -401,17 +430,42 @@
   color: #2563eb;
 }
 
-.account-detail-type {
-  font-size: 12px;
-  color: #6b7280;
-  background: #f3f4f6;
-  padding: 4px 10px;
-  border-radius: 999px;
+.account-profile-section {
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.account-profile-section > label {
+  display: block;
+  margin-bottom: 7px;
+  color: #4b5563;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.account-profile-edit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.account-profile-edit .input {
+  min-width: 0;
+}
+
+.account-profile-edit .btn {
+  width: auto;
+  margin: 0;
+  padding: 9px 14px;
 }
 
 .account-detail-qr {
   background: white;
-  border-radius: 16px;
+  border-radius: 8px;
   border: 1px solid #e5e7eb;
   padding: 16px;
   display: flex;
@@ -469,10 +523,22 @@
 }
 
 #accountDetailPage {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
+  display: block;
+  height: 100vh;
   box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+#accountDetailPage::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+#accountDetailPage .account-detail-qr {
+  min-height: 176px;
 }
 
 #accountDetailPage .account-detail-qr #accountDetailQr canvas,

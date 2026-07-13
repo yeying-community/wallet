@@ -25,6 +25,7 @@ import { withPopupBoundsAsync } from './window-utils.js';
 import { POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { handleUcanSession, handleUcanSign } from './ucan.js';
+import { handleYeyingGetProfile } from './profile-handler.js';
 import {
   handleYeyingEncrypt,
   handleYeyingDecrypt,
@@ -205,6 +206,11 @@ export async function routeRequest(method, params, metadata) {
 
   if (method === 'wallet_revokePermissions') {
     return handleWalletRevokePermissions(origin, paramsArray);
+  }
+
+  if (method === 'yeying_getProfile') {
+    await ensureSiteAuthorized(origin);
+    return handleYeyingGetProfile(origin, paramsArray);
   }
 
   // ==================== 需要解锁的方法 ====================

@@ -272,6 +272,9 @@ class ApprovalApp {
       case 'connect':
         this.renderConnectRequest();
         break;
+      case 'profile':
+        this.renderProfileRequest();
+        break;
       case 'unlock':
         this.renderUnlockRequest();
         break;
@@ -296,6 +299,20 @@ class ApprovalApp {
   renderConnectRequest() {
     document.getElementById('connectRequest').classList.remove('hidden');
     document.getElementById('connectOrigin').textContent = this.requestData.origin;
+  }
+
+  renderProfileRequest() {
+    document.getElementById('profileRequest').classList.remove('hidden');
+    document.getElementById('profileOrigin').textContent = this.requestData.origin || '未知网站';
+    const labels = { username: '公开用户名', email: '邮箱地址' };
+    const list = document.getElementById('profileFieldList');
+    list.innerHTML = '';
+    (this.requestData.fields || []).forEach((field) => {
+      const item = document.createElement('div');
+      item.className = 'permission-item';
+      item.textContent = labels[field] || field;
+      list.appendChild(item);
+    });
   }
 
   renderUnlockRequest() {

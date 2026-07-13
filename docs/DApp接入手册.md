@@ -151,3 +151,27 @@ flowchart TD
 - 审批 UI：`html/approval.html` + `js/app/approval.js`
 - UCAN 会话：`js/background/ucan.js`
 - 相关 SDK 仓库：`yeying-community/web3-bs`
+## 10. 钱包资料
+
+SIWE 用于证明用户控制钱包地址，UCAN 用于能力授权。用户名和邮箱通过钱包扩展方法读取，不会改变 `eth_accounts`、SIWE 或 UCAN 的标准返回结构。
+
+站点连接后，先请求需要的资料字段：
+
+```js
+await ethereum.request({ method: 'eth_requestAccounts' });
+await ethereum.request({
+  method: 'wallet_requestPermissions',
+  params: [{ yeying_profile: { fields: ['username', 'email'] } }]
+});
+```
+
+钱包会显示独立的资料共享确认。用户允许后读取资料：
+
+```js
+const result = await ethereum.request({
+  method: 'yeying_getProfile',
+  params: [{ fields: ['username', 'email'] }]
+});
+```
+
+返回值包含 `address`、`chainId` 和 `profile`。只返回当前站点已获授权且本次明确请求的字段。邮箱由用户自行填写，当前不代表已完成邮箱验证；钱包不会存储或向 DApp 返回登录密码。

@@ -39,11 +39,6 @@ export const WALLET_TYPE = {
   IMPORTED: 'imported' // 导入钱包（只有私钥）
 };
 
-export const ACCOUNT_TYPE = {
-  MAIN: 'main',       // 主账户
-  SUB: 'sub'          // 子账户
-};
-
 // ==================== 钱包创建 ====================
 
 /**
@@ -126,7 +121,6 @@ export async function createHDWallet(accountName, password) {
       id: generateAccountId(walletId, 0),
       walletId: walletId,
       name: accountName || 'Account 1',
-      type: ACCOUNT_TYPE.MAIN,
       index: 0,
       derivationPath: derivationPath,
       address: mainWallet.address,
@@ -214,7 +208,6 @@ export async function importHDWallet(accountName, mnemonic, password) {
       id: generateAccountId(walletId, 0),
       walletId: walletId,
       name: accountName || 'Account 1',
-      type: ACCOUNT_TYPE.MAIN,
       index: 0,
       derivationPath: derivationPath,
       address: mainWallet.address,
@@ -303,7 +296,6 @@ export async function importPrivateKeyWallet(accountName, privateKey, password) 
       id: generateAccountId(walletId, 0),
       walletId: walletId,
       name: accountName || 'Imported Account',
-      type: ACCOUNT_TYPE.MAIN,
       index: 0,
       address: ethersWallet.address,
       encryptedPrivateKey: encryptedPrivateKey,
@@ -384,7 +376,6 @@ export async function deriveSubAccount(wallet, newIndex, accountName, password) 
       id: generateAccountId(wallet.id, newIndex),
       walletId: wallet.id,
       name: accountName || `Account ${newIndex + 1}`,
-      type: ACCOUNT_TYPE.SUB,
       index: newIndex,
       derivationPath: derivationPath,
       address: ethersWallet.address,

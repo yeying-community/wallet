@@ -334,6 +334,7 @@ body {
 .sync-status-badge {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   margin-top: 10px;
   padding: 6px 10px;
@@ -344,7 +345,8 @@ body {
   background: rgba(255, 255, 255, 0.14);
   color: #ffffff;
   cursor: pointer;
-  width: fit-content;
+  width: 112px;
+  box-sizing: border-box;
   max-width: 100%;
   transition: background 0.2s ease, color 0.2s ease, opacity 0.2s ease;
 }
@@ -362,9 +364,8 @@ body {
 .dropdown-arrow {
   width: 32px;
   height: 32px;
-  background: rgba(255, 255, 255, 0.16);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 10px;
+  background: transparent;
+  border: none;
   cursor: pointer;
   padding: 0;
   line-height: 1;
@@ -378,7 +379,7 @@ body {
   color: rgba(255, 255, 255, 0.82);
 }
 
-.sync-status-badge.warning {
+.sync-status-badge.sync-warning {
   background: rgba(254, 243, 199, 0.24);
   color: #fffbeb;
 }
@@ -1032,6 +1033,14 @@ body {
 
 /* ==================== 导入页面样式 ==================== */
 
+#importPage {
+  height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
 .import-tabs {
   display: flex;
   gap: 8px;
@@ -1043,7 +1052,8 @@ body {
 
 .import-tab {
   flex: 1;
-  padding: 8px 16px;
+  min-width: 0;
+  padding: 8px;
   border: none;
   background: transparent;
   border-radius: 6px;
@@ -1052,6 +1062,24 @@ body {
   color: #666;
   cursor: pointer;
   transition: all 0.2s;
+}
+
+#importAccountsFile {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+}
+
+.import-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 18px;
+}
+
+.import-actions .btn {
+  margin: 0;
 }
 
 .import-tab:hover {

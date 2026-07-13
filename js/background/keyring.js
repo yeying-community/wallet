@@ -84,8 +84,7 @@ export async function unlockWallet(password, accountId, source = 'unknown') {
       account: {
         id: account.id,
         name: account.name,
-        address: account.address,
-        type: account.type
+        address: account.address
       }
     };
 

@@ -489,9 +489,15 @@ class BackupSyncService {
         index,
         address: account.address,
         name: account.name,
-        nameUpdatedAt
+        nameUpdatedAt,
+        username: account.username || '',
+        usernameUpdatedAt: account.usernameUpdatedAt || 0
       };
     });
+    const profile = {
+      email: String(await getUserSetting('profileEmail', '') || ''),
+      emailUpdatedAt: Number(await getUserSetting('profileEmailUpdatedAt', 0)) || 0
+    };
 
     const networks = await getNetworks();
     const storedNetworkIds = await getUserSetting(SETTINGS_KEYS.networkIds, []);
@@ -518,6 +524,7 @@ class BackupSyncService {
       reason,
       accountCount: wallet.accountCount || accounts.length,
       accounts: accountEntries,
+      profile,
       contacts: contactEntries,
       networkIds,
       networksUpdatedAt: getTimestamp()
@@ -561,14 +568,13 @@ class BackupSyncService {
             continue;
           }
 
+          const nextAccount = { ...local };
+          let accountChanged = false;
           const localUpdatedAt = local.nameUpdatedAt || local.updatedAt || local.createdAt || 0;
           if (remoteUpdatedAt > localUpdatedAt && remote.name && remote.name !== local.name) {
-            await updateAccount({
-              ...local,
-              name: remote.name,
-              nameUpdatedAt: remoteUpdatedAt
-            });
-            changed = true;
+            nextAccount.name = remote.name;
+            nextAccount.nameUpdatedAt = remoteUpdatedAt;
+            accountChanged = true;
           } else if (remoteUpdatedAt === localUpdatedAt && remote.name && remote.name !== local.name) {
             await this._recordConflict({
               id: `account:${walletId}:${index}`,
@@ -580,6 +586,17 @@ class BackupSyncService {
               remoteName: remote.name || '',
               timestamp: remoteUpdatedAt
             });
+          }
+          const remoteUsernameAt = Number(remote.usernameUpdatedAt || 0);
+          const localUsernameAt = Number(local.usernameUpdatedAt || 0);
+          if (remoteUsernameAt > localUsernameAt && typeof remote.username === 'string') {
+            nextAccount.username = remote.username;
+            nextAccount.usernameUpdatedAt = remoteUsernameAt;
+            accountChanged = true;
+          }
+          if (accountChanged) {
+            await updateAccount(nextAccount);
+            changed = true;
           }
         } else {
           // missing account, try to derive
@@ -593,6 +610,8 @@ class BackupSyncService {
             if (remoteUpdatedAt) {
               derived.nameUpdatedAt = remoteUpdatedAt;
             }
+            if (typeof remote.username === 'string') derived.username = remote.username;
+            if (remote.usernameUpdatedAt) derived.usernameUpdatedAt = remote.usernameUpdatedAt;
             await saveAccount(derived);
             wallet.accountCount = Math.max(wallet.accountCount || 0, index + 1);
             await saveWallet(wallet);
@@ -614,6 +633,12 @@ class BackupSyncService {
 
       await this._mergeContacts(remotePayload.contacts || []);
       await this._mergeNetworkIds(remotePayload.networkIds || []);
+      const remoteProfile = remotePayload.profile;
+      if (remoteProfile && Number(remoteProfile.emailUpdatedAt || 0) > Number(await getUserSetting('profileEmailUpdatedAt', 0) || 0)) {
+        await updateUserSetting('profileEmail', String(remoteProfile.email || ''));
+        await updateUserSetting('profileEmailUpdatedAt', Number(remoteProfile.emailUpdatedAt));
+        changed = true;
+      }
     } finally {
       this._suppressStorageEvents = false;
     }

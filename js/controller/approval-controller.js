@@ -53,6 +53,9 @@ export class ApprovalController {
       case 'connect':
         this.bindConnectEvents();
         break;
+      case 'profile':
+        this.bindProfileEvents();
+        break;
       case 'unlock':
         this.bindUnlockEvents();
         break;
@@ -75,6 +78,16 @@ export class ApprovalController {
   }
 
   // ==================== 连接请求 ====================
+
+  bindProfileEvents() {
+    this.addDomListener(document.getElementById('approveProfile'), 'click', async () => {
+      if (this.isProcessing) return;
+      this.isProcessing = true;
+      await this.sendResponse({ approved: true });
+      this.closeWindow();
+    });
+    this.addDomListener(document.getElementById('rejectProfile'), 'click', () => this.reject());
+  }
 
   bindUnlockEvents() {
     const approveBtn = document.getElementById('approveUnlock');

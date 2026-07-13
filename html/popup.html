@@ -102,12 +102,12 @@
                   </svg>
                 </button>
                 <div id="walletHeaderMenu" class="header-dropdown-menu hidden" role="menu">
-                  <button type="button" class="header-menu-item" id="contactsBtn">联系人</button>
+                  <button type="button" class="header-menu-item" id="contactsBtn">好友管理</button>
                   <button type="button" class="header-menu-item" id="sitesManageBtn">网站管理</button>
                   <button type="button" class="header-menu-item" id="networkManageBtn">网络管理</button>
-                  <button type="button" class="header-menu-item" id="helpDocBtn">帮助文档</button>
                   <button type="button" class="header-menu-item" id="settingsBtn">设置</button>
                   <button type="button" class="header-menu-item" id="lockWalletBtn">锁定钱包</button>
+                  <button type="button" class="header-menu-item" id="helpDocBtn">帮助文档</button>
                 </div>
               </div>
             </div>
@@ -563,10 +563,11 @@
         <div class="import-tabs">
           <button class="import-tab active" data-type="mnemonic">助记词</button>
           <button class="import-tab" data-type="privateKey">私钥</button>
+          <button class="import-tab" data-type="file">备份文件</button>
         </div>
 
         <!-- 钱包名称 -->
-        <div class="form-group">
+        <div class="form-group" id="importWalletNameGroup">
           <label>钱包名称</label>
           <input
             type="text"
@@ -599,6 +600,13 @@
           </div>
         </div>
 
+        <div id="fileImportSection" class="hidden">
+          <div class="form-group">
+            <label for="importAccountsFile">加密账户文件</label>
+            <input id="importAccountsFile" type="file" accept="application/json,.json" />
+          </div>
+        </div>
+
         <!-- 密码 -->
         <div class="form-group">
           <label id="importPasswordLabel">密码</label>
@@ -609,8 +617,10 @@
           />
         </div>
 
-        <button id="importBtn" class="btn btn-primary">导入钱包</button>
-        <button id="cancelImportBtn" class="btn btn-secondary">取消</button>
+        <div class="import-actions">
+          <button id="cancelImportBtn" class="btn btn-secondary">取消</button>
+          <button id="importBtn" class="btn btn-primary">导入钱包</button>
+        </div>
       </div>
 
       <!-- 账户管理页面 -->
@@ -618,6 +628,11 @@
         <div class="page-header">
           <button class="back-btn">←</button>
           <h2>账户管理</h2>
+          <div class="page-actions">
+            <button class="btn btn-secondary btn-small" id="accountsExportBtn" title="导出加密账户文件">
+              导出
+            </button>
+          </div>
         </div>
 
         <div class="account-manage-container">
@@ -848,38 +863,42 @@
 
         <div class="account-detail-card">
           <div class="account-detail-avatar" id="accountDetailAvatar"></div>
-          <div class="account-detail-name-row" id="accountDetailNameRow">
-            <div class="account-detail-name" id="accountDetailNameText" title="点击修改"></div>
-            <button class="detail-icon-btn" id="editAccountNameBtn" title="编辑名称" aria-label="编辑名称">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 20h9"></path>
-                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
-              </svg>
-            </button>
-          </div>
-          <div class="account-detail-name-edit hidden" id="accountDetailNameEdit">
-            <input
-              id="accountDetailNameInput"
-              class="input"
-              type="text"
-              maxlength="20"
-              placeholder="输入账户名称"
-            />
-            <div class="account-detail-name-actions">
-              <button id="saveAccountNameBtn" class="btn btn-primary btn-small">保存</button>
-              <button id="cancelAccountNameBtn" class="btn btn-secondary btn-small">取消</button>
+          <div class="account-detail-summary">
+            <div class="account-detail-name-row" id="accountDetailNameRow">
+              <div class="account-detail-name" id="accountDetailNameText" title="点击修改"></div>
+              <span class="account-detail-index" id="accountDetailIndex"></span>
+              <button class="detail-icon-btn" id="editAccountNameBtn" title="编辑名称" aria-label="编辑名称">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 20h9"></path>
+                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="account-detail-name-edit hidden" id="accountDetailNameEdit">
+              <input id="accountDetailNameInput" class="input" type="text" maxlength="20" placeholder="输入账户名称" />
+              <div class="account-detail-name-actions">
+                <button id="saveAccountNameBtn" class="btn btn-primary btn-small">保存</button>
+                <button id="cancelAccountNameBtn" class="btn btn-secondary btn-small">取消</button>
+              </div>
+            </div>
+            <div class="account-detail-address-row">
+              <div class="account-detail-address" id="accountDetailAddress" title="点击复制地址"></div>
+              <button class="detail-icon-btn" id="copyAccountAddressBtn" title="复制地址" aria-label="复制地址">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+              </button>
             </div>
           </div>
-          <div class="account-detail-address-row">
-            <div class="account-detail-address" id="accountDetailAddress" title="点击复制地址"></div>
-            <button class="detail-icon-btn" id="copyAccountAddressBtn" title="复制地址" aria-label="复制地址">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="9" y="9" width="13" height="13" rx="2"></rect>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-              </svg>
-            </button>
+        </div>
+
+        <div class="account-profile-section">
+          <label for="accountUsernameInput">公开用户名</label>
+          <div class="account-profile-edit">
+            <input id="accountUsernameInput" class="input" type="text" maxlength="32" placeholder="例如 alice" />
+            <button id="saveAccountUsernameBtn" class="btn btn-primary btn-small">保存</button>
           </div>
-          <div class="account-detail-type" id="accountDetailType"></div>
         </div>
 
         <div class="account-detail-qr-actions">
@@ -909,6 +928,15 @@
         </div>
 
         <div class="settings-body">
+          <div class="settings-section">
+            <h3>个人资料</h3>
+            <div class="form-group">
+              <label for="profileEmailInput">邮箱</label>
+              <input id="profileEmailInput" type="email" maxlength="254" placeholder="name@example.com" />
+            </div>
+            <button id="saveProfileEmailBtn" class="btn btn-primary btn-small">保存邮箱</button>
+            <p style="font-size: 12px; color: #777; margin-top: 8px">当前邮箱由用户填写，尚未验证。</p>
+          </div>
           <!-- 安全设置 -->
           <div class="settings-section">
             <h3>🔐 安全设置</h3>

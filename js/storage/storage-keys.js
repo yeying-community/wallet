@@ -21,13 +21,14 @@
  * @property {string} id  形如 `${walletId}_${index}`
  * @property {string} walletId
  * @property {string} name
- * @property {'main'|'sub'} type
  * @property {number} index
  * @property {string} [derivationPath]
  * @property {string} address
  * @property {string} encryptedPrivateKey AES-GCM 加密的私钥（Base64）
  * @property {number} createdAt
  * @property {number} [nameUpdatedAt]
+ * @property {string} [username] Public username shared with approved DApps
+ * @property {number} [usernameUpdatedAt]
  */
 
 /**

@@ -19,8 +19,7 @@ import {
   getWalletMnemonic,
   changeWalletPassword,
   createWalletInstance,
-  WALLET_TYPE,
-  ACCOUNT_TYPE
+  WALLET_TYPE
 } from '../js/background/vault.js';
 
 const PASSWORD = 'Correct-Horse-9';
@@ -39,7 +38,7 @@ test('createHDWallet 生成 HD 钱包 + 主账户 + 12 词助记词', async () =
   assert.ok(wallet.encryptedMnemonic, 'HD 钱包必须保存加密助记词');
   assert.equal(wallet.accountCount, 1);
 
-  assert.equal(mainAccount.type, ACCOUNT_TYPE.MAIN);
+  assert.equal(mainAccount.type, undefined);
   assert.equal(mainAccount.index, 0);
   assert.equal(mainAccount.derivationPath, "m/44'/60'/0'/0/0");
   assert.match(mainAccount.address, /^0x[0-9a-fA-F]{40}$/);
@@ -86,7 +85,7 @@ test('deriveSubAccount 派生确定性子账户地址', async () => {
   const { wallet } = await importHDWallet('Imported HD', TEST_MNEMONIC, PASSWORD);
   const sub = await deriveSubAccount(wallet, 1, 'Acc 2', PASSWORD);
 
-  assert.equal(sub.type, ACCOUNT_TYPE.SUB);
+  assert.equal(sub.type, undefined);
   assert.equal(sub.index, 1);
   assert.equal(sub.derivationPath, "m/44'/60'/0'/0/1");
   assert.equal(sub.address.toLowerCase(), TEST_ADDR_1.toLowerCase());
