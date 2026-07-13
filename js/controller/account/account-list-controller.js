@@ -144,7 +144,6 @@ export class AccountListController {
 
       this.renderWalletList(
         wallets,
-        (id) => this.handleSelectAccount(id),
         (id) => this.onOpenAccountDetails?.(id),
         (id) => this.onOpenDeleteAccount?.(id),
         (walletId) => this.onOpenCreateAccount?.(walletId),
@@ -212,7 +211,7 @@ export class AccountListController {
     }
   }
 
-  renderWalletList(wallets, onAccountClick, onAccountDetails, onAccountDelete, onAddAccount, onViewMnemonic, onViewPrivateKey) {
+  renderWalletList(wallets, onAccountDetails, onAccountDelete, onAddAccount, onViewMnemonic, onViewPrivateKey) {
     const container = document.getElementById('walletList');
     if (!container) return;
 
@@ -255,18 +254,11 @@ export class AccountListController {
                       title="查看私钥">
                 🔑
               </button>
-              <button class="account-action-btn details-btn"
+              <button class="account-action-btn danger delete-btn"
                       data-account-id="${account.id}"
-                      title="账户详情">
-                ℹ️
+                      title="删除">
+                🗑️
               </button>
-              ${!account.isSelected ? `
-                <button class="account-action-btn danger delete-btn"
-                        data-account-id="${account.id}"
-                        title="删除">
-                  🗑️
-                </button>
-              ` : ''}
             </div>
           </div>
         `).join('') : '<div class="empty-message">暂无账户</div>';
@@ -288,8 +280,14 @@ export class AccountListController {
               class="wallet-header-btn view-mnemonic-btn"
               data-wallet-id="${wallet.id}"
               title="查看助记词"
+              aria-label="查看助记词"
             >
-              查看助记词
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="8" y1="13" x2="16" y2="13"></line>
+                <line x1="8" y1="17" x2="14" y2="17"></line>
+              </svg>
             </button>
           </div>
         ` : ''}
@@ -312,7 +310,7 @@ export class AccountListController {
     }).join('');
 
     this.renderAccountAvatars(container);
-    this.bindWalletListEvents(onAccountClick, onAccountDetails, onAccountDelete, onAddAccount, onViewMnemonic, onViewPrivateKey);
+    this.bindWalletListEvents(onAccountDetails, onAccountDelete, onAddAccount, onViewMnemonic, onViewPrivateKey);
   }
 
   renderAccountAvatars(container) {
@@ -330,7 +328,7 @@ export class AccountListController {
     });
   }
 
-  bindWalletListEvents(onAccountClick, onAccountDetails, onAccountDelete, onAddAccount, onViewMnemonic, onViewPrivateKey) {
+  bindWalletListEvents(onAccountDetails, onAccountDelete, onAddAccount, onViewMnemonic, onViewPrivateKey) {
     const container = document.getElementById('walletList');
     if (!container) return;
 
@@ -339,16 +337,6 @@ export class AccountListController {
         if (e.target.closest('.account-action-btn')) return;
 
         const accountId = item.dataset.accountId;
-        if (onAccountClick) {
-          onAccountClick(accountId);
-        }
-      });
-    });
-
-    container.querySelectorAll('.details-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const accountId = btn.dataset.accountId;
         if (onAccountDetails) {
           onAccountDetails(accountId);
         }

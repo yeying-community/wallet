@@ -496,6 +496,7 @@ export class PopupController {
     const button = document.getElementById('walletHeaderMenuBtn');
     if (!menu || !button) return;
     const willOpen = menu.classList.contains('hidden');
+    if (willOpen) this.closeAccountSwitcher();
     menu.classList.toggle('hidden', !willOpen);
     button.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
   }
@@ -585,9 +586,73 @@ export class PopupController {
   }
 
   async openAccountsPage() {
+    this.closeAccountSwitcher();
     this.stopTransactionPolling();
     showPage('accountsPage');
     await this.accountListController.loadWalletList();
+  }
+
+  async toggleAccountSwitcher() {
+    const menu = document.getElementById('accountSwitcherMenu');
+    const header = document.getElementById('accountHeader');
+    const arrow = document.getElementById('accountDropdownBtn');
+    if (!menu || !header || !arrow) return;
+    const willOpen = menu.classList.contains('hidden');
+    if (!willOpen) {
+      this.closeAccountSwitcher();
+      return;
+    }
+    this.closeWalletHeaderMenu();
+    await this.renderAccountSwitcher();
+    menu.classList.remove('hidden');
+    header.classList.add('switcher-open');
+    arrow.setAttribute('aria-expanded', 'true');
+  }
+
+  closeAccountSwitcher() {
+    document.getElementById('accountSwitcherMenu')?.classList.add('hidden');
+    document.getElementById('accountHeader')?.classList.remove('switcher-open');
+    document.getElementById('accountDropdownBtn')?.setAttribute('aria-expanded', 'false');
+  }
+
+  async renderAccountSwitcher() {
+    const list = document.getElementById('accountSwitcherList');
+    if (!list) return;
+    const wallets = await this.wallet.getWalletList();
+    const accounts = wallets.flatMap(wallet => Array.isArray(wallet.accounts) ? wallet.accounts : []);
+    list.innerHTML = '';
+    accounts.forEach((account) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `account-switcher-item${account.isSelected ? ' active' : ''}`;
+      button.dataset.accountId = account.id;
+      button.setAttribute('role', 'menuitem');
+
+      const name = document.createElement('span');
+      name.className = 'account-switcher-name';
+      name.textContent = account.name || '账户';
+      const address = document.createElement('span');
+      address.className = 'account-switcher-address';
+      const value = String(account.address || '');
+      address.textContent = value.length > 12 ? `${value.slice(0, 6)}...${value.slice(-4)}` : value;
+      button.append(name, address);
+      if (account.isSelected) {
+        const check = document.createElement('span');
+        check.className = 'account-switcher-check';
+        check.textContent = '✓';
+        button.appendChild(check);
+      }
+      button.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        if (account.isSelected) {
+          this.closeAccountSwitcher();
+          return;
+        }
+        this.closeAccountSwitcher();
+        await this.accountListController.handleSelectAccount(account.id);
+      });
+      list.appendChild(button);
+    });
   }
 
   async openSettingsPage() {
@@ -698,13 +763,15 @@ export class PopupController {
     const accountHeader = document.getElementById('accountHeader');
     const accountDropdownBtn = document.getElementById('accountDropdownBtn');
     if (accountHeader) {
-      accountHeader.addEventListener('click', async () => {
-        await this.openAccountsPage();
+      accountHeader.addEventListener('click', async (event) => {
+        if (event.target.closest('#accountSwitcherMenu')) return;
+        await this.toggleAccountSwitcher();
       });
       accountHeader.addEventListener('keydown', async (event) => {
+        if (event.target !== accountHeader) return;
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
-        await this.openAccountsPage();
+        await this.toggleAccountSwitcher();
       });
     }
 
@@ -712,9 +779,15 @@ export class PopupController {
       accountDropdownBtn.addEventListener('click', async (event) => {
         event.preventDefault();
         event.stopPropagation();
-        await this.openAccountsPage();
+        await this.toggleAccountSwitcher();
       });
     }
+
+    document.getElementById('accountSwitcherMenu')?.addEventListener('click', event => event.stopPropagation());
+    document.getElementById('manageAccountsBtn')?.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      await this.openAccountsPage();
+    });
 
     const syncBadge = document.getElementById('backupSyncStatusBadge');
     if (syncBadge) {
@@ -812,6 +885,9 @@ export class PopupController {
         return;
       }
       this.closeWalletHeaderMenu();
+      if (!document.getElementById('accountHeader')?.contains(target)) {
+        this.closeAccountSwitcher();
+      }
     });
 
     const sendBtn = document.getElementById('sendBtn');
