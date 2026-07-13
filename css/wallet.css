@@ -119,6 +119,8 @@ body {
   border-radius: 0 0 20px 20px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   margin: -20px -20px 0 -20px;
+  position: relative;
+  z-index: 30;
 }
 
 .wallet-header-top {
@@ -264,6 +266,7 @@ body {
   margin-bottom: 0;
   min-width: 0;
   flex: 1;
+  position: relative;
 }
 
 .account-selector:hover {
@@ -403,6 +406,91 @@ body {
 
 .account-selector:hover .dropdown-arrow {
   transform: none;
+}
+
+.account-selector.switcher-open .dropdown-arrow {
+  transform: rotate(180deg);
+}
+
+.account-switcher-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.2);
+  color: #111827;
+  cursor: default;
+  z-index: 45;
+}
+
+.account-switcher-list {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.account-switcher-item,
+.account-switcher-manage {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-switcher-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  padding: 9px 10px;
+}
+
+.account-switcher-item:hover,
+.account-switcher-manage:hover {
+  background: #f3f4f6;
+}
+
+.account-switcher-item.active {
+  background: #eff6ff;
+}
+
+.account-switcher-name {
+  overflow: hidden;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-switcher-address {
+  grid-column: 1;
+  color: #6b7280;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.account-switcher-check {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: #2563eb;
+  font-size: 14px;
+}
+
+.account-switcher-manage {
+  margin-top: 6px;
+  padding: 10px;
+  border-top: 1px solid #e5e7eb;
+  border-radius: 0 0 6px 6px;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 /* 操作按钮组 */

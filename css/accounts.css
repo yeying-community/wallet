@@ -111,6 +111,15 @@
   transition: all 0.15s ease;
 }
 
+.wallet-header-btn.view-mnemonic-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .wallet-header-btn:hover {
   background: #eef2ff;
   border-color: #c7d2fe;
@@ -280,15 +289,6 @@
 .account-action-btn.key-btn:hover {
   background: #eef2ff;
   color: #1d4ed8;
-}
-
-.account-action-btn.details-btn {
-  color: #0f766e;
-}
-
-.account-action-btn.details-btn:hover {
-  background: #ecfdf3;
-  color: #0f766e;
 }
 
 /* 添加账户按钮 */

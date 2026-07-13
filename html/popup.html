@@ -46,7 +46,7 @@
               id="accountHeader"
               role="button"
               tabindex="0"
-              aria-label="账户管理"
+              aria-label="切换账户"
             >
               <div class="account-avatar" id="walletAvatar"></div>
               <div class="account-info">
@@ -59,10 +59,17 @@
                 class="dropdown-arrow"
                 id="accountDropdownBtn"
                 type="button"
-                aria-label="账户管理"
+                aria-label="切换账户"
+                aria-expanded="false"
               >
-                ▼
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
               </button>
+              <div id="accountSwitcherMenu" class="account-switcher-menu hidden" role="menu">
+                <div id="accountSwitcherList" class="account-switcher-list"></div>
+                <button type="button" id="manageAccountsBtn" class="account-switcher-manage">管理账户</button>
+              </div>
             </div>
 
             <div class="header-actions">
