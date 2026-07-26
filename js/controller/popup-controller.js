@@ -1,4 +1,4 @@
-import { showPage, getCurrentPage, getPageOrigin, showError, showSuccess } from '../common/ui/index.js';
+import { showPage, getCurrentPage, getPageOrigin, showError, showSuccess, copyAddressToClipboard, createCopyToastHandler } from '../common/ui/index.js';
 import { formatDate, formatLocaleDateTime } from '../common/utils/time-utils.js';
 import { POLLING_CONFIG } from '../config/index.js';
 import { WelcomeController } from './welcome-controller.js';
@@ -762,6 +762,27 @@ export class PopupController {
   bindWalletPageEvents() {
     const accountHeader = document.getElementById('accountHeader');
     const accountDropdownBtn = document.getElementById('accountDropdownBtn');
+    const accountAddress = document.getElementById('accountAddress');
+    const copyAddressBtn = document.getElementById('copyHeaderAddressBtn');
+    const copyHeaderAddress = async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const address = accountAddress?.dataset?.address || '';
+      if (!address) return;
+      const copied = await copyAddressToClipboard(address, createCopyToastHandler({
+        onSuccess: message => showSuccess(message),
+        onError: message => showError(message)
+      }));
+      if (!copied || !copyAddressBtn) return;
+      copyAddressBtn.querySelector('.copy-icon')?.classList.add('hidden');
+      copyAddressBtn.querySelector('.copy-success-icon')?.classList.remove('hidden');
+      setTimeout(() => {
+        copyAddressBtn.querySelector('.copy-icon')?.classList.remove('hidden');
+        copyAddressBtn.querySelector('.copy-success-icon')?.classList.add('hidden');
+      }, 1200);
+    };
+    accountAddress?.addEventListener('click', copyHeaderAddress);
+    copyAddressBtn?.addEventListener('click', copyHeaderAddress);
     if (accountHeader) {
       accountHeader.addEventListener('click', async (event) => {
         if (event.target.closest('#accountSwitcherMenu')) return;

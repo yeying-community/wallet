@@ -53,7 +53,18 @@
                 <div class="account-name">
                   <span id="accountName" class="account-name-text">主账户</span>
                 </div>
-                <div id="accountAddress" class="account-address-text">-</div>
+                <div class="account-address-row">
+                  <div id="accountAddress" class="account-address-text" title="复制地址">-</div>
+                  <button id="copyHeaderAddressBtn" class="account-address-copy" type="button" title="复制地址" aria-label="复制当前账户地址">
+                    <svg class="copy-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    <svg class="copy-success-icon hidden" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </button>
+                </div>
               </div>
               <button
                 class="dropdown-arrow"
