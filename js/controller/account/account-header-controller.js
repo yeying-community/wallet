@@ -27,6 +27,7 @@ export class AccountHeaderController {
     if (addressEl) {
       addressEl.textContent = account?.address ? shortenAddress(account.address) : '-';
       addressEl.title = account?.address || '';
+      addressEl.dataset.address = account?.address || '';
     }
 
     const avatarEl = document.getElementById('walletAvatar');
