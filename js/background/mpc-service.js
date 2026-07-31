@@ -239,6 +239,9 @@ class MpcService {
   async _ensureCoordinatorToken(options = {}) {
     const endpoint = String(options.endpoint || '').trim()
       || await getUserSetting('mpcCoordinatorEndpoint', DEFAULT_MPC_COORDINATOR_ENDPOINT);
+    if (endpoint) {
+      this._coordinator.setEndpoint(endpoint);
+    }
     const result = await ensureTargetUcanToken({
       endpoint,
       tokenSettingKey: 'mpcCoordinatorUcanToken',
@@ -281,7 +284,15 @@ class MpcService {
 
   async createSession(options = {}) {
     await this.init();
-    await this._ensureCoordinatorToken({ password: options.password });
+    await this._ensureCoordinatorToken({
+      endpoint: options.endpoint,
+      password: options.password,
+      audience: options.audience,
+      resource: options.resource,
+      action: options.action,
+      ttlHours: options.ttlHours,
+      forceRefresh: options.forceRefresh
+    });
     const type = String(options.type || 'keygen').toLowerCase();
     const payload = {
       type,

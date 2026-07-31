@@ -507,14 +507,35 @@
                 placeholder="2"
               />
             </div>
-            <div class="form-group">
-              <label>曲线</label>
-              <select id="mpcCreateCurveSelect" class="input">
-                <option value="secp256k1">secp256k1</option>
-                <option value="ed25519">ed25519</option>
-              </select>
-            </div>
-            <p class="settings-hint">创建后将自动生成 Keygen 会话，可在 MPC 设置中加入会话。</p>
+            <details class="mpc-advanced-options">
+              <summary>高级设置</summary>
+              <div class="form-group">
+                <label>协调器地址</label>
+                <input
+                  type="text"
+                  id="mpcCreateCoordinatorEndpointInput"
+                  class="input"
+                  placeholder="https://node.yeying.pub"
+                />
+              </div>
+              <div class="form-group">
+                <label>曲线</label>
+                <select id="mpcCreateCurveSelect" class="input">
+                  <option value="secp256k1">secp256k1</option>
+                  <option value="ed25519">ed25519</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>手动 UCAN Token（可选）</label>
+                <textarea
+                  id="mpcCreateCoordinatorUcanTokenInput"
+                  class="input"
+                  placeholder="默认会自动生成，需要排障时再粘贴"
+                ></textarea>
+              </div>
+              <p class="settings-hint">通常无需修改。创建时会基于当前账户自动生成协调器访问凭证。</p>
+            </details>
+            <p class="settings-hint">创建后将自动生成 Keygen 会话，其他成员使用会话 ID 加入。</p>
           </div>
 
           <div class="form-group">
@@ -979,90 +1000,11 @@
                 <span>启用备份与同步</span>
               </label>
             </div>
-            <div class="form-group">
-              <label>WebDAV 地址</label>
-              <input
-                type="url"
-                id="backupSyncEndpointInput"
-                placeholder="https://webdav.yeying.pub/dav"
-              />
+            <p class="settings-hint" id="backupSyncSummary">未启用 · UCAN · https://webdav.yeying.pub/dav</p>
+            <div class="settings-row settings-action-grid">
+              <button id="backupSyncConfigBtn" class="btn btn-secondary btn-small">服务配置</button>
+              <button id="backupSyncAuditBtn" class="btn btn-secondary btn-small">日志审计</button>
             </div>
-            <div class="form-group">
-              <label>认证方式</label>
-              <select id="backupSyncAuthModeSelect" class="input">
-                <option value="siwe">SIWE (钱包签名)</option>
-                <option value="ucan">UCAN</option>
-                <option value="basic">Basic</option>
-              </select>
-            </div>
-
-            <div id="backupSyncSiwePanel" class="sync-auth-panel">
-              <div class="form-group">
-                <label>当前地址</label>
-                <div class="sync-address" id="backupSyncAccountAddress">-</div>
-              </div>
-              <div class="settings-row">
-                <button id="backupSyncSiweLoginBtn" class="btn btn-primary btn-small">SIWE 登录</button>
-                <button id="backupSyncSiweRefreshBtn" class="btn btn-secondary btn-small">刷新 Token</button>
-              </div>
-              <p class="settings-hint" id="backupSyncTokenStatus">未登录</p>
-            </div>
-
-            <div id="backupSyncUcanPanel" class="sync-auth-panel hidden">
-              <div class="form-group">
-                <label>Audience (did:web)</label>
-                <input
-                  type="text"
-                  id="backupSyncUcanAudienceInput"
-                  placeholder="did:web:webdav.yeying.pub"
-                />
-              </div>
-              <div class="form-group">
-                <label>Capability Resource</label>
-                <input
-                  type="text"
-                  id="backupSyncUcanResourceInput"
-                  placeholder="app:<extension-id>"
-                />
-              </div>
-              <div class="form-group">
-                <label>Capability Action</label>
-                <input
-                  type="text"
-                  id="backupSyncUcanActionInput"
-                  placeholder="write"
-                />
-              </div>
-              <div class="form-group">
-                <label>有效期 (小时)</label>
-                <input
-                  type="number"
-                  id="backupSyncUcanTtlInput"
-                  min="1"
-                  max="168"
-                  step="1"
-                  value="24"
-                />
-              </div>
-              <div class="settings-row">
-                <button id="backupSyncUcanGenerateBtn" class="btn btn-secondary btn-small">生成 UCAN</button>
-              </div>
-            </div>
-
-            <div id="backupSyncBasicPanel" class="sync-auth-panel hidden">
-              <div class="form-group">
-                <label>Basic 凭证</label>
-                <input
-                  type="text"
-                  id="backupSyncBasicInput"
-                  placeholder="username:password 或 Basic base64"
-                />
-              </div>
-              <button id="backupSyncBasicSaveBtn" class="btn btn-primary btn-small">保存凭证</button>
-            </div>
-
-            <div class="settings-divider"></div>
-
             <div class="settings-row">
               <button id="backupSyncNowBtn" class="btn btn-secondary">立即同步</button>
               <button id="backupSyncClearRemoteBtn" class="btn btn-danger btn-small">清除远端备份</button>
@@ -1080,10 +1022,10 @@
           </div>
 
           <!-- 日志审计 -->
-          <div class="settings-section" id="backupSyncAuditSection">
+          <div class="settings-section hidden" id="backupSyncAuditSection">
             <h3>🔎 日志审计</h3>
             <div class="settings-row">
-              <button id="backupSyncAuditBtn" class="btn btn-secondary">进入日志审计</button>
+              <button id="backupSyncAuditHiddenBtn" class="btn btn-secondary">进入日志审计</button>
             </div>
             <p class="settings-hint">查看同步日志，支持搜索与翻页</p>
           </div>
@@ -1097,44 +1039,8 @@
                 <span>启用密钥托管服务</span>
               </label>
             </div>
-            <div class="form-group">
-              <label>托管服务地址</label>
-              <input
-                type="url"
-                id="custodyEndpointInput"
-                class="input"
-                placeholder="https://node.yeying.pub"
-              />
-            </div>
-            <div class="form-group">
-              <label>UCAN Resource</label>
-              <input
-                type="text"
-                id="custodyUcanResourceInput"
-                class="input"
-                placeholder="custody"
-              />
-            </div>
-            <div class="form-group">
-              <label>UCAN Action</label>
-              <input
-                type="text"
-                id="custodyUcanActionInput"
-                class="input"
-                placeholder="write"
-              />
-            </div>
-            <div class="form-group">
-              <label>UCAN Audience</label>
-              <input
-                type="text"
-                id="custodyUcanAudienceInput"
-                class="input"
-                placeholder="did:web:node.yeying.pub"
-              />
-            </div>
             <div class="settings-row">
-              <button id="custodySaveBtn" class="btn btn-secondary btn-small">保存配置</button>
+              <button id="custodyConfigBtn" class="btn btn-secondary btn-small">服务配置</button>
               <button id="custodyStatusBtn" class="btn btn-secondary btn-small">检查通行证</button>
             </div>
             <p class="settings-hint" id="custodyStatusText">启用前需要当前钱包地址已绑定通行证。</p>
@@ -1143,95 +1049,15 @@
           <!-- MPC 门限钱包设置 -->
           <div class="settings-section" id="mpcSettingsSection">
             <h3>🧩 MPC 门限钱包</h3>
-            <div class="form-group">
-              <label>协调器鉴权</label>
-              <select id="mpcAuthSchemeSelect" class="input">
-                <option value="ucan">UCAN</option>
-              </select>
+            <p class="settings-hint" id="mpcSettingsSummary">默认协调器：https://node.yeying.pub</p>
+            <div class="settings-row settings-action-grid">
+              <button id="mpcServiceConfigBtn" class="btn btn-secondary btn-small">服务配置</button>
+              <button id="mpcConnectionInfoBtn" class="btn btn-secondary btn-small">连接信息</button>
             </div>
-            <div class="form-group">
-              <label>端到端加密套件</label>
-              <select id="mpcE2eSuiteSelect" class="input">
-                <option value="x25519-aes-gcm">x25519-aes-gcm</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Key Refresh 触发策略</label>
-              <select id="mpcRefreshPolicySelect" class="input">
-                <option value="manual">手动</option>
-              </select>
-            </div>
-            <p class="settings-hint">这些配置用于 MPC 协调器与成员端协作。</p>
           </div>
 
-          <!-- MPC 协调器配置 -->
-          <div class="settings-section" id="mpcCoordinatorSection">
-            <h3>🛰️ MPC 协调器</h3>
-            <div class="form-group">
-              <label>协调器地址</label>
-              <input
-                type="text"
-                id="mpcCoordinatorEndpointInput"
-                class="input"
-                placeholder="https://node.yeying.pub"
-              />
-            </div>
-            <div class="form-group">
-              <label>UCAN Resource</label>
-              <input
-                type="text"
-                id="mpcCoordinatorUcanResourceInput"
-                class="input"
-                placeholder="app:your-app"
-              />
-            </div>
-            <div class="form-group">
-              <label>UCAN Action</label>
-              <input
-                type="text"
-                id="mpcCoordinatorUcanActionInput"
-                class="input"
-                placeholder="coordinate"
-              />
-            </div>
-            <div class="form-group">
-              <label>UCAN Audience</label>
-              <input
-                type="text"
-                id="mpcCoordinatorUcanAudienceInput"
-                class="input"
-                placeholder="did:web:example.com"
-              />
-            </div>
-            <div class="form-group">
-              <label>UCAN 有效期 (小时)</label>
-              <input
-                type="number"
-                id="mpcCoordinatorUcanTtlInput"
-                class="input"
-                min="1"
-                max="168"
-                step="1"
-                value="24"
-              />
-            </div>
-            <div class="form-group">
-              <label>UCAN Token（可选）</label>
-              <textarea
-                id="mpcCoordinatorUcanTokenInput"
-                class="input"
-                placeholder="粘贴 UCAN Token"
-              ></textarea>
-            </div>
-            <div class="settings-row">
-              <button id="mpcCoordinatorSaveBtn" class="btn btn-secondary btn-small">保存配置</button>
-              <button id="mpcCoordinatorUcanGenerateBtn" class="btn btn-secondary btn-small">生成 UCAN</button>
-            </div>
-            <p class="settings-hint">配置用于协调器鉴权与会话创建/加入。</p>
-          </div>
-
-          <!-- MPC 会话操作 -->
-          <div class="settings-section" id="mpcKeygenSection">
+          <!-- MPC 会话操作（开发者排障） -->
+          <div class="settings-section hidden" id="mpcKeygenSection">
             <h3>🔐 MPC 会话</h3>
             <h4>加入会话</h4>
             <div class="form-group">
@@ -1587,6 +1413,220 @@
           <div class="modal-footer">
             <button id="refreshMpcSessionDetailBtn" class="btn btn-secondary">刷新</button>
             <button id="closeMpcSessionDetailBtn" class="btn btn-secondary">关闭</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 备份与同步服务配置 -->
+      <div id="backupSyncConfigModal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>备份与同步配置</h3>
+            <button class="btn-close" id="closeBackupSyncConfigModal">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>WebDAV 地址</label>
+              <input
+                type="url"
+                id="backupSyncEndpointInput"
+                placeholder="https://webdav.yeying.pub/dav"
+              />
+            </div>
+            <div class="form-group">
+              <label>认证方式</label>
+              <select id="backupSyncAuthModeSelect" class="input">
+                <option value="siwe">SIWE (钱包签名)</option>
+                <option value="ucan">UCAN</option>
+                <option value="basic">Basic</option>
+              </select>
+            </div>
+
+            <div id="backupSyncSiwePanel" class="sync-auth-panel">
+              <div class="form-group">
+                <label>当前地址</label>
+                <div class="sync-address" id="backupSyncAccountAddress">-</div>
+              </div>
+              <div class="settings-row">
+                <button id="backupSyncSiweLoginBtn" class="btn btn-primary btn-small">SIWE 登录</button>
+                <button id="backupSyncSiweRefreshBtn" class="btn btn-secondary btn-small">刷新 Token</button>
+              </div>
+              <p class="settings-hint" id="backupSyncTokenStatus">未登录</p>
+            </div>
+
+            <div id="backupSyncUcanPanel" class="sync-auth-panel hidden">
+              <div class="form-group">
+                <label>Audience (did:web)</label>
+                <input
+                  type="text"
+                  id="backupSyncUcanAudienceInput"
+                  placeholder="did:web:webdav.yeying.pub"
+                />
+              </div>
+              <div class="form-group">
+                <label>Capability Resource</label>
+                <input
+                  type="text"
+                  id="backupSyncUcanResourceInput"
+                  placeholder="app:<extension-id>"
+                />
+              </div>
+              <div class="form-group">
+                <label>Capability Action</label>
+                <input
+                  type="text"
+                  id="backupSyncUcanActionInput"
+                  placeholder="write"
+                />
+              </div>
+              <div class="form-group">
+                <label>有效期 (小时)</label>
+                <input
+                  type="number"
+                  id="backupSyncUcanTtlInput"
+                  min="1"
+                  max="168"
+                  step="1"
+                  value="24"
+                />
+              </div>
+              <div class="settings-row">
+                <button id="backupSyncUcanGenerateBtn" class="btn btn-secondary btn-small">生成 UCAN</button>
+              </div>
+            </div>
+
+            <div id="backupSyncBasicPanel" class="sync-auth-panel hidden">
+              <div class="form-group">
+                <label>Basic 凭证</label>
+                <input
+                  type="text"
+                  id="backupSyncBasicInput"
+                  placeholder="username:password 或 Basic base64"
+                />
+              </div>
+              <button id="backupSyncBasicSaveBtn" class="btn btn-primary btn-small">保存凭证</button>
+            </div>
+            <p class="settings-hint">普通用户只需要确认服务地址和认证方式；高级凭证会按所选认证方式显示。</p>
+          </div>
+          <div class="modal-footer">
+            <button id="backupSyncConfigSaveBtn" class="btn btn-primary">保存配置</button>
+            <button id="cancelBackupSyncConfigBtn" class="btn btn-secondary">取消</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 密钥托管服务配置 -->
+      <div id="custodyConfigModal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>密钥托管配置</h3>
+            <button class="btn-close" id="closeCustodyConfigModal">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>托管服务地址</label>
+              <input
+                type="url"
+                id="custodyEndpointInput"
+                class="input"
+                placeholder="https://node.yeying.pub"
+              />
+            </div>
+            <div class="form-group">
+              <label>UCAN Resource</label>
+              <input
+                type="text"
+                id="custodyUcanResourceInput"
+                class="input"
+                placeholder="custody"
+              />
+            </div>
+            <div class="form-group">
+              <label>UCAN Action</label>
+              <input
+                type="text"
+                id="custodyUcanActionInput"
+                class="input"
+                placeholder="write"
+              />
+            </div>
+            <div class="form-group">
+              <label>UCAN Audience</label>
+              <input
+                type="text"
+                id="custodyUcanAudienceInput"
+                class="input"
+                placeholder="did:web:node.yeying.pub"
+              />
+            </div>
+            <p class="settings-hint">这些是托管服务连接参数，日常开启/关闭托管无需反复修改。</p>
+          </div>
+          <div class="modal-footer">
+            <button id="custodySaveBtn" class="btn btn-primary">保存配置</button>
+            <button id="cancelCustodyConfigBtn" class="btn btn-secondary">取消</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MPC 服务配置 -->
+      <div id="mpcServiceConfigModal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>MPC 服务配置</h3>
+            <button class="btn-close" id="closeMpcServiceConfigModal">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>默认协调器地址</label>
+              <input
+                type="text"
+                id="mpcCoordinatorEndpointInput"
+                class="input"
+                placeholder="https://node.yeying.pub"
+              />
+            </div>
+            <p class="settings-hint">创建 MPC 钱包时默认使用该服务。普通用户通常无需修改。</p>
+          </div>
+          <div class="modal-footer">
+            <button id="mpcCoordinatorSaveBtn" class="btn btn-primary">保存默认值</button>
+            <button id="cancelMpcServiceConfigBtn" class="btn btn-secondary">取消</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MPC 连接信息 -->
+      <div id="mpcConnectionInfoModal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>MPC 连接信息</h3>
+            <button class="btn-close" id="closeMpcConnectionInfoModal">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="mpc-device-card">
+              <div class="mpc-device-row">
+                <span>Device ID</span>
+                <code id="mpcDeviceIdText">-</code>
+              </div>
+              <div class="mpc-device-row">
+                <span>签名公钥</span>
+                <button class="mpc-device-copy" type="button" data-mpc-device-copy="signing" title="复制签名公钥">复制</button>
+              </div>
+              <code class="mpc-device-key" id="mpcDeviceSigningKeyText">-</code>
+              <div class="mpc-device-row">
+                <span>E2E 公钥</span>
+                <button class="mpc-device-copy" type="button" data-mpc-device-copy="e2e" title="复制 E2E 公钥">复制</button>
+              </div>
+              <code class="mpc-device-key" id="mpcDeviceE2eKeyText">-</code>
+            </div>
+            <p class="settings-hint" id="mpcDeviceInfoStatus">设备信息用于成员排障和会话身份确认。</p>
+          </div>
+          <div class="modal-footer">
+            <button id="mpcDeviceRefreshBtn" class="btn btn-primary">刷新</button>
+            <button id="closeMpcConnectionInfoBtn" class="btn btn-secondary">关闭</button>
           </div>
         </div>
       </div>

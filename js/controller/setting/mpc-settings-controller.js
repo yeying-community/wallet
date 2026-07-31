@@ -1,11 +1,11 @@
 /**
  * MpcSettingsController — MPC 门限钱包设置子控制器
- * 从 SettingController 拆出：协调器设置 / UCAN 生成 / Keygen / Join / 消息发送与轮询 /
- * 会话列表与详情 / 审计日志与导出。
+ * 从 SettingController 拆出：默认协调器 / 设备信息 / 会话列表与详情 /
+ * 审计日志与导出。Keygen / Join / 消息发送等高级排障方法保留为隐藏能力。
  *
  * 依赖通过构造参数注入：{ wallet, requestPassword }
  */
-import { showPage, showSuccess, showError, showWaiting, hideWaiting } from '../../common/ui/index.js';
+import { showPage, showSuccess, showError, showWaiting, hideWaiting, copyToClipboard } from '../../common/ui/index.js';
 import { formatLocaleDateTime } from '../../common/utils/time-utils.js';
 import { escapeHtml } from '../../common/ui/html-ui.js';
 import { deriveUcanAudience } from '../../common/ucan-utils.js';
@@ -41,6 +41,7 @@ export class MpcSettingsController {
     this.mpcMessagePollIntervalMs = 5000;
     this.activeMpcSessionId = '';
     this.activeMpcMessageId = '';
+    this.mpcDeviceInfo = null;
   }
 
   bindEvents() {
@@ -128,12 +129,58 @@ export class MpcSettingsController {
       });
     }
 
+    const mpcServiceConfigBtn = document.getElementById('mpcServiceConfigBtn');
+    if (mpcServiceConfigBtn) {
+      mpcServiceConfigBtn.addEventListener('click', () => {
+        this.openMpcServiceConfigModal();
+      });
+    }
+
+    const mpcConnectionInfoBtn = document.getElementById('mpcConnectionInfoBtn');
+    if (mpcConnectionInfoBtn) {
+      mpcConnectionInfoBtn.addEventListener('click', async () => {
+        await this.openMpcConnectionInfoModal();
+      });
+    }
+
     const mpcCoordinatorSaveBtn = document.getElementById('mpcCoordinatorSaveBtn');
     if (mpcCoordinatorSaveBtn) {
       mpcCoordinatorSaveBtn.addEventListener('click', async () => {
         await this.handleMpcCoordinatorSave();
       });
     }
+
+    const mpcDeviceRefreshBtn = document.getElementById('mpcDeviceRefreshBtn');
+    if (mpcDeviceRefreshBtn) {
+      mpcDeviceRefreshBtn.addEventListener('click', async () => {
+        await this.loadMpcDeviceInfo(true);
+      });
+    }
+
+    const mpcConnectionInfoModal = document.getElementById('mpcConnectionInfoModal');
+    if (mpcConnectionInfoModal) {
+      mpcConnectionInfoModal.addEventListener('click', async (event) => {
+        const copyBtn = event.target.closest('[data-mpc-device-copy]');
+        if (!copyBtn) return;
+        await this.handleMpcDeviceCopy(copyBtn.dataset.mpcDeviceCopy);
+      });
+    }
+
+    this.bindSimpleModal({
+      modalId: 'mpcServiceConfigModal',
+      closeIds: ['closeMpcServiceConfigModal', 'cancelMpcServiceConfigBtn'],
+      onClose: () => this.closeMpcServiceConfigModal()
+    });
+    this.bindSimpleModal({
+      modalId: 'mpcConnectionInfoModal',
+      closeIds: ['closeMpcConnectionInfoModal', 'closeMpcConnectionInfoBtn'],
+      onClose: () => this.closeMpcConnectionInfoModal()
+    });
+    this.bindSimpleModal({
+      modalId: 'custodyConfigModal',
+      closeIds: ['closeCustodyConfigModal', 'cancelCustodyConfigBtn'],
+      onClose: () => this.closeCustodyConfigModal()
+    });
 
     const mpcCoordinatorUcanGenerateBtn = document.getElementById('mpcCoordinatorUcanGenerateBtn');
     if (mpcCoordinatorUcanGenerateBtn) {
@@ -146,6 +193,13 @@ export class MpcSettingsController {
     if (custodyEnabledToggle) {
       custodyEnabledToggle.addEventListener('change', async () => {
         await this.handleCustodyToggle(custodyEnabledToggle.checked);
+      });
+    }
+
+    const custodyConfigBtn = document.getElementById('custodyConfigBtn');
+    if (custodyConfigBtn) {
+      custodyConfigBtn.addEventListener('click', () => {
+        this.openCustodyConfigModal();
       });
     }
 
@@ -276,6 +330,66 @@ export class MpcSettingsController {
     }
   }
 
+  bindSimpleModal({ modalId, closeIds = [], onClose }) {
+    const modal = document.getElementById(modalId);
+    if (!modal || typeof onClose !== 'function') return;
+    closeIds.forEach((id) => {
+      const button = document.getElementById(id);
+      if (button) {
+        button.addEventListener('click', onClose);
+      }
+    });
+    const overlay = modal.querySelector('.modal-overlay');
+    if (overlay) {
+      overlay.addEventListener('click', onClose);
+    }
+  }
+
+  openMpcServiceConfigModal() {
+    this.renderMpcSettings(this.mpcSettings || {});
+    const modal = document.getElementById('mpcServiceConfigModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+    }
+  }
+
+  closeMpcServiceConfigModal() {
+    const modal = document.getElementById('mpcServiceConfigModal');
+    if (modal) {
+      modal.classList.add('hidden');
+    }
+  }
+
+  async openMpcConnectionInfoModal() {
+    const modal = document.getElementById('mpcConnectionInfoModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+    }
+    await this.loadMpcDeviceInfo();
+  }
+
+  closeMpcConnectionInfoModal() {
+    const modal = document.getElementById('mpcConnectionInfoModal');
+    if (modal) {
+      modal.classList.add('hidden');
+    }
+  }
+
+  openCustodyConfigModal() {
+    this.renderCustodySettings(this.custodySettings || {});
+    const modal = document.getElementById('custodyConfigModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+    }
+  }
+
+  closeCustodyConfigModal() {
+    const modal = document.getElementById('custodyConfigModal');
+    if (modal) {
+      modal.classList.add('hidden');
+    }
+  }
+
   async loadSettings() {
     try {
       const settings = await this.wallet.getMpcSettings();
@@ -337,7 +451,65 @@ export class MpcSettingsController {
     if (ucanTtlInput && !ucanTtlInput.value) {
       ucanTtlInput.value = '24';
     }
+    const summary = document.getElementById('mpcSettingsSummary');
+    if (summary) {
+      const endpoint = settings.coordinatorEndpoint || DEFAULT_MPC_COORDINATOR_ENDPOINT;
+      summary.textContent = `默认协调器：${endpoint}`;
+    }
     window.refreshWalletSelects?.();
+  }
+
+  async loadMpcDeviceInfo(showToast = false) {
+    const statusEl = document.getElementById('mpcDeviceInfoStatus');
+    try {
+      const result = await this.wallet.getMpcDeviceInfo?.();
+      if (!result?.success) {
+        throw new Error(result?.error || '加载失败');
+      }
+      this.mpcDeviceInfo = result.device || null;
+      this.renderMpcDeviceInfo(this.mpcDeviceInfo);
+      if (showToast) showSuccess('MPC 设备信息已刷新');
+    } catch (error) {
+      console.error('[MpcSettings] 加载 MPC 设备信息失败:', error);
+      this.mpcDeviceInfo = null;
+      this.renderMpcDeviceInfo(null);
+      if (statusEl) {
+        statusEl.textContent = '设备信息不可用，请先解锁钱包或创建/加入 MPC 会话。';
+      }
+      if (showToast) showError('刷新失败: ' + error.message);
+    }
+  }
+
+  renderMpcDeviceInfo(device = null) {
+    const deviceIdEl = document.getElementById('mpcDeviceIdText');
+    const signingKeyEl = document.getElementById('mpcDeviceSigningKeyText');
+    const e2eKeyEl = document.getElementById('mpcDeviceE2eKeyText');
+    const statusEl = document.getElementById('mpcDeviceInfoStatus');
+    const keys = device?.keys || {};
+
+    if (deviceIdEl) deviceIdEl.textContent = device?.deviceId || keys.deviceId || '-';
+    if (signingKeyEl) signingKeyEl.textContent = keys.signingPublicKey || '-';
+    if (e2eKeyEl) e2eKeyEl.textContent = keys.e2ePublicKey || '-';
+    if (statusEl) {
+      statusEl.textContent = keys.signingPublicKey && keys.e2ePublicKey
+        ? '设备信息已就绪，可复制给其他成员用于排障或身份确认。'
+        : '设备密钥尚未初始化，解锁钱包后会自动准备。';
+    }
+  }
+
+  async handleMpcDeviceCopy(kind) {
+    const keys = this.mpcDeviceInfo?.keys || {};
+    const value = kind === 'e2e' ? keys.e2ePublicKey : keys.signingPublicKey;
+    if (!value) {
+      showError('暂无可复制的设备公钥');
+      return;
+    }
+    const success = await copyToClipboard(value);
+    if (success) {
+      showSuccess(kind === 'e2e' ? 'E2E 公钥已复制' : '签名公钥已复制');
+    } else {
+      showError('复制失败');
+    }
   }
 
   async handleMpcSettingsUpdate(updates = {}) {
@@ -348,9 +520,11 @@ export class MpcSettingsController {
         this.renderMpcSettings(result.settings);
       }
       showSuccess('MPC 设置已保存');
+      return true;
     } catch (error) {
       console.error('[MpcSettings] 更新 MPC 设置失败:', error);
       showError('保存失败: ' + error.message);
+      return false;
     }
   }
 
@@ -414,6 +588,7 @@ export class MpcSettingsController {
     try {
       await this.saveCustodyFormSettings();
       showSuccess('托管配置已保存');
+      this.closeCustodyConfigModal();
     } catch (error) {
       console.error('[MpcSettings] 保存托管配置失败:', error);
       showError('保存失败: ' + error.message);
@@ -493,18 +668,25 @@ export class MpcSettingsController {
       }
     }
 
-    const ucanResource = normalizeMpcUcanResource(ucanResourceInput?.value || '');
-    const ucanAction = normalizeMpcUcanAction(ucanActionInput?.value || '', ucanResource);
-    const ucanAudience = String(ucanAudienceInput?.value || '').trim() || deriveUcanAudience(endpoint);
-    const ucanToken = normalizeUcanToken(String(ucanTokenInput?.value || '').trim());
+    const updates = { coordinatorEndpoint: endpoint || DEFAULT_MPC_COORDINATOR_ENDPOINT };
+    if (ucanResourceInput) {
+      updates.ucanResource = normalizeMpcUcanResource(ucanResourceInput.value || '');
+    }
+    if (ucanActionInput) {
+      const resource = updates.ucanResource || normalizeMpcUcanResource(this.mpcSettings?.ucanResource || '');
+      updates.ucanAction = normalizeMpcUcanAction(ucanActionInput.value || '', resource);
+    }
+    if (ucanAudienceInput) {
+      updates.ucanAudience = String(ucanAudienceInput.value || '').trim() || deriveUcanAudience(updates.coordinatorEndpoint);
+    }
+    if (ucanTokenInput) {
+      updates.ucanToken = normalizeUcanToken(String(ucanTokenInput.value || '').trim());
+    }
 
-    await this.handleMpcSettingsUpdate({
-      coordinatorEndpoint: endpoint,
-      ucanResource,
-      ucanAction,
-      ucanAudience,
-      ucanToken
-    });
+    const saved = await this.handleMpcSettingsUpdate(updates);
+    if (saved) {
+      this.closeMpcServiceConfigModal();
+    }
   }
 
   async handleMpcCoordinatorUcanGenerate() {
@@ -1021,7 +1203,6 @@ export class MpcSettingsController {
           </div>
           <div class="sync-activity-actions">
             <button class="btn btn-secondary btn-small" data-mpc-session-detail="1" data-session-id="${escapeHtml(sessionId)}">详情</button>
-            <button class="btn btn-secondary btn-small" data-mpc-session-use="1" data-session-id="${escapeHtml(sessionId)}">使用</button>
           </div>
         </div>
       `;

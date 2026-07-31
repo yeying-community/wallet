@@ -390,6 +390,72 @@
   margin-bottom: 12px;
 }
 
+.settings-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.settings-action-grid .btn {
+  margin: 0;
+}
+
+.mpc-device-card {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.mpc-device-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.mpc-device-row code,
+.mpc-device-key {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.mpc-device-row code {
+  color: #111827;
+  word-break: break-all;
+  text-align: right;
+}
+
+.mpc-device-key {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #374151;
+  word-break: break-all;
+  line-height: 1.45;
+}
+
+.mpc-device-copy {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mpc-device-copy:hover {
+  color: #1d4ed8;
+}
+
 .sync-log-summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

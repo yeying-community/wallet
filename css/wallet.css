@@ -915,6 +915,30 @@ body {
   background: #eff6ff;
 }
 
+.mpc-advanced-options {
+  margin: 4px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.mpc-advanced-options summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  list-style-position: inside;
+}
+
+.mpc-advanced-options[open] summary {
+  margin-bottom: 12px;
+}
+
+.mpc-advanced-options .form-group:last-of-type {
+  margin-bottom: 8px;
+}
+
 .token-selector {
   display: inline-flex;
   align-items: center;
