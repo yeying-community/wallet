@@ -16,6 +16,7 @@ import {
 import { mpcService } from '../mpc-service.js';
 import { getTimestamp } from '../../common/utils/time-utils.js';
 import { generateId } from '../../common/utils/index.js';
+import { normalizeBearerToken } from '../../common/ucan-utils.js';
 
 const DEFAULT_MPC_AUTH_SCHEME = 'ucan';
 const DEFAULT_MPC_E2E_SUITE = 'x25519-aes-gcm';
@@ -52,6 +53,8 @@ export async function handleCreateMpcWallet(options = {}) {
     }
     const threshold = Number(options.threshold);
     const curve = String(options.curve || 'secp256k1').trim() || 'secp256k1';
+    const coordinatorEndpoint = String(options.coordinatorEndpoint || '').trim();
+    const ucanToken = normalizeBearerToken(options.ucanToken || '');
 
     if (!participants.length) {
       throw new Error('参与者不能为空');
@@ -72,13 +75,31 @@ export async function handleCreateMpcWallet(options = {}) {
       throw new Error('Wallet ID 已存在');
     }
 
+    const settingsUpdates = {};
+    if (coordinatorEndpoint) {
+      try {
+        new URL(coordinatorEndpoint);
+      } catch {
+        throw new Error('协调器地址格式不正确');
+      }
+      settingsUpdates.mpcCoordinatorEndpoint = coordinatorEndpoint;
+      await mpcService.setCoordinatorEndpoint(coordinatorEndpoint);
+    }
+    if (ucanToken) {
+      settingsUpdates.mpcCoordinatorUcanToken = ucanToken;
+    }
+    if (Object.keys(settingsUpdates).length > 0) {
+      await updateUserSettings(settingsUpdates);
+    }
+
     const sessionResult = await mpcService.createSession({
       type: 'keygen',
       walletId,
       threshold,
       participants,
       curve,
-      password: options.password
+      password: options.password,
+      endpoint: coordinatorEndpoint || undefined
     });
     const now = getTimestamp();
     const wallet = {
@@ -171,7 +192,7 @@ export async function handleUpdateMpcSettings(updates = {}) {
     }
 
     if ('ucanToken' in updates) {
-      sanitized.mpcCoordinatorUcanToken = String(updates.ucanToken || '').trim();
+      sanitized.mpcCoordinatorUcanToken = normalizeBearerToken(updates.ucanToken || '');
     }
 
     if (Object.keys(sanitized).length > 0) {

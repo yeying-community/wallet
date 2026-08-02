@@ -50,18 +50,26 @@ export class BackupSyncSettingsController {
       });
     }
 
-    const backupSyncEndpointInput = document.getElementById('backupSyncEndpointInput');
-    if (backupSyncEndpointInput) {
-      backupSyncEndpointInput.addEventListener('blur', async () => {
-        await this.handleBackupSyncEndpointUpdate(backupSyncEndpointInput.value);
+    const backupSyncConfigBtn = document.getElementById('backupSyncConfigBtn');
+    if (backupSyncConfigBtn) {
+      backupSyncConfigBtn.addEventListener('click', () => {
+        this.openBackupSyncConfigModal();
+      });
+    }
+
+    const backupSyncConfigSaveBtn = document.getElementById('backupSyncConfigSaveBtn');
+    if (backupSyncConfigSaveBtn) {
+      backupSyncConfigSaveBtn.addEventListener('click', async () => {
+        await this.handleBackupSyncConfigSave();
       });
     }
 
     const backupSyncAuthModeSelect = document.getElementById('backupSyncAuthModeSelect');
     if (backupSyncAuthModeSelect) {
-      backupSyncAuthModeSelect.addEventListener('change', async () => {
+      backupSyncAuthModeSelect.addEventListener('change', () => {
         const mode = backupSyncAuthModeSelect.value;
-        await this.handleBackupSyncAuthModeChange(mode);
+        this.updateBackupSyncAuthPanel(mode);
+        this.updateBackupSyncEnabledState(Boolean(this.syncSettings?.enabled));
       });
     }
 
@@ -127,6 +135,18 @@ export class BackupSyncSettingsController {
         await this.openBackupSyncLogsPage();
       });
     }
+    const backupSyncAuditHiddenBtn = document.getElementById('backupSyncAuditHiddenBtn');
+    if (backupSyncAuditHiddenBtn) {
+      backupSyncAuditHiddenBtn.addEventListener('click', async () => {
+        await this.openBackupSyncLogsPage();
+      });
+    }
+
+    this.bindSimpleModal({
+      modalId: 'backupSyncConfigModal',
+      closeIds: ['closeBackupSyncConfigModal', 'cancelBackupSyncConfigBtn'],
+      onClose: () => this.closeBackupSyncConfigModal()
+    });
 
     const backupSyncLogsSearchInput = document.getElementById('backupSyncLogsSearchInput');
     if (backupSyncLogsSearchInput) {
@@ -162,6 +182,36 @@ export class BackupSyncSettingsController {
     }
   }
 
+  bindSimpleModal({ modalId, closeIds = [], onClose }) {
+    const modal = document.getElementById(modalId);
+    if (!modal || typeof onClose !== 'function') return;
+    closeIds.forEach((id) => {
+      const button = document.getElementById(id);
+      if (button) {
+        button.addEventListener('click', onClose);
+      }
+    });
+    const overlay = modal.querySelector('.modal-overlay');
+    if (overlay) {
+      overlay.addEventListener('click', onClose);
+    }
+  }
+
+  openBackupSyncConfigModal() {
+    this.renderBackupSyncSettings(this.syncSettings || {});
+    const modal = document.getElementById('backupSyncConfigModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+    }
+  }
+
+  closeBackupSyncConfigModal() {
+    const modal = document.getElementById('backupSyncConfigModal');
+    if (modal) {
+      modal.classList.add('hidden');
+    }
+  }
+
   async loadSettings() {
     try {
       const settings = await this.wallet.getBackupSyncSettings();
@@ -183,6 +233,7 @@ export class BackupSyncSettingsController {
     const basicInput = document.getElementById('backupSyncBasicInput');
     const tokenStatus = document.getElementById('backupSyncTokenStatus');
     const lastStatus = document.getElementById('backupSyncLastStatus');
+    const summary = document.getElementById('backupSyncSummary');
 
     if (enabledToggle) enabledToggle.checked = Boolean(settings.enabled);
     if (endpointInput) endpointInput.value = settings.endpoint || 'https://webdav.yeying.pub/dav';
@@ -209,6 +260,12 @@ export class BackupSyncSettingsController {
     this.updateBackupSyncAuthPanel(settings.authMode || 'ucan');
     this.updateBackupSyncTokenStatus(settings, tokenStatus);
     this.updateBackupSyncLastStatus(settings, lastStatus);
+    if (summary) {
+      const endpoint = settings.endpoint || 'https://webdav.yeying.pub/dav';
+      const mode = String(settings.authMode || 'ucan').toUpperCase();
+      const enabled = settings.enabled ? '已启用' : '未启用';
+      summary.textContent = `${enabled} · ${mode} · ${endpoint}`;
+    }
     this.updateBackupSyncEnabledState(Boolean(settings.enabled));
     window.refreshWalletSelects?.();
 
@@ -598,16 +655,70 @@ export class BackupSyncSettingsController {
   }
 
   async handleBackupSyncToggle(enabled) {
+    const toggle = document.getElementById('backupSyncEnabledToggle');
     try {
-      const result = await this.wallet.updateBackupSyncSettings({ enabled });
+      if (enabled) {
+        await this.enableBackupSyncWithAuth();
+        return;
+      }
+
+      const result = await this.wallet.updateBackupSyncSettings({ enabled: false });
       if (result?.settings) {
         this.syncSettings = result.settings;
         this.renderBackupSyncSettings(result.settings);
       }
-      showSuccess(enabled ? '已启用备份与同步' : '已关闭备份与同步');
+      showSuccess('已关闭备份与同步');
     } catch (error) {
       console.error('[BackupSyncSettings] 更新 Backup & Sync 开关失败:', error);
-      showError('更新失败: ' + error.message);
+      if (toggle) toggle.checked = !enabled;
+      showError((enabled ? '开启失败: ' : '关闭失败: ') + error.message);
+    }
+  }
+
+  async enableBackupSyncWithAuth() {
+    const toggle = document.getElementById('backupSyncEnabledToggle');
+    try {
+      const savedConfig = await this.saveBackupSyncConnectionSettings();
+      let settings = savedConfig.settings;
+      const authResult = await this.ensureBackupSyncAuthReady(settings);
+      if (authResult?.cancelled) {
+        if (toggle) toggle.checked = false;
+        return;
+      }
+      settings = authResult?.settings || settings;
+
+      const enableResult = await this.wallet.updateBackupSyncSettings({ enabled: true });
+      if (enableResult?.settings) {
+        this.syncSettings = enableResult.settings;
+        this.renderBackupSyncSettings(enableResult.settings);
+      }
+
+      let syncResult;
+      showWaiting();
+      try {
+        syncResult = await this.wallet.backupSyncNow();
+      } finally {
+        hideWaiting();
+      }
+      if (!syncResult?.success) {
+        throw new Error(syncResult?.error || '同步失败');
+      }
+
+      const latest = await this.wallet.getBackupSyncSettings?.();
+      if (latest) {
+        this.syncSettings = latest;
+        this.renderBackupSyncSettings(latest);
+      }
+      showSuccess('备份与同步已启用');
+    } catch (error) {
+      console.error('[BackupSyncSettings] 开启 Backup & Sync 失败:', error);
+      const rollback = await this.wallet.updateBackupSyncSettings({ enabled: false }).catch(() => null);
+      if (rollback?.settings) {
+        this.syncSettings = rollback.settings;
+        this.renderBackupSyncSettings(rollback.settings);
+      }
+      if (toggle) toggle.checked = false;
+      showError('开启失败: ' + error.message);
     }
   }
 
@@ -640,6 +751,47 @@ export class BackupSyncSettingsController {
       await this.logBackupSyncError('endpoint-update-error', error?.message || 'WebDAV 地址保存失败');
       showError('保存失败: ' + error.message);
     }
+  }
+
+  async handleBackupSyncConfigSave() {
+    try {
+      const { settings, resolved, input } = await this.saveBackupSyncConnectionSettings();
+      showSuccess(resolved !== input ? `配置已保存（地址自动识别为 ${resolved}）` : '配置已保存');
+      if (settings) {
+        this.syncSettings = settings;
+        this.renderBackupSyncSettings(settings);
+      }
+      this.closeBackupSyncConfigModal();
+    } catch (error) {
+      console.error('[BackupSyncSettings] 保存 Backup & Sync 配置失败:', error);
+      await this.logBackupSyncError('config-save-error', error?.message || 'Backup & Sync 配置保存失败');
+      showError('保存失败: ' + error.message);
+    }
+  }
+
+  async saveBackupSyncConnectionSettings() {
+    const endpointInput = document.getElementById('backupSyncEndpointInput');
+    const authModeSelect = document.getElementById('backupSyncAuthModeSelect');
+    const trimmed = String(endpointInput?.value || this.syncSettings?.endpoint || '').trim();
+    if (!trimmed) {
+      throw new Error('请输入 WebDAV 地址');
+    }
+    try {
+      new URL(trimmed);
+    } catch {
+      throw new Error('WebDAV 地址格式不正确');
+    }
+
+    const resolved = await this.detectBackupSyncEndpoint(trimmed);
+    const result = await this.wallet.updateBackupSyncSettings({
+      endpoint: resolved,
+      authMode: authModeSelect?.value || this.syncSettings?.authMode || 'ucan'
+    });
+    if (result?.settings) {
+      this.syncSettings = result.settings;
+      this.renderBackupSyncSettings(result.settings);
+    }
+    return { settings: result?.settings || this.syncSettings || null, resolved, input: trimmed };
   }
 
   async handleBackupSyncAuthModeChange(mode) {
@@ -1056,6 +1208,115 @@ export class BackupSyncSettingsController {
     return message.includes('401')
       || message.includes('unauthorized')
       || message.includes('authentication failed');
+  }
+
+  getBackupSyncSiweExpiresAt(settings = {}) {
+    const value = settings?.authTokenExpiresAt;
+    if (!value) return null;
+    const timestamp = Number(value);
+    if (Number.isFinite(timestamp)) return timestamp;
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  isBackupSyncSiweExpiringSoon(settings = {}, thresholdMs = 5 * 60 * 1000) {
+    const token = String(settings?.authToken || '').trim();
+    if (!token) return true;
+    const expiresAt = this.getBackupSyncSiweExpiresAt(settings);
+    if (!expiresAt) return false;
+    return expiresAt <= (Date.now() + thresholdMs);
+  }
+
+  async ensureBackupSyncAuthReady(settings = {}) {
+    const mode = String(settings?.authMode || 'ucan').toLowerCase();
+    if (mode === 'basic') {
+      const basicInput = document.getElementById('backupSyncBasicInput');
+      const raw = String(basicInput?.value || settings.basicAuth || '').trim();
+      if (!raw) {
+        throw new Error('请先在服务配置中填写 Basic 凭证');
+      }
+      const basicAuth = normalizeBasicAuth(raw);
+      if (basicAuth !== settings.basicAuth) {
+        const result = await this.wallet.updateBackupSyncSettings({ authMode: 'basic', basicAuth });
+        if (result?.settings) {
+          this.syncSettings = result.settings;
+          this.renderBackupSyncSettings(result.settings);
+          return { cancelled: false, settings: result.settings };
+        }
+      }
+      return { cancelled: false, settings };
+    }
+
+    if (mode === 'siwe') {
+      return await this.ensureBackupSyncSiweFresh(settings);
+    }
+
+    return await this.ensureBackupSyncUcanFresh(settings);
+  }
+
+  async ensureBackupSyncSiweFresh(settings = {}, options = {}) {
+    const { force = false } = options;
+    if (!force && !this.isBackupSyncSiweExpiringSoon(settings)) {
+      return { cancelled: false, settings };
+    }
+
+    const endpoint = String(settings?.endpoint || document.getElementById('backupSyncEndpointInput')?.value || '').trim();
+    if (!endpoint) {
+      throw new Error('请输入 WebDAV 地址');
+    }
+    try {
+      new URL(endpoint);
+    } catch {
+      throw new Error('WebDAV 地址格式不正确');
+    }
+
+    const account = await this.wallet.getCurrentAccount();
+    if (!account?.address) {
+      throw new Error('未找到当前账户');
+    }
+    if (!this.transaction) {
+      throw new Error('签名模块未初始化');
+    }
+
+    let challenge;
+    showWaiting();
+    try {
+      challenge = await this.fetchSiweChallenge(endpoint, account.address);
+    } finally {
+      hideWaiting();
+    }
+    if (!challenge) {
+      throw new Error('无法获取挑战信息');
+    }
+
+    const password = await this.requestPassword?.();
+    if (!password) {
+      return { cancelled: true, settings };
+    }
+
+    showWaiting();
+    try {
+      const signature = await this.transaction.signMessage(challenge, password);
+      const verifyResult = await this.fetchSiweVerify(endpoint, account.address, signature);
+      const token = verifyResult?.token;
+      const expiresAt = verifyResult?.expiresAt || null;
+      if (!token) {
+        throw new Error('登录失败：未返回 Token');
+      }
+
+      const result = await this.wallet.updateBackupSyncSettings({
+        authMode: 'siwe',
+        authToken: token,
+        authTokenExpiresAt: expiresAt
+      });
+      if (result?.settings) {
+        this.syncSettings = result.settings;
+        this.renderBackupSyncSettings(result.settings);
+      }
+      return { cancelled: false, settings: result?.settings || this.syncSettings || settings };
+    } finally {
+      hideWaiting();
+    }
   }
 
   async ensureBackupSyncUcanFresh(settings = {}, options = {}) {

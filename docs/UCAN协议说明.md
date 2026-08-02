@@ -1,5 +1,11 @@
 # UCAN 协议说明
 
+> 状态：规范与项目约定
+>
+> 适用版本：Wallet `1.4.18` 当前 UCAN RPC；协议能力以正文明确说明为准
+>
+> 目标读者：钱包、SDK 和资源服务开发者。本文会明确区分 UCAN 通用语义、本项目 capability 约定及当前实现。
+
 本文档只聚焦 UCAN 协议本身，以及它在钱包插件接入 DApp 场景中的使用方式。
 
 目标有两个：
@@ -15,9 +21,10 @@
 
 ## 阅读导航
 
+- 文档总入口：[README.md](./README.md)。
 - 当前文档：UCAN 协议语义、能力建模、钱包插件场景示例。
 - 前置建议阅读：[SIWE协议说明.md](./SIWE协议说明.md)。
-- DApp 集成方式参考：[DApp接入手册.md](./DApp接入手册.md)。
+- Web3 应用集成方式参考：[web3应用集成手册.md](./web3应用集成手册.md)。
 
 ## 约定示例
 
@@ -1017,7 +1024,7 @@ const storageToken = await createInvocationUcan({
 - 钱包 UCAN 请求路由：[js/background/request-router.js](../js/background/request-router.js)
 - 钱包授权页能力展示：[js/app/approval.js](../js/app/approval.js)
 - 钱包目标服务 UCAN 管理：[js/background/target-ucan-manager.js](../js/background/target-ucan-manager.js)
-- DApp 接入说明：[DApp接入手册.md](./DApp接入手册.md)
+- Web3 应用集成说明：[web3应用集成手册.md](./web3应用集成手册.md)
 
 ## 16. 官方参考
 

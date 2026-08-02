@@ -1,6 +1,10 @@
 import { shortenAddress } from '../../common/chain/index.js';
 import { escapeHtml } from '../../common/ui/html-ui.js';
 import { showPage, showError, showSuccess, getPageOrigin } from '../../common/ui/index.js';
+import {
+  DEFAULT_MPC_COORDINATOR_ENDPOINT,
+  normalizeUcanToken
+} from '../setting/settings-utils.js';
 
 export class CreateWalletController {
   constructor({ wallet, onCreated }) {
@@ -149,6 +153,9 @@ export class CreateWalletController {
     const mpcWalletIdInput = document.getElementById('mpcCreateWalletIdInput');
     const mpcThresholdInput = document.getElementById('mpcCreateThresholdInput');
     const mpcCurveSelect = document.getElementById('mpcCreateCurveSelect');
+    const mpcCoordinatorEndpointInput = document.getElementById('mpcCreateCoordinatorEndpointInput');
+    const mpcCoordinatorUcanTokenInput = document.getElementById('mpcCreateCoordinatorUcanTokenInput');
+    const mpcAdvancedOptions = document.querySelector('.mpc-advanced-options');
     const mpcResult = document.getElementById('mpcCreateWalletResult');
 
     if (nameInput) nameInput.value = '主钱包';
@@ -158,6 +165,9 @@ export class CreateWalletController {
     if (mpcWalletIdInput) mpcWalletIdInput.value = '';
     if (mpcThresholdInput) mpcThresholdInput.value = '';
     if (mpcCurveSelect) mpcCurveSelect.value = 'secp256k1';
+    if (mpcCoordinatorEndpointInput) mpcCoordinatorEndpointInput.value = '';
+    if (mpcCoordinatorUcanTokenInput) mpcCoordinatorUcanTokenInput.value = '';
+    if (mpcAdvancedOptions) mpcAdvancedOptions.open = false;
     if (mpcResult) {
       mpcResult.textContent = '-';
       mpcResult.classList.add('hidden');
@@ -204,11 +214,27 @@ export class CreateWalletController {
     }
     this.updateWalletTypeMenu(normalized);
     if (normalized === 'mpc') {
-      this.loadMpcContacts().catch((error) => {
-        console.error('[CreateWalletController] 加载 MPC 联系人失败:', error);
+      Promise.all([
+        this.loadMpcContacts(),
+        this.loadMpcCreateDefaults()
+      ]).catch((error) => {
+        console.error('[CreateWalletController] 加载 MPC 创建配置失败:', error);
       });
     } else {
       this.closeMpcParticipantsMenu();
+    }
+  }
+
+  async loadMpcCreateDefaults() {
+    const endpointInput = document.getElementById('mpcCreateCoordinatorEndpointInput');
+    if (!endpointInput) return;
+    const currentEndpoint = String(endpointInput.value || '').trim();
+    if (currentEndpoint && currentEndpoint !== DEFAULT_MPC_COORDINATOR_ENDPOINT) return;
+    try {
+      const settings = await this.wallet.getMpcSettings?.();
+      endpointInput.value = settings?.coordinatorEndpoint || DEFAULT_MPC_COORDINATOR_ENDPOINT;
+    } catch {
+      endpointInput.value = DEFAULT_MPC_COORDINATOR_ENDPOINT;
     }
   }
 
@@ -457,6 +483,17 @@ export class CreateWalletController {
         });
       }
     }
+    this.updateMpcThresholdDefault(Boolean(selfParticipant), selectedContacts.length);
+  }
+
+  updateMpcThresholdDefault(hasSelf, selectedCount) {
+    const thresholdInput = document.getElementById('mpcCreateThresholdInput');
+    if (!thresholdInput) return;
+    const current = Number(thresholdInput.value || 0);
+    if (Number.isFinite(current) && current > 0) return;
+    const total = (hasSelf ? 1 : 0) + Number(selectedCount || 0);
+    if (total <= 0) return;
+    thresholdInput.value = String(total <= 2 ? total : Math.ceil(total / 2));
   }
 
   openMpcParticipantsMenu() {
@@ -491,6 +528,7 @@ export class CreateWalletController {
     ]);
     const threshold = Number(thresholdInput?.value || 0);
     const curve = String(curveSelect?.value || 'secp256k1').trim();
+    const advancedOptions = this.readMpcCreateAdvancedOptions();
 
     if (!currentAddress) {
       showError('未找到当前账户');
@@ -515,7 +553,8 @@ export class CreateWalletController {
       participants,
       threshold,
       curve,
-      password
+      password,
+      ...advancedOptions
     });
     if (!response?.success) {
       throw new Error(response?.error || '创建失败');
@@ -534,5 +573,23 @@ export class CreateWalletController {
     if (this.onCreated) {
       await this.onCreated();
     }
+  }
+
+  readMpcCreateAdvancedOptions() {
+    const endpoint = String(document.getElementById('mpcCreateCoordinatorEndpointInput')?.value || '').trim()
+      || DEFAULT_MPC_COORDINATOR_ENDPOINT;
+    try {
+      new URL(endpoint);
+    } catch {
+      throw new Error('协调器地址格式不正确');
+    }
+
+    const ucanToken = normalizeUcanToken(
+      String(document.getElementById('mpcCreateCoordinatorUcanTokenInput')?.value || '').trim()
+    );
+    return {
+      coordinatorEndpoint: endpoint,
+      ucanToken
+    };
   }
 }

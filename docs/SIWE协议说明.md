@@ -1,5 +1,11 @@
 # SIWE 协议说明
 
+> 状态：规范与当前实现指南
+>
+> 适用版本：EIP-4361；Wallet `1.4.18`
+>
+> 目标读者：钱包维护者、DApp 开发者和身份服务开发者。本文区分 SIWE 标准语义与 Wallet 当前展示/解析行为。
+
 本文档聚焦 SIWE，也就是 Sign-In with Ethereum（EIP-4361）本身。
 
 目标有三个：
@@ -15,9 +21,11 @@
 
 ## 阅读导航
 
+- 文档总入口：[README.md](./README.md)。
 - 当前文档：SIWE 标准、钱包展示与风险提示、与授权协议的边界。
+- 无插件身份演进见：[通行证登录方案.md](./通行证登录方案.md)。
 - 建议下一步阅读：[UCAN协议说明.md](./UCAN协议说明.md)。
-- DApp 集成方式参考：[DApp接入手册.md](./DApp接入手册.md)。
+- Web3 应用集成方式参考：[web3应用集成手册.md](./web3应用集成手册.md)。
 
 ## 约定示例
 
@@ -504,7 +512,7 @@ const signature = await provider.request({
 - 钱包 SIWE 展示与解析：[js/app/approval.js](../js/app/approval.js)
 - 钱包签名请求路由：[js/background/request-router.js](../js/background/request-router.js)
 - UCAN 说明：[UCAN协议说明.md](./UCAN协议说明.md)
-- DApp 接入说明：[DApp接入手册.md](./DApp接入手册.md)
+- Web3 应用集成说明：[web3应用集成手册.md](./web3应用集成手册.md)
 
 ## 14. 官方参考
 

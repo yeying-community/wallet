@@ -1,6 +1,6 @@
 {
   "name": "yeying-wallet",
-  "version": "1.4.17",
+  "version": "1.4.18",
   "private": true,
   "//": "devDependencies only — 测试夹具所需；运行时扩展不依赖 npm 包（lib/ 下 vendored）。",
   "type": "module",
