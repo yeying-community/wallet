@@ -9,14 +9,16 @@
 
 ## 文档
 
-- [钱包用户使用手册](./docs/钱包用户使用手册.md)
-- [DApp 接入手册](./docs/DApp接入手册.md)
+- [文档中心与阅读导航](./docs/README.md)
+- [钱包架构 V1（当前实现）](./docs/钱包架构V1.md)
+- [钱包架构 V2（目标架构）](./docs/钱包架构V2.md)
+- [用户使用手册](./docs/用户使用手册.md)
+- [Web3 应用集成手册](./docs/web3应用集成手册.md)
 - [SIWE 协议说明与使用指南](./docs/SIWE协议说明.md)
 - [UCAN 协议说明与使用指南（Chat / Router / WebDAV 模板）](./docs/UCAN协议说明.md)
-- [WebDAV 备份同步说明](./docs/WebDAV备份同步说明.md)
+- [通行证登录方案（WebAuthn / Wallet / Node）](./docs/通行证登录方案.md)
+- [钱包存储方案](./docs/钱包存储方案.md)
 - [MPC 门限钱包方案](./docs/MPC门限钱包方案.md)
-- [V1 架构基线](./docs/V1架构基线.md)
-- [存储架构（chrome + idb 双后端 + 迁移 + 回退）](./docs/存储架构.md)
 
 
 ## 标准 / EIP 支持矩阵
