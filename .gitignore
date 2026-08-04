@@ -3,3 +3,4 @@ nohup.out
 .DS_Store
 docs/plan.md
 output/
+test-results/

@@ -32,7 +32,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        # devDependencies only：fake-indexeddb@6。运行时扩展本身零 npm 依赖
+        # devDependencies 仅用于测试；运行时扩展本身零 npm 依赖
         # （lib/ 仍 vendored），故不需要 build/打包步骤。
         run: npm ci --no-audit --no-fund
 
@@ -51,3 +51,35 @@ jobs:
       - name: TypeScript typecheck
         # tsc 按需临时拉取（npx -y），不入仓；不产出，仅检查 @ts-check 文件
         run: npm run typecheck
+
+  extension-e2e:
+    name: chromium extension e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run extension end-to-end test
+        run: npm run test:e2e
+
+      - name: Upload browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-e2e-screenshots
+          path: test-results/
+          if-no-files-found: ignore

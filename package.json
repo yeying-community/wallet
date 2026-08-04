@@ -2,16 +2,19 @@
   "name": "yeying-wallet",
   "version": "1.4.18",
   "private": true,
-  "//": "devDependencies only — 测试夹具所需；运行时扩展不依赖 npm 包（lib/ 下 vendored）。",
+  "//": "devDependencies only — 单元测试夹具与 Chromium E2E 所需；运行时扩展不依赖 npm 包（lib/ 下 vendored）。",
   "type": "module",
   "scripts": {
     "test": "node --test --test-force-exit \"tests/*.test.mjs\" --test-skip-pattern=sync-service",
     "test:sync": "node --test --test-force-exit --experimental-test-isolation=none tests/sync-service.test.mjs",
     "test:approval": "node --experimental-vm-modules tests/test-approval-flow.mjs",
+    "test:e2e": "node --test --test-force-exit tests/e2e/extension-smoke.test.mjs",
+    "test:passport-integration": "node --test tests/integration/passport-node.test.mjs",
     "test:all": "npm run test && npm run test:sync",
     "typecheck": "npx -y -p typescript@5 tsc -p tsconfig.json"
   },
   "devDependencies": {
-    "fake-indexeddb": "^6.0.0"
+    "fake-indexeddb": "^6.0.0",
+    "playwright": "^1.62.1"
   }
 }

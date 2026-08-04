@@ -59,6 +59,14 @@ import {
   handleResolveBackupSyncConflict
 } from './operations/backup-sync.js';
 import {
+  handleGetPassportStatus,
+  handleCreatePassportBinding,
+  handleGetPassportBindings,
+  handleCreatePassportUnlink,
+  handleConfirmPassportUnlink,
+  handleApprovePassportAuthorization
+} from './operations/passport.js';
+import {
   handleCreateMpcWallet,
   handleGetMpcSettings,
   handleUpdateMpcSettings,
@@ -817,6 +825,12 @@ const popupHandlers = new Map([
   // ==================== 备份同步 ====================
   [WalletMessageType.GET_BACKUP_SYNC_SETTINGS, async () => await handleGetBackupSyncSettings()],
   [WalletMessageType.UPDATE_BACKUP_SYNC_SETTINGS, async (data) => await handleUpdateBackupSyncSettings(data?.updates)],
+  [WalletMessageType.PASSPORT_GET_STATUS, async (data) => await handleGetPassportStatus(data)],
+  [WalletMessageType.PASSPORT_CREATE_BINDING, async (data) => await handleCreatePassportBinding(data)],
+  [WalletMessageType.PASSPORT_GET_BINDINGS, async (data) => await handleGetPassportBindings(data)],
+  [WalletMessageType.PASSPORT_CREATE_UNLINK, async (data) => await handleCreatePassportUnlink(data)],
+  [WalletMessageType.PASSPORT_CONFIRM_UNLINK, async (data) => await handleConfirmPassportUnlink(data)],
+  [WalletMessageType.PASSPORT_APPROVE_AUTHORIZATION, async (data) => await handleApprovePassportAuthorization(data)],
   [WalletMessageType.BACKUP_SYNC_NOW, async () => await handleBackupSyncNow()],
   [WalletMessageType.BACKUP_SYNC_CLEAR_REMOTE, async () => await handleBackupSyncClearRemote()],
   [WalletMessageType.BACKUP_SYNC_CLEAR_LOGS, async () => await handleBackupSyncClearLogs()],
