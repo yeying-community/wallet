@@ -538,6 +538,38 @@ export class WalletDomain extends BaseDomain {
     return await this._sendMessage(WalletMessageType.CLEAR_ALL_AUTHORIZATIONS);
   }
 
+  // ==================== Community Passport ====================
+
+  async getPassportStatus(endpoint) {
+    return await this._sendMessage(WalletMessageType.PASSPORT_GET_STATUS, { endpoint });
+  }
+
+  async createPassportBinding(endpoint, accessToken) {
+    return await this._sendMessage(WalletMessageType.PASSPORT_CREATE_BINDING, { endpoint, accessToken });
+  }
+
+  async getPassportBindings(endpoint, accessToken) {
+    return await this._sendMessage(WalletMessageType.PASSPORT_GET_BINDINGS, { endpoint, accessToken });
+  }
+
+  async createPassportUnlink(endpoint, accessToken) {
+    return await this._sendMessage(WalletMessageType.PASSPORT_CREATE_UNLINK, { endpoint, accessToken });
+  }
+
+  async confirmPassportUnlink(endpoint, accessToken, request) {
+    return await this._sendMessage(WalletMessageType.PASSPORT_CONFIRM_UNLINK, {
+      endpoint, accessToken, ...request
+    });
+  }
+
+  async approvePassportAuthorization(endpoint, accessToken, requestId) {
+    return await this._sendMessage(WalletMessageType.PASSPORT_APPROVE_AUTHORIZATION, {
+      endpoint,
+      accessToken,
+      requestId
+    });
+  }
+
   // ==================== 联系人管理 ====================
 
   /**
