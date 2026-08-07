@@ -1,5 +1,6 @@
 import { showPage, showError, showSuccess, setPageOrigin, showWaiting, hideWaiting } from '../../common/ui/index.js';
 import { shortenAddress, generateAvatar } from '../../common/chain/index.js';
+import { escapeHtml } from '../../common/ui/html-ui.js';
 import { clearImportWalletForm } from '../wallet/import-wallet-controller.js';
 
 export class AccountListController {
@@ -235,8 +236,12 @@ export class AccountListController {
       const isImported = type === 'imported';
       const isMpc = type === 'mpc';
       const walletLabel = isMpc ? 'MPC Wallet' : (isHd ? 'HD Wallet' : 'Imported Wallet');
+      const walletName = String(wallet.name || walletLabel).trim() || walletLabel;
       const walletIcon = isMpc ? '🧩' : (isHd ? '🔑' : '📥');
       const accounts = Array.isArray(wallet.accounts) ? wallet.accounts : [];
+      const mpcPending = isMpc && !accounts.length && wallet.status !== 'active';
+      const mpcThreshold = Number(wallet.threshold || 0);
+      const mpcParticipantCount = Array.isArray(wallet.participants) ? wallet.participants.length : 0;
       const accountHtml = accounts.length ? accounts.map(account => `
           <div class="account-item ${account.isSelected ? 'active' : ''}"
                data-account-id="${account.id}">
@@ -261,7 +266,12 @@ export class AccountListController {
               </button>
             </div>
           </div>
-        `).join('') : '<div class="empty-message">暂无账户</div>';
+        `).join('') : (mpcPending ? `
+          <div class="mpc-wallet-pending">
+            <div class="mpc-wallet-pending-title">等待参与者完成密钥生成</div>
+            <div class="mpc-wallet-pending-meta">门限 ${mpcThreshold || '-'} / ${mpcParticipantCount || '-'}</div>
+          </div>
+        ` : '<div class="empty-message">暂无账户</div>');
 
       return `
     <div class="wallet-card" data-wallet-id="${wallet.id}">
@@ -271,8 +281,9 @@ export class AccountListController {
         </div>
         <div class="wallet-info">
           <div class="wallet-name">
-            ${walletLabel}
+            ${escapeHtml(walletName)}
           </div>
+          ${isMpc ? `<div class="wallet-meta"><span class="wallet-type-badge">${walletLabel}</span></div>` : ''}
         </div>
         ${isHd ? `
           <div class="wallet-header-actions">

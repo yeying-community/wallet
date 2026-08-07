@@ -11,7 +11,6 @@ function setup() {
     newPassword: { tagName: 'input', value: 'must-not-persist' },
     confirmPassword: { tagName: 'input', value: 'must-not-persist' },
     createWalletTypeSelect: { tagName: 'select', value: 'mpc' },
-    mpcCreateWalletIdInput: { tagName: 'input', value: 'mpc-family' },
     mpcCreateThresholdInput: { tagName: 'input', value: '2' },
     mpcCreateCurveSelect: { tagName: 'select', value: 'secp256k1' },
     mpcCreateCoordinatorEndpointInput: { tagName: 'input', value: 'http://127.0.0.1:8100' },
@@ -57,7 +56,7 @@ test('MPC 创建草稿写入并清除 chrome.storage.session', async () => {
   const controller = new CreateWalletController({ wallet: {}, onCreated: null });
 
   await controller.saveDraft();
-  assert.equal(stored.createWalletDraft.walletId, 'mpc-family');
+  assert.equal('walletId' in stored.createWalletDraft, false);
   await controller.clearDraft();
   assert.equal(stored.createWalletDraft, undefined);
 });

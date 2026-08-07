@@ -162,7 +162,6 @@ export class CreateWalletController {
     const passwordInput = document.getElementById('newPassword');
     const confirmInput = document.getElementById('confirmPassword');
     const walletTypeSelect = document.getElementById('createWalletTypeSelect');
-    const mpcWalletIdInput = document.getElementById('mpcCreateWalletIdInput');
     const mpcThresholdInput = document.getElementById('mpcCreateThresholdInput');
     const mpcCurveSelect = document.getElementById('mpcCreateCurveSelect');
     const mpcCoordinatorEndpointInput = document.getElementById('mpcCreateCoordinatorEndpointInput');
@@ -174,7 +173,6 @@ export class CreateWalletController {
     if (passwordInput) passwordInput.value = '';
     if (confirmInput) confirmInput.value = '';
     if (walletTypeSelect) walletTypeSelect.value = 'hd';
-    if (mpcWalletIdInput) mpcWalletIdInput.value = '';
     if (mpcThresholdInput) mpcThresholdInput.value = '';
     if (mpcCurveSelect) mpcCurveSelect.value = 'secp256k1';
     if (mpcCoordinatorEndpointInput) mpcCoordinatorEndpointInput.value = '';
@@ -506,7 +504,6 @@ export class CreateWalletController {
   bindDraftPersistence() {
     const ids = [
       'setWalletName',
-      'mpcCreateWalletIdInput',
       'mpcCreateThresholdInput',
       'mpcCreateCurveSelect',
       'mpcCreateCoordinatorEndpointInput',
@@ -526,7 +523,6 @@ export class CreateWalletController {
       active: true,
       walletType: this.getCreateWalletType(),
       name: String(document.getElementById('setWalletName')?.value || '').trim(),
-      walletId: String(document.getElementById('mpcCreateWalletIdInput')?.value || '').trim(),
       participants: [...this.selectedMpcParticipants],
       threshold: String(document.getElementById('mpcCreateThresholdInput')?.value || '').trim(),
       curve: String(document.getElementById('mpcCreateCurveSelect')?.value || 'secp256k1'),
@@ -572,7 +568,6 @@ export class CreateWalletController {
       if (element && value !== undefined && value !== null) element.value = String(value);
     };
     setValue('setWalletName', draft.name || '主钱包');
-    setValue('mpcCreateWalletIdInput', draft.walletId || '');
     setValue('mpcCreateThresholdInput', draft.threshold || '');
     setValue('mpcCreateCurveSelect', draft.curve || 'secp256k1');
     setValue('mpcCreateCoordinatorEndpointInput', draft.coordinatorEndpoint || '');
@@ -616,12 +611,10 @@ export class CreateWalletController {
   }
 
   async handleCreateMpcWallet({ name, password }) {
-    const walletIdInput = document.getElementById('mpcCreateWalletIdInput');
     const thresholdInput = document.getElementById('mpcCreateThresholdInput');
     const curveSelect = document.getElementById('mpcCreateCurveSelect');
     const resultEl = document.getElementById('mpcCreateWalletResult');
 
-    const walletId = String(walletIdInput?.value || '').trim();
     const currentAddress =
       String(this.currentMpcAccount?.address || '').trim() ||
       String((await this.wallet.getCurrentAccount())?.address || '').trim();
@@ -651,7 +644,6 @@ export class CreateWalletController {
     }
 
     const response = await this.wallet.createMpcWallet({
-      walletId,
       name,
       participants,
       threshold,
@@ -663,14 +655,13 @@ export class CreateWalletController {
       throw new Error(response?.error || '创建失败');
     }
 
-    const createdId = response?.wallet?.id || walletId || '-';
     const sessionId = response?.session?.id || response?.session?.sessionId || '-';
     if (resultEl) {
-      resultEl.textContent = `MPC 钱包已创建: ${createdId} · Keygen 会话: ${sessionId}`;
+      resultEl.textContent = `密钥生成会话已创建: ${sessionId}`;
       resultEl.classList.remove('hidden');
     }
 
-    showSuccess('MPC 钱包已创建');
+    showSuccess('密钥生成会话已创建');
     showPage('accountsPage');
     this.resetForm();
     if (this.onCreated) {

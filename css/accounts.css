@@ -151,6 +151,25 @@
   color: #6b7280;
 }
 
+.mpc-wallet-pending {
+  padding: 14px 15px;
+  background: #f8fafc;
+}
+
+.mpc-wallet-pending-title {
+  color: #374151;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mpc-wallet-pending-meta {
+  margin-top: 5px;
+  color: #6b7280;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
 .wallet-account-count {
   color: #9ca3af;
 }
