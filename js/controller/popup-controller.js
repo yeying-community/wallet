@@ -40,8 +40,10 @@ export class PopupController {
     this.unlockWalletController = new UnlockWalletController({
       wallet: this.wallet,
       onUnlocked: async () => {
-        await this.refreshWalletData();
-        await this.restoreCreateWalletDraft();
+        await Promise.allSettled([
+          this.refreshWalletData(),
+          this.restoreCreateWalletDraft(),
+        ]);
       }
     });
     this.settingController = new SettingController({
@@ -731,19 +733,17 @@ export class PopupController {
   }
 
   async refreshWalletData() {
-    await this.accountHeaderController?.refreshHeader?.();
-    await this.tokenBalanceController?.refreshBalanceSilently?.();
-
-    if (this.networkController) {
-      await this.networkController.refreshNetworkState();
-    }
-
-    await this.updateBackupSyncStatus();
-
+    const tasks = [
+      this.accountHeaderController?.refreshHeader?.(),
+      this.tokenBalanceController?.refreshBalanceSilently?.(),
+      this.networkController?.refreshNetworkState?.(),
+      this.updateBackupSyncStatus(),
+    ];
     const tokensContent = document.getElementById('tokensContent');
     if (tokensContent && !tokensContent.classList.contains('hidden')) {
-      await this.tokenController?.loadTokenBalances?.();
+      tasks.push(this.tokenController?.loadTokenBalances?.());
     }
+    await Promise.allSettled(tasks.filter(Boolean));
   }
 
   startTransactionPolling() {

@@ -45,13 +45,16 @@ export class UnlockWalletController {
       await this.wallet.unlock(password, currentAccount?.id, { source: 'popup' });
 
       showPage('walletPage');
-      if (this.onUnlocked) {
-        await this.onUnlocked();
-      }
       hideWaiting();
+      if (this.onUnlocked) {
+        Promise.resolve()
+          .then(() => this.onUnlocked())
+          .catch(error => console.warn('[UnlockWalletController] 首页数据刷新失败:', error));
+      }
     } catch (error) {
       console.error('[UnlockWalletController] 解锁失败:', error);
       showError('密码错误');
+      hideWaiting();
     }
   }
 }

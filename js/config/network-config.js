@@ -76,7 +76,7 @@ export const NETWORK_TYPES = {
 
 // ==================== RPC 配置 ====================
 export const RPC_CONFIG = {
-  TIMEOUT: 30000,              // RPC 请求超时（毫秒）
+  TIMEOUT: 8000,               // RPC 请求超时（毫秒）
   MAX_RETRIES: 3,              // 最大重试次数
   RETRY_DELAY: 1000,           // 重试延迟（毫秒）
   BATCH_SIZE: 10,              // 批量请求大小
