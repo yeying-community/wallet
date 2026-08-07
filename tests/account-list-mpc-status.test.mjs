@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createDocument } from './_helpers/dom-stub.js';
 import { AccountListController } from '../js/controller/account/account-list-controller.js';
 
-test('账户管理为待 Keygen 的 MPC 钱包显示协作状态而不是暂无账户', () => {
+test('账户管理按三行结构展示待 Keygen 的 MPC 钱包', () => {
   const { document, elements } = createDocument({ walletList: { tagName: 'div' } });
   globalThis.document = document;
   try {
@@ -19,8 +19,12 @@ test('账户管理为待 Keygen 的 MPC 钱包显示协作状态而不是暂无�
     }]);
 
     assert.match(elements.walletList.innerHTML, /MPC Wallet/);
-    assert.match(elements.walletList.innerHTML, /等待参与者完成密钥生成/);
+    assert.match(elements.walletList.innerHTML, /地址生成中/);
     assert.match(elements.walletList.innerHTML, /门限 2 \/ 3/);
+    assert.match(elements.walletList.innerHTML, /增加参与方/);
+    assert.match(elements.walletList.innerHTML, /移除参与方/);
+    assert.match(elements.walletList.innerHTML, /查看 MPC 钱包详情/);
+    assert.doesNotMatch(elements.walletList.innerHTML, />详情<\/button>/);
     assert.doesNotMatch(elements.walletList.innerHTML, /暂无账户/);
   } finally {
     delete globalThis.document;

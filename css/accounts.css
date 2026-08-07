@@ -70,7 +70,7 @@
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  overflow: visible;
+  overflow: hidden;
   transition: all 0.15s ease;
 }
 
@@ -170,23 +170,53 @@
   color: #6b7280;
 }
 
-.mpc-wallet-pending {
-  padding: 14px 15px;
-  background: #f8fafc;
+.wallet-card .mpc-wallet-identity {
+  cursor: default;
 }
 
-.mpc-wallet-pending-title {
-  color: #374151;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.mpc-wallet-pending-meta {
-  margin-top: 5px;
-  color: #6b7280;
+.wallet-card .mpc-wallet-avatar {
+  color: #4f46e5;
   font-family: var(--font-mono);
-  font-size: 12px;
-  letter-spacing: 0;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.mpc-wallet-actions {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.mpc-wallet-actions .mpc-participant-change-btn {
+  flex: 1;
+  width: 0;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #374151;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mpc-wallet-actions .mpc-participant-change-btn + .mpc-participant-change-btn {
+  border-left: 1px solid #e5e7eb;
+}
+
+.mpc-wallet-actions .mpc-participant-change-btn:hover {
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+.mpc-wallet-actions .mpc-participant-change-btn:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid #6366f1;
+  outline-offset: -2px;
 }
 
 .mpc-wallet-detail-modal {

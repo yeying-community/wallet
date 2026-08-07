@@ -275,10 +275,18 @@ export class AccountListController {
       const walletName = String(wallet.name || walletLabel).trim() || walletLabel;
       const walletIcon = isMpc ? '🧩' : (isHd ? '🔑' : '📥');
       const accounts = Array.isArray(wallet.accounts) ? wallet.accounts : [];
-      const mpcPending = isMpc && !accounts.length && wallet.status !== 'active';
       const mpcThreshold = Number(wallet.threshold || 0);
       const mpcParticipantCount = Array.isArray(wallet.participants) ? wallet.participants.length : 0;
-      const accountHtml = accounts.length ? accounts.map(account => `
+      const mpcAddress = String(wallet.address || accounts[0]?.address || '').trim();
+      const accountHtml = isMpc ? `
+          <div class="account-item mpc-wallet-identity" data-wallet-id="${escapeHtml(wallet.id)}">
+            <div class="account-avatar mpc-wallet-avatar" ${mpcAddress ? `data-address="${escapeHtml(mpcAddress)}"` : ''}>MPC</div>
+            <div class="account-details">
+              <div class="account-name">${escapeHtml(walletName)}</div>
+              <div class="account-address">${mpcAddress ? escapeHtml(mpcAddress) : '地址生成中'}</div>
+            </div>
+          </div>
+        ` : accounts.length ? accounts.map(account => `
           <div class="account-item ${account.isSelected ? 'active' : ''}"
                data-account-id="${account.id}">
             <div class="account-avatar" data-address="${account.address}"></div>
@@ -302,12 +310,7 @@ export class AccountListController {
               </button>
             </div>
           </div>
-        `).join('') : (mpcPending ? `
-          <div class="mpc-wallet-pending">
-            <div class="mpc-wallet-pending-title">等待参与者完成密钥生成</div>
-            <div class="mpc-wallet-pending-meta">门限 ${mpcThreshold || '-'} / ${mpcParticipantCount || '-'}</div>
-          </div>
-        ` : '<div class="empty-message">暂无账户</div>');
+        `).join('') : '<div class="empty-message">暂无账户</div>';
 
       return `
     <div class="wallet-card" data-wallet-id="${wallet.id}">
@@ -317,9 +320,9 @@ export class AccountListController {
         </div>
         <div class="wallet-info">
           <div class="wallet-name">
-            ${escapeHtml(walletName)}
+            ${isMpc ? 'MPC Wallet' : escapeHtml(walletName)}
           </div>
-          ${isMpc ? `<div class="wallet-meta"><span class="wallet-type-badge">${walletLabel}</span></div>` : ''}
+          ${isMpc ? `<div class="wallet-meta">门限 ${mpcThreshold || '-'} / ${mpcParticipantCount || '-'}</div>` : ''}
         </div>
         ${isHd ? `
           <div class="wallet-header-actions">
@@ -365,6 +368,12 @@ export class AccountListController {
               <line x1="8" y1="12" x2="16" y2="12"></line>
             </svg>
             添加账户
+          </div>
+        ` : ''}
+        ${isMpc ? `
+          <div class="mpc-wallet-actions">
+            <button class="mpc-participant-change-btn" data-action="add">增加参与方</button>
+            <button class="mpc-participant-change-btn" data-action="remove">移除参与方</button>
           </div>
         ` : ''}
       </div>
@@ -469,6 +478,11 @@ export class AccountListController {
       item.addEventListener('click', (e) => {
         if (e.target.closest('.account-action-btn')) return;
 
+        if (item.classList.contains('mpc-wallet-identity')) {
+          void this.openMpcWalletDetail(item.dataset.walletId);
+          return;
+        }
+
         const accountId = item.dataset.accountId;
         if (onAccountDetails) {
           onAccountDetails(accountId);
@@ -510,6 +524,13 @@ export class AccountListController {
       btn.addEventListener('click', (event) => {
         event.stopPropagation();
         void this.openMpcWalletDetail(btn.dataset.walletId);
+      });
+    });
+
+    container.querySelectorAll('.mpc-participant-change-btn').forEach(btn => {
+      btn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        showError('参与方变更需要完成密钥刷新协议，当前版本暂不可用');
       });
     });
 
