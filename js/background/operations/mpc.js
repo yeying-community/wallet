@@ -36,7 +36,7 @@ const MPC_REFRESH_POLICIES = new Set(['manual']);
 export async function handleCreateMpcWallet(options = {}) {
   try {
     const name = String(options.name || 'MPC Wallet').trim() || 'MPC Wallet';
-    const walletId = String(options.walletId || '').trim() || generateId('mpc_wallet');
+    const walletId = generateId('mpc_wallet');
     const currentAccount = await getSelectedAccount() || (await getAccountList())[0] || null;
     const selfAddress = String(currentAccount?.address || '').trim();
     const participantCandidates = Array.isArray(options.participants)
@@ -106,6 +106,8 @@ export async function handleCreateMpcWallet(options = {}) {
       id: walletId,
       name,
       type: 'mpc',
+      status: 'keygen_pending',
+      keygenSessionId: sessionResult.session?.id || sessionResult.session?.sessionId || '',
       curve,
       threshold,
       participants,
@@ -316,9 +318,9 @@ export async function handleMpcGetSession(sessionId) {
   }
 }
 
-export async function handleMpcGetSessions() {
+export async function handleMpcGetSessions(options = {}) {
   try {
-    const sessions = await mpcService.getSessions();
+    const sessions = await mpcService.getSessions(options?.walletId);
     return { success: true, sessions };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to get sessions' };

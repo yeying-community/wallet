@@ -22,9 +22,28 @@
 
 #accountsPage .page-actions .btn {
   width: auto;
-  min-width: 64px;
   margin: 0;
-  padding: 8px 12px;
+}
+
+.accounts-menu {
+  position: relative;
+}
+
+.accounts-menu .btn-icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.accounts-menu .network-menu {
+  min-width: 140px;
+  right: 0;
+  left: auto;
 }
 
 /* ==================== 账户管理页面布局 ==================== */
@@ -51,7 +70,7 @@
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  overflow: visible;
+  overflow: hidden;
   transition: all 0.15s ease;
 }
 
@@ -149,6 +168,66 @@
   border-radius: 4px;
   font-size: 11px;
   color: #6b7280;
+}
+
+.wallet-card .mpc-wallet-identity {
+  cursor: default;
+}
+
+.wallet-card .mpc-wallet-avatar {
+  color: #4f46e5;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.mpc-wallet-actions {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.mpc-wallet-actions .mpc-participant-change-btn {
+  flex: 1;
+  width: 0;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #374151;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mpc-wallet-actions .mpc-participant-change-btn + .mpc-participant-change-btn {
+  border-left: 1px solid #e5e7eb;
+}
+
+.mpc-wallet-actions .mpc-participant-change-btn:hover {
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+.mpc-wallet-actions .mpc-participant-change-btn:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid #6366f1;
+  outline-offset: -2px;
+}
+
+.mpc-wallet-detail-modal {
+  max-height: min(640px, calc(100vh - 32px));
+}
+
+.mpc-wallet-detail-session-title {
+  margin: 18px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
 }
 
 .wallet-account-count {
@@ -549,43 +628,6 @@
   height: auto;
 }
 
-/* ==================== 底部操作按钮（固定）==================== */
-.account-actions-footer {
-  position: relative;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  padding: 15px 0;
-  background: #fff;
-  border-top: none;
-  flex-shrink: 0;
-}
-
-.account-actions-footer::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 1px;
-  background: #e5e7eb;
-}
-
-.account-actions-footer .btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px;
-  font-size: 14px;
-  margin: 0;
-}
-
-.account-actions-footer .btn svg {
-  flex-shrink: 0;
-}
-
 /* ==================== 空状态 ==================== */
 .empty-wallet-state {
   text-align: center;
@@ -796,14 +838,6 @@
 
   .wallet-card .account-item {
     padding: 10px 12px;
-  }
-
-  .account-actions-footer {
-    flex-direction: column;
-  }
-
-  .account-actions-footer .btn {
-    width: 100%;
   }
 
   .account-manage-item {

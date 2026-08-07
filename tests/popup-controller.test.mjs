@@ -96,17 +96,15 @@ test('openAccountsPage：调 accountsListController.loadWalletList', async () =>
 
 test('openSettingsPage：委派设置页 load 到 settingsController', async () => {
   const wallet = fakeWallet();
-  const spy = { backup: 0, mpc: 0, custody: 0, mpcSess: 0 };
+  const spy = { backup: 0, mpc: 0, custody: 0 };
   const c = new PopupController({ wallet, transaction: {}, network: {}, token: {} });
   c.settingController.loadBackupSyncSettings = async () => { spy.backup++; };
   c.settingController.loadMpcSettings = async () => { spy.mpc++; };
   c.settingController.loadCustodySettings = async () => { spy.custody++; };
-  c.settingController.loadMpcSessions = async () => { spy.mpcSess++; };
   await c.openSettingsPage();
   assert.equal(spy.backup, 1);
   assert.equal(spy.mpc, 1);
   assert.equal(spy.custody, 1);
-  assert.equal(spy.mpcSess, 1);
 });
 
 test('openSitesPage：调 settingsController.loadAuthorizedSites', async () => {
@@ -132,7 +130,6 @@ test('openBackupSyncSettings：先 openSettingsPage 再请求 scrollIntoView', a
   const c = new PopupController({ wallet, transaction: {}, network: {}, token: {} });
   c.settingController.loadBackupSyncSettings = async () => {};
   c.settingController.loadMpcSettings = async () => {};
-  c.settingController.loadMpcSessions = async () => {};
   elements.backupSyncSection.scrollIntoView = () => { c.__scrolled = true; };
   await c.openBackupSyncSettings();
   // requestAnimationFrame 异步 → 等 microtask

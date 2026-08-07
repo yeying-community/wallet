@@ -54,7 +54,7 @@
                   <span id="accountName" class="account-name-text">主账户</span>
                 </div>
                 <div class="account-address-row">
-                  <div id="accountAddress" class="account-address-text" title="复制地址">-</div>
+                  <div id="accountAddress" class="account-address-text">-</div>
                   <button id="copyHeaderAddressBtn" class="account-address-copy" type="button" title="复制地址" aria-label="复制当前账户地址">
                     <svg class="copy-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <rect x="9" y="9" width="13" height="13" rx="2"></rect>
@@ -470,15 +470,6 @@
 
           <div id="mpcCreateWalletFields" class="hidden">
             <div class="form-group">
-              <label>MPC Wallet ID（可选）</label>
-              <input
-                type="text"
-                id="mpcCreateWalletIdInput"
-                class="input"
-                placeholder="mpc_wallet_01"
-              />
-            </div>
-            <div class="form-group">
               <label>参与者联系人</label>
               <div class="network-selector input-like mpc-contact-selector" id="mpcCreateParticipantsSelector">
                 <button
@@ -494,7 +485,6 @@
                 <div class="network-menu hidden" id="mpcCreateParticipantsMenu" role="listbox"></div>
               </div>
               <div id="mpcCreateParticipantsSelected" class="mpc-contact-selected-list hidden"></div>
-              <p class="settings-hint">当前账户会自动加入参与者，这里只需要选择其他联系人。</p>
             </div>
             <div class="form-group">
               <label>门限 (T)</label>
@@ -668,9 +658,14 @@
           <button class="back-btn">←</button>
           <h2>账户管理</h2>
           <div class="page-actions">
-            <button class="btn btn-secondary btn-small" id="accountsExportBtn" title="导出加密账户文件">
-              导出
-            </button>
+            <div class="accounts-menu">
+              <button id="accountsMenuBtn" class="btn btn-secondary btn-small btn-icon" type="button" aria-haspopup="menu" aria-expanded="false" title="钱包操作">⋯</button>
+              <div id="accountsMenu" class="network-menu hidden" role="menu">
+                <button type="button" class="network-option" id="accountsCreateWalletBtn">创建钱包</button>
+                <button type="button" class="network-option" id="accountsImportWalletBtn">导入钱包</button>
+                <button type="button" class="network-option" id="accountsExportBtn">导出钱包</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -682,41 +677,6 @@
             </div>
           </div>
 
-          <!-- 底部操作按钮（固定） -->
-          <div class="account-actions-footer">
-            <button class="btn btn-primary" id="accountsCreateWalletBtn">
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M20 7h-3a2 2 0 0 1-2-2V2"></path>
-                <path
-                  d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"
-                ></path>
-                <path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"></path>
-              </svg>
-              创建钱包
-            </button>
-            <button class="btn btn-secondary" id="accountsImportWalletBtn">
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-              导入钱包
-            </button>
-          </div>
         </div>
       </div>
 
@@ -1005,7 +965,10 @@
 
           <!-- 备份与同步 -->
           <div class="settings-section" id="backupSyncSection">
-            <h3>☁️ 备份与同步</h3>
+            <div class="settings-section-heading">
+              <h3>☁️ 备份与同步</h3>
+              <button id="backupSyncConflictBtn" class="btn btn-danger btn-small hidden" type="button">冲突</button>
+            </div>
             <div class="settings-row">
               <label class="settings-toggle">
                 <input type="checkbox" id="backupSyncEnabledToggle" />
@@ -1023,13 +986,8 @@
             </div>
             <p class="settings-hint" id="backupSyncLastStatus">最近拉取: - · 最近推送: -</p>
 
-            <div class="settings-divider"></div>
-            <h4 class="sync-conflict-title">同步冲突</h4>
             <div id="backupSyncDebugRow" class="settings-row hidden">
               <button id="backupSyncSimulateConflictBtn" class="btn btn-secondary btn-small">模拟冲突</button>
-            </div>
-            <div id="backupSyncConflictsList" class="sync-conflicts-list">
-              <div class="empty-message">暂无冲突</div>
             </div>
           </div>
 
@@ -1203,17 +1161,6 @@
             <textarea id="mpcMessageDetailPayload" class="input" readonly placeholder="解密后的 payload 会显示在这里"></textarea>
           </div>
 
-          <!-- MPC 会话列表 -->
-          <div class="settings-section" id="mpcSessionsSection">
-            <h3>🗂️ MPC 会话列表</h3>
-            <div class="settings-row">
-              <button id="mpcSessionsRefreshBtn" class="btn btn-secondary btn-small">刷新列表</button>
-            </div>
-            <div id="mpcSessionsList" class="sync-activity-list">
-              <div class="empty-message">暂无会话</div>
-            </div>
-          </div>
-
           <!-- MPC 日志审计 -->
           <div class="settings-section" id="mpcAuditSection">
             <h3>📒 MPC 日志审计</h3>
@@ -1384,47 +1331,56 @@
         <div id="mpcLogsFooter" class="sync-log-footer hidden"></div>
       </div>
 
-      <!-- MPC 会话详情 -->
-      <div id="mpcSessionDetailModal" class="modal hidden">
+      <!-- MPC 钱包详情 -->
+      <div id="mpcWalletDetailModal" class="modal hidden">
         <div class="modal-overlay"></div>
-        <div class="modal-content">
+        <div class="modal-content mpc-wallet-detail-modal">
           <div class="modal-header">
-            <h3>会话详情</h3>
-            <button class="btn-close" id="closeMpcSessionDetailModal">✕</button>
+            <h3 id="mpcWalletDetailName">MPC 钱包</h3>
+            <button class="btn-close" id="closeMpcWalletDetailModal">✕</button>
           </div>
           <div class="modal-body">
             <div class="detail-row">
-              <div class="detail-label">Session ID</div>
-              <div class="detail-value mono" id="mpcSessionDetailId">-</div>
-            </div>
-            <div class="detail-row">
-              <div class="detail-label">类型</div>
-              <div class="detail-value" id="mpcSessionDetailType">-</div>
-            </div>
-            <div class="detail-row">
               <div class="detail-label">状态</div>
-              <div class="detail-value" id="mpcSessionDetailStatus">-</div>
+              <div class="detail-value" id="mpcWalletDetailStatus">-</div>
             </div>
             <div class="detail-row">
-              <div class="detail-label">轮次</div>
-              <div class="detail-value" id="mpcSessionDetailRound">-</div>
+              <div class="detail-label">地址</div>
+              <div class="detail-value mono" id="mpcWalletDetailAddress">尚未生成</div>
             </div>
             <div class="detail-row">
               <div class="detail-label">门限</div>
-              <div class="detail-value" id="mpcSessionDetailThreshold">-</div>
+              <div class="detail-value" id="mpcWalletDetailThreshold">-</div>
             </div>
             <div class="detail-row">
-              <div class="detail-label">曲线</div>
-              <div class="detail-value" id="mpcSessionDetailCurve">-</div>
+              <div class="detail-label">参与者</div>
+              <div class="detail-value" id="mpcWalletDetailParticipants">-</div>
             </div>
-            <div class="detail-row">
-              <div class="detail-label">成员</div>
-              <div class="detail-value" id="mpcSessionDetailParticipants">-</div>
+            <h4 class="mpc-wallet-detail-session-title">会话记录</h4>
+            <div id="mpcWalletDetailSessions" class="sync-activity-list">
+              <div class="empty-message">暂无会话</div>
             </div>
           </div>
           <div class="modal-footer">
-            <button id="refreshMpcSessionDetailBtn" class="btn btn-secondary">刷新</button>
-            <button id="closeMpcSessionDetailBtn" class="btn btn-secondary">关闭</button>
+            <button id="refreshMpcWalletDetailBtn" class="btn btn-secondary">刷新</button>
+            <button id="closeMpcWalletDetailBtn" class="btn btn-secondary">关闭</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 同步冲突处理 -->
+      <div id="backupSyncConflictModal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>同步冲突</h3>
+            <button class="btn-close" id="closeBackupSyncConflictModal">✕</button>
+          </div>
+          <div class="modal-body">
+            <div id="backupSyncConflictsList" class="sync-conflicts-list"></div>
+          </div>
+          <div class="modal-footer">
+            <button id="cancelBackupSyncConflictBtn" class="btn btn-secondary">关闭</button>
           </div>
         </div>
       </div>

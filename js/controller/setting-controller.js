@@ -46,10 +46,6 @@ export class SettingController {
     return this.mpcController.loadSettings();
   }
 
-  async loadMpcSessions() {
-    return this.mpcController.loadSessions();
-  }
-
   async loadCustodySettings() {
     return this.mpcController.loadCustodySettings();
   }

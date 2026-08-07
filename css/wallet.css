@@ -339,7 +339,6 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  cursor: copy;
 }
 
 .account-address-copy {
@@ -837,11 +836,13 @@ body {
   line-height: 1;
 }
 
-.mpc-contact-chip-label {
+.mpc-contact-chip-label,
+.mpc-contact-option-label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  font-family: var(--font-mono);
 }
 
 .mpc-contact-chip-name {
@@ -873,6 +874,11 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.mpc-contact-option-label {
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .mpc-contact-option-empty {

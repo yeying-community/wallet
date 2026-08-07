@@ -7,6 +7,7 @@ import { generateId } from '../common/utils/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import {
   getUserSetting,
+  getSelectedAccount,
   getMpcDeviceId,
   setMpcDeviceId,
   getMpcDeviceKey,
@@ -41,6 +42,7 @@ import {
   encryptEnvelope,
   decryptEnvelope
 } from './mpc-crypto.js';
+import { createActionSignature } from './action-signature.js';
 
 const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
 const DEFAULT_MPC_UCAN_RESOURCE = 'mpc';
@@ -300,12 +302,27 @@ class MpcService {
       threshold: options.threshold ?? null,
       participants: Array.isArray(options.participants) ? options.participants : [],
       curve: options.curve || 'secp256k1',
-      expiresAt: options.expiresAt ?? null,
+      expiresAt: options.expiresAt ?? undefined,
       keyVersion: options.keyVersion ?? undefined,
       shareVersion: options.shareVersion ?? undefined
     };
-
-    const response = await this._coordinator.createSession(payload);
+    const actionPayload = {
+      requestedSessionId: '',
+      type: payload.type,
+      walletId: String(payload.walletId || ''),
+      threshold: Number(payload.threshold),
+      participants: payload.participants,
+      curve: String(payload.curve || ''),
+      expiresAt: payload.expiresAt ? String(payload.expiresAt) : '',
+      keyVersion: payload.keyVersion,
+      shareVersion: payload.shareVersion,
+    };
+    const signature = await createActionSignature({
+      account: await getSelectedAccount(),
+      action: 'mpc_session_create',
+      payload: actionPayload,
+    });
+    const response = await this._coordinator.createSession(payload, signature);
     const sessionId = response?.sessionId || response?.id || options.sessionId || generateId('mpc_session');
     const session = await this._syncSessionSnapshot(response, {
       id: sessionId,
@@ -348,8 +365,12 @@ class MpcService {
       e2ePublicKey: deviceKeys.e2ePublicKeyRaw,
       signingPublicKey: deviceKeys.signingPublicKeyRaw
     };
-
-    const response = await this._coordinator.joinSession(sessionId, payload);
+    const signature = await createActionSignature({
+      account: await getSelectedAccount(),
+      action: 'mpc_session_join',
+      payload: { sessionId, ...payload },
+    });
+    const response = await this._coordinator.joinSession(sessionId, payload, signature);
     const now = getTimestamp();
     const participantRecord = {
       id: participantId,
@@ -430,7 +451,21 @@ class MpcService {
     };
 
     await saveMpcMessage(message);
-    await this._coordinator.sendMessage(sessionId, message);
+    const signature = await createActionSignature({
+      account: await getSelectedAccount(),
+      action: 'mpc_message_send',
+      payload: {
+        sessionId,
+        messageId: message.id,
+        from: message.from,
+        to: message.to ? String(message.to) : '',
+        round: Number.isFinite(message.round) ? message.round : undefined,
+        type: message.type,
+        seq: Number.isFinite(message.seq) ? message.seq : undefined,
+        envelope: message.envelope ?? {},
+      },
+    });
+    await this._coordinator.sendMessage(sessionId, message, signature);
 
     if (session) {
       await saveMpcSession({
@@ -515,8 +550,11 @@ class MpcService {
     return session;
   }
 
-  async getSessions() {
-    return await getMpcSessionList();
+  async getSessions(walletId = '') {
+    const sessions = await getMpcSessionList();
+    const normalizedWalletId = String(walletId || '').trim();
+    if (!normalizedWalletId) return sessions;
+    return sessions.filter(session => String(session?.walletId || '').trim() === normalizedWalletId);
   }
 
   async startEventStream(sessionId, options = {}) {

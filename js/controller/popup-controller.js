@@ -39,7 +39,12 @@ export class PopupController {
     this.welcomeController = new WelcomeController();
     this.unlockWalletController = new UnlockWalletController({
       wallet: this.wallet,
-      onUnlocked: () => this.refreshWalletData()
+      onUnlocked: async () => {
+        await Promise.allSettled([
+          this.refreshWalletData(),
+          this.restoreCreateWalletDraft(),
+        ]);
+      }
     });
     this.settingController = new SettingController({
       wallet: this.wallet,
@@ -160,6 +165,9 @@ export class PopupController {
     if (startupState?.unlocked === true) {
       showPage('walletPage');
       await this.refreshWalletData();
+      if (await this.restoreCreateWalletDraft()) {
+        return;
+      }
       return;
     }
 
@@ -173,6 +181,11 @@ export class PopupController {
     console.warn('[PopupController] 启动状态未知，默认显示解锁页');
     showPage('unlockPage');
     this.renderUnlockReason(null);
+  }
+
+  async restoreCreateWalletDraft() {
+    this.accountListController?.preparePasswordFormForExistingWallet();
+    return await this.createWalletController.restoreDraft();
   }
 
   async resumePendingApproval() {
@@ -661,7 +674,6 @@ export class PopupController {
     await this.settingController.loadBackupSyncSettings();
     await this.settingController.loadMpcSettings();
     await this.settingController.loadCustodySettings();
-    await this.settingController.loadMpcSessions();
   }
 
   async openBackupSyncSettings() {
@@ -721,19 +733,17 @@ export class PopupController {
   }
 
   async refreshWalletData() {
-    await this.accountHeaderController?.refreshHeader?.();
-    await this.tokenBalanceController?.refreshBalanceSilently?.();
-
-    if (this.networkController) {
-      await this.networkController.refreshNetworkState();
-    }
-
-    await this.updateBackupSyncStatus();
-
+    const tasks = [
+      this.accountHeaderController?.refreshHeader?.(),
+      this.tokenBalanceController?.refreshBalanceSilently?.(),
+      this.networkController?.refreshNetworkState?.(),
+      this.updateBackupSyncStatus(),
+    ];
     const tokensContent = document.getElementById('tokensContent');
     if (tokensContent && !tokensContent.classList.contains('hidden')) {
-      await this.tokenController?.loadTokenBalances?.();
+      tasks.push(this.tokenController?.loadTokenBalances?.());
     }
+    await Promise.allSettled(tasks.filter(Boolean));
   }
 
   startTransactionPolling() {
@@ -781,7 +791,6 @@ export class PopupController {
         copyAddressBtn.querySelector('.copy-success-icon')?.classList.add('hidden');
       }, 1200);
     };
-    accountAddress?.addEventListener('click', copyHeaderAddress);
     copyAddressBtn?.addEventListener('click', copyHeaderAddress);
     if (accountHeader) {
       accountHeader.addEventListener('click', async (event) => {

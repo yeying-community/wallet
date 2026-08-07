@@ -148,6 +148,16 @@ export class BackupSyncSettingsController {
       onClose: () => this.closeBackupSyncConfigModal()
     });
 
+    const conflictBtn = document.getElementById('backupSyncConflictBtn');
+    if (conflictBtn) {
+      conflictBtn.addEventListener('click', () => this.openBackupSyncConflictModal());
+    }
+    this.bindSimpleModal({
+      modalId: 'backupSyncConflictModal',
+      closeIds: ['closeBackupSyncConflictModal', 'cancelBackupSyncConflictBtn'],
+      onClose: () => this.closeBackupSyncConflictModal()
+    });
+
     const backupSyncLogsSearchInput = document.getElementById('backupSyncLogsSearchInput');
     if (backupSyncLogsSearchInput) {
       backupSyncLogsSearchInput.addEventListener('input', () => {
@@ -203,6 +213,17 @@ export class BackupSyncSettingsController {
     if (modal) {
       modal.classList.remove('hidden');
     }
+  }
+
+  openBackupSyncConflictModal() {
+    const conflicts = Array.isArray(this.syncSettings?.conflicts) ? this.syncSettings.conflicts : [];
+    if (!conflicts.length) return;
+    this.renderBackupSyncConflicts(conflicts);
+    document.getElementById('backupSyncConflictModal')?.classList.remove('hidden');
+  }
+
+  closeBackupSyncConflictModal() {
+    document.getElementById('backupSyncConflictModal')?.classList.add('hidden');
   }
 
   closeBackupSyncConfigModal() {
@@ -324,13 +345,20 @@ export class BackupSyncSettingsController {
 
   renderBackupSyncConflicts(conflicts = []) {
     const container = document.getElementById('backupSyncConflictsList');
-    if (!container) return;
     const list = Array.isArray(conflicts) ? conflicts : [];
+    const button = document.getElementById('backupSyncConflictBtn');
+    if (button) {
+      button.classList.toggle('hidden', list.length === 0);
+      button.textContent = list.length > 0 ? `冲突 ${list.length}` : '冲突';
+    }
 
     if (list.length === 0) {
-      container.innerHTML = '<div class="empty-message">暂无冲突</div>';
+      if (container) container.innerHTML = '';
+      this.closeBackupSyncConflictModal();
       return;
     }
+
+    if (!container) return;
 
     container.innerHTML = list.map(conflict => {
       const title = conflict.type === 'contact'

@@ -9,6 +9,7 @@ import { DEFAULT_NETWORK } from '../config/index.js';
 import { getNetworkByChainId, getNetworkConfigByKey } from '../storage/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { diagnostics } from './diagnostics.js';
+import { RPC_CONFIG } from '../config/index.js';
 
 /**
  * 处理 RPC 方法
@@ -37,10 +38,13 @@ async function rpcCall(method, params) {
     throw createNetworkError('RPC URL not configured');
   }
   console.log(`network=${JSON.stringify(network)}, rpcUrl=${rpcUrl}, method=${method}, params=${params}`)
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), RPC_CONFIG.TIMEOUT);
   try {
     const response = await fetch(rpcUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: abortController.signal,
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: getTimestamp(),
@@ -64,10 +68,15 @@ async function rpcCall(method, params) {
     console.log(`[RPC] result ${method}: ${formatRpcLog(data.result)}`);
     return data.result;
   } catch (error) {
-    console.log(`Throw error ${error.message}`)
-    diagnostics.record({ category: 'rpc', level: 'error', action: method, message: error?.message || 'rpc failed', meta: { method, code: error?.code } });
+    const message = error?.name === 'AbortError'
+      ? `RPC request timed out after ${RPC_CONFIG.TIMEOUT}ms`
+      : error.message;
+    console.log(`Throw error ${message}`)
+    diagnostics.record({ category: 'rpc', level: 'error', action: method, message: message || 'rpc failed', meta: { method, code: error?.code } });
     if (error.code) throw error;
-    throw createNetworkError(error.message);
+    throw createNetworkError(message);
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

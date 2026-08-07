@@ -1,5 +1,6 @@
 import { showPage, showError, showSuccess, setPageOrigin, showWaiting, hideWaiting } from '../../common/ui/index.js';
 import { shortenAddress, generateAvatar } from '../../common/chain/index.js';
+import { escapeHtml } from '../../common/ui/html-ui.js';
 import { clearImportWalletForm } from '../wallet/import-wallet-controller.js';
 
 export class AccountListController {
@@ -21,9 +22,32 @@ export class AccountListController {
     this.onViewMnemonic = onViewMnemonic;
     this.onViewPrivateKey = onViewPrivateKey;
     this.promptPassword = promptPassword;
+    this.mpcWalletsById = new Map();
+    this.activeMpcWalletId = '';
   }
 
   bindEvents() {
+    const menuBtn = document.getElementById('accountsMenuBtn');
+    const menu = document.getElementById('accountsMenu');
+    if (menuBtn && menu) {
+      menuBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const opening = menu.classList.contains('hidden');
+        menu.classList.toggle('hidden', !opening);
+        menuBtn.setAttribute('aria-expanded', String(opening));
+      });
+      menu.addEventListener('click', () => {
+        menu.classList.add('hidden');
+        menuBtn.setAttribute('aria-expanded', 'false');
+      });
+      document.addEventListener('click', (event) => {
+        if (menu.classList.contains('hidden')) return;
+        if (event.target.closest('.accounts-menu')) return;
+        menu.classList.add('hidden');
+        menuBtn.setAttribute('aria-expanded', 'false');
+      });
+    }
     document.getElementById('accountsExportBtn')?.addEventListener('click', () => this.handleExportAccounts());
     const createBtn = document.getElementById('accountsCreateWalletBtn');
     if (createBtn) {
@@ -46,6 +70,16 @@ export class AccountListController {
         this.prepareImportFormForExistingWallet();
       });
     }
+
+    document.getElementById('refreshMpcWalletDetailBtn')?.addEventListener('click', () => {
+      void this.refreshMpcWalletDetail();
+    });
+    ['closeMpcWalletDetailModal', 'closeMpcWalletDetailBtn'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('click', () => this.closeMpcWalletDetail());
+    });
+    document.getElementById('mpcWalletDetailModal')
+      ?.querySelector('.modal-overlay')
+      ?.addEventListener('click', () => this.closeMpcWalletDetail());
   }
 
   async handleExportAccounts() {
@@ -229,15 +263,30 @@ export class AccountListController {
       return;
     }
 
+    this.mpcWalletsById = new Map(
+      wallets.filter(wallet => wallet?.type === 'mpc' && wallet?.id).map(wallet => [wallet.id, wallet])
+    );
     container.innerHTML = wallets.map(wallet => {
       const type = wallet.type || 'hd';
       const isHd = type === 'hd';
       const isImported = type === 'imported';
       const isMpc = type === 'mpc';
       const walletLabel = isMpc ? 'MPC Wallet' : (isHd ? 'HD Wallet' : 'Imported Wallet');
+      const walletName = String(wallet.name || walletLabel).trim() || walletLabel;
       const walletIcon = isMpc ? '🧩' : (isHd ? '🔑' : '📥');
       const accounts = Array.isArray(wallet.accounts) ? wallet.accounts : [];
-      const accountHtml = accounts.length ? accounts.map(account => `
+      const mpcThreshold = Number(wallet.threshold || 0);
+      const mpcParticipantCount = Array.isArray(wallet.participants) ? wallet.participants.length : 0;
+      const mpcAddress = String(wallet.address || accounts[0]?.address || '').trim();
+      const accountHtml = isMpc ? `
+          <div class="account-item mpc-wallet-identity" data-wallet-id="${escapeHtml(wallet.id)}">
+            <div class="account-avatar mpc-wallet-avatar" ${mpcAddress ? `data-address="${escapeHtml(mpcAddress)}"` : ''}>MPC</div>
+            <div class="account-details">
+              <div class="account-name">${escapeHtml(walletName)}</div>
+              <div class="account-address">${mpcAddress ? escapeHtml(mpcAddress) : '地址生成中'}</div>
+            </div>
+          </div>
+        ` : accounts.length ? accounts.map(account => `
           <div class="account-item ${account.isSelected ? 'active' : ''}"
                data-account-id="${account.id}">
             <div class="account-avatar" data-address="${account.address}"></div>
@@ -271,8 +320,9 @@ export class AccountListController {
         </div>
         <div class="wallet-info">
           <div class="wallet-name">
-            ${walletLabel}
+            ${isMpc ? 'MPC Wallet' : escapeHtml(walletName)}
           </div>
+          ${isMpc ? `<div class="wallet-meta">门限 ${mpcThreshold || '-'} / ${mpcParticipantCount || '-'}</div>` : ''}
         </div>
         ${isHd ? `
           <div class="wallet-header-actions">
@@ -291,6 +341,22 @@ export class AccountListController {
             </button>
           </div>
         ` : ''}
+        ${isMpc ? `
+          <div class="wallet-header-actions">
+            <button
+              class="wallet-header-btn mpc-wallet-detail-btn"
+              data-wallet-id="${escapeHtml(wallet.id)}"
+              title="查看 MPC 钱包详情"
+              aria-label="查看 MPC 钱包详情"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 16v-4"></path>
+                <path d="M12 8h.01"></path>
+              </svg>
+            </button>
+          </div>
+        ` : ''}
       </div>
       <div class="account-list">
         ${accountHtml}
@@ -304,6 +370,12 @@ export class AccountListController {
             添加账户
           </div>
         ` : ''}
+        ${isMpc ? `
+          <div class="mpc-wallet-actions">
+            <button class="mpc-participant-change-btn" data-action="add">增加参与方</button>
+            <button class="mpc-participant-change-btn" data-action="remove">移除参与方</button>
+          </div>
+        ` : ''}
       </div>
     </div>
   `;
@@ -311,6 +383,76 @@ export class AccountListController {
 
     this.renderAccountAvatars(container);
     this.bindWalletListEvents(onAccountDetails, onAccountDelete, onAddAccount, onViewMnemonic, onViewPrivateKey);
+  }
+
+  async openMpcWalletDetail(walletId) {
+    const wallet = this.mpcWalletsById.get(walletId);
+    if (!wallet) return;
+    this.activeMpcWalletId = walletId;
+    this.renderMpcWalletDetail(wallet, []);
+    document.getElementById('mpcWalletDetailModal')?.classList.remove('hidden');
+    await this.refreshMpcWalletDetail();
+  }
+
+  closeMpcWalletDetail() {
+    this.activeMpcWalletId = '';
+    document.getElementById('mpcWalletDetailModal')?.classList.add('hidden');
+  }
+
+  async refreshMpcWalletDetail() {
+    const walletId = this.activeMpcWalletId;
+    const wallet = this.mpcWalletsById.get(walletId);
+    if (!wallet) return;
+    const container = document.getElementById('mpcWalletDetailSessions');
+    if (container) container.innerHTML = '<div class="empty-message">正在加载...</div>';
+    try {
+      const result = await this.wallet.getMpcSessions(walletId);
+      if (!result?.success) throw new Error(result?.error || '加载失败');
+      this.renderMpcWalletDetail(wallet, Array.isArray(result.sessions) ? result.sessions : []);
+    } catch (error) {
+      if (container) container.innerHTML = '<div class="empty-message">会话加载失败</div>';
+      showError('MPC 会话加载失败: ' + (error?.message || '未知错误'));
+    }
+  }
+
+  renderMpcWalletDetail(wallet, sessions = []) {
+    const setText = (id, value) => {
+      const element = document.getElementById(id);
+      if (element) element.textContent = value;
+    };
+    const participants = Array.isArray(wallet?.participants) ? wallet.participants : [];
+    const statusLabels = {
+      keygen_pending: '等待参与者完成密钥生成',
+      active: '可用',
+      failed: '密钥生成失败',
+    };
+    setText('mpcWalletDetailName', wallet?.name || 'MPC 钱包');
+    setText('mpcWalletDetailStatus', statusLabels[wallet?.status] || wallet?.status || '等待参与者完成密钥生成');
+    setText('mpcWalletDetailAddress', wallet?.address || '尚未生成');
+    setText('mpcWalletDetailThreshold', `${wallet?.threshold || '-'} / ${participants.length || '-'}`);
+    setText('mpcWalletDetailParticipants', participants.length ? participants.join(', ') : '-');
+
+    const container = document.getElementById('mpcWalletDetailSessions');
+    if (!container) return;
+    if (!sessions.length) {
+      container.innerHTML = '<div class="empty-message">暂无会话</div>';
+      return;
+    }
+    const typeLabels = { keygen: '密钥生成', sign: '签名', refresh: '密钥刷新' };
+    container.innerHTML = [...sessions]
+      .sort((a, b) => (b?.createdAt || 0) - (a?.createdAt || 0))
+      .map(session => `
+        <div class="sync-activity-item">
+          <div class="sync-activity-main">
+            <div class="sync-activity-message mono">${escapeHtml(session?.id || '-')}</div>
+            <div class="sync-activity-meta">
+              <span class="sync-activity-tag">${escapeHtml(typeLabels[session?.type] || session?.type || '-')}</span>
+              <span class="sync-activity-tag">${escapeHtml(session?.status || '-')}</span>
+              <span class="sync-activity-tag">轮次 ${Number.isFinite(session?.round) ? session.round : '-'}</span>
+            </div>
+          </div>
+        </div>
+      `).join('');
   }
 
   renderAccountAvatars(container) {
@@ -335,6 +477,11 @@ export class AccountListController {
     container.querySelectorAll('.account-item').forEach(item => {
       item.addEventListener('click', (e) => {
         if (e.target.closest('.account-action-btn')) return;
+
+        if (item.classList.contains('mpc-wallet-identity')) {
+          void this.openMpcWalletDetail(item.dataset.walletId);
+          return;
+        }
 
         const accountId = item.dataset.accountId;
         if (onAccountDetails) {
@@ -370,6 +517,20 @@ export class AccountListController {
         if (onViewMnemonic) {
           onViewMnemonic(walletId);
         }
+      });
+    });
+
+    container.querySelectorAll('.mpc-wallet-detail-btn').forEach(btn => {
+      btn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        void this.openMpcWalletDetail(btn.dataset.walletId);
+      });
+    });
+
+    container.querySelectorAll('.mpc-participant-change-btn').forEach(btn => {
+      btn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        showError('参与方变更需要完成密钥刷新协议，当前版本暂不可用');
       });
     });
 
