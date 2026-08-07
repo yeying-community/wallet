@@ -58,6 +58,23 @@
     'Courier New', monospace;
 }
 
+/* 所有选择器统一使用等宽文字，保持触发值与菜单选项的字形和宽度一致。 */
+.network-trigger,
+.network-option,
+.token-trigger,
+.token-option,
+.custom-select-trigger,
+.custom-select-option,
+.account-selector,
+.account-switcher-item,
+.account-switcher-manage,
+select.input,
+.form-group select {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
 body {
   width: 380px;
   min-height: 600px;

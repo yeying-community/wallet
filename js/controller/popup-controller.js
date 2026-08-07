@@ -39,7 +39,10 @@ export class PopupController {
     this.welcomeController = new WelcomeController();
     this.unlockWalletController = new UnlockWalletController({
       wallet: this.wallet,
-      onUnlocked: () => this.refreshWalletData()
+      onUnlocked: async () => {
+        await this.refreshWalletData();
+        await this.restoreCreateWalletDraft();
+      }
     });
     this.settingController = new SettingController({
       wallet: this.wallet,
@@ -160,6 +163,9 @@ export class PopupController {
     if (startupState?.unlocked === true) {
       showPage('walletPage');
       await this.refreshWalletData();
+      if (await this.restoreCreateWalletDraft()) {
+        return;
+      }
       return;
     }
 
@@ -173,6 +179,11 @@ export class PopupController {
     console.warn('[PopupController] 启动状态未知，默认显示解锁页');
     showPage('unlockPage');
     this.renderUnlockReason(null);
+  }
+
+  async restoreCreateWalletDraft() {
+    this.accountListController?.preparePasswordFormForExistingWallet();
+    return await this.createWalletController.restoreDraft();
   }
 
   async resumePendingApproval() {

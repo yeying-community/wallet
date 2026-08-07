@@ -75,18 +75,24 @@ export class MpcCoordinatorClient {
     return data;
   }
 
-  async createSession(payload) {
-    return this.request('/api/v1/public/mpc/sessions', { method: 'POST', body: payload });
+  async createSession(payload, signature = {}) {
+    return this.request('/api/v1/public/mpc/sessions', {
+      method: 'POST',
+      body: { ...payload, ...signature }
+    });
   }
 
-  async joinSession(sessionId, payload) {
-    return this.request(`/api/v1/public/mpc/sessions/${sessionId}/join`, { method: 'POST', body: payload });
+  async joinSession(sessionId, payload, signature = {}) {
+    return this.request(`/api/v1/public/mpc/sessions/${sessionId}/join`, {
+      method: 'POST',
+      body: { ...payload, ...signature }
+    });
   }
 
-  async sendMessage(sessionId, message) {
+  async sendMessage(sessionId, message, signature = {}) {
     return this.request(`/api/v1/public/mpc/sessions/${sessionId}/messages`, {
       method: 'POST',
-      body: { message }
+      body: { message, ...signature }
     });
   }
 
