@@ -200,6 +200,24 @@
   margin-bottom: 10px;
 }
 
+.settings-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.settings-section-heading h3 {
+  margin: 0;
+}
+
+.settings-section-heading .btn {
+  width: auto;
+  margin: 0;
+  flex-shrink: 0;
+}
+
 .settings-toggle {
   display: flex;
   align-items: center;

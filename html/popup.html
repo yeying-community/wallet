@@ -54,7 +54,7 @@
                   <span id="accountName" class="account-name-text">主账户</span>
                 </div>
                 <div class="account-address-row">
-                  <div id="accountAddress" class="account-address-text" title="复制地址">-</div>
+                  <div id="accountAddress" class="account-address-text">-</div>
                   <button id="copyHeaderAddressBtn" class="account-address-copy" type="button" title="复制地址" aria-label="复制当前账户地址">
                     <svg class="copy-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <rect x="9" y="9" width="13" height="13" rx="2"></rect>
@@ -658,9 +658,14 @@
           <button class="back-btn">←</button>
           <h2>账户管理</h2>
           <div class="page-actions">
-            <button class="btn btn-secondary btn-small" id="accountsExportBtn" title="导出加密账户文件">
-              导出
-            </button>
+            <div class="accounts-menu">
+              <button id="accountsMenuBtn" class="btn btn-secondary btn-small btn-icon" type="button" aria-haspopup="menu" aria-expanded="false" title="钱包操作">⋯</button>
+              <div id="accountsMenu" class="network-menu hidden" role="menu">
+                <button type="button" class="network-option" id="accountsCreateWalletBtn">创建钱包</button>
+                <button type="button" class="network-option" id="accountsImportWalletBtn">导入钱包</button>
+                <button type="button" class="network-option" id="accountsExportBtn">导出钱包</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -672,41 +677,6 @@
             </div>
           </div>
 
-          <!-- 底部操作按钮（固定） -->
-          <div class="account-actions-footer">
-            <button class="btn btn-primary" id="accountsCreateWalletBtn">
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M20 7h-3a2 2 0 0 1-2-2V2"></path>
-                <path
-                  d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"
-                ></path>
-                <path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"></path>
-              </svg>
-              创建钱包
-            </button>
-            <button class="btn btn-secondary" id="accountsImportWalletBtn">
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-              导入钱包
-            </button>
-          </div>
         </div>
       </div>
 
@@ -995,7 +965,10 @@
 
           <!-- 备份与同步 -->
           <div class="settings-section" id="backupSyncSection">
-            <h3>☁️ 备份与同步</h3>
+            <div class="settings-section-heading">
+              <h3>☁️ 备份与同步</h3>
+              <button id="backupSyncConflictBtn" class="btn btn-danger btn-small hidden" type="button">冲突</button>
+            </div>
             <div class="settings-row">
               <label class="settings-toggle">
                 <input type="checkbox" id="backupSyncEnabledToggle" />
@@ -1013,13 +986,8 @@
             </div>
             <p class="settings-hint" id="backupSyncLastStatus">最近拉取: - · 最近推送: -</p>
 
-            <div class="settings-divider"></div>
-            <h4 class="sync-conflict-title">同步冲突</h4>
             <div id="backupSyncDebugRow" class="settings-row hidden">
               <button id="backupSyncSimulateConflictBtn" class="btn btn-secondary btn-small">模拟冲突</button>
-            </div>
-            <div id="backupSyncConflictsList" class="sync-conflicts-list">
-              <div class="empty-message">暂无冲突</div>
             </div>
           </div>
 
@@ -1415,6 +1383,23 @@
           <div class="modal-footer">
             <button id="refreshMpcSessionDetailBtn" class="btn btn-secondary">刷新</button>
             <button id="closeMpcSessionDetailBtn" class="btn btn-secondary">关闭</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 同步冲突处理 -->
+      <div id="backupSyncConflictModal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>同步冲突</h3>
+            <button class="btn-close" id="closeBackupSyncConflictModal">✕</button>
+          </div>
+          <div class="modal-body">
+            <div id="backupSyncConflictsList" class="sync-conflicts-list"></div>
+          </div>
+          <div class="modal-footer">
+            <button id="cancelBackupSyncConflictBtn" class="btn btn-secondary">关闭</button>
           </div>
         </div>
       </div>

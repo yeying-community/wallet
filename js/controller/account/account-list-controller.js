@@ -25,6 +25,27 @@ export class AccountListController {
   }
 
   bindEvents() {
+    const menuBtn = document.getElementById('accountsMenuBtn');
+    const menu = document.getElementById('accountsMenu');
+    if (menuBtn && menu) {
+      menuBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const opening = menu.classList.contains('hidden');
+        menu.classList.toggle('hidden', !opening);
+        menuBtn.setAttribute('aria-expanded', String(opening));
+      });
+      menu.addEventListener('click', () => {
+        menu.classList.add('hidden');
+        menuBtn.setAttribute('aria-expanded', 'false');
+      });
+      document.addEventListener('click', (event) => {
+        if (menu.classList.contains('hidden')) return;
+        if (event.target.closest('.accounts-menu')) return;
+        menu.classList.add('hidden');
+        menuBtn.setAttribute('aria-expanded', 'false');
+      });
+    }
     document.getElementById('accountsExportBtn')?.addEventListener('click', () => this.handleExportAccounts());
     const createBtn = document.getElementById('accountsCreateWalletBtn');
     if (createBtn) {

@@ -339,7 +339,6 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  cursor: copy;
 }
 
 .account-address-copy {

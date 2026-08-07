@@ -792,7 +792,6 @@ export class PopupController {
         copyAddressBtn.querySelector('.copy-success-icon')?.classList.add('hidden');
       }, 1200);
     };
-    accountAddress?.addEventListener('click', copyHeaderAddress);
     copyAddressBtn?.addEventListener('click', copyHeaderAddress);
     if (accountHeader) {
       accountHeader.addEventListener('click', async (event) => {
