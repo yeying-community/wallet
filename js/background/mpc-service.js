@@ -550,8 +550,11 @@ class MpcService {
     return session;
   }
 
-  async getSessions() {
-    return await getMpcSessionList();
+  async getSessions(walletId = '') {
+    const sessions = await getMpcSessionList();
+    const normalizedWalletId = String(walletId || '').trim();
+    if (!normalizedWalletId) return sessions;
+    return sessions.filter(session => String(session?.walletId || '').trim() === normalizedWalletId);
   }
 
   async startEventStream(sessionId, options = {}) {

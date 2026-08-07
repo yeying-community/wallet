@@ -745,10 +745,11 @@ export class WalletDomain extends BaseDomain {
 
   /**
    * 获取 MPC 会话列表
+   * @param {string} walletId - 可选，按 MPC 钱包过滤
    * @returns {Promise<Object>}
    */
-  async getMpcSessions() {
-    return await this._sendMessage(WalletMessageType.MPC_GET_SESSIONS);
+  async getMpcSessions(walletId = '') {
+    return await this._sendMessage(WalletMessageType.MPC_GET_SESSIONS, { walletId });
   }
 
   /**

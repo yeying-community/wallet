@@ -189,6 +189,17 @@
   letter-spacing: 0;
 }
 
+.mpc-wallet-detail-modal {
+  max-height: min(640px, calc(100vh - 32px));
+}
+
+.mpc-wallet-detail-session-title {
+  margin: 18px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
 .wallet-account-count {
   color: #9ca3af;
 }

@@ -318,9 +318,9 @@ export async function handleMpcGetSession(sessionId) {
   }
 }
 
-export async function handleMpcGetSessions() {
+export async function handleMpcGetSessions(options = {}) {
   try {
-    const sessions = await mpcService.getSessions();
+    const sessions = await mpcService.getSessions(options?.walletId);
     return { success: true, sessions };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to get sessions' };

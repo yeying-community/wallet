@@ -1161,17 +1161,6 @@
             <textarea id="mpcMessageDetailPayload" class="input" readonly placeholder="解密后的 payload 会显示在这里"></textarea>
           </div>
 
-          <!-- MPC 会话列表 -->
-          <div class="settings-section" id="mpcSessionsSection">
-            <h3>🗂️ MPC 会话列表</h3>
-            <div class="settings-row">
-              <button id="mpcSessionsRefreshBtn" class="btn btn-secondary btn-small">刷新列表</button>
-            </div>
-            <div id="mpcSessionsList" class="sync-activity-list">
-              <div class="empty-message">暂无会话</div>
-            </div>
-          </div>
-
           <!-- MPC 日志审计 -->
           <div class="settings-section" id="mpcAuditSection">
             <h3>📒 MPC 日志审计</h3>
@@ -1342,47 +1331,39 @@
         <div id="mpcLogsFooter" class="sync-log-footer hidden"></div>
       </div>
 
-      <!-- MPC 会话详情 -->
-      <div id="mpcSessionDetailModal" class="modal hidden">
+      <!-- MPC 钱包详情 -->
+      <div id="mpcWalletDetailModal" class="modal hidden">
         <div class="modal-overlay"></div>
-        <div class="modal-content">
+        <div class="modal-content mpc-wallet-detail-modal">
           <div class="modal-header">
-            <h3>会话详情</h3>
-            <button class="btn-close" id="closeMpcSessionDetailModal">✕</button>
+            <h3 id="mpcWalletDetailName">MPC 钱包</h3>
+            <button class="btn-close" id="closeMpcWalletDetailModal">✕</button>
           </div>
           <div class="modal-body">
             <div class="detail-row">
-              <div class="detail-label">Session ID</div>
-              <div class="detail-value mono" id="mpcSessionDetailId">-</div>
-            </div>
-            <div class="detail-row">
-              <div class="detail-label">类型</div>
-              <div class="detail-value" id="mpcSessionDetailType">-</div>
-            </div>
-            <div class="detail-row">
               <div class="detail-label">状态</div>
-              <div class="detail-value" id="mpcSessionDetailStatus">-</div>
+              <div class="detail-value" id="mpcWalletDetailStatus">-</div>
             </div>
             <div class="detail-row">
-              <div class="detail-label">轮次</div>
-              <div class="detail-value" id="mpcSessionDetailRound">-</div>
+              <div class="detail-label">地址</div>
+              <div class="detail-value mono" id="mpcWalletDetailAddress">尚未生成</div>
             </div>
             <div class="detail-row">
               <div class="detail-label">门限</div>
-              <div class="detail-value" id="mpcSessionDetailThreshold">-</div>
+              <div class="detail-value" id="mpcWalletDetailThreshold">-</div>
             </div>
             <div class="detail-row">
-              <div class="detail-label">曲线</div>
-              <div class="detail-value" id="mpcSessionDetailCurve">-</div>
+              <div class="detail-label">参与者</div>
+              <div class="detail-value" id="mpcWalletDetailParticipants">-</div>
             </div>
-            <div class="detail-row">
-              <div class="detail-label">成员</div>
-              <div class="detail-value" id="mpcSessionDetailParticipants">-</div>
+            <h4 class="mpc-wallet-detail-session-title">会话记录</h4>
+            <div id="mpcWalletDetailSessions" class="sync-activity-list">
+              <div class="empty-message">暂无会话</div>
             </div>
           </div>
           <div class="modal-footer">
-            <button id="refreshMpcSessionDetailBtn" class="btn btn-secondary">刷新</button>
-            <button id="closeMpcSessionDetailBtn" class="btn btn-secondary">关闭</button>
+            <button id="refreshMpcWalletDetailBtn" class="btn btn-secondary">刷新</button>
+            <button id="closeMpcWalletDetailBtn" class="btn btn-secondary">关闭</button>
           </div>
         </div>
       </div>

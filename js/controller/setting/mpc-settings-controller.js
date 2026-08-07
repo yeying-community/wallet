@@ -1,6 +1,6 @@
 /**
  * MpcSettingsController — MPC 门限钱包设置子控制器
- * 从 SettingController 拆出：默认协调器 / 设备信息 / 会话列表与详情 /
+ * 从 SettingController 拆出：默认协调器 / 设备信息 /
  * 审计日志与导出。Keygen / Join / 消息发送等高级排障方法保留为隐藏能力。
  *
  * 依赖通过构造参数注入：{ wallet, requestPassword }
@@ -33,13 +33,11 @@ export class MpcSettingsController {
     this.mpcLogFiltered = [];
     this.mpcLogPageSize = 30;
     this.mpcLogVisibleCount = 0;
-    this.mpcSessions = [];
     this.mpcMessages = [];
     this.mpcMessageCursor = null;
     this.mpcMessagePollTimer = null;
     this.mpcMessagePollSessionId = '';
     this.mpcMessagePollIntervalMs = 5000;
-    this.activeMpcSessionId = '';
     this.activeMpcMessageId = '';
     this.mpcDeviceInfo = null;
   }
@@ -271,63 +269,6 @@ export class MpcSettingsController {
       });
     }
 
-    const mpcSessionsRefreshBtn = document.getElementById('mpcSessionsRefreshBtn');
-    if (mpcSessionsRefreshBtn) {
-      mpcSessionsRefreshBtn.addEventListener('click', async () => {
-        await this.loadSessions();
-      });
-    }
-
-    const mpcSessionsList = document.getElementById('mpcSessionsList');
-    if (mpcSessionsList) {
-      mpcSessionsList.addEventListener('click', (event) => {
-        const btn = event.target.closest('[data-mpc-session-use]');
-        if (btn) {
-          const sessionId = btn.dataset.sessionId;
-          if (sessionId) {
-            this.fillMpcSessionFields(sessionId);
-          }
-          return;
-        }
-        const detailBtn = event.target.closest('[data-mpc-session-detail]');
-        if (!detailBtn) return;
-        const sessionId = detailBtn.dataset.sessionId;
-        if (sessionId) {
-          this.openMpcSessionDetail(sessionId);
-        }
-      });
-    }
-
-    const refreshMpcSessionDetailBtn = document.getElementById('refreshMpcSessionDetailBtn');
-    if (refreshMpcSessionDetailBtn) {
-      refreshMpcSessionDetailBtn.addEventListener('click', async () => {
-        await this.refreshMpcSessionDetail();
-      });
-    }
-
-    const closeMpcSessionDetailBtn = document.getElementById('closeMpcSessionDetailBtn');
-    if (closeMpcSessionDetailBtn) {
-      closeMpcSessionDetailBtn.addEventListener('click', () => {
-        this.closeMpcSessionDetail();
-      });
-    }
-
-    const closeMpcSessionDetailModal = document.getElementById('closeMpcSessionDetailModal');
-    if (closeMpcSessionDetailModal) {
-      closeMpcSessionDetailModal.addEventListener('click', () => {
-        this.closeMpcSessionDetail();
-      });
-    }
-
-    const mpcSessionDetailModal = document.getElementById('mpcSessionDetailModal');
-    if (mpcSessionDetailModal) {
-      const overlay = mpcSessionDetailModal.querySelector('.modal-overlay');
-      if (overlay) {
-        overlay.addEventListener('click', () => {
-          this.closeMpcSessionDetail();
-        });
-      }
-    }
   }
 
   bindSimpleModal({ modalId, closeIds = [], onClose }) {
@@ -1158,120 +1099,6 @@ export class MpcSettingsController {
     } finally {
       hideWaiting();
     }
-  }
-
-  async loadSessions() {
-    try {
-      const result = await this.wallet.getMpcSessions();
-      if (!result?.success) {
-        throw new Error(result?.error || '加载失败');
-      }
-      this.mpcSessions = Array.isArray(result.sessions) ? result.sessions : [];
-      this.renderMpcSessions();
-    } catch (error) {
-      console.error('[MpcSettings] 加载 MPC 会话失败:', error);
-      this.mpcSessions = [];
-      this.renderMpcSessions();
-    }
-  }
-
-  renderMpcSessions() {
-    const container = document.getElementById('mpcSessionsList');
-    if (!container) return;
-    const list = Array.isArray(this.mpcSessions) ? this.mpcSessions : [];
-    if (!list.length) {
-      container.innerHTML = '<div class="empty-message">暂无会话</div>';
-      return;
-    }
-    const sorted = [...list].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    container.innerHTML = sorted.map(session => {
-      const sessionId = session?.id || '-';
-      const type = session?.type || '-';
-      const status = session?.status || '-';
-      const participants = Array.isArray(session?.participants) ? session.participants.length : 0;
-      const round = Number.isFinite(session?.round) ? session.round : '-';
-      return `
-        <div class="sync-activity-item">
-          <div class="sync-activity-main">
-            <div class="sync-activity-message">${escapeHtml(sessionId)}</div>
-            <div class="sync-activity-meta">
-              <span class="sync-activity-tag">类型 ${escapeHtml(type)}</span>
-              <span class="sync-activity-tag">状态 ${escapeHtml(status)}</span>
-              <span class="sync-activity-tag">成员 ${participants}</span>
-              <span class="sync-activity-tag">轮次 ${escapeHtml(String(round))}</span>
-            </div>
-          </div>
-          <div class="sync-activity-actions">
-            <button class="btn btn-secondary btn-small" data-mpc-session-detail="1" data-session-id="${escapeHtml(sessionId)}">详情</button>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  openMpcSessionDetail(sessionId) {
-    this.activeMpcSessionId = sessionId || '';
-    const modal = document.getElementById('mpcSessionDetailModal');
-    if (modal) {
-      modal.classList.remove('hidden');
-    }
-    this.refreshMpcSessionDetail();
-  }
-
-  closeMpcSessionDetail() {
-    this.activeMpcSessionId = '';
-    const modal = document.getElementById('mpcSessionDetailModal');
-    if (modal) {
-      modal.classList.add('hidden');
-    }
-  }
-
-  async refreshMpcSessionDetail() {
-    const sessionId = this.activeMpcSessionId;
-    if (!sessionId) return;
-    try {
-      const result = await this.wallet.getMpcSession(sessionId);
-      if (!result?.success) {
-        throw new Error(result?.error || '加载失败');
-      }
-      const session = result?.session;
-      if (!session) {
-        throw new Error('会话不存在');
-      }
-      this.renderMpcSessionDetail(session);
-    } catch (error) {
-      console.error('[MpcSettings] 加载 MPC 会话详情失败:', error);
-      this.renderMpcSessionDetail(null);
-      showError('加载失败: ' + error.message);
-    }
-  }
-
-  renderMpcSessionDetail(session) {
-    const setText = (id, value) => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = value;
-    };
-    if (!session) {
-      setText('mpcSessionDetailId', '-');
-      setText('mpcSessionDetailType', '-');
-      setText('mpcSessionDetailStatus', '-');
-      setText('mpcSessionDetailRound', '-');
-      setText('mpcSessionDetailThreshold', '-');
-      setText('mpcSessionDetailCurve', '-');
-      setText('mpcSessionDetailParticipants', '-');
-      return;
-    }
-    const participants = Array.isArray(session.participants) ? session.participants : [];
-    const participantText = participants.length
-      ? `${participants.length} · ${participants.join(', ')}`
-      : '-';
-    setText('mpcSessionDetailId', session.id || '-');
-    setText('mpcSessionDetailType', session.type || '-');
-    setText('mpcSessionDetailStatus', session.status || '-');
-    setText('mpcSessionDetailRound', Number.isFinite(session.round) ? String(session.round) : '-');
-    setText('mpcSessionDetailThreshold', Number.isFinite(session.threshold) ? String(session.threshold) : '-');
-    setText('mpcSessionDetailCurve', session.curve || '-');
-    setText('mpcSessionDetailParticipants', participantText);
   }
 
   fillMpcSessionFields(sessionId) {
