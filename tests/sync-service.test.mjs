@@ -250,6 +250,48 @@ test('_buildPayload 正确产出 accounts/contacts/networkIds', async () => {
   assert.deepEqual(payload.networkIds, ['0x1']);
 });
 
+test('拒绝未知版本和损坏的远端 payload', () => {
+  const { validateSyncPayload } = syncModule;
+  assert.throws(
+    () => validateSyncPayload({ version: 2, updatedAt: Date.now(), accounts: [] }),
+    /Unsupported backup payload version/
+  );
+  assert.throws(
+    () => validateSyncPayload({ version: 1, updatedAt: Date.now(), accounts: [{ index: 0, address: 'bad' }] }),
+    /Invalid backup payload account/
+  );
+  assert.throws(
+    () => validateSyncPayload({ version: 1, updatedAt: Number.NaN, accounts: [] }),
+    /Invalid backup payload timestamp/
+  );
+});
+
+test('远端拉取失败时停止同步，不用本地数据覆盖远端', async () => {
+  await backupSyncService._prepareContexts('TestPassword123');
+  const context = backupSyncService._contexts.get('w1');
+  const originalPull = backupSyncService._pullRemote;
+  const originalPush = backupSyncService._pushWallet;
+  let pushed = false;
+  backupSyncService._pullRemote = async () => {
+    throw new Error('corrupt remote payload');
+  };
+  backupSyncService._pushWallet = async () => {
+    pushed = true;
+  };
+
+  try {
+    await assert.rejects(
+      () => backupSyncService._syncWallet('w1', 'manual'),
+      /corrupt remote payload/
+    );
+    assert.ok(context);
+    assert.equal(pushed, false);
+  } finally {
+    backupSyncService._pullRemote = originalPull;
+    backupSyncService._pushWallet = originalPush;
+  }
+});
+
 test('_applyRemotePayload 按 LWW 合并账户（远端 nameUpdatedAt 更新则覆盖）', async () => {
   await backupSyncService._prepareContexts('TestPassword123');
   // password-cache 模块用 state.passwordCache（内存），不是 chrome.storage；需手动设
@@ -276,6 +318,39 @@ test('_applyRemotePayload 按 LWW 合并账户（远端 nameUpdatedAt 更新则�
   assert.equal(acc0.name, 'Renamed by remote', 'LWW 应采纳远端名');
   const acc1 = merged.find((a) => a.index === 1);
   assert.equal(acc1.name, 'New from remote');
+});
+
+test('新设备必须先用助记词恢复密钥，再应用远端元数据', async () => {
+  await backupSyncService._prepareContexts('TestPassword123');
+  const payload = await backupSyncService._buildPayload('w1', 'device-a');
+  payload.accounts[0].name = 'Restored account name';
+  payload.accounts[0].nameUpdatedAt = Date.now() + 1000;
+
+  await ops.clearAllData();
+  backupSyncService._contexts.clear();
+  assert.equal((await ops.getWallets() && Object.keys(await ops.getWallets()).length), 0);
+
+  await backupSyncService._applyRemotePayload('w1', payload, 'device-b');
+  assert.equal(Object.keys(await ops.getWallets()).length, 0, '远端元数据不能创建钱包密钥');
+
+  const { importHDWallet } = await import('../js/background/vault.js');
+  const restored = await importHDWallet(
+    'Recovered wallet',
+    'test test test test test test test test test test test junk',
+    'TestPassword123',
+  );
+  restored.wallet.id = 'w1';
+  restored.mainAccount.id = 'w1_0';
+  restored.mainAccount.walletId = 'w1';
+  payload.accounts[0].address = restored.mainAccount.address;
+  await ops.saveWallet(restored.wallet);
+  await ops.saveAccount(restored.mainAccount);
+
+  await backupSyncService._applyRemotePayload('w1', payload, 'device-b');
+  const accounts = await ops.getWalletAccounts('w1');
+  assert.equal(accounts[0].address.toLowerCase(), payload.accounts[0].address.toLowerCase());
+  assert.equal(accounts[0].name, 'Restored account name');
+  assert.equal((await ops.getContactList()).length, 1);
 });
 
 // ── 推送：dirty 标记后 PUT 远端 ──
@@ -313,6 +388,27 @@ test('远端 ETag 与缓存一致 → 跳过 GET', async () => {
   const ctx = backupSyncService._contexts.get('w1');
   const shouldPull = await backupSyncService._shouldPullRemote(ctx);
   assert.equal(shouldPull, false, 'ETag 命中应跳过拉取');
+});
+
+test('远端 payload 时间倒退 → 阻止应用并记录回滚冲突', async () => {
+  await backupSyncService._prepareContexts('TestPassword123');
+  const context = backupSyncService._contexts.get('w1');
+  backupSyncService._remoteMeta[context.fingerprint] = {
+    maxPayloadUpdatedAt: 2000
+  };
+
+  const detected = await backupSyncService._checkRemoteRollback(context, {
+    version: 1,
+    updatedAt: 1000,
+    accounts: []
+  });
+
+  assert.equal(detected, true);
+  const settings = await ops.getUserSetting('backupSyncConflicts', []);
+  assert.equal(settings.length, 1);
+  assert.equal(settings[0].type, 'remote-rollback');
+  assert.equal(settings[0].localUpdatedAt, 2000);
+  assert.equal(settings[0].remoteUpdatedAt, 1000);
 });
 
 // ── onLocked 停自动同步并清 context ──

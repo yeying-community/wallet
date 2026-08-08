@@ -176,8 +176,11 @@ export const MessageValidator = {
       return { valid: false, error: 'Invalid message type' };
     }
 
-    if (!message.version) {
-      return { valid: false, error: 'Missing version' };
+    if (message.version !== PROTOCOL_VERSION) {
+      return {
+        valid: false,
+        error: message.version ? 'Unsupported protocol version' : 'Missing version'
+      };
     }
 
     if (!message.category || !Object.values(MessageCategory).includes(message.category)) {
