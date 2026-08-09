@@ -1,3 +1,5 @@
+import { savePopupSessionState } from './popup-session-state.js';
+
 let currentPage = null;
 
 export function showPage(pageId) {
@@ -9,6 +11,9 @@ export function showPage(pageId) {
   if (targetPage) {
     targetPage.classList.remove('hidden');
     currentPage = pageId;
+    void savePopupSessionState(pageId).catch(error => {
+      console.warn('[UI] 保存页面状态失败:', error);
+    });
     console.log(`[UI] 切换到页面: ${pageId}`);
   } else {
     console.error(`[UI] 页面不存在: ${pageId}`);

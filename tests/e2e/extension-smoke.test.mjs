@@ -120,6 +120,21 @@ test('loads the MV3 extension and preserves wallet state across lock and unlock'
     await page.waitForTimeout(1_000);
     await page.screenshot({ path: join(screenshotDir, 'extension-wallet-unlocked.png'), fullPage: true });
 
+    await page.locator('#transferBtn').click();
+    await page.locator('#transferPage').waitFor({ state: 'visible' });
+    await page.locator('#recipientAddress').fill('0x1111111111111111111111111111111111111111');
+    await page.locator('#amount').fill('1.25');
+    await page.close();
+    page = await context.newPage();
+    await page.setViewportSize({ width: 380, height: 600 });
+    await page.goto(popupUrl);
+    await page.locator('#transferPage').waitFor({ state: 'visible', timeout: 5_000 });
+    assert.equal(await page.locator('#recipientAddress').inputValue(), '0x1111111111111111111111111111111111111111');
+    assert.equal(await page.locator('#amount').inputValue(), '1.25');
+    assert.equal(await page.locator('#unlockPassword').inputValue(), '');
+    await page.locator('#transferPage .back-btn').click();
+    await page.locator('#walletPage').waitFor({ state: 'visible' });
+
     await terminateExtensionServiceWorker(context, page, extensionId);
     await page.close();
     page = await context.newPage();

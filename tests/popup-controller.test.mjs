@@ -29,6 +29,8 @@ function setupDom() {
     unlockPage: { tagName: 'div' },
     welcomePage: { tagName: 'div' },
     unlockPassword: { tagName: 'input' },
+    recipientAddress: { tagName: 'input' },
+    amount: { tagName: 'input' },
     tokensContent: { tagName: 'div' },
     backupSyncSection: { tagName: 'div' },
     siteSearchInput: { tagName: 'input' }
@@ -208,4 +210,31 @@ test('lockWallet：wallet.lock 抛错时仍调 showError 不抛', async () => {
   c.renderUnlockReason = () => {};
   await c.lockWallet(); // 不应抛
   assert.ok(true, 'lockWallet 容错');
+});
+
+test('restorePopupSessionState：恢复转账页面和非敏感字段', async () => {
+  const c = new PopupController({ wallet: fakeWallet(), transaction: {}, network: {}, token: {} });
+  let prepared = 0;
+  c.tokenController.prepareTransferSelectors = async () => { prepared += 1; };
+  c.contactController.loadContacts = async () => {};
+  c.transactionSendController.scheduleFeeEstimate = () => {};
+  elements.recipientAddress.value = '';
+  elements.amount.value = '';
+
+  const restored = await c.restorePopupSessionState({
+    pageId: 'transferPage',
+    updatedAt: Date.now(),
+    fields: {
+      recipientAddress: '0x1111111111111111111111111111111111111111',
+      amount: '1.25',
+      unlockPassword: 'must-not-restore',
+    },
+  });
+
+  assert.equal(restored, true);
+  assert.equal(prepared, 1);
+  assert.equal(elements.transferPage.classList.contains('hidden'), false);
+  assert.equal(elements.recipientAddress.value, '0x1111111111111111111111111111111111111111');
+  assert.equal(elements.amount.value, '1.25');
+  assert.equal(elements.unlockPassword.value, '');
 });
