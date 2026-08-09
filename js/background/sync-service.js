@@ -585,11 +585,6 @@ class BackupSyncService {
         usernameUpdatedAt: account.usernameUpdatedAt || 0
       };
     });
-    const profile = {
-      email: String(await getUserSetting('profileEmail', '') || ''),
-      emailUpdatedAt: Number(await getUserSetting('profileEmailUpdatedAt', 0)) || 0
-    };
-
     const networks = await getNetworks();
     const storedNetworkIds = await getUserSetting(SETTINGS_KEYS.networkIds, []);
     const networkIds = Array.from(new Set([
@@ -615,7 +610,6 @@ class BackupSyncService {
       reason,
       accountCount: wallet.accountCount || accounts.length,
       accounts: accountEntries,
-      profile,
       contacts: contactEntries,
       networkIds,
       networksUpdatedAt: getTimestamp()
@@ -724,12 +718,6 @@ class BackupSyncService {
 
       await this._mergeContacts(remotePayload.contacts || []);
       await this._mergeNetworkIds(remotePayload.networkIds || []);
-      const remoteProfile = remotePayload.profile;
-      if (remoteProfile && Number(remoteProfile.emailUpdatedAt || 0) > Number(await getUserSetting('profileEmailUpdatedAt', 0) || 0)) {
-        await updateUserSetting('profileEmail', String(remoteProfile.email || ''));
-        await updateUserSetting('profileEmailUpdatedAt', Number(remoteProfile.emailUpdatedAt));
-        changed = true;
-      }
     } finally {
       this._suppressStorageEvents = false;
     }

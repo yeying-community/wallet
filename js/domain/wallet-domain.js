@@ -11,7 +11,7 @@
  */
 
 import { WalletMessageType } from '../protocol/extension-protocol.js';
-import { validateAccountName, validateUsername, validateEmail } from '../config/validation-rules.js';
+import { validateAccountName, validateUsername } from '../config/validation-rules.js';
 import { BaseDomain } from './base-domain.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 export { WalletMessageType };
@@ -292,14 +292,6 @@ export class WalletDomain extends BaseDomain {
     return result.profile || {};
   }
 
-  async updateProfileEmail(email) {
-    const value = String(email || '').trim().toLowerCase();
-    const validation = validateEmail(value);
-    if (!validation.valid) throw new Error(validation.error || '邮箱格式不正确');
-    const result = await this._sendMessage(WalletMessageType.UPDATE_PROFILE_EMAIL, { email: value });
-    return result.profile || {};
-  }
-
   // ==================== 获取账户信息 ====================
 
   /**
@@ -550,6 +542,23 @@ export class WalletDomain extends BaseDomain {
 
   async getPassportBindings(endpoint, accessToken) {
     return await this._sendMessage(WalletMessageType.PASSPORT_GET_BINDINGS, { endpoint, accessToken });
+  }
+
+  async requestPassportEmailVerification(endpoint, accessToken, email) {
+    return await this._sendMessage(WalletMessageType.PASSPORT_EMAIL_VERIFICATION_REQUEST, {
+      endpoint,
+      accessToken,
+      email
+    });
+  }
+
+  async confirmPassportEmailVerification(endpoint, accessToken, verificationId, code) {
+    return await this._sendMessage(WalletMessageType.PASSPORT_EMAIL_VERIFICATION_CONFIRM, {
+      endpoint,
+      accessToken,
+      verificationId,
+      code
+    });
   }
 
   async createPassportUnlink(endpoint, accessToken) {

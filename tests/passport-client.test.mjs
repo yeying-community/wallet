@@ -123,3 +123,22 @@ test('unlink uses the signed one-time request returned by Node', async () => {
     requestId: 'pun-1', timestamp: 'now', signature: '0xsig'
   });
 });
+
+test('email verification uses authenticated Passport endpoints', async () => {
+  const calls = [];
+  const client = new PassportClient({
+    endpoint: 'https://node.example',
+    getToken: () => 'jwt',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return jsonResponse({ code: 0, data: { verificationId: 'pev-1', email: 'person@example.com' } });
+    }
+  });
+  await client.requestEmailVerification('person@example.com');
+  await client.confirmEmailVerification({ verificationId: 'pev-1', code: '123456' });
+  assert.match(calls[0].url, /email\/verification\/request$/);
+  assert.equal(calls[0].options.headers.Authorization, 'Bearer jwt');
+  assert.deepEqual(JSON.parse(calls[0].options.body), { email: 'person@example.com' });
+  assert.match(calls[1].url, /email\/verification\/confirm$/);
+  assert.deepEqual(JSON.parse(calls[1].options.body), { verificationId: 'pev-1', code: '123456' });
+});

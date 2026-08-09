@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { createInvalidParams, createUnauthorizedError } from '../common/errors/index.js';
-import { getAuthorization, getSelectedAccount, getUserSetting } from '../storage/index.js';
+import { getAuthorization, getSelectedAccount } from '../storage/index.js';
 
 const SUPPORTED_FIELDS = new Set(['username', 'email']);
 
@@ -27,6 +27,6 @@ export async function handleYeyingGetProfile(origin, params) {
   }
   const profile = {};
   if (fields.includes('username')) profile.username = account.username || '';
-  if (fields.includes('email')) profile.email = String(await getUserSetting('profileEmail', '') || '');
+  if (fields.includes('email')) profile.email = '';
   return { address: account.address, chainId: state.currentChainId, profile };
 }

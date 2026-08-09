@@ -54,6 +54,29 @@ export async function handleGetPassportBindings(data = {}, dependencies = {}) {
   }
 }
 
+export async function handleRequestPassportEmailVerification(data = {}, dependencies = {}) {
+  try {
+    const client = createClient({ ...data, fetchImpl: dependencies.fetchImpl });
+    return success({ verification: await client.requestEmailVerification(data.email) });
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function handleConfirmPassportEmailVerification(data = {}, dependencies = {}) {
+  try {
+    const client = createClient({ ...data, fetchImpl: dependencies.fetchImpl });
+    return success({
+      verification: await client.confirmEmailVerification({
+        verificationId: data.verificationId,
+        code: data.code
+      })
+    });
+  } catch (error) {
+    return failure(error);
+  }
+}
+
 export async function handleCreatePassportUnlink(data = {}, dependencies = {}) {
   try {
     const client = createClient({ ...data, fetchImpl: dependencies.fetchImpl });

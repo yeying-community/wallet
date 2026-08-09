@@ -104,6 +104,28 @@ export class PassportClient {
     return this.request('/bindings', { authenticated: true });
   }
 
+  requestEmailVerification(email) {
+    const value = String(email || '').trim();
+    if (!value) throw new PassportClientError('请输入社区邮箱');
+    return this.request('/email/verification/request', {
+      method: 'POST',
+      authenticated: true,
+      body: { email: value }
+    });
+  }
+
+  confirmEmailVerification({ verificationId, code }) {
+    const id = String(verificationId || '').trim();
+    const value = String(code || '').trim();
+    if (!id) throw new PassportClientError('请先发送邮箱验证码');
+    if (!/^\d{6}$/.test(value)) throw new PassportClientError('请输入 6 位验证码');
+    return this.request('/email/verification/confirm', {
+      method: 'POST',
+      authenticated: true,
+      body: { verificationId: id, code: value }
+    });
+  }
+
   createUnlinkRequest() {
     return this.request('/bind/unlink/request', { method: 'POST', authenticated: true });
   }

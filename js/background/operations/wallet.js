@@ -40,11 +40,9 @@ import {
   clearTransactionsByAddress,
   ensureDefaultNetworks,
   saveSelectedNetworkName,
-  getNetworkConfigByKey,
-  getUserSetting,
-  updateUserSettings
+  getNetworkConfigByKey
 } from '../../storage/index.js';
-import { validateAccountName, validateUsername, validateEmail } from '../../config/validation-rules.js';
+import { validateAccountName, validateUsername } from '../../config/validation-rules.js';
 import { getCachedPassword, cachePassword, refreshPasswordCache, clearPasswordCache } from '../password-cache.js';
 import { resetLockTimer, lockWallet } from '../keyring.js';
 import { normalizeChainId } from '../../common/chain/index.js';
@@ -552,18 +550,7 @@ export async function handleUpdateAccountUsername(accountId, username) {
 }
 
 export async function handleGetProfile() {
-  const email = String(await getUserSetting('profileEmail', '') || '');
-  const emailUpdatedAt = Number(await getUserSetting('profileEmailUpdatedAt', 0)) || 0;
-  return { success: true, profile: { email, emailUpdatedAt, emailVerified: false } };
-}
-
-export async function handleUpdateProfileEmail(email) {
-  const value = String(email || '').trim().toLowerCase();
-  const validation = validateEmail(value);
-  if (!validation.valid) return { success: false, error: validation.error };
-  const emailUpdatedAt = getTimestamp();
-  await updateUserSettings({ profileEmail: value, profileEmailUpdatedAt: emailUpdatedAt });
-  return { success: true, profile: { email: value, emailUpdatedAt, emailVerified: false } };
+  return { success: true, profile: { email: '', emailUpdatedAt: 0, emailVerified: false } };
 }
 
 export async function handleExportAccountsFile(password) {
