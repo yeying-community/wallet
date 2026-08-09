@@ -19,6 +19,20 @@ async function getExtensionId(context) {
   return extensionId;
 }
 
+async function terminateExtensionServiceWorker(context, page, extensionId) {
+  const cdp = await context.newCDPSession(page);
+  try {
+    const { targetInfos } = await cdp.send('Target.getTargets');
+    const target = targetInfos.find(info =>
+      info.type === 'service_worker' && info.url.startsWith(`chrome-extension://${extensionId}/`)
+    );
+    assert.ok(target?.targetId, 'extension service worker target should exist before termination');
+    await cdp.send('Target.closeTarget', { targetId: target.targetId });
+  } finally {
+    await cdp.detach();
+  }
+}
+
 test('loads the MV3 extension and preserves wallet state across lock and unlock', { timeout: 90_000, concurrency: false }, async () => {
   const userDataDir = await mkdtemp(join(tmpdir(), 'yeying-wallet-e2e-'));
   let context;
@@ -97,12 +111,27 @@ test('loads the MV3 extension and preserves wallet state across lock and unlock'
     assert.equal(await page.locator('#unlockPage').isVisible(), true);
     assert.equal(await page.locator('#globalWaitingOverlay').isVisible(), false);
 
+    await context.route('https://blockchain.yeying.pub/**', route => route.abort('connectionfailed'));
     await page.locator('#unlockPassword').fill('E2E-password-2026');
     await page.locator('#unlockBtn').click();
-    await page.locator('#walletPage').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('#walletPage').waitFor({ state: 'visible', timeout: 5_000 });
+    assert.equal(await page.locator('#globalWaitingOverlay').isVisible(), false);
     assert.equal((await page.locator('#accountAddress').textContent())?.trim(), accountBeforeLock);
     await page.waitForTimeout(1_000);
     await page.screenshot({ path: join(screenshotDir, 'extension-wallet-unlocked.png'), fullPage: true });
+
+    await terminateExtensionServiceWorker(context, page, extensionId);
+    await page.close();
+    page = await context.newPage();
+    await page.setViewportSize({ width: 380, height: 600 });
+    await page.goto(popupUrl);
+    await page.locator('#unlockPage').waitFor({ state: 'visible', timeout: 30_000 });
+    assert.equal(await page.locator('#welcomePage').isVisible(), false);
+    await page.locator('#unlockPassword').fill('E2E-password-2026');
+    await page.locator('#unlockBtn').click();
+    await page.locator('#walletPage').waitFor({ state: 'visible', timeout: 5_000 });
+    assert.equal((await page.locator('#accountAddress').textContent())?.trim(), accountBeforeLock);
+    assert.equal(await page.locator('#globalWaitingOverlay').isVisible(), false);
   } catch (error) {
     if (page && !page.isClosed()) {
       await mkdir(screenshotDir, { recursive: true });

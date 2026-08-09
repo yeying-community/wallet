@@ -2,7 +2,6 @@ import { BackupSyncSettingsController } from './setting/backup-sync-settings-con
 import { MpcSettingsController } from './setting/mpc-settings-controller.js';
 import { AuthorizedSitesController } from './setting/authorized-sites-controller.js';
 import { AccountSettingsController } from './setting/account-settings-controller.js';
-import { ProfileSettingsController } from './setting/profile-settings-controller.js';
 import { PassportSettingsController } from './setting/passport-settings-controller.js';
 
 export class SettingController {
@@ -17,7 +16,6 @@ export class SettingController {
       wallet,
       onClearAllAuthorizations: () => this.sitesController.handleClearAllAuthorizations()
     });
-    this.profileController = new ProfileSettingsController({ wallet });
     this.passportController = new PassportSettingsController({ wallet, transaction, requestPassword });
   }
 
@@ -26,7 +24,6 @@ export class SettingController {
     this.mpcController.bindEvents();
     this.sitesController.bindEvents();
     this.accountController.bindEvents();
-    this.profileController.bindEvents();
     this.passportController.bindEvents();
   }
 
@@ -37,7 +34,6 @@ export class SettingController {
   }
 
   async loadBackupSyncSettings() {
-    await this.profileController.load();
     await this.passportController.load();
     return this.backupController.loadSettings();
   }

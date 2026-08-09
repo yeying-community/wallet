@@ -9,7 +9,9 @@ function setup() {
   const dom = createDocument({
     passportEndpointInput: { tagName: 'input' },
     passportStatusText: { tagName: 'p' },
-    passportIdentityBtn: { tagName: 'button' }
+    passportIdentityBtn: { tagName: 'button' },
+    passportUnlinkBtn: { tagName: 'button' },
+    passportEmailStatusText: { tagName: 'p' },
   });
   elements = dom.elements;
   globalThis.document = dom.document;
@@ -24,6 +26,7 @@ test.afterEach(() => {
   delete globalThis.fetch;
   delete globalThis.localStorage;
   delete globalThis.confirm;
+  delete globalThis.prompt;
 });
 
 test('loginAndUnlink performs recent SIWE auth and signs the one-time unlink message', async () => {
@@ -76,8 +79,14 @@ test('load restores a locally configured Node endpoint', async () => {
   assert.equal(elements.passportEndpointInput.value, 'http://127.0.0.1:8100');
 });
 
-test('loginAndBind signs the SIWE challenge and sends its short-lived token once', async () => {
+test('loginAndBind prompts for email and code before completing the binding', async () => {
   elements.passportEndpointInput.value = 'https://node.example';
+  const values = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key)
+  };
   const fetchCalls = [];
   globalThis.fetch = async (url, options = {}) => {
     fetchCalls.push({ url: String(url), options });
@@ -86,11 +95,23 @@ test('loginAndBind signs the SIWE challenge and sends its short-lived token once
       : { code: 0, data: { token: 'short-jwt' } };
     return { ok: true, json: async () => data };
   };
+  const prompts = ['Person@Example.com', '123456'];
+  globalThis.prompt = () => prompts.shift();
   const bindingCalls = [];
+  const emailRequests = [];
+  const confirms = [];
   const controller = new PassportSettingsController({
     wallet: {
       getCurrentAccount: async () => ({ address: '0x1111111111111111111111111111111111111111' }),
-      createPassportBinding: async (...args) => { bindingCalls.push(args); return { success: true, binding: { subjectId: 'subject-1' } }; }
+      createPassportBinding: async (...args) => { bindingCalls.push(args); return { success: true, binding: { subjectId: 'subject-1' } }; },
+      requestPassportEmailVerification: async (...args) => {
+        emailRequests.push(args);
+        return { success: true, verification: { verificationId: 'pev-1', emailHint: 'p***@example.com' } };
+      },
+      confirmPassportEmailVerification: async (...args) => {
+        confirms.push(args);
+        return { success: true, verification: { email: 'person@example.com' } };
+      }
     },
     transaction: { signMessage: async (message, password) => `${message}:${password}` },
     requestPassword: async () => 'wallet-password'
@@ -102,5 +123,96 @@ test('loginAndBind signs the SIWE challenge and sends its short-lived token once
     address: '0x1111111111111111111111111111111111111111'
   });
   assert.deepEqual(bindingCalls, [['https://node.example', 'short-jwt']]);
+  assert.deepEqual(emailRequests[0], ['https://node.example', 'short-jwt', 'person@example.com']);
+  assert.deepEqual(confirms[0], ['https://node.example', 'short-jwt', 'pev-1', '123456']);
+  assert.equal(elements.passportStatusText.textContent, '夜莺社区身份已绑定，绑定钱包：0x1111...1111。可变更社区邮箱；如此前未完成邮箱验证，请解绑后重新绑定。');
+  assert.equal(elements.passportEmailStatusText.textContent, '社区邮箱已验证：person@example.com');
+  assert.equal(elements.passportIdentityBtn.textContent, '变更社区邮箱');
+  assert.equal(elements.passportUnlinkBtn.classList.contains('hidden'), false);
+  assert.equal(elements.passportStatusText.textContent.includes('subject-1'), false);
   assert.equal(elements.globalWaitingOverlay.classList.contains('hidden'), true);
+});
+
+test('cancelled or missing verification code keeps the binding pending', async () => {
+  elements.passportEndpointInput.value = 'https://node.example';
+  const values = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key)
+  };
+  globalThis.fetch = async (url) => ({
+    ok: true,
+    json: async () => String(url).includes('/challenge')
+      ? { code: 0, data: { challenge: 'sign-this' } }
+      : { code: 0, data: { token: 'short-jwt' } }
+  });
+  const prompts = ['Person@Example.com', null];
+  globalThis.prompt = () => prompts.shift();
+  const requests = [];
+  const bindings = [];
+  const controller = new PassportSettingsController({
+    wallet: {
+      getCurrentAccount: async () => ({ address: '0x1111111111111111111111111111111111111111' }),
+      createPassportBinding: async (...args) => {
+        bindings.push(args);
+        return { success: true, binding: { subjectId: 'subject-1' } };
+      },
+      requestPassportEmailVerification: async (...args) => {
+        requests.push(args);
+        return { success: true, verification: { verificationId: 'pev-1', emailHint: 'p***@example.com' } };
+      }
+    },
+    transaction: { signMessage: async (message, password) => `${message}:${password}` },
+    requestPassword: async () => 'wallet-password'
+  });
+  await controller.loginAndBind();
+  assert.deepEqual(bindings[0], ['https://node.example', 'short-jwt']);
+  assert.deepEqual(requests[0], ['https://node.example', 'short-jwt', 'person@example.com']);
+  assert.equal(elements.passportStatusText.textContent, '已完成钱包绑定但邮箱尚未确认，请继续完成绑定。绑定钱包：0x1111...1111');
+  assert.equal(elements.passportIdentityBtn.textContent, '继续完成绑定');
+  assert.equal(elements.passportUnlinkBtn.classList.contains('hidden'), false);
+});
+
+test('changePassportEmail prompts for a new email and verifies it', async () => {
+  elements.passportEndpointInput.value = 'https://node.example';
+  const values = new Map([
+    ['passportIdentityBinding:https://node.example:0x1111111111111111111111111111111111111111', 'complete']
+  ]);
+  globalThis.localStorage = {
+    getItem: (key) => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key)
+  };
+  globalThis.fetch = async (url) => ({
+    ok: true,
+    json: async () => String(url).includes('/challenge')
+      ? { code: 0, data: { challenge: 'sign-this' } }
+      : { code: 0, data: { token: 'short-jwt' } }
+  });
+  const prompts = ['New@Example.com', '654321'];
+  globalThis.prompt = () => prompts.shift();
+  const requests = [];
+  const confirms = [];
+  const controller = new PassportSettingsController({
+    wallet: {
+      getCurrentAccount: async () => ({ address: '0x1111111111111111111111111111111111111111' }),
+      requestPassportEmailVerification: async (...args) => {
+        requests.push(args);
+        return { success: true, verification: { verificationId: 'pev-2', emailHint: 'n***@example.com' } };
+      },
+      confirmPassportEmailVerification: async (...args) => {
+        confirms.push(args);
+        return { success: true, verification: { email: 'new@example.com' } };
+      }
+    },
+    transaction: { signMessage: async (message, password) => `${message}:${password}` },
+    requestPassword: async () => 'wallet-password'
+  });
+  await controller.load();
+  await controller.handleIdentityAction();
+  assert.deepEqual(requests[0], ['https://node.example', 'short-jwt', 'new@example.com']);
+  assert.deepEqual(confirms[0], ['https://node.example', 'short-jwt', 'pev-2', '654321']);
+  assert.equal(elements.passportEmailStatusText.textContent, '社区邮箱已验证：new@example.com');
+  assert.equal(elements.passportIdentityBtn.textContent, '变更社区邮箱');
 });

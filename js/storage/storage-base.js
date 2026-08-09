@@ -5,6 +5,28 @@
 
 import { createStorageError, logError } from '../common/errors/index.js';
 
+const mapMutationQueues = new Map();
+
+async function mutateMap(key, mutation) {
+  const previous = mapMutationQueues.get(key) || Promise.resolve();
+  const current = previous.catch(() => {}).then(async () => {
+    const result = await getStorage(key);
+    const map = result[key] && typeof result[key] === 'object' && !Array.isArray(result[key])
+      ? result[key]
+      : {};
+    mutation(map);
+    await setStorage({ [key]: map });
+  });
+  mapMutationQueues.set(key, current);
+  try {
+    await current;
+  } finally {
+    if (mapMutationQueues.get(key) === current) {
+      mapMutationQueues.delete(key);
+    }
+  }
+}
+
 /**
  * 获取存储数据
  * @param {string|string[]|null} keys - 存储键
@@ -160,9 +182,9 @@ export async function getMapItem(mapKey, itemKey) {
  */
 export async function setMapItem(mapKey, itemKey, itemValue) {
   try {
-    const map = await getMap(mapKey);
-    map[itemKey] = itemValue;
-    await setMap(mapKey, map);
+    await mutateMap(mapKey, map => {
+      map[itemKey] = itemValue;
+    });
   } catch (error) {
     logError('storage-set-map-item', error);
     throw createStorageError(`Failed to set map item "${itemKey}" in "${mapKey}"`);
@@ -177,9 +199,9 @@ export async function setMapItem(mapKey, itemKey, itemValue) {
  */
 export async function deleteMapItem(mapKey, itemKey) {
   try {
-    const map = await getMap(mapKey);
-    delete map[itemKey];
-    await setMap(mapKey, map);
+    await mutateMap(mapKey, map => {
+      delete map[itemKey];
+    });
   } catch (error) {
     logError('storage-delete-map-item', error);
     throw createStorageError(`Failed to delete map item "${itemKey}" from "${mapKey}"`);
@@ -194,9 +216,9 @@ export async function deleteMapItem(mapKey, itemKey) {
  */
 export async function deleteMapItems(mapKey, itemKeys) {
   try {
-    const map = await getMap(mapKey);
-    itemKeys.forEach(key => delete map[key]);
-    await setMap(mapKey, map);
+    await mutateMap(mapKey, map => {
+      itemKeys.forEach(key => delete map[key]);
+    });
   } catch (error) {
     logError('storage-delete-map-items', error);
     throw createStorageError(`Failed to delete map items from "${mapKey}"`);
@@ -246,4 +268,3 @@ export function onStorageChanged(callback) {
     chrome.storage.onChanged.removeListener(callback);
   };
 }
-

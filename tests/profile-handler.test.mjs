@@ -16,6 +16,7 @@ globalThis.chrome = {
 const { saveAccount, setSelectedAccountId, updateUserSetting, clearAllData } = await import('../js/storage/index.js');
 const { saveAuthorization } = await import('../js/storage/permission-storage.js');
 const { handleYeyingGetProfile } = await import('../js/background/profile-handler.js');
+const { handleGetProfile } = await import('../js/background/operations/wallet.js');
 
 const account = {
   id: 'account-1', walletId: 'wallet-1', address: '0x1111111111111111111111111111111111111111',
@@ -44,8 +45,15 @@ test('rejects fields that the origin has not been granted', async () => {
   );
 });
 
-test('returns email only after email permission is granted', async () => {
+test('does not return removed local profile email after email permission is granted', async () => {
   await saveAuthorization('https://app.example', account.address, ['email']);
   const result = await handleYeyingGetProfile('https://app.example', [{ fields: ['email'] }]);
-  assert.deepEqual(result.profile, { email: 'alice@example.com' });
+  assert.deepEqual(result.profile, { email: '' });
+});
+
+test('keeps local profile read protocol as a compatibility surface', async () => {
+  assert.deepEqual(await handleGetProfile(), {
+    success: true,
+    profile: { email: '', emailUpdatedAt: 0, emailVerified: false }
+  });
 });

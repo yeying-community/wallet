@@ -251,6 +251,17 @@ body {
   color: #4338ca;
 }
 
+.network-menu-divider {
+  height: 1px;
+  margin: 6px 0;
+  background: #e5e7eb;
+}
+
+.network-option-manage {
+  font-weight: 600;
+  color: #374151;
+}
+
 /* ========== 账户选择器（钱包页面头部）========== */
 .account-selector {
   display: flex;

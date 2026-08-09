@@ -58,6 +58,45 @@ import {
   normalizeBearerToken
 } from './sync/sync-utils.js';
 
+function isEthereumAddress(value) {
+  return typeof value === 'string' && /^0x[0-9a-fA-F]{40}$/.test(value);
+}
+
+export function validateSyncPayload(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Invalid backup payload');
+  }
+  if (payload.version !== SYNC_PAYLOAD_VERSION) {
+    throw new Error(`Unsupported backup payload version: ${String(payload.version ?? '')}`);
+  }
+  if (!Number.isFinite(payload.updatedAt) || payload.updatedAt <= 0) {
+    throw new Error('Invalid backup payload timestamp');
+  }
+  if (!Array.isArray(payload.accounts)) {
+    throw new Error('Invalid backup payload accounts');
+  }
+  for (const account of payload.accounts) {
+    if (
+      !account ||
+      !Number.isInteger(account.index) ||
+      account.index < 0 ||
+      !isEthereumAddress(account.address)
+    ) {
+      throw new Error('Invalid backup payload account');
+    }
+  }
+  if (payload.contacts !== undefined && !Array.isArray(payload.contacts)) {
+    throw new Error('Invalid backup payload contacts');
+  }
+  if (payload.networkIds !== undefined && !Array.isArray(payload.networkIds)) {
+    throw new Error('Invalid backup payload networks');
+  }
+  if (payload.profile !== undefined && (!payload.profile || typeof payload.profile !== 'object' || Array.isArray(payload.profile))) {
+    throw new Error('Invalid backup payload profile');
+  }
+  return payload;
+}
+
 class BackupSyncService {
   constructor() {
     this._initialized = false;
@@ -325,7 +364,8 @@ class BackupSyncService {
     const context = this._contexts.get(walletId);
     if (!context) return;
 
-    const remotePayload = await this._pullRemote(context, reason).catch(() => null);
+    const remotePayload = await this._pullRemote(context, reason);
+    if (remotePayload?.rollbackDetected) return;
     if (remotePayload) {
       await this._applyRemotePayload(walletId, remotePayload, reason);
     }
@@ -342,7 +382,15 @@ class BackupSyncService {
       const shouldPull = await this._shouldPullRemote(context);
       if (!shouldPull) continue;
 
-      const remotePayload = await this._pullRemote(context, reason).catch(() => null);
+      const remotePayload = await this._pullRemote(context, reason).catch(async error => {
+        await this._appendActivityLog(this._buildLogEntry({
+          level: 'error',
+          action: 'pull-error',
+          reason,
+          message: this._formatSyncErrorMessage(reason, error)
+        }));
+        return null;
+      });
       if (remotePayload) {
         await this._applyRemotePayload(walletId, remotePayload, reason);
       }
@@ -422,16 +470,21 @@ class BackupSyncService {
       // keep raw text as ciphertext
     }
 
-    const payload = await decryptObject(ciphertext, context.syncKey);
+    const payload = validateSyncPayload(await decryptObject(ciphertext, context.syncKey));
+    if (await this._checkRemoteRollback(context, payload)) {
+      return { rollbackDetected: true };
+    }
     const etag = response.headers.get('ETag') || '';
     const lastModified = response.headers.get('Last-Modified') || '';
-    if (etag || lastModified) {
-      this._setRemoteMetaEntry(context.fingerprint, {
-        etag: etag || undefined,
-        lastModified: lastModified || undefined,
-        updatedAt: getTimestamp()
-      });
-    }
+    this._setRemoteMetaEntry(context.fingerprint, {
+      etag: etag || undefined,
+      lastModified: lastModified || undefined,
+      updatedAt: getTimestamp(),
+      maxPayloadUpdatedAt: Math.max(
+        Number(this._getRemoteMetaEntry(context.fingerprint)?.maxPayloadUpdatedAt || 0),
+        Number(payload?.updatedAt || 0)
+      )
+    });
     await updateUserSetting(SETTINGS_KEYS.lastPullAt, getTimestamp()).catch(() => {});
     await this._appendActivityLog(this._buildLogEntry({
       level: 'info',
@@ -467,13 +520,51 @@ class BackupSyncService {
 
     const etag = response.headers.get('ETag') || '';
     const lastModified = response.headers.get('Last-Modified') || '';
-    if (etag || lastModified) {
-      this._setRemoteMetaEntry(context.fingerprint, {
-        etag: etag || undefined,
-        lastModified: lastModified || undefined,
-        updatedAt: getTimestamp()
-      });
+    this._setRemoteMetaEntry(context.fingerprint, {
+      etag: etag || undefined,
+      lastModified: lastModified || undefined,
+      updatedAt: getTimestamp(),
+      maxPayloadUpdatedAt: Number(payload?.updatedAt || 0)
+    });
+  }
+
+  async _checkRemoteRollback(context, payload) {
+    const fingerprint = String(context?.fingerprint || '').trim();
+    const remoteUpdatedAt = Number(payload?.updatedAt || 0);
+    const maxPayloadUpdatedAt = Number(
+      this._getRemoteMetaEntry(fingerprint)?.maxPayloadUpdatedAt || 0
+    );
+    if (
+      !fingerprint ||
+      !Number.isFinite(remoteUpdatedAt) ||
+      !Number.isFinite(maxPayloadUpdatedAt) ||
+      remoteUpdatedAt <= 0 ||
+      maxPayloadUpdatedAt <= 0
+    ) return false;
+    if (remoteUpdatedAt >= maxPayloadUpdatedAt) return false;
+
+    await this._recordConflict({
+      id: `remote-rollback:${fingerprint}`,
+      type: 'remote-rollback',
+      fingerprint,
+      localName: new Date(maxPayloadUpdatedAt).toISOString(),
+      remoteName: new Date(remoteUpdatedAt).toISOString(),
+      localUpdatedAt: maxPayloadUpdatedAt,
+      remoteUpdatedAt,
+      timestamp: getTimestamp()
+    });
+    return true;
+  }
+
+  async approveRemoteRollback(fingerprint, remoteUpdatedAt) {
+    const normalizedFingerprint = String(fingerprint || '').trim();
+    const timestamp = Number(remoteUpdatedAt || 0);
+    if (!normalizedFingerprint || !Number.isFinite(timestamp) || timestamp <= 0) {
+      throw new Error('Invalid remote rollback approval');
     }
+    this._setRemoteMetaEntry(normalizedFingerprint, { maxPayloadUpdatedAt: timestamp });
+    await updateUserSetting(SETTINGS_KEYS.remoteMeta, this._remoteMeta);
+    await this.syncAll('rollback-approved');
   }
 
   async _buildPayload(walletId, reason) {
@@ -494,11 +585,6 @@ class BackupSyncService {
         usernameUpdatedAt: account.usernameUpdatedAt || 0
       };
     });
-    const profile = {
-      email: String(await getUserSetting('profileEmail', '') || ''),
-      emailUpdatedAt: Number(await getUserSetting('profileEmailUpdatedAt', 0)) || 0
-    };
-
     const networks = await getNetworks();
     const storedNetworkIds = await getUserSetting(SETTINGS_KEYS.networkIds, []);
     const networkIds = Array.from(new Set([
@@ -524,7 +610,6 @@ class BackupSyncService {
       reason,
       accountCount: wallet.accountCount || accounts.length,
       accounts: accountEntries,
-      profile,
       contacts: contactEntries,
       networkIds,
       networksUpdatedAt: getTimestamp()
@@ -633,12 +718,6 @@ class BackupSyncService {
 
       await this._mergeContacts(remotePayload.contacts || []);
       await this._mergeNetworkIds(remotePayload.networkIds || []);
-      const remoteProfile = remotePayload.profile;
-      if (remoteProfile && Number(remoteProfile.emailUpdatedAt || 0) > Number(await getUserSetting('profileEmailUpdatedAt', 0) || 0)) {
-        await updateUserSetting('profileEmail', String(remoteProfile.email || ''));
-        await updateUserSetting('profileEmailUpdatedAt', Number(remoteProfile.emailUpdatedAt));
-        changed = true;
-      }
     } finally {
       this._suppressStorageEvents = false;
     }
@@ -1025,6 +1104,8 @@ class BackupSyncService {
       await updateUserSetting(SETTINGS_KEYS.conflicts, list).catch(() => {});
       const summary = conflict.type === 'contact'
         ? '发现联系人冲突'
+        : conflict.type === 'remote-rollback'
+          ? '检测到远端备份版本回退'
         : '发现账户冲突';
       await this._appendActivityLog(this._buildLogEntry({
         level: 'warn',

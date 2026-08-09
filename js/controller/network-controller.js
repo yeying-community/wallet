@@ -276,6 +276,22 @@ export class NetworkController {
         });
         menu.appendChild(option);
       });
+
+      const divider = document.createElement('div');
+      divider.className = 'network-menu-divider';
+      divider.setAttribute('role', 'separator');
+      menu.appendChild(divider);
+
+      const manageButton = document.createElement('button');
+      manageButton.type = 'button';
+      manageButton.className = 'network-option network-option-manage';
+      manageButton.textContent = '网络管理';
+      manageButton.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        this.closeAllMenus();
+        await this.handleOpenNetworkManage();
+      });
+      menu.appendChild(manageButton);
     });
   }
 

@@ -3,9 +3,11 @@ import test from 'node:test';
 
 import {
   handleApprovePassportAuthorization,
+  handleConfirmPassportEmailVerification,
   handleCreatePassportBinding,
   handleGetPassportBindings,
-  handleGetPassportStatus
+  handleGetPassportStatus,
+  handleRequestPassportEmailVerification
 } from '../js/background/operations/passport.js';
 
 function response(data, status = 200) {
@@ -23,10 +25,13 @@ test('passport operations call the Node contract without persisting the bearer t
   assert.equal((await handleGetPassportStatus({ endpoint: data.endpoint }, { fetchImpl })).success, true);
   assert.equal((await handleCreatePassportBinding(data, { fetchImpl })).binding.subjectId, 'subject-1');
   assert.equal((await handleGetPassportBindings(data, { fetchImpl })).success, true);
+  assert.equal((await handleRequestPassportEmailVerification({ ...data, email: 'person@example.com' }, { fetchImpl })).success, true);
+  assert.equal((await handleConfirmPassportEmailVerification({ ...data, verificationId: 'pev-1', code: '123456' }, { fetchImpl })).success, true);
   assert.equal((await handleApprovePassportAuthorization({ ...data, requestId: 'request-1' }, { fetchImpl })).success, true);
   assert.equal(calls[0].options.headers.Authorization, undefined);
   assert.equal(calls[1].options.headers.Authorization, 'Bearer siwe-jwt');
-  assert.deepEqual(JSON.parse(calls[3].options.body), { requestId: 'request-1' });
+  assert.deepEqual(JSON.parse(calls[4].options.body), { verificationId: 'pev-1', code: '123456' });
+  assert.deepEqual(JSON.parse(calls[5].options.body), { requestId: 'request-1' });
 });
 
 test('passport operations expose Node errors without throwing through the popup channel', async () => {

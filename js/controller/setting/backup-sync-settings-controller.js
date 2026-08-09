@@ -361,7 +361,10 @@ export class BackupSyncSettingsController {
     if (!container) return;
 
     container.innerHTML = list.map(conflict => {
-      const title = conflict.type === 'contact'
+      const isRollback = conflict.type === 'remote-rollback';
+      const title = isRollback
+        ? '远端备份版本回退'
+        : conflict.type === 'contact'
         ? `联系人 ${conflict.address ? shortenAddress(conflict.address) : ''}`
         : `账户 #${conflict.index ?? '-'}`;
       const localName = escapeHtml(conflict.localName || '');
@@ -374,13 +377,13 @@ export class BackupSyncSettingsController {
             <div class="sync-conflict-title">${escapeHtml(title)}</div>
             <div class="sync-conflict-meta">时间: ${escapeHtml(timeText)}</div>
             <div class="sync-conflict-names">
-              <span class="sync-conflict-local">本地: ${localName || '-'}</span>
-              <span class="sync-conflict-remote">远端: ${remoteName || '-'}</span>
+              <span class="sync-conflict-local">${isRollback ? '已见版本' : '本地'}: ${localName || '-'}</span>
+              <span class="sync-conflict-remote">${isRollback ? '远端版本' : '远端'}: ${remoteName || '-'}</span>
             </div>
           </div>
           <div class="sync-conflict-actions">
-            <button class="btn btn-secondary btn-small" data-conflict-action="local" data-conflict-id="${escapeHtml(conflict.id)}">用本地</button>
-            <button class="btn btn-primary btn-small" data-conflict-action="remote" data-conflict-id="${escapeHtml(conflict.id)}">用远端</button>
+            <button class="btn btn-secondary btn-small" data-conflict-action="local" data-conflict-id="${escapeHtml(conflict.id)}">${isRollback ? '保留本地' : '用本地'}</button>
+            <button class="btn btn-primary btn-small" data-conflict-action="remote" data-conflict-id="${escapeHtml(conflict.id)}">${isRollback ? '信任远端' : '用远端'}</button>
           </div>
         </div>
       `;

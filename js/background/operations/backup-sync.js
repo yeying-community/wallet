@@ -32,6 +32,7 @@ function buildConflictLabel(conflict) {
     if (address) return `联系人 ${address}`;
     return '联系人';
   }
+  if (conflict.type === 'remote-rollback') return '远端备份版本回退';
   const index = Number.isFinite(conflict.index) ? conflict.index : null;
   return index !== null ? `账户 #${index}` : '账户';
 }
@@ -263,7 +264,11 @@ export async function handleResolveBackupSyncConflict(options = {}) {
       return { success: false, error: 'conflict not found' };
     }
 
-    if (target.type === 'account' && target.accountId) {
+    if (target.type === 'remote-rollback') {
+      if (action === 'remote') {
+        await backupSyncService.approveRemoteRollback(target.fingerprint, target.remoteUpdatedAt);
+      }
+    } else if (target.type === 'account' && target.accountId) {
       const account = await getAccount(target.accountId);
       if (!account) {
         return { success: false, error: 'account not found' };
@@ -295,9 +300,13 @@ export async function handleResolveBackupSyncConflict(options = {}) {
       });
     }
 
-    const nextConflicts = list.filter(item => item?.id !== conflictId);
+    const currentConflicts = await getUserSetting('backupSyncConflicts', []);
+    const nextConflicts = (Array.isArray(currentConflicts) ? currentConflicts : list)
+      .filter(item => item?.id !== conflictId);
     await updateUserSetting('backupSyncConflicts', nextConflicts);
-    backupSyncService.markDirty('conflict-resolved');
+    if (target.type !== 'remote-rollback' || action === 'local') {
+      backupSyncService.markDirty('conflict-resolved');
+    }
 
     const choiceLabel = action === 'remote' ? '远端' : '本地';
     const targetLabel = buildConflictLabel(target);
