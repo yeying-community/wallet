@@ -885,14 +885,6 @@ export class PopupController {
       });
     }
 
-    const networkManageBtn = document.getElementById('networkManageBtn');
-    if (networkManageBtn) {
-      networkManageBtn.addEventListener('click', async () => {
-        this.closeWalletHeaderMenu();
-        await this.networkController?.handleOpenNetworkManage?.();
-      });
-    }
-
     const helpDocBtn = document.getElementById('helpDocBtn');
     if (helpDocBtn) {
       helpDocBtn.addEventListener('click', async () => {
