@@ -419,6 +419,64 @@
   margin: 0;
 }
 
+.mpc-invite-panel {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.mpc-invite-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.mpc-invite-list {
+  display: grid;
+  gap: 8px;
+}
+
+.mpc-invite-empty {
+  font-size: 12px;
+  color: #777;
+}
+
+.mpc-invite-item {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.mpc-invite-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.mpc-invite-meta {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  color: #6b7280;
+  word-break: break-all;
+}
+
+.mpc-invite-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .mpc-device-card {
   display: grid;
   gap: 8px;

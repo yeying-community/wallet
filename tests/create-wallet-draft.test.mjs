@@ -7,6 +7,7 @@ import { CreateWalletController } from '../js/controller/wallet/create-wallet-co
 function setup() {
   const { document, elements } = createDocument({
     setPasswordPage: { tagName: 'div', _classes: 'page', dataset: { origin: 'accounts' } },
+    accountsPage: { tagName: 'div', _classes: 'page hidden' },
     setWalletName: { tagName: 'input', value: '家庭钱包' },
     newPassword: { tagName: 'input', value: 'must-not-persist' },
     confirmPassword: { tagName: 'input', value: 'must-not-persist' },
@@ -59,4 +60,17 @@ test('MPC 创建草稿写入并清除 chrome.storage.session', async () => {
   assert.equal('walletId' in stored.createWalletDraft, false);
   await controller.clearDraft();
   assert.equal(stored.createWalletDraft, undefined);
+});
+
+test('从账户管理取消创建时委派标准账户列表入口', async () => {
+  setup();
+  let opened = 0;
+  const controller = new CreateWalletController({
+    wallet: {},
+    onCreated: null,
+    onReturnToAccounts: async () => { opened += 1; },
+  });
+
+  await controller.handleCancel();
+  assert.equal(opened, 1);
 });

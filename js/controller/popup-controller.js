@@ -132,7 +132,8 @@ export class PopupController {
       onCreated: async () => {
         await this.refreshWalletData();
         await this.accountListController?.loadWalletList();
-      }
+      },
+      onReturnToAccounts: async () => this.openAccountsPage(),
     });
   }
 

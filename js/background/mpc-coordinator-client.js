@@ -115,6 +115,28 @@ export class MpcCoordinatorClient {
     return this.request(`/api/v1/public/mpc/sessions/${sessionId}`, { method: 'GET' });
   }
 
+  async listNotifications({ unreadOnly = false, source = '', level = '', page = 1, pageSize = 20 } = {}) {
+    const params = new URLSearchParams();
+    if (unreadOnly) {
+      params.set('unreadOnly', 'true');
+    }
+    if (source) {
+      params.set('source', String(source));
+    }
+    if (level) {
+      params.set('level', String(level));
+    }
+    params.set('page', String(page || 1));
+    params.set('pageSize', String(pageSize || 20));
+    return this.request(`/api/v1/public/notifications?${params.toString()}`, { method: 'GET' });
+  }
+
+  async markNotificationRead(notificationUid) {
+    return this.request(`/api/v1/public/notifications/${encodeURIComponent(notificationUid)}/read`, {
+      method: 'POST'
+    });
+  }
+
   async openSessionStream(sessionId, options = {}) {
     const token = options.token || await this._resolveToken();
     const baseUrl = buildHttpUrl(this._endpoint, '/api/v1/public/mpc/ws');
