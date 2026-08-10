@@ -272,6 +272,84 @@ export async function handleMpcCreateSession(options = {}) {
   }
 }
 
+export async function handleMpcListInvites(options = {}) {
+  try {
+    const result = await mpcService.listInvites(options);
+    return { success: true, items: result.items || [], page: result.page || null };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to list MPC invites' };
+  }
+}
+
+export async function handleMpcAcceptInvite(options = {}) {
+  try {
+    const payload = options?.payload || {};
+    const sessionId = String(options?.sessionId || payload.sessionId || payload.id || '').trim();
+    const walletId = String(options?.walletId || payload.walletId || '').trim();
+    const notificationUid = String(options?.notificationUid || '').trim();
+    if (!sessionId) {
+      throw new Error('sessionId is required');
+    }
+    if (!walletId) {
+      throw new Error('walletId is required');
+    }
+
+    const currentAccount = await getSelectedAccount() || (await getAccountList())[0] || null;
+    const address = String(currentAccount?.address || '').trim();
+    if (!address) {
+      throw new Error('当前账户地址不可用');
+    }
+
+    const participants = Array.isArray(payload.participants)
+      ? payload.participants.map(item => String(item).trim()).filter(Boolean)
+      : [];
+    const participantId = participants.find(item => item.toLowerCase() === address.toLowerCase()) || address;
+    const identity = String(options?.identity || `did:pkh:eth:${address.toLowerCase()}`).trim();
+
+    const joinResult = await mpcService.joinSession({
+      sessionId,
+      participantId,
+      identity,
+      password: options.password
+    });
+    await mpcService.startEventStream(sessionId).catch(() => null);
+
+    const existingWallet = await getMpcWallet(walletId);
+    if (!existingWallet) {
+      const now = getTimestamp();
+      await saveMpcWallet({
+        id: walletId,
+        name: String(payload.name || 'MPC Wallet').trim() || 'MPC Wallet',
+        type: 'mpc',
+        status: 'keygen_pending',
+        keygenSessionId: sessionId,
+        curve: String(payload.curve || 'secp256k1').trim() || 'secp256k1',
+        threshold: Number(payload.threshold || 0),
+        participants,
+        chainIds: [],
+        keyVersion: Number(payload.keyVersion || 1),
+        shareVersion: Number(payload.shareVersion || 1),
+        createdAt: now,
+        updatedAt: now
+      });
+    }
+
+    if (notificationUid) {
+      await mpcService.markInviteRead(notificationUid).catch(() => null);
+    }
+
+    return {
+      success: true,
+      session: joinResult.session,
+      response: joinResult.response,
+      participantId,
+      walletId
+    };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to accept MPC invite' };
+  }
+}
+
 export async function handleMpcJoinSession(options = {}) {
   try {
     const result = await mpcService.joinSession(options);

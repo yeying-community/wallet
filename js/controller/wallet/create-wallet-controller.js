@@ -16,9 +16,10 @@ import {
 const CREATE_WALLET_DRAFT_KEY = 'createWalletDraft';
 
 export class CreateWalletController {
-  constructor({ wallet, onCreated }) {
+  constructor({ wallet, onCreated, onReturnToAccounts }) {
     this.wallet = wallet;
     this.onCreated = onCreated;
+    this.onReturnToAccounts = onReturnToAccounts;
     this.mpcContacts = [];
     this.selectedMpcParticipants = [];
     this.currentMpcAccount = null;
@@ -67,8 +68,8 @@ export class CreateWalletController {
 
     const cancelPasswordBtn = document.getElementById('cancelPasswordBtn');
     if (cancelPasswordBtn) {
-      cancelPasswordBtn.addEventListener('click', () => {
-        this.handleCancel();
+      cancelPasswordBtn.addEventListener('click', async () => {
+        await this.handleCancel();
       });
     }
 
@@ -145,10 +146,14 @@ export class CreateWalletController {
     }
   }
 
-  handleCancel() {
-    void this.clearDraft();
+  async handleCancel() {
+    await this.clearDraft();
     const origin = getPageOrigin('setPasswordPage', 'welcome');
     if (origin === 'accounts') {
+      if (this.onReturnToAccounts) {
+        await this.onReturnToAccounts();
+        return;
+      }
       showPage('accountsPage');
       return;
     }

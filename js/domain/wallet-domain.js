@@ -708,6 +708,24 @@ export class WalletDomain extends BaseDomain {
   }
 
   /**
+   * 获取待处理 MPC 邀请
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async listMpcInvites(options = {}) {
+    return await this._sendMessage(WalletMessageType.MPC_LIST_INVITES, options);
+  }
+
+  /**
+   * 接受 MPC 邀请并加入会话
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async acceptMpcInvite(options = {}) {
+    return await this._sendMessage(WalletMessageType.MPC_ACCEPT_INVITE, options);
+  }
+
+  /**
    * 加入 MPC 会话
    * @param {Object} options
    * @returns {Promise<Object>}

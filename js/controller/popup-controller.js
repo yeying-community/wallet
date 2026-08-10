@@ -24,6 +24,13 @@ import {
 } from './transaction/index.js';
 import { NetworkStorageKeys, SettingsStorageKeys, onStorageChanged } from '../storage/index.js';
 import { ApprovalMessageType } from '../protocol/extension-protocol.js';
+import {
+  applyPopupSessionFields,
+  bindPopupSessionPersistence,
+  clearPopupSessionState,
+  loadPopupSessionState,
+  savePopupSessionState,
+} from '../common/ui/popup-session-state.js';
 
 const USER_GUIDE_URL = 'https://github.com/yeying-community/wallet/blob/main/docs/%E9%92%B1%E5%8C%85%E7%94%A8%E6%88%B7%E4%BD%BF%E7%94%A8%E6%89%8B%E5%86%8C.md';
 
@@ -125,7 +132,8 @@ export class PopupController {
       onCreated: async () => {
         await this.refreshWalletData();
         await this.accountListController?.loadWalletList();
-      }
+      },
+      onReturnToAccounts: async () => this.openAccountsPage(),
     });
   }
 
@@ -135,6 +143,7 @@ export class PopupController {
     await this.showInitialPage();
     this.initCustomSelects();
     this.bindEvents();
+    bindPopupSessionPersistence({ getCurrentPage });
   }
 
   async showInitialPage() {
@@ -143,6 +152,7 @@ export class PopupController {
       return;
     }
 
+    const popupSessionState = await loadPopupSessionState().catch(() => null);
     let startupState;
     try {
       startupState = await this.wallet.getStartupState();
@@ -168,6 +178,7 @@ export class PopupController {
       if (await this.restoreCreateWalletDraft()) {
         return;
       }
+      await this.restorePopupSessionState(popupSessionState);
       return;
     }
 
@@ -186,6 +197,52 @@ export class PopupController {
   async restoreCreateWalletDraft() {
     this.accountListController?.preparePasswordFormForExistingWallet();
     return await this.createWalletController.restoreDraft();
+  }
+
+  async restorePopupSessionState(state) {
+    if (!state?.pageId || state.pageId === 'walletPage') return false;
+    switch (state.pageId) {
+      case 'accountsPage':
+        await this.openAccountsPage();
+        break;
+      case 'settingsPage':
+        await this.openSettingsPage();
+        break;
+      case 'sitesPage':
+        await this.openSitesPage();
+        break;
+      case 'contactsPage':
+        await this.openContactsPage();
+        break;
+      case 'transferPage':
+        await this.openTransferPage();
+        break;
+      case 'networkManagePage':
+        showPage('networkManagePage');
+        await this.networkController?.loadNetworkList?.();
+        break;
+      case 'networkFormPage':
+      case 'tokenAddPage':
+        showPage(state.pageId);
+        break;
+      default:
+        return false;
+    }
+    applyPopupSessionFields(state);
+    if (state.pageId === 'contactsPage' && state.contactEditorOpen) {
+      const contactId = String(state.fields?.contactIdInput || '').trim();
+      this.contactController.editingContactId = contactId || null;
+      document.getElementById('contactEditorModal')?.classList.remove('hidden');
+      const submit = document.getElementById('addContactBtn');
+      if (submit) submit.textContent = contactId ? '保存修改' : '添加联系人';
+    }
+    if (state.pageId === 'transferPage') {
+      this.transactionSendController.scheduleFeeEstimate(
+        this.tokenController?.getCurrentTransferToken?.() || null
+      );
+    }
+    await savePopupSessionState(state.pageId);
+    return true;
   }
 
   async resumePendingApproval() {
@@ -718,6 +775,7 @@ export class PopupController {
       this.closeWalletHeaderMenu();
       this.stopTransactionPolling();
       await this.wallet.lock();
+      await clearPopupSessionState();
 
       const passwordInput = document.getElementById('unlockPassword');
       if (passwordInput) {

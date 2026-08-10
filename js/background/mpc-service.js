@@ -550,6 +550,30 @@ class MpcService {
     return session;
   }
 
+  async listInvites(options = {}) {
+    await this.init();
+    const response = await this._coordinator.listNotifications({
+      unreadOnly: options.unreadOnly !== false,
+      source: 'mpc',
+      page: options.page || 1,
+      pageSize: options.pageSize || 20
+    });
+    const items = Array.isArray(response?.items) ? response.items : [];
+    return {
+      ...response,
+      items: items.filter((item) => String(item?.type || '') === 'mpc.keygen.invited')
+    };
+  }
+
+  async markInviteRead(notificationUid) {
+    await this.init();
+    const uid = String(notificationUid || '').trim();
+    if (!uid) {
+      return null;
+    }
+    return await this._coordinator.markNotificationRead(uid);
+  }
+
   async getSessions(walletId = '') {
     const sessions = await getMpcSessionList();
     const normalizedWalletId = String(walletId || '').trim();

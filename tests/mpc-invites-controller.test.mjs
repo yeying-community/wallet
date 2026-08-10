@@ -1,0 +1,91 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createDocument } from './_helpers/dom-stub.js';
+import { MpcSettingsController } from '../js/controller/setting/mpc-settings-controller.js';
+
+function setup() {
+  const { document, elements } = createDocument({
+    mpcInvitesList: { tagName: 'div' },
+    globalWaitingOverlay: { tagName: 'div', _classes: 'hidden' },
+    globalToast: { tagName: 'div' },
+  });
+  globalThis.document = document;
+  globalThis.window = {
+    refreshWalletSelects: () => {},
+  };
+  return elements;
+}
+
+test.afterEach(() => {
+  delete globalThis.document;
+  delete globalThis.window;
+});
+
+test('loadMpcInvites 渲染待处理 MPC 邀请', async () => {
+  const elements = setup();
+  const controller = new MpcSettingsController({
+    wallet: {
+      listMpcInvites: async () => ({
+        success: true,
+        items: [{
+          notificationUid: 'notification-1',
+          title: 'MPC 钱包创建邀请',
+          subjectId: 'session-1',
+          payload: {
+            sessionId: 'session-1',
+            walletId: 'wallet-1',
+            threshold: 2,
+            participants: ['0x111', '0x222'],
+            inviter: '0x111',
+          },
+        }],
+      }),
+    },
+    requestPassword: async () => 'password123',
+  });
+
+  await controller.loadMpcInvites(false);
+
+  assert.equal(controller.mpcInvites.length, 1);
+  assert.match(elements.mpcInvitesList.innerHTML, /data-mpc-invite-accept/);
+  assert.match(elements.mpcInvitesList.innerHTML, /mpc-invite-item/);
+});
+
+test('handleMpcInviteAccept 使用通知 payload 接受邀请', async () => {
+  setup();
+  let accepted = null;
+  const controller = new MpcSettingsController({
+    wallet: {
+      acceptMpcInvite: async (input) => {
+        accepted = input;
+        return { success: true };
+      },
+      listMpcInvites: async () => ({ success: true, items: [] }),
+    },
+    requestPassword: async () => 'password123',
+  });
+  controller.loadSessions = async () => {};
+  controller.mpcInvites = [{
+    notificationUid: 'notification-1',
+    subjectId: 'session-1',
+    payload: {
+      sessionId: 'session-1',
+      walletId: 'wallet-1',
+      participants: ['0x111', '0x222'],
+    },
+  }];
+
+  await controller.handleMpcInviteAccept('notification-1');
+
+  assert.deepEqual(accepted, {
+    notificationUid: 'notification-1',
+    sessionId: 'session-1',
+    walletId: 'wallet-1',
+    payload: {
+      sessionId: 'session-1',
+      walletId: 'wallet-1',
+      participants: ['0x111', '0x222'],
+    },
+    password: 'password123',
+  });
+});

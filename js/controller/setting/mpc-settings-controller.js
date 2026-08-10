@@ -40,6 +40,7 @@ export class MpcSettingsController {
     this.mpcMessagePollIntervalMs = 5000;
     this.activeMpcMessageId = '';
     this.mpcDeviceInfo = null;
+    this.mpcInvites = [];
   }
 
   bindEvents() {
@@ -138,6 +139,20 @@ export class MpcSettingsController {
     if (mpcConnectionInfoBtn) {
       mpcConnectionInfoBtn.addEventListener('click', async () => {
         await this.openMpcConnectionInfoModal();
+      });
+    }
+    const mpcInvitesRefreshBtn = document.getElementById('mpcInvitesRefreshBtn');
+    if (mpcInvitesRefreshBtn) {
+      mpcInvitesRefreshBtn.addEventListener('click', async () => {
+        await this.loadMpcInvites(true);
+      });
+    }
+    const mpcInvitesList = document.getElementById('mpcInvitesList');
+    if (mpcInvitesList) {
+      mpcInvitesList.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-mpc-invite-accept]');
+        if (!button) return;
+        await this.handleMpcInviteAccept(button.dataset.notificationUid || '');
       });
     }
 
@@ -337,6 +352,7 @@ export class MpcSettingsController {
       this.mpcSettings = settings || {};
       this.renderMpcSettings(settings);
       await this.renderMpcIdentityDefault();
+      await this.loadMpcInvites(false);
     } catch (error) {
       console.error('[MpcSettings] 获取 MPC 设置失败:', error);
     }
@@ -1121,6 +1137,110 @@ export class MpcSettingsController {
       return `did:pkh:eth:${account.address.toLowerCase()}`;
     } catch {
       return '';
+    }
+  }
+
+  shortenText(value, head = 8, tail = 6) {
+    const text = String(value || '').trim();
+    if (text.length <= head + tail + 3) return text;
+    return `${text.slice(0, head)}...${text.slice(-tail)}`;
+  }
+
+  async loadMpcInvites(showToast = false) {
+    const listEl = document.getElementById('mpcInvitesList');
+    if (!listEl || typeof this.wallet.listMpcInvites !== 'function') {
+      return;
+    }
+    try {
+      const result = await this.wallet.listMpcInvites({ unreadOnly: true, pageSize: 20 });
+      if (!result?.success) {
+        throw new Error(result?.error || '加载失败');
+      }
+      this.mpcInvites = Array.isArray(result.items) ? result.items : [];
+      this.renderMpcInvites(this.mpcInvites);
+      if (showToast) showSuccess('MPC 邀请已刷新');
+    } catch (error) {
+      console.error('[MpcSettings] 加载 MPC 邀请失败:', error);
+      this.mpcInvites = [];
+      this.renderMpcInvites([], error.message || '加载失败');
+      if (showToast) showError('刷新失败: ' + error.message);
+    }
+  }
+
+  renderMpcInvites(items = [], errorText = '') {
+    const listEl = document.getElementById('mpcInvitesList');
+    if (!listEl) return;
+    if (errorText) {
+      listEl.innerHTML = `<div class="mpc-invite-empty">${escapeHtml(errorText)}</div>`;
+      return;
+    }
+    if (!items.length) {
+      listEl.innerHTML = '<div class="mpc-invite-empty">暂无待处理邀请</div>';
+      return;
+    }
+    listEl.innerHTML = items.map((item) => {
+      const payload = item?.payload || {};
+      const notificationUid = item?.notificationUid || item?.uid || '';
+      const sessionId = payload.sessionId || item?.subjectId || '';
+      const walletId = payload.walletId || '';
+      const threshold = payload.threshold || '-';
+      const participants = Array.isArray(payload.participants) ? payload.participants.length : '-';
+      const inviter = payload.inviter || item?.actor || '';
+      const createdAt = item?.createdAt ? formatLocaleDateTime(item.createdAt) : '';
+      return `
+        <div class="mpc-invite-item">
+          <div class="mpc-invite-title">${escapeHtml(item?.title || 'MPC 钱包创建邀请')}</div>
+          <div class="mpc-invite-meta">
+            <span>会话：${escapeHtml(this.shortenText(sessionId))}</span>
+            <span>钱包：${escapeHtml(this.shortenText(walletId))}</span>
+            <span>门限：${escapeHtml(threshold)} / ${escapeHtml(participants)}</span>
+            <span>邀请人：${escapeHtml(this.shortenText(inviter))}${createdAt ? ` · ${escapeHtml(createdAt)}` : ''}</span>
+          </div>
+          <div class="mpc-invite-actions">
+            <button
+              class="btn btn-primary btn-small"
+              data-mpc-invite-accept="1"
+              data-notification-uid="${escapeHtml(notificationUid)}"
+            >接受</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async handleMpcInviteAccept(notificationUid) {
+    const invite = this.mpcInvites.find((item) =>
+      String(item?.notificationUid || item?.uid || '') === String(notificationUid || '')
+    );
+    if (!invite) {
+      showError('未找到邀请');
+      return;
+    }
+    const password = await this.requestPassword?.();
+    if (!password) {
+      return;
+    }
+    try {
+      showWaiting();
+      const result = await this.wallet.acceptMpcInvite({
+        notificationUid: invite.notificationUid || invite.uid,
+        sessionId: invite.payload?.sessionId || invite.subjectId,
+        walletId: invite.payload?.walletId,
+        payload: invite.payload || {},
+        password
+      });
+      if (!result?.success) {
+        throw new Error(result?.error || '接受邀请失败');
+      }
+      await this.loadMpcInvites(false);
+      await this.loadSessions();
+      window.refreshWalletSelects?.();
+      showSuccess('已接受 MPC 邀请');
+    } catch (error) {
+      console.error('[MpcSettings] 接受 MPC 邀请失败:', error);
+      showError('接受失败: ' + error.message);
+    } finally {
+      hideWaiting();
     }
   }
 
