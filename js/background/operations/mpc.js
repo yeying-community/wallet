@@ -10,6 +10,8 @@ import {
   getAccountList,
   getMpcWallet,
   saveMpcWallet,
+  deleteMpcWallet,
+  deleteMpcSession,
   getMpcAuditLogs,
   clearMpcAuditLogs
 } from '../../storage/index.js';
@@ -272,6 +274,41 @@ export async function handleMpcCreateSession(options = {}) {
   }
 }
 
+export async function handleMpcCancelSession(options = {}) {
+  try {
+    const walletId = String(options?.walletId || '').trim();
+    const sessionId = String(options?.sessionId || '').trim();
+    if (!walletId) {
+      throw new Error('walletId is required');
+    }
+    if (!sessionId) {
+      throw new Error('sessionId is required');
+    }
+    const wallet = await getMpcWallet(walletId);
+    if (!wallet) {
+      throw new Error('MPC 钱包不存在');
+    }
+    if (wallet.status && wallet.status !== 'keygen_pending') {
+      throw new Error('只有未完成的 MPC 钱包创建可以取消');
+    }
+    const result = await mpcService.cancelSession({
+      sessionId,
+      password: options.password
+    });
+    await deleteMpcSession(sessionId);
+    await deleteMpcWallet(walletId);
+    return {
+      success: true,
+      session: result.session,
+      response: result.response,
+      walletId,
+      sessionId
+    };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to cancel MPC session' };
+  }
+}
+
 export async function handleMpcListInvites(options = {}) {
   try {
     const result = await mpcService.listInvites(options);
@@ -306,12 +343,23 @@ export async function handleMpcAcceptInvite(options = {}) {
     const participantId = participants.find(item => item.toLowerCase() === address.toLowerCase()) || address;
     const identity = String(options?.identity || `did:pkh:eth:${address.toLowerCase()}`).trim();
 
-    const joinResult = await mpcService.joinSession({
-      sessionId,
-      participantId,
-      identity,
-      password: options.password
-    });
+    let joinResult;
+    try {
+      joinResult = await mpcService.joinSession({
+        sessionId,
+        participantId,
+        identity,
+        password: options.password
+      });
+    } catch (error) {
+      if (mpcService.isSessionCancelledError?.(error)) {
+        if (notificationUid) {
+          await mpcService.markInviteRead(notificationUid).catch(() => null);
+        }
+        throw new Error('该 MPC 钱包创建已被发起人取消');
+      }
+      throw error;
+    }
     await mpcService.startEventStream(sessionId).catch(() => null);
 
     const existingWallet = await getMpcWallet(walletId);
