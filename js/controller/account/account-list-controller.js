@@ -77,9 +77,7 @@ export class AccountListController {
     document.getElementById('cancelMpcWalletCreationBtn')?.addEventListener('click', () => {
       void this.handleCancelMpcWalletCreation();
     });
-    ['closeMpcWalletDetailModal', 'closeMpcWalletDetailBtn'].forEach((id) => {
-      document.getElementById(id)?.addEventListener('click', () => this.closeMpcWalletDetail());
-    });
+    document.getElementById('closeMpcWalletDetailModal')?.addEventListener('click', () => this.closeMpcWalletDetail());
     document.getElementById('mpcWalletDetailModal')
       ?.querySelector('.modal-overlay')
       ?.addEventListener('click', () => this.closeMpcWalletDetail());
@@ -435,8 +433,11 @@ export class AccountListController {
     setText('mpcWalletDetailThreshold', `${wallet?.threshold || '-'} / ${participants.length || '-'}`);
     setText('mpcWalletDetailParticipants', participants.length ? participants.join(', ') : '-');
     const cancelBtn = document.getElementById('cancelMpcWalletCreationBtn');
+    const footer = cancelBtn?.closest('.modal-footer');
     if (cancelBtn) {
-      cancelBtn.classList.toggle('hidden', wallet?.status !== 'keygen_pending');
+      const canCancel = wallet?.status === 'keygen_pending';
+      cancelBtn.classList.toggle('hidden', !canCancel);
+      footer?.classList.toggle('hidden', !canCancel);
     }
 
     const container = document.getElementById('mpcWalletDetailSessions');

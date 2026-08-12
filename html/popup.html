@@ -1338,7 +1338,12 @@
         <div class="modal-content mpc-wallet-detail-modal">
           <div class="modal-header">
             <h3 id="mpcWalletDetailName">MPC 钱包</h3>
-            <button class="btn-close" id="closeMpcWalletDetailModal">✕</button>
+            <div class="modal-header-actions">
+              <button class="modal-icon-btn" id="refreshMpcWalletDetailBtn" type="button" aria-label="刷新 MPC 钱包详情" title="刷新">
+                ↻
+              </button>
+              <button class="modal-icon-btn" id="closeMpcWalletDetailModal" type="button" aria-label="关闭 MPC 钱包详情" title="关闭">✕</button>
+            </div>
           </div>
           <div class="modal-body">
             <div class="detail-row">
@@ -1364,8 +1369,6 @@
           </div>
           <div class="modal-footer">
             <button id="cancelMpcWalletCreationBtn" class="btn btn-danger hidden">取消创建</button>
-            <button id="refreshMpcWalletDetailBtn" class="btn btn-secondary">刷新</button>
-            <button id="closeMpcWalletDetailBtn" class="btn btn-secondary">关闭</button>
           </div>
         </div>
       </div>

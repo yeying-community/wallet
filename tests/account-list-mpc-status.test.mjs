@@ -42,7 +42,9 @@ test('MPC 钱包详情只请求并展示当前钱包的会话', async () => {
     mpcWalletDetailParticipants: { tagName: 'div' },
     mpcWalletDetailSessions: { tagName: 'div' },
     cancelMpcWalletCreationBtn: { tagName: 'button', _classes: 'hidden' },
+    mpcWalletDetailFooter: { tagName: 'div', _classes: 'modal-footer' },
   });
+  elements.cancelMpcWalletCreationBtn.closest = () => elements.mpcWalletDetailFooter;
   globalThis.document = document;
   const requestedWalletIds = [];
   try {
@@ -73,6 +75,7 @@ test('MPC 钱包详情只请求并展示当前钱包的会话', async () => {
     assert.equal(elements.mpcWalletDetailName.textContent, '家庭金库');
     assert.equal(elements.mpcWalletDetailThreshold.textContent, '2 / 3');
     assert.equal(elements.cancelMpcWalletCreationBtn.classList.contains('hidden'), false);
+    assert.equal(elements.mpcWalletDetailFooter.classList.contains('hidden'), false);
     assert.match(elements.mpcWalletDetailSessions.innerHTML, /轮次 2/);
     assert.doesNotMatch(elements.mpcWalletDetailSessions.innerHTML, /暂无会话/);
   } finally {
@@ -91,9 +94,11 @@ test('取消未完成 MPC 钱包创建会调用取消会话并刷新列表', asy
     mpcWalletDetailParticipants: { tagName: 'div' },
     mpcWalletDetailSessions: { tagName: 'div' },
     cancelMpcWalletCreationBtn: { tagName: 'button', _classes: 'hidden' },
+    mpcWalletDetailFooter: { tagName: 'div', _classes: 'modal-footer' },
     globalWaitingOverlay: { tagName: 'div', _classes: 'hidden' },
     globalToast: { tagName: 'div' },
   });
+  elements.cancelMpcWalletCreationBtn.closest = () => elements.mpcWalletDetailFooter;
   globalThis.document = document;
   let cancelled = null;
   let refreshed = 0;
