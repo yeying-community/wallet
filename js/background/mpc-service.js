@@ -163,6 +163,11 @@ class MpcService {
     return this._deviceKeys || null;
   }
 
+  isSessionCancelledError(error) {
+    const message = String(error?.message || error || '').toLowerCase();
+    return message.includes('session cancelled') || message.includes('session_cancelled');
+  }
+
   _buildParticipantRecord(sessionId, participant = {}) {
     const participantId = String(participant.participantId || participant.id || '').trim();
     if (!sessionId || !participantId) {
@@ -395,6 +400,27 @@ class MpcService {
     return { participant: participantRecord, session, response };
   }
 
+  async cancelSession(options = {}) {
+    await this.init();
+    await this._ensureCoordinatorToken({ password: options.password });
+    const sessionId = String(options.sessionId || '').trim();
+    if (!sessionId) {
+      throw new Error('sessionId is required');
+    }
+    const signature = await createActionSignature({
+      account: await getSelectedAccount(),
+      action: 'mpc_session_cancel',
+      payload: { sessionId },
+    });
+    const response = await this._coordinator.cancelSession(sessionId, signature);
+    const local = await getMpcSession(sessionId);
+    const session = await this._syncSessionSnapshot(response, {
+      ...(local || { id: sessionId }),
+      status: 'cancelled',
+    });
+    return { session, response };
+  }
+
   async sendSessionMessage(options = {}) {
     await this.init();
     await this._ensureCoordinatorToken({ password: options.password });
@@ -559,9 +585,27 @@ class MpcService {
       pageSize: options.pageSize || 20
     });
     const items = Array.isArray(response?.items) ? response.items : [];
+    const invites = items.filter((item) => String(item?.type || '') === 'mpc.keygen.invited');
+    const visible = [];
+    for (const item of invites) {
+      const sessionId = String(item?.payload?.sessionId || item?.subjectId || '').trim();
+      if (sessionId) {
+        try {
+          const session = await this.getSession(sessionId);
+          if (String(session?.status || '').toLowerCase() === 'cancelled') {
+            continue;
+          }
+        } catch (error) {
+          if (this.isSessionCancelledError(error)) {
+            continue;
+          }
+        }
+      }
+      visible.push(item);
+    }
     return {
       ...response,
-      items: items.filter((item) => String(item?.type || '') === 'mpc.keygen.invited')
+      items: visible
     };
   }
 

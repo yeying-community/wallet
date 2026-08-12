@@ -89,6 +89,13 @@ export class MpcCoordinatorClient {
     });
   }
 
+  async cancelSession(sessionId, signature = {}) {
+    return this.request(`/api/v1/public/mpc/sessions/${sessionId}/cancel`, {
+      method: 'POST',
+      body: { ...signature }
+    });
+  }
+
   async sendMessage(sessionId, message, signature = {}) {
     return this.request(`/api/v1/public/mpc/sessions/${sessionId}/messages`, {
       method: 'POST',

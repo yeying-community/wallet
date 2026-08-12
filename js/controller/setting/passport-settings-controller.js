@@ -92,7 +92,7 @@ export class PassportSettingsController {
     } else if (pending) {
       this.setStatus(`已完成钱包绑定但邮箱尚未确认，请继续完成绑定。绑定钱包：${this.formatWalletAddress(account?.address)}`);
     } else {
-      this.setStatus('点击绑定社区身份后，将依次确认社区邮箱和验证码。');
+      this.setStatus('');
     }
   }
 

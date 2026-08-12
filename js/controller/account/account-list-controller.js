@@ -74,6 +74,9 @@ export class AccountListController {
     document.getElementById('refreshMpcWalletDetailBtn')?.addEventListener('click', () => {
       void this.refreshMpcWalletDetail();
     });
+    document.getElementById('cancelMpcWalletCreationBtn')?.addEventListener('click', () => {
+      void this.handleCancelMpcWalletCreation();
+    });
     ['closeMpcWalletDetailModal', 'closeMpcWalletDetailBtn'].forEach((id) => {
       document.getElementById(id)?.addEventListener('click', () => this.closeMpcWalletDetail());
     });
@@ -431,6 +434,10 @@ export class AccountListController {
     setText('mpcWalletDetailAddress', wallet?.address || '尚未生成');
     setText('mpcWalletDetailThreshold', `${wallet?.threshold || '-'} / ${participants.length || '-'}`);
     setText('mpcWalletDetailParticipants', participants.length ? participants.join(', ') : '-');
+    const cancelBtn = document.getElementById('cancelMpcWalletCreationBtn');
+    if (cancelBtn) {
+      cancelBtn.classList.toggle('hidden', wallet?.status !== 'keygen_pending');
+    }
 
     const container = document.getElementById('mpcWalletDetailSessions');
     if (!container) return;
@@ -453,6 +460,50 @@ export class AccountListController {
           </div>
         </div>
       `).join('');
+  }
+
+  async handleCancelMpcWalletCreation() {
+    const walletId = this.activeMpcWalletId;
+    const wallet = this.mpcWalletsById.get(walletId);
+    if (!wallet) return;
+    if (wallet.status !== 'keygen_pending') {
+      showError('只有未完成的 MPC 钱包创建可以取消');
+      return;
+    }
+    const sessionId = String(wallet.keygenSessionId || '').trim();
+    if (!sessionId) {
+      showError('未找到 MPC 创建会话');
+      return;
+    }
+    try {
+      const password = await this.promptPassword?.({
+        title: '取消 MPC 创建',
+        confirmText: '确认取消',
+        placeholder: '输入密码',
+        onConfirm: async (input) => {
+          if (!input || input.length < 8) {
+            throw new Error('密码至少需要8位字符');
+          }
+        }
+      });
+      if (!password) return;
+      showWaiting();
+      const result = await this.wallet.cancelMpcSession({
+        walletId,
+        sessionId,
+        password,
+      });
+      if (!result?.success) {
+        throw new Error(result?.error || '取消 MPC 创建失败');
+      }
+      this.closeMpcWalletDetail();
+      await this.onWalletUpdated?.();
+      showSuccess('MPC 钱包创建已取消');
+    } catch (error) {
+      showError(error?.message || '取消 MPC 创建失败');
+    } finally {
+      hideWaiting();
+    }
   }
 
   renderAccountAvatars(container) {

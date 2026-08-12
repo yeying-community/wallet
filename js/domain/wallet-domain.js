@@ -708,6 +708,15 @@ export class WalletDomain extends BaseDomain {
   }
 
   /**
+   * 取消未完成的 MPC 创建会话
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async cancelMpcSession(options = {}) {
+    return await this._sendMessage(WalletMessageType.MPC_CANCEL_SESSION, options);
+  }
+
+  /**
    * 获取待处理 MPC 邀请
    * @param {Object} options
    * @returns {Promise<Object>}
