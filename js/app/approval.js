@@ -58,6 +58,9 @@ class ApprovalApp {
     if (type === 'sign_transaction') {
       return 'transaction';
     }
+    if (type === 'passport_assertion') {
+      return 'passport';
+    }
     return type;
   }
 
@@ -260,11 +263,22 @@ class ApprovalApp {
       'recapAddress',
       'recapStatement',
       'recapList',
-      'recapRaw'
+      'recapRaw',
+      'passportOrigin',
+      'passportAppId',
+      'passportAudience',
+      'passportAddress',
+      'passportNonce',
+      'passportScopeList'
     ].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.textContent = '';
     });
+
+    const passportEmailWarning = document.getElementById('passportEmailWarning');
+    if (passportEmailWarning) {
+      passportEmailWarning.classList.add('hidden');
+    }
   }
 
   renderRequestUI() {
@@ -283,6 +297,9 @@ class ApprovalApp {
         break;
       case 'sign':
         this.renderSignRequest();
+        break;
+      case 'passport':
+        this.renderPassportRequest();
         break;
       case 'addChain':
         this.renderAddChainRequest();
@@ -383,6 +400,44 @@ class ApprovalApp {
       const messageEl = document.getElementById('signMessage');
       messageEl.textContent = message;
       messageEl.dataset.rendered = 'true';
+    }
+  }
+
+  renderPassportRequest() {
+    document.getElementById('passportRequest').classList.remove('hidden');
+    const request = this.requestData.request || {};
+    const origin = this.requestData.origin || '';
+    const audience = request.audience || request.aud || origin || '-';
+    const scopes = Array.isArray(request.scopes)
+      ? request.scopes
+      : (Array.isArray(request.scope) ? request.scope : ['identity.basic', 'identity.wallet']);
+
+    const scopeLabels = {
+      'identity.basic': '社区身份',
+      'identity.wallet': '钱包地址',
+      'identity.email': '已验证邮箱'
+    };
+
+    document.getElementById('passportOrigin').textContent = origin || '未知网站';
+    document.getElementById('passportAppId').textContent = request.appId || '-';
+    document.getElementById('passportAudience').textContent = audience;
+    document.getElementById('passportAddress').textContent = this.requestData.address || '-';
+    document.getElementById('passportNonce').textContent = request.nonce || '-';
+
+    const scopeList = document.getElementById('passportScopeList');
+    if (scopeList) {
+      scopeList.innerHTML = '';
+      scopes.forEach((scope) => {
+        const item = document.createElement('div');
+        item.className = 'permission-item';
+        item.textContent = scopeLabels[scope] || scope;
+        scopeList.appendChild(item);
+      });
+    }
+
+    const emailWarning = document.getElementById('passportEmailWarning');
+    if (emailWarning) {
+      emailWarning.classList.toggle('hidden', !scopes.includes('identity.email'));
     }
   }
 

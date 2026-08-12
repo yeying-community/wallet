@@ -65,6 +65,9 @@ export class ApprovalController {
       case 'sign':
         this.bindSignEvents();
         break;
+      case 'passport':
+        this.bindPassportEvents();
+        break;
       case 'addChain':
         this.bindAddChainEvents();
         break;
@@ -156,6 +159,7 @@ export class ApprovalController {
     const map = {
       yeying_ucan_sign: { label: 'UCAN', detail: 'UCAN 签名' },
       yeying_ucan_session: { label: 'UCAN', detail: 'UCAN 会话' },
+      yeying_passport_assertion: { label: '通行证', detail: '通行证登录' },
       eth_requestAccounts: { label: '连接', detail: '连接钱包' },
       eth_sendTransaction: { label: '交易', detail: '发送交易' },
       eth_signTransaction: { label: '交易', detail: '签名交易' },
@@ -421,6 +425,31 @@ export class ApprovalController {
     } catch (error) {
       this.isProcessing = false;
       showError('签名失败: ' + error.message);
+    }
+  }
+
+  bindPassportEvents() {
+    const approveBtn = document.getElementById('approvePassport');
+    const rejectBtn = document.getElementById('rejectPassport');
+
+    if (approveBtn) {
+      this.addDomListener(approveBtn, 'click', () => this.approvePassport());
+    }
+    if (rejectBtn) {
+      this.addDomListener(rejectBtn, 'click', () => this.reject());
+    }
+  }
+
+  async approvePassport() {
+    if (this.isProcessing) return;
+    this.isProcessing = true;
+
+    try {
+      await this.sendResponse({ approved: true });
+      this.closeWindow();
+    } catch (error) {
+      this.isProcessing = false;
+      showError('授权失败: ' + error.message);
     }
   }
 
