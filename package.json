@@ -1,6 +1,6 @@
 {
   "name": "yeying-wallet",
-  "version": "1.4.20",
+  "version": "1.4.23",
   "private": true,
   "//": "devDependencies only — 单元测试夹具与 Chromium E2E 所需；运行时扩展不依赖 npm 包（lib/ 下 vendored）。",
   "type": "module",

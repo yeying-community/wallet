@@ -213,6 +213,13 @@ body {
   margin: 15px 0;
 }
 
+.passport-details {
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+  margin: 15px 0;
+}
+
 .detail-row {
   display: flex;
   justify-content: space-between;

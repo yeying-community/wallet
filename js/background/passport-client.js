@@ -151,6 +151,16 @@ export class PassportClient {
       body: { requestId: id }
     });
   }
+
+  createWalletAssertion(payload) {
+    if (!payload || typeof payload !== 'object') {
+      throw new PassportClientError('缺少 Passport assertion 请求参数');
+    }
+    return this.request('/assertions/wallet', {
+      method: 'POST',
+      body: payload
+    });
+  }
 }
 
 export { normalizeEndpoint };
