@@ -26,6 +26,7 @@ import { POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { handleUcanSession, handleUcanSign } from './ucan.js';
 import { requestPassportAssertion } from './passport-assertion.js';
+import { requestIdentityPresentation as handleIdentityPresentation } from './identity-presentation.js';
 import { handleYeyingGetProfile } from './profile-handler.js';
 import {
   handleYeyingEncrypt,
@@ -227,6 +228,7 @@ export async function routeRequest(method, params, metadata) {
     'yeying_ucan_session',
     'yeying_ucan_sign',
     'yeying_passport_assertion',
+    'yeying_identity_presentation',
     'yeying_encrypt',
     'yeying_decrypt'
   ]);
@@ -305,6 +307,11 @@ export async function routeRequest(method, params, metadata) {
   if (method === 'yeying_passport_assertion') {
     await ensureSiteAuthorized(origin);
     return handlePassportAssertion(account, paramsArray, origin, tabId, clientRequestId);
+  }
+
+  if (method === 'yeying_identity_presentation') {
+    await ensureSiteAuthorized(origin);
+    return handleIdentityPresentationApproval(account, paramsArray, origin, tabId, clientRequestId);
   }
 
   // ==================== 加密服务 ====================
@@ -404,6 +411,43 @@ async function handlePassportAssertion(account, params, origin, tabId, clientReq
     },
     onApproved: async () => requestPassportAssertion({ account, params: request, origin }),
     onRejectedMessage: 'User rejected the Passport login request'
+  });
+}
+
+async function handleIdentityPresentationApproval(account, params, origin, tabId, clientRequestId) {
+  const request = Array.isArray(params) ? (params[0] || {}) : (params || {});
+  if (!request || typeof request !== 'object') throw createInvalidParams('Invalid identity presentation parameters');
+  const pending = findPendingRequest('identity_presentation', origin, tabId);
+  const clientRequestKey = getClientRequestKey(origin, tabId, 'yeying_identity_presentation', clientRequestId);
+  const existingPending = findPendingRequestByClientKey(clientRequestKey);
+  if (pending && !existingPending) {
+    focusPendingWindow(pending);
+    throw createError(-32002, 'Identity presentation request already pending');
+  }
+  return waitForApprovalAndExecute({
+    existingPending,
+    requestType: 'identity_presentation',
+    origin,
+    tabId,
+    reuseSession: true,
+    clientRequestKey,
+    createPending: () => {
+      const requestId = `identity_presentation_${getTimestamp()}_${Math.random().toString(36).slice(2, 11)}`;
+      addPendingRequest(requestId, {
+        type: 'identity_presentation',
+        approvalType: 'identity_presentation',
+        origin,
+        tabId,
+        reuseSession: true,
+        clientRequestKey,
+        expiresAt: Date.now() + TIMEOUTS.REQUEST,
+        data: { origin, accountId: account.id, address: account.address, request },
+        timestamp: getTimestamp()
+      });
+      return requestId;
+    },
+    onApproved: async (response) => handleIdentityPresentation({ account, params: request, origin, password: response?.password }),
+    onRejectedMessage: 'User rejected the identity presentation request'
   });
 }
 

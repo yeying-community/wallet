@@ -36,7 +36,8 @@ function serializePendingRequests() {
     requestId,
     {
       ...request,
-      response: request?.response ? { ...request.response } : null
+      // Approval passwords are transient and must never be persisted in extension storage.
+      response: request?.response ? (({ password, ...safeResponse }) => safeResponse)(request.response) : null
     }
   ]));
 }
@@ -529,6 +530,7 @@ export function recordApprovalResponse(requestId, response) {
   request.response = {
     approved: Boolean(response?.approved),
     account: response?.account || null,
+    password: response?.password || null,
     submittedAt: Date.now()
   };
   diagnostics.record({

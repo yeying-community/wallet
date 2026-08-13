@@ -103,6 +103,11 @@ export const MpcStorageKeys = {
   MPC_AUDIT_EXPORT_QUEUE: 'mpc_audit_export_queue'
 };
 
+export const IdentityStorageKeys = {
+  IDENTITIES: 'wallet_identities',
+  SELECTED_IDENTITY: 'selected_wallet_identity_id'
+};
+
 // ==================== 统一导出 ====================
 export const StorageKeys = {
   ...WalletStorageKeys,
@@ -112,5 +117,6 @@ export const StorageKeys = {
   ...TransactionStorageKeys,
   ...ContactsStorageKeys,
   ...UcanStorageKeys,
-  ...MpcStorageKeys
+  ...MpcStorageKeys,
+  ...IdentityStorageKeys
 };

@@ -1,4 +1,5 @@
 const BASE_PATH = '/api/v1/public/auth/passport';
+const IDENTITY_BASE_PATH = '/api/v1/public/identity';
 
 function normalizeEndpoint(endpoint) {
   const value = String(endpoint || '').trim();
@@ -84,6 +85,30 @@ export class PassportClient {
     return payload;
   }
 
+  async identityRequest(path, { method = 'GET', body } = {}) {
+    if (!this._endpoint) throw new PassportClientError('Node 服务地址未配置');
+    if (typeof this._fetch !== 'function') throw new PassportClientError('当前环境不支持网络请求');
+    const response = await this._fetch(`${this._endpoint}${IDENTITY_BASE_PATH}${path}`, {
+      method,
+      headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      credentials: 'omit'
+    });
+    const payload = await parseResponse(response);
+    if (!response.ok || (payload && typeof payload.code === 'number' && payload.code !== 0)) {
+      throw new PassportClientError(payload?.message || payload?.error || response.statusText || `HTTP ${response.status}`, { status: response.status, code: String(payload?.errorCode || payload?.code || '') });
+    }
+    return payload && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;
+  }
+
+  requestIdentityVerification(body) {
+    return this.identityRequest('/verifications/request', { method: 'POST', body });
+  }
+
+  confirmIdentityVerification(body) {
+    return this.identityRequest('/verifications/confirm', { method: 'POST', body });
+  }
+
   getStatus() {
     return this.request('/status');
   }
@@ -104,9 +129,17 @@ export class PassportClient {
     return this.request('/bindings', { authenticated: true });
   }
 
+  setUsername(username) {
+    const value = String(username || '').trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(value)) {
+      throw new PassportClientError('用户名须为 3-32 位小写字母、数字、点、下划线或连字符');
+    }
+    return this.request('/username', { method: 'PUT', authenticated: true, body: { username: value } });
+  }
+
   requestEmailVerification(email) {
     const value = String(email || '').trim();
-    if (!value) throw new PassportClientError('请输入社区邮箱');
+    if (!value) throw new PassportClientError('请输入验证邮箱');
     return this.request('/email/verification/request', {
       method: 'POST',
       authenticated: true,

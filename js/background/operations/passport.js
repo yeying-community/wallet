@@ -54,6 +54,15 @@ export async function handleGetPassportBindings(data = {}, dependencies = {}) {
   }
 }
 
+export async function handleSetPassportUsername(data = {}, dependencies = {}) {
+  try {
+    const client = createClient({ ...data, fetchImpl: dependencies.fetchImpl });
+    return success({ username: await client.setUsername(data.username) });
+  } catch (error) {
+    return failure(error);
+  }
+}
+
 export async function handleRequestPassportEmailVerification(data = {}, dependencies = {}) {
   try {
     const client = createClient({ ...data, fetchImpl: dependencies.fetchImpl });

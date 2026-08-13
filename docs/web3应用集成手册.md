@@ -84,7 +84,7 @@
 已有 SIWE 登录接口的应用应优先在原接口上扩展，不强制新增平行接口。扩展点是 `scope`，不是新的登录 mode：
 
 - `POST /api/v1/public/auth/challenge`：传 `address` 和可选 `scope`。不传 `scope` 或只请求钱包地址时，现有 SIWE 行为保持不变。
-- 请求 `identity.basic`、`identity.wallet`、`identity.email` 等 Passport scope 时，后端仍创建一次性登录会话和 nonce，并在响应中返回 `appId/audience/scope/passportEndpoint`。
+- 请求 `identity.basic`、`identity.wallet`、`identity.username`、`identity.email` 等 Passport scope 时，后端仍创建一次性登录会话和 nonce，并在响应中返回 `appId/audience/scope/passportEndpoint`。
 - `POST /api/v1/public/auth/verify`：后端根据 challenge 会话中保存的 scope 判断是否必须提交 `walletProof + passportAssertion`，校验后签发应用本地 session。
 
 推荐后端流程：
@@ -117,9 +117,10 @@
 | --- | --- | --- |
 | `identity.basic` | `subjectId` / `sub` | 第三方应用保存的外部身份主键 |
 | `identity.wallet` | `walletAddress` | 当前已绑定的钱包地址，适合展示和链上操作上下文 |
+| `identity.username` | `username`、`usernameVerified`、`usernameVerifiedAt` | 用户名已由钱包控制权认证后登记，并且用户授权时返回 |
 | `identity.email` | `email`、`emailVerified`、`emailVerifiedAt` | 只有 Passport subject 已完成邮箱验证且用户授权时返回 |
 
-应用不得把钱包签名文本中的 `email` 或前端提交的邮箱视为已验证邮箱。邮箱是否验证过只以 Node Passport assertion 或 Node 服务端 exchange / introspection 结果为准。
+应用不得把钱包本地资料、钱包签名文本或前端提交的用户名/邮箱视为已验证声明。用户名和邮箱是否验证过只以身份验证服务 assertion 或服务端 exchange / introspection 结果为准。
 
 ### 4.6 无钱包通行证登录
 
@@ -303,7 +304,7 @@ const result = await ethereum.request({
 3. 钱包登录入口按需升级为 Passport-backed Wallet Login：需要社区身份或邮箱时，在现有 `challenge` 请求中增加 Passport `scope`；仅需地址时继续走普通 SIWE。
 4. 无钱包入口使用 Node Passport authorization code + PKCE 或 Passkey 页面，后端 exchange 后得到同一类 claims。
 5. 本地用户绑定从 `walletAddress` 主键升级为 `subjectId -> localUserId`；历史钱包用户可在首次 Passport 登录时按已绑定地址迁移。
-6. 邮箱只从 Passport claims 读取，且必须要求 `emailVerified === true`；处理本地邮箱唯一冲突、邮箱变更和撤销。
+6. 用户名和邮箱只从 Passport claims 读取，并分别要求 `usernameVerified === true`、`emailVerified === true`；处理用户名唯一冲突、资料变更和撤销。
 7. 登录成功后仍执行本地业务权限检查：用户是否禁用、是否属于组织、是否有访问当前应用的权限。
 8. 审计登录方式、`subjectId`、钱包地址指纹、scope、失败原因和 requestId；不要记录完整签名、完整 assertion 或验证码。
 9. 编写验收测试：普通钱包登录、Passport-backed 钱包登录、无钱包通行证登录、邮箱未验证、scope 未授权、nonce 重放、audience 不匹配、已禁用用户。

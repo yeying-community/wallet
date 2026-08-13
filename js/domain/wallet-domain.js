@@ -39,6 +39,50 @@ export class WalletDomain extends BaseDomain {
     }
   }
 
+  async createIdentity(password) {
+    return this._sendMessage(WalletMessageType.IDENTITY_CREATE, { password });
+  }
+
+  async listIdentities() {
+    return this._sendMessage(WalletMessageType.IDENTITY_LIST);
+  }
+
+  async getIdentity(identityId) {
+    return this._sendMessage(WalletMessageType.IDENTITY_GET, { identityId });
+  }
+
+  async selectIdentity(identityId) {
+    return this._sendMessage(WalletMessageType.IDENTITY_SELECT, { identityId });
+  }
+
+  async deleteIdentity(identityId, password) {
+    return this._sendMessage(WalletMessageType.IDENTITY_DELETE, { identityId, password });
+  }
+
+  async exportIdentityDocument(identityId) {
+    return this._sendMessage(WalletMessageType.IDENTITY_EXPORT_DOCUMENT, { identityId });
+  }
+
+  async signIdentityDocument(document, password, identityId) {
+    return this._sendMessage(WalletMessageType.IDENTITY_SIGN_DOCUMENT, { document, password, identityId });
+  }
+
+  async saveIdentityCredentials(credentials, identityId) {
+    return this._sendMessage(WalletMessageType.IDENTITY_SAVE_CREDENTIALS, { credentials, identityId });
+  }
+
+  async listIdentityCredentials(identityId) {
+    return this._sendMessage(WalletMessageType.IDENTITY_LIST_CREDENTIALS, { identityId });
+  }
+
+  async requestIdentityVerification(endpoint, request) {
+    return this._sendMessage(WalletMessageType.IDENTITY_VERIFICATION_REQUEST, { endpoint, ...request });
+  }
+
+  async confirmIdentityVerification(endpoint, verificationId, code, types) {
+    return this._sendMessage(WalletMessageType.IDENTITY_VERIFICATION_CONFIRM, { endpoint, verificationId, code, types });
+  }
+
   async getStartupState() {
     const [initializedResult, walletStateResult] = await Promise.allSettled([
       this._sendMessage(WalletMessageType.IS_WALLET_INITIALIZED),
@@ -542,6 +586,10 @@ export class WalletDomain extends BaseDomain {
 
   async getPassportBindings(endpoint, accessToken) {
     return await this._sendMessage(WalletMessageType.PASSPORT_GET_BINDINGS, { endpoint, accessToken });
+  }
+
+  async setPassportUsername(endpoint, accessToken, username) {
+    return await this._sendMessage(WalletMessageType.PASSPORT_SET_USERNAME, { endpoint, accessToken, username });
   }
 
   async requestPassportEmailVerification(endpoint, accessToken, email) {

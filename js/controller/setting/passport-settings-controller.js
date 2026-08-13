@@ -83,14 +83,14 @@ export class PassportSettingsController {
     const pending = state === BINDING_STATE_PENDING_EMAIL;
     const complete = state === BINDING_STATE_COMPLETE;
     button.dataset.state = state || 'none';
-    button.textContent = complete ? '变更社区邮箱' : (pending ? '继续完成绑定' : '绑定社区身份');
+    button.textContent = complete ? '变更验证资料' : (pending ? '继续验证' : '验证');
     button.classList.toggle('btn-primary', true);
     button.classList.toggle('btn-danger', false);
     unlinkButton?.classList.toggle('hidden', !complete && !pending);
     if (complete) {
-      this.setStatus(`夜莺社区身份已绑定，绑定钱包：${this.formatWalletAddress(account?.address)}。可变更社区邮箱；如此前未完成邮箱验证，请解绑后重新绑定。`);
+      this.setStatus(`当前钱包已完成验证，钱包：${this.formatWalletAddress(account?.address)}。可变更验证用户名和邮箱；如需重新建立验证，请移除验证服务关联后再验证。`);
     } else if (pending) {
-      this.setStatus(`已完成钱包绑定但邮箱尚未确认，请继续完成绑定。绑定钱包：${this.formatWalletAddress(account?.address)}`);
+      this.setStatus(`钱包控制权已确认，但邮箱尚未验证。请继续验证，钱包：${this.formatWalletAddress(account?.address)}`);
     } else {
       this.setStatus('');
     }
@@ -98,7 +98,7 @@ export class PassportSettingsController {
 
   async handleIdentityAction() {
     const state = document.getElementById('passportIdentityBtn')?.dataset.state || 'none';
-    if (state === BINDING_STATE_COMPLETE) return this.changePassportEmail();
+    if (state === BINDING_STATE_COMPLETE) return this.changePassportIdentity();
     if (state === BINDING_STATE_PENDING_EMAIL) return this.continueEmailVerification();
     return this.loginAndBind();
   }
@@ -125,31 +125,27 @@ export class PassportSettingsController {
       if (!endpoint) throw new Error('请输入 Node 服务地址');
       this.persistEndpoint(endpoint);
       const result = await this.wallet.getPassportStatus(endpoint);
-      if (!result?.success || !result.status?.enabled) throw new Error(result?.error || 'Passport 服务不可用');
-      this.setStatus('服务可用，等待钱包绑定');
-      if (!quiet) showSuccess('社区身份服务可用');
+      if (!result?.success || !result.status?.enabled) throw new Error(result?.error || '身份验证服务不可用');
+      this.setStatus('服务可用，等待验证');
+      if (!quiet) showSuccess('身份验证服务可用');
     } catch (error) {
       this.setStatus(`服务不可用：${error.message || '未知错误'}`);
-      if (!quiet) showError(error.message || '社区身份服务不可用');
+      if (!quiet) showError(error.message || '身份验证服务不可用');
     }
   }
 
   async loginAndBind() {
     try {
+      const username = this.promptUsername();
+      if (!username) return;
       const email = this.promptEmail();
       if (!email) return;
-      const auth = await this.authenticateWithCurrentWallet();
-      if (!auth) return;
-      const { endpoint, account, accessToken } = auth;
-      const result = await this.wallet.createPassportBinding(endpoint, accessToken);
-      if (!result?.success || !result.binding?.subjectId) throw new Error(result?.error || 'Passport 绑定失败');
-      this.persistBindingState(endpoint, account.address, BINDING_STATE_PENDING_EMAIL);
-      const completed = await this.sendAndConfirmEmail(auth, email);
+      const completed = await this.requestAndConfirmIdentity({ username, email });
       await this.renderBindingAction();
-      if (completed) showSuccess('社区身份已绑定');
+      if (completed) showSuccess('钱包验证已完成');
     } catch (error) {
-      this.setStatus(`绑定未完成：${error.message || '未知错误'}`);
-      showError(error.message || '社区身份绑定未完成');
+      this.setStatus(`验证未完成：${error.message || '未知错误'}`);
+      showError(error.message || '钱包验证未完成');
     } finally { hideWaiting(); }
   }
 
@@ -198,11 +194,19 @@ export class PassportSettingsController {
   }
 
   promptEmail(defaultValue = '') {
-    const value = globalThis.prompt?.('请输入社区邮箱', defaultValue) ?? null;
+    const value = globalThis.prompt?.('请输入验证邮箱', defaultValue) ?? null;
     if (value === null) return '';
     const email = String(value || '').trim().toLowerCase();
-    if (!email) throw new Error('请输入社区邮箱');
+    if (!email) throw new Error('请输入验证邮箱');
     return email;
+  }
+
+  promptUsername(defaultValue = '') {
+    const value = globalThis.prompt?.('请输入验证用户名（3-32 位小写字母、数字、点、下划线或连字符）', defaultValue) ?? null;
+    if (value === null) return '';
+    const username = String(value || '').trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username)) throw new Error('用户名须为 3-32 位小写字母、数字、点、下划线或连字符');
+    return username;
   }
 
   promptVerificationCode() {
@@ -231,11 +235,84 @@ export class PassportSettingsController {
     hideWaiting();
     const code = this.promptVerificationCode();
     if (!code) {
-      this.setStatus('验证码已发送，请稍后继续完成社区身份绑定。');
+      this.setStatus('验证码已发送，请稍后继续验证。');
       return false;
     }
     showWaiting();
     return await this.confirmEmailVerificationWithAuth(auth, code);
+  }
+
+  async requestAndConfirmIdentity({ username, email }) {
+    const endpoint = this.endpoint();
+    if (!endpoint) throw new Error('请输入 Node 服务地址');
+    this.persistEndpoint(endpoint);
+    const account = await this.wallet.getCurrentAccount();
+    if (!account?.address) throw new Error('未找到当前账户');
+    const identities = await this.wallet.listIdentities();
+    const identityId = identities?.selectedIdentityId;
+    const identityDocument = await this.wallet.exportIdentityDocument(identityId);
+    if (!identityDocument?.document?.id && !identityDocument?.id) throw new Error('未选择钱包身份');
+    const identity = identityDocument.document || identityDocument;
+    const identityDid = identity.id;
+    const password = await this.requestPassword?.();
+    if (!password) return false;
+    showWaiting();
+    const chainKey = account.chainKey || `eip155:${account.chainId || 1}`;
+    const linkChallenge = await this.fetchIdentityLinkChallenge(endpoint, identityDid, { chainKey, address: account.address });
+    const accountSignature = await this.transaction.signMessage(linkChallenge.message, password);
+    const linkResult = await this.verifyIdentityLink(endpoint, {
+      identityDocument: identity,
+      identity: identityDid,
+      account: { chainKey, address: account.address },
+      nonce: linkChallenge.nonce,
+      issuedAt: linkChallenge.issuedAt,
+      expiresAt: linkChallenge.expiresAt,
+      accountSignature
+    });
+    if (!linkResult?.verifiedAt) throw new Error('钱包账户关联失败');
+    const requested = await this.wallet.requestIdentityVerification(endpoint, {
+      types: ['email', 'username'],
+      identity: identityDid,
+      account: { chainKey, address: account.address },
+      email,
+      username
+    });
+    if (!requested?.verificationId) throw new Error('Node 未返回验证事务 ID');
+    this.persistBindingState(endpoint, account.address, BINDING_STATE_PENDING_EMAIL);
+    this.persistEmailVerificationState(endpoint, account.address, { verificationId: requested.verificationId, email, username, expiresAt: requested.expiresAt || '' });
+    this.setEmailStatus(`验证码已发送至 ${requested.email || email}，请查收邮件后输入 6 位验证码。`);
+    hideWaiting();
+    const code = this.promptVerificationCode();
+    if (!code) {
+      this.setStatus('验证码已发送，请稍后继续验证。');
+      return false;
+    }
+    showWaiting();
+    const result = await this.wallet.confirmIdentityVerification(endpoint, requested.verificationId, code, ['email', 'username']);
+    if (!Array.isArray(result?.credentials) || result.credentials.length < 2) throw new Error('Node 未返回完整身份凭证');
+    this.persistBindingState(endpoint, account.address, BINDING_STATE_COMPLETE);
+    this.persistEmailVerificationState(endpoint, account.address, null);
+    this.setEmailStatus(`已验证邮箱：${email}`);
+    return true;
+  }
+
+  async fetchIdentityLinkChallenge(endpoint, identity, account) {
+    const response = await fetch(new URL('/api/v1/public/identity/account-links/challenge', endpoint), {
+      method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identity, account })
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || json.code !== 0 || !json.data?.message) throw new Error(json.message || '获取钱包身份关联 challenge 失败');
+    return json.data;
+  }
+
+  async verifyIdentityLink(endpoint, body) {
+    const response = await fetch(new URL('/api/v1/public/identity/account-links/verify', endpoint), {
+      method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || json.code !== 0) throw new Error(json.message || '钱包身份关联失败');
+    return json.data;
   }
 
   async confirmEmailVerificationWithAuth(auth, code) {
@@ -246,7 +323,7 @@ export class PassportSettingsController {
     if (!result?.success || !result.verification?.email) throw new Error(result?.error || '邮箱确认失败');
     this.persistBindingState(auth.endpoint, auth.account.address, BINDING_STATE_COMPLETE);
     this.persistEmailVerificationState(auth.endpoint, auth.account.address, null);
-    this.setEmailStatus(`社区邮箱已验证：${result.verification.email}`);
+    this.setEmailStatus(`验证邮箱已确认：${result.verification.email}`);
     return true;
   }
 
@@ -254,26 +331,25 @@ export class PassportSettingsController {
     try {
       const email = this.promptEmail();
       if (!email) return;
-      const auth = await this.authenticateWithCurrentWallet();
-      if (!auth) return;
-      const completed = await this.sendAndConfirmEmail(auth, email);
+      const state = this.loadEmailVerificationState(this.endpoint(), (await this.wallet.getCurrentAccount())?.address);
+      const completed = await this.requestAndConfirmIdentity({ username: state?.username || this.promptUsername(), email });
       await this.renderBindingAction();
-      if (completed) showSuccess('社区身份已绑定');
+      if (completed) showSuccess('钱包验证已完成');
     } catch (error) {
-      this.setEmailStatus(`绑定未完成：${error.message || '未知错误'}`);
-      showError(error.message || '社区身份绑定未完成');
+      this.setEmailStatus(`验证未完成：${error.message || '未知错误'}`);
+      showError(error.message || '钱包验证未完成');
     } finally { hideWaiting(); }
   }
 
-  async changePassportEmail() {
+  async changePassportIdentity() {
     try {
+      const username = this.promptUsername();
+      if (!username) return;
       const email = this.promptEmail();
       if (!email) return;
-      const auth = await this.authenticateWithCurrentWallet();
-      if (!auth) return;
-      const completed = await this.sendAndConfirmEmail(auth, email);
+      const completed = await this.requestAndConfirmIdentity({ username, email });
       await this.renderBindingAction();
-      if (completed) showSuccess('社区邮箱已更新');
+      if (completed) showSuccess('验证用户名和邮箱已更新');
     } catch (error) {
       this.setEmailStatus(`邮箱变更失败：${error.message || '未知错误'}`);
       showError(error.message || '邮箱变更失败');
@@ -281,7 +357,7 @@ export class PassportSettingsController {
   }
 
   async loginAndUnlink() {
-    if (!globalThis.confirm?.('解绑后，该社区身份下的通行证和未完成授权将被撤销。确认继续？')) return;
+    if (!globalThis.confirm?.('移除后，此验证服务签发的通行证和未完成授权将被撤销。确认继续？')) return;
     try {
       const endpoint = this.endpoint();
       if (!endpoint) throw new Error('请输入 Node 服务地址');
@@ -308,9 +384,9 @@ export class PassportSettingsController {
       this.persistBindingState(endpoint, account.address, false);
       this.persistEmailVerificationState(endpoint, account.address, null);
       await this.renderBindingAction();
-      showSuccess('社区身份已解绑');
+      showSuccess('已移除验证服务关联');
     } catch (error) {
-      showError(error.message || '社区身份解绑失败');
+      showError(error.message || '移除验证服务关联失败');
     } finally { hideWaiting(); }
   }
 

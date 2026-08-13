@@ -927,16 +927,16 @@
 
         <div class="settings-body">
           <div class="settings-section" id="passportSettingsSection">
-            <h3>🪪 社区身份</h3>
-            <p class="settings-hint">将当前钱包绑定到社区身份，并完成社区邮箱验证。</p>
+            <h3>🪪 钱包身份验证</h3>
+            <p class="settings-hint">使用身份验证服务确认当前钱包控制权和验证邮箱。</p>
             <div class="form-group">
-              <label for="passportEndpointInput">Node 服务地址</label>
+              <label for="passportEndpointInput">身份验证服务地址</label>
               <input type="url" id="passportEndpointInput" class="input" placeholder="https://node.yeying.pub" />
             </div>
             <p id="passportStatusText" class="settings-hint"></p>
             <div class="settings-row">
-              <button id="passportIdentityBtn" class="btn btn-primary btn-small">绑定社区身份</button>
-              <button id="passportUnlinkBtn" class="btn btn-danger btn-small hidden">解绑社区身份</button>
+              <button id="passportIdentityBtn" class="btn btn-primary btn-small">验证</button>
+              <button id="passportUnlinkBtn" class="btn btn-danger btn-small hidden">移除验证服务关联</button>
             </div>
             <p id="passportEmailStatusText" class="settings-hint"></p>
           </div>

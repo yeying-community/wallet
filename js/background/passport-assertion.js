@@ -7,7 +7,7 @@ const DEFAULT_NODE_ENDPOINT = 'https://node.yeying.pub';
 const PASSPORT_ENDPOINT_STORAGE_KEY = 'passportNodeEndpoint';
 const PASSPORT_ASSERTION_METHOD = 'yeying_passport_assertion';
 const DEFAULT_SCOPES = ['identity.basic', 'identity.wallet'];
-const ALLOWED_SCOPES = new Set(['identity.basic', 'identity.wallet', 'identity.email']);
+const ALLOWED_SCOPES = new Set(['identity.basic', 'identity.wallet', 'identity.username', 'identity.email']);
 
 function asString(value) {
   return String(value || '').trim();
@@ -73,8 +73,9 @@ function normalizeParams(params, origin) {
 
 function scopeLabel(scope) {
   const labels = {
-    'identity.basic': '社区身份',
+    'identity.basic': '钱包身份',
     'identity.wallet': '钱包地址',
+    'identity.username': '已验证用户名',
     'identity.email': '已验证邮箱'
   };
   return labels[scope] || scope;

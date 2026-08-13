@@ -16,7 +16,8 @@ export {
   TransactionStorageKeys,
   ContactsStorageKeys,
   UcanStorageKeys,
-  MpcStorageKeys
+  MpcStorageKeys,
+  IdentityStorageKeys
 } from './storage-keys.js';
 
 // ==================== 基础存储 ====================
@@ -111,6 +112,15 @@ export {
   updateUserSettings
 } from './settings-storage.js';
 
+export {
+  saveIdentity,
+  saveEncryptedIdentity,
+  getIdentity,
+  getIdentities,
+  deleteIdentity,
+  decryptIdentityKeyMaterial
+} from './identity-storage.js';
+
 // ==================== 交易存储 ====================
 export {
   getAllTransactions,
@@ -178,6 +188,15 @@ export {
   dequeueMpcAuditExport,
   clearMpcAuditExportQueue
 } from './mpc-storage.js';
+
+export {
+  saveIdentity,
+  saveEncryptedIdentity,
+  getIdentity,
+  getIdentities,
+  deleteIdentity,
+  decryptIdentityKeyMaterial
+} from './identity-storage.js';
 
 // ==================== 工具方法 ====================
 

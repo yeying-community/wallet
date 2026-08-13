@@ -61,6 +61,7 @@ import {
   handleGetPassportStatus,
   handleCreatePassportBinding,
   handleGetPassportBindings,
+  handleSetPassportUsername,
   handleRequestPassportEmailVerification,
   handleConfirmPassportEmailVerification,
   handleCreatePassportUnlink,
@@ -92,6 +93,19 @@ import {
   handleMpcExportAuditLogs,
   handleMpcFlushAuditExportQueue
 } from './operations/mpc.js';
+import {
+  handleCreateIdentity,
+  handleListIdentities,
+  handleGetIdentity,
+  handleSelectIdentity,
+  handleDeleteIdentity,
+  handleExportIdentityDocument,
+  handleSignIdentityDocument,
+  handleSaveIdentityCredentials,
+  handleListIdentityCredentials,
+  handleRequestIdentityVerification,
+  handleConfirmIdentityVerification
+} from './operations/identity.js';
 import {
   handleGetCustodySettings,
   handleUpdateCustodySettings,
@@ -712,6 +726,18 @@ export async function handleContentMessage(message, port, origin, tabId) {
  * 返回值直接作为 response body 发送。抛错由外层 handlePopupMessage 的 try/catch 统一兜底。
  */
 const popupHandlers = new Map([
+  // ==================== Wallet identity ====================
+  [WalletMessageType.IDENTITY_CREATE, async (data) => await handleCreateIdentity(data)],
+  [WalletMessageType.IDENTITY_LIST, async () => await handleListIdentities()],
+  [WalletMessageType.IDENTITY_GET, async (data) => await handleGetIdentity(data)],
+  [WalletMessageType.IDENTITY_SELECT, async (data) => await handleSelectIdentity(data)],
+  [WalletMessageType.IDENTITY_DELETE, async (data) => await handleDeleteIdentity(data)],
+  [WalletMessageType.IDENTITY_EXPORT_DOCUMENT, async (data) => await handleExportIdentityDocument(data)],
+  [WalletMessageType.IDENTITY_SIGN_DOCUMENT, async (data) => await handleSignIdentityDocument(data)],
+  [WalletMessageType.IDENTITY_SAVE_CREDENTIALS, async (data) => await handleSaveIdentityCredentials(data)],
+  [WalletMessageType.IDENTITY_LIST_CREDENTIALS, async (data) => await handleListIdentityCredentials(data)],
+  [WalletMessageType.IDENTITY_VERIFICATION_REQUEST, async (data) => await handleRequestIdentityVerification(data)],
+  [WalletMessageType.IDENTITY_VERIFICATION_CONFIRM, async (data) => await handleConfirmIdentityVerification(data)],
   // ==================== 钱包管理 ====================
   ['IS_WALLET_INITIALIZED', async () => await isWalletInitialized()],
   ['GET_ALL_WALLETS', async () => await HandleGetWalletList()],
@@ -796,7 +822,8 @@ const popupHandlers = new Map([
     return {
       success: recordApprovalResponse(message.requestId, {
         approved: message.approved,
-        account: message.account || null
+        account: message.account || null,
+        password: message.password || null
       })
     };
   }],
@@ -831,6 +858,7 @@ const popupHandlers = new Map([
   [WalletMessageType.PASSPORT_GET_STATUS, async (data) => await handleGetPassportStatus(data)],
   [WalletMessageType.PASSPORT_CREATE_BINDING, async (data) => await handleCreatePassportBinding(data)],
   [WalletMessageType.PASSPORT_GET_BINDINGS, async (data) => await handleGetPassportBindings(data)],
+  [WalletMessageType.PASSPORT_SET_USERNAME, async (data) => await handleSetPassportUsername(data)],
   [WalletMessageType.PASSPORT_EMAIL_VERIFICATION_REQUEST, async (data) => await handleRequestPassportEmailVerification(data)],
   [WalletMessageType.PASSPORT_EMAIL_VERIFICATION_CONFIRM, async (data) => await handleConfirmPassportEmailVerification(data)],
   [WalletMessageType.PASSPORT_CREATE_UNLINK, async (data) => await handleCreatePassportUnlink(data)],
