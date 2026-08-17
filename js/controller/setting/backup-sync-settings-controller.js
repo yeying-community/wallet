@@ -43,6 +43,10 @@ export class BackupSyncSettingsController {
   }
 
   bindEvents() {
+    const backupSyncDetailBtn = document.getElementById('backupSyncDetailBtn');
+    if (backupSyncDetailBtn) {
+      backupSyncDetailBtn.addEventListener('click', () => this.openBackupSyncDetailModal());
+    }
     const backupSyncEnabledToggle = document.getElementById('backupSyncEnabledToggle');
     if (backupSyncEnabledToggle) {
       backupSyncEnabledToggle.addEventListener('change', async () => {
@@ -147,6 +151,11 @@ export class BackupSyncSettingsController {
       closeIds: ['closeBackupSyncConfigModal', 'cancelBackupSyncConfigBtn'],
       onClose: () => this.closeBackupSyncConfigModal()
     });
+    this.bindSimpleModal({
+      modalId: 'backupSyncDetailModal',
+      closeIds: ['closeBackupSyncDetailModal'],
+      onClose: () => this.closeBackupSyncDetailModal()
+    });
 
     const conflictBtn = document.getElementById('backupSyncConflictBtn');
     if (conflictBtn) {
@@ -213,6 +222,15 @@ export class BackupSyncSettingsController {
     if (modal) {
       modal.classList.remove('hidden');
     }
+  }
+
+  openBackupSyncDetailModal() {
+    this.renderBackupSyncSettings(this.syncSettings || {});
+    document.getElementById('backupSyncDetailModal')?.classList.remove('hidden');
+  }
+
+  closeBackupSyncDetailModal() {
+    document.getElementById('backupSyncDetailModal')?.classList.add('hidden');
   }
 
   openBackupSyncConflictModal() {

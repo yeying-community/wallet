@@ -44,6 +44,10 @@ export class MpcSettingsController {
   }
 
   bindEvents() {
+    const mpcDetailBtn = document.getElementById('mpcDetailBtn');
+    if (mpcDetailBtn) {
+      mpcDetailBtn.addEventListener('click', () => this.openMpcDetailModal());
+    }
     const mpcAuditBtn = document.getElementById('mpcAuditBtn');
     if (mpcAuditBtn) {
       mpcAuditBtn.addEventListener('click', async () => {
@@ -194,6 +198,16 @@ export class MpcSettingsController {
       closeIds: ['closeCustodyConfigModal', 'cancelCustodyConfigBtn'],
       onClose: () => this.closeCustodyConfigModal()
     });
+    this.bindSimpleModal({
+      modalId: 'custodyDetailModal',
+      closeIds: ['closeCustodyDetailModal'],
+      onClose: () => this.closeCustodyDetailModal()
+    });
+    this.bindSimpleModal({
+      modalId: 'mpcDetailModal',
+      closeIds: ['closeMpcDetailModal'],
+      onClose: () => this.closeMpcDetailModal()
+    });
 
     const mpcCoordinatorUcanGenerateBtn = document.getElementById('mpcCoordinatorUcanGenerateBtn');
     if (mpcCoordinatorUcanGenerateBtn) {
@@ -214,6 +228,11 @@ export class MpcSettingsController {
       custodyConfigBtn.addEventListener('click', () => {
         this.openCustodyConfigModal();
       });
+    }
+
+    const custodyDetailBtn = document.getElementById('custodyDetailBtn');
+    if (custodyDetailBtn) {
+      custodyDetailBtn.addEventListener('click', () => this.openCustodyDetailModal());
     }
 
     const custodySaveBtn = document.getElementById('custodySaveBtn');
@@ -337,6 +356,24 @@ export class MpcSettingsController {
     if (modal) {
       modal.classList.remove('hidden');
     }
+  }
+
+  openCustodyDetailModal() {
+    this.renderCustodySettings(this.custodySettings || {});
+    document.getElementById('custodyDetailModal')?.classList.remove('hidden');
+  }
+
+  closeCustodyDetailModal() {
+    document.getElementById('custodyDetailModal')?.classList.add('hidden');
+  }
+
+  openMpcDetailModal() {
+    document.getElementById('mpcDetailModal')?.classList.remove('hidden');
+    this.loadMpcInvites(false);
+  }
+
+  closeMpcDetailModal() {
+    document.getElementById('mpcDetailModal')?.classList.add('hidden');
   }
 
   closeCustodyConfigModal() {

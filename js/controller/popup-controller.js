@@ -56,7 +56,8 @@ export class PopupController {
     this.settingController = new SettingController({
       wallet: this.wallet,
       transaction: this.transaction,
-      requestPassword: () => this.promptWalletPassword()
+      requestPassword: () => this.promptWalletPassword(),
+      onLockWallet: () => this.lockWallet()
     });
     this.contactController = new ContactController({ wallet: this.wallet });
     this.transactionDetailController = new TransactionDetailController({

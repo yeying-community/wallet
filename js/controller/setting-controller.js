@@ -5,7 +5,7 @@ import { AccountSettingsController } from './setting/account-settings-controller
 import { PassportSettingsController } from './setting/passport-settings-controller.js';
 
 export class SettingController {
-  constructor({ wallet, transaction, requestPassword }) {
+  constructor({ wallet, transaction, requestPassword, onLockWallet }) {
     this.wallet = wallet;
     this.transaction = transaction;
     this.requestPassword = requestPassword;
@@ -14,7 +14,8 @@ export class SettingController {
     this.sitesController = new AuthorizedSitesController({ wallet });
     this.accountController = new AccountSettingsController({
       wallet,
-      onClearAllAuthorizations: () => this.sitesController.handleClearAllAuthorizations()
+      onClearAllAuthorizations: () => this.sitesController.handleClearAllAuthorizations(),
+      onLockWallet
     });
     this.passportController = new PassportSettingsController({ wallet, transaction, requestPassword });
   }
