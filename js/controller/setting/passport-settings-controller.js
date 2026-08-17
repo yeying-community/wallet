@@ -16,8 +16,14 @@ export class PassportSettingsController {
 
   bindEvents() {
     document.getElementById('passportIdentityBtn')?.addEventListener('click', () => this.handleIdentityAction());
-    document.getElementById('passportUnlinkBtn')?.addEventListener('click', () => this.loginAndUnlink());
     document.getElementById('passportEndpointInput')?.addEventListener('change', () => this.renderBindingAction());
+    document.getElementById('viewWalletIdentityBtn')?.addEventListener('click', () => this.openIdentityDetails());
+    document.getElementById('closeWalletIdentityDetailModal')?.addEventListener('click', () => this.closeIdentityDetails());
+    document.getElementById('changeWalletIdentityBtn')?.addEventListener('click', () => {
+      this.closeIdentityDetails();
+      this.changePassportIdentity();
+    });
+    document.querySelector('#walletIdentityDetailModal .modal-overlay')?.addEventListener('click', () => this.closeIdentityDetails());
   }
 
   endpoint() { return String(document.getElementById('passportEndpointInput')?.value || '').trim(); }
@@ -73,27 +79,99 @@ export class PassportSettingsController {
   async renderBindingAction() {
     const button = document.getElementById('passportIdentityBtn');
     if (!button) return;
-    const unlinkButton = document.getElementById('passportUnlinkBtn');
     let state = '';
     let account = null;
     try {
       account = await this.wallet.getCurrentAccount();
       state = this.loadBindingState(this.endpoint(), account?.address);
+      const identities = await this.wallet.listIdentities();
+      const identityId = identities?.selectedIdentityId || identities?.identities?.[0]?.document?.walletIdentityId;
+      if (!identityId) {
+        state = '';
+        this.persistBindingState(this.endpoint(), account?.address, null);
+      } else if (state === BINDING_STATE_COMPLETE) {
+        const credentials = await this.wallet.listIdentityCredentials(identityId);
+        if (!Array.isArray(credentials?.credentials) || credentials.credentials.length === 0) {
+          state = '';
+          this.persistBindingState(this.endpoint(), account?.address, null);
+        }
+      }
     } catch { state = ''; }
     const pending = state === BINDING_STATE_PENDING_EMAIL;
     const complete = state === BINDING_STATE_COMPLETE;
+    const statusIcon = document.getElementById('walletIdentityStatusIcon');
+    const serviceConfig = document.getElementById('identityServiceConfig');
+    const detailsButton = document.getElementById('viewWalletIdentityBtn');
     button.dataset.state = state || 'none';
-    button.textContent = complete ? '变更验证资料' : (pending ? '继续验证' : '验证');
+    button.textContent = pending ? '继续验证' : '验证';
+    button.classList.toggle('hidden', complete);
     button.classList.toggle('btn-primary', true);
     button.classList.toggle('btn-danger', false);
-    unlinkButton?.classList.toggle('hidden', !complete && !pending);
+    serviceConfig?.classList.toggle('hidden', complete);
+    detailsButton?.classList.toggle('hidden', !complete);
     if (complete) {
-      this.setStatus(`当前钱包已完成验证，钱包：${this.formatWalletAddress(account?.address)}。可变更验证用户名和邮箱；如需重新建立验证，请移除验证服务关联后再验证。`);
+      this.setIdentityStatusIcon(statusIcon, 'verified', '已验证');
+      this.setStatus('');
     } else if (pending) {
+      this.setIdentityStatusIcon(statusIcon, 'pending', '验证进行中');
       this.setStatus(`钱包控制权已确认，但邮箱尚未验证。请继续验证，钱包：${this.formatWalletAddress(account?.address)}`);
     } else {
+      this.setIdentityStatusIcon(statusIcon, 'pending', '待验证');
       this.setStatus('');
     }
+  }
+
+  setIdentityStatusIcon(element, state, label) {
+    if (!element) return;
+    element.className = `wallet-identity-status ${state}`;
+    element.setAttribute('aria-label', label);
+    element.setAttribute('title', label);
+  }
+
+  async openIdentityDetails() {
+    try {
+      const [account, identities] = await Promise.all([this.wallet.getCurrentAccount(), this.wallet.listIdentities()]);
+      const identityId = identities?.selectedIdentityId || identities?.identities?.[0]?.document?.walletIdentityId;
+      if (!identityId) throw new Error('请先创建钱包身份');
+      if (!identities?.selectedIdentityId) await this.wallet.selectIdentity(identityId);
+      const identity = await this.wallet.getIdentity(identityId);
+      const credentials = await this.wallet.listIdentityCredentials(identityId);
+      const values = { username: '-', email: '-' };
+      for (const item of credentials?.credentials || []) {
+        const token = item?.credential || item?.jwt || item;
+        const payload = this.decodeCredentialPayload(token);
+        const subject = payload?.vc?.credentialSubject || {};
+        if (subject.usernameQualified || subject.username) values.username = subject.usernameQualified || subject.username;
+        if (subject.email) values.email = subject.email;
+      }
+      this.setDetailValue('walletIdentityDetailStatus', '已验证');
+      this.setDetailValue('walletIdentityDetailUsername', values.username);
+      this.setDetailValue('walletIdentityDetailEmail', values.email);
+      this.setDetailValue('walletIdentityDetailAddress', account?.address || '-');
+      this.setDetailValue('walletIdentityDetailDid', identity?.document?.id || '-');
+      this.setDetailValue('walletIdentityDetailEndpoint', this.endpoint() || DEFAULT_NODE_ENDPOINT);
+      document.getElementById('walletIdentityDetailModal')?.classList.remove('hidden');
+    } catch (error) {
+      showError(error?.message || '无法读取钱包身份详情');
+    }
+  }
+
+  closeIdentityDetails() {
+    document.getElementById('walletIdentityDetailModal')?.classList.add('hidden');
+  }
+
+  setDetailValue(id, value) {
+    const element = document.getElementById(id);
+    if (element) element.textContent = value || '-';
+  }
+
+  decodeCredentialPayload(token) {
+    try {
+      const encoded = String(token || '').split('.')[1];
+      if (!encoded) return null;
+      const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+      return JSON.parse(atob(`${base64}${'='.repeat((4 - base64.length % 4) % 4)}`));
+    } catch { return null; }
   }
 
   async handleIdentityAction() {
@@ -136,9 +214,9 @@ export class PassportSettingsController {
 
   async loginAndBind() {
     try {
-      const username = this.promptUsername();
+      const username = await this.promptUsername();
       if (!username) return;
-      const email = this.promptEmail();
+      const email = await this.promptEmail();
       if (!email) return;
       const completed = await this.requestAndConfirmIdentity({ username, email });
       await this.renderBindingAction();
@@ -193,28 +271,72 @@ export class PassportSettingsController {
     return { endpoint, account, accessToken, password };
   }
 
-  promptEmail(defaultValue = '') {
-    const value = globalThis.prompt?.('请输入验证邮箱', defaultValue) ?? null;
+  async promptEmail(defaultValue = '') {
+    const value = await this.promptIdentityInput({ title: '验证邮箱', hint: '请输入用于钱包身份验证的邮箱。', label: '邮箱', placeholder: 'name@example.com', defaultValue, inputMode: 'email' });
     if (value === null) return '';
     const email = String(value || '').trim().toLowerCase();
     if (!email) throw new Error('请输入验证邮箱');
     return email;
   }
 
-  promptUsername(defaultValue = '') {
-    const value = globalThis.prompt?.('请输入验证用户名（3-32 位小写字母、数字、点、下划线或连字符）', defaultValue) ?? null;
+  async promptUsername(defaultValue = '') {
+    const value = await this.promptIdentityInput({ title: '验证用户名', hint: '用户名为 3-32 位小写字母、数字、点、下划线或连字符。', label: '用户名', placeholder: 'username', defaultValue });
     if (value === null) return '';
     const username = String(value || '').trim().toLowerCase();
     if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username)) throw new Error('用户名须为 3-32 位小写字母、数字、点、下划线或连字符');
     return username;
   }
 
-  promptVerificationCode() {
-    const value = globalThis.prompt?.('请输入邮件中的 6 位验证码') ?? null;
+  async promptVerificationCode() {
+    const value = await this.promptIdentityInput({ title: '输入验证码', hint: '验证码已发送到验证邮箱。', label: '6 位验证码', placeholder: '123456', inputMode: 'numeric', pattern: '\\d{6}' });
     if (value === null) return '';
     const code = String(value || '').trim();
     if (!/^\d{6}$/.test(code)) throw new Error('请输入 6 位验证码');
     return code;
+  }
+
+  promptIdentityInput({ title, hint, label, placeholder = '', defaultValue = '', inputMode = 'text', pattern = '' }) {
+    const modal = document.getElementById('identityInputModal');
+    const overlay = modal?.querySelector('.modal-overlay');
+    const titleEl = document.getElementById('identityInputTitle');
+    const hintEl = document.getElementById('identityInputHint');
+    const labelEl = document.getElementById('identityInputLabel');
+    const input = document.getElementById('identityInputValue');
+    const confirm = document.getElementById('confirmIdentityInputBtn');
+    const cancel = document.getElementById('cancelIdentityInputBtn');
+    const close = document.getElementById('closeIdentityInputModal');
+    if (!modal || !input || !confirm || !cancel || !close) return Promise.resolve(null);
+    titleEl.textContent = title;
+    hintEl.textContent = hint;
+    labelEl.textContent = label;
+    input.placeholder = placeholder;
+    input.value = defaultValue;
+    input.inputMode = inputMode;
+    input.pattern = pattern;
+    modal.classList.remove('hidden');
+
+    return new Promise((resolve) => {
+      const cleanup = () => {
+        confirm.removeEventListener('click', handleConfirm);
+        cancel.removeEventListener('click', handleCancel);
+        close.removeEventListener('click', handleCancel);
+        overlay?.removeEventListener('click', handleCancel);
+        input.removeEventListener('keydown', handleKeydown);
+        modal.classList.add('hidden');
+      };
+      const handleCancel = () => { cleanup(); resolve(null); };
+      const handleConfirm = () => { cleanup(); resolve(input.value); };
+      const handleKeydown = (event) => {
+        if (event.key === 'Enter') handleConfirm();
+        if (event.key === 'Escape') handleCancel();
+      };
+      confirm.addEventListener('click', handleConfirm);
+      cancel.addEventListener('click', handleCancel);
+      close.addEventListener('click', handleCancel);
+      overlay?.addEventListener('click', handleCancel);
+      input.addEventListener('keydown', handleKeydown);
+      setTimeout(() => input.focus(), 0);
+    });
   }
 
   async sendEmailVerification(auth, email) {
@@ -233,7 +355,7 @@ export class PassportSettingsController {
   async sendAndConfirmEmail(auth, email) {
     await this.sendEmailVerification(auth, email);
     hideWaiting();
-    const code = this.promptVerificationCode();
+    const code = await this.promptVerificationCode();
     if (!code) {
       this.setStatus('验证码已发送，请稍后继续验证。');
       return false;
@@ -248,14 +370,20 @@ export class PassportSettingsController {
     this.persistEndpoint(endpoint);
     const account = await this.wallet.getCurrentAccount();
     if (!account?.address) throw new Error('未找到当前账户');
-    const identities = await this.wallet.listIdentities();
-    const identityId = identities?.selectedIdentityId;
-    const identityDocument = await this.wallet.exportIdentityDocument(identityId);
-    if (!identityDocument?.document?.id && !identityDocument?.id) throw new Error('未选择钱包身份');
-    const identity = identityDocument.document || identityDocument;
-    const identityDid = identity.id;
     const password = await this.requestPassword?.();
     if (!password) return false;
+    const identities = await this.wallet.listIdentities();
+    let identityId = identities?.selectedIdentityId || identities?.identities?.[0]?.document?.walletIdentityId;
+    if (!identityId) {
+      const created = await this.wallet.createIdentity(password);
+      identityId = created?.document?.walletIdentityId;
+    }
+    if (!identityId) throw new Error('无法创建钱包身份');
+    await this.wallet.selectIdentity(identityId);
+    const identityDocument = await this.wallet.exportIdentityDocument(identityId);
+    if (!identityDocument?.document?.id && !identityDocument?.id) throw new Error('未选择钱包身份');
+    const identity = await this.wallet.signIdentityDocument(identityDocument.document || identityDocument, password, identityId);
+    const identityDid = identity.id;
     showWaiting();
     const chainKey = account.chainKey || `eip155:${account.chainId || 1}`;
     const linkChallenge = await this.fetchIdentityLinkChallenge(endpoint, identityDid, { chainKey, address: account.address });
@@ -282,7 +410,7 @@ export class PassportSettingsController {
     this.persistEmailVerificationState(endpoint, account.address, { verificationId: requested.verificationId, email, username, expiresAt: requested.expiresAt || '' });
     this.setEmailStatus(`验证码已发送至 ${requested.email || email}，请查收邮件后输入 6 位验证码。`);
     hideWaiting();
-    const code = this.promptVerificationCode();
+    const code = await this.promptVerificationCode();
     if (!code) {
       this.setStatus('验证码已发送，请稍后继续验证。');
       return false;
@@ -329,10 +457,10 @@ export class PassportSettingsController {
 
   async continueEmailVerification() {
     try {
-      const email = this.promptEmail();
+      const email = await this.promptEmail();
       if (!email) return;
       const state = this.loadEmailVerificationState(this.endpoint(), (await this.wallet.getCurrentAccount())?.address);
-      const completed = await this.requestAndConfirmIdentity({ username: state?.username || this.promptUsername(), email });
+      const completed = await this.requestAndConfirmIdentity({ username: state?.username || await this.promptUsername(), email });
       await this.renderBindingAction();
       if (completed) showSuccess('钱包验证已完成');
     } catch (error) {
@@ -343,9 +471,9 @@ export class PassportSettingsController {
 
   async changePassportIdentity() {
     try {
-      const username = this.promptUsername();
+      const username = await this.promptUsername();
       if (!username) return;
-      const email = this.promptEmail();
+      const email = await this.promptEmail();
       if (!email) return;
       const completed = await this.requestAndConfirmIdentity({ username, email });
       await this.renderBindingAction();

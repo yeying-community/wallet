@@ -118,7 +118,9 @@ export {
   getIdentity,
   getIdentities,
   deleteIdentity,
-  decryptIdentityKeyMaterial
+  decryptIdentityKeyMaterial,
+  saveIdentityCredentials,
+  getIdentityCredentials
 } from './identity-storage.js';
 
 // ==================== 交易存储 ====================
@@ -188,15 +190,6 @@ export {
   dequeueMpcAuditExport,
   clearMpcAuditExportQueue
 } from './mpc-storage.js';
-
-export {
-  saveIdentity,
-  saveEncryptedIdentity,
-  getIdentity,
-  getIdentities,
-  deleteIdentity,
-  decryptIdentityKeyMaterial
-} from './identity-storage.js';
 
 // ==================== 工具方法 ====================
 

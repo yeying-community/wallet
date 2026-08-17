@@ -927,16 +927,19 @@
 
         <div class="settings-body">
           <div class="settings-section" id="passportSettingsSection">
-            <h3>🪪 钱包身份验证</h3>
-            <p class="settings-hint">使用身份验证服务确认当前钱包控制权和验证邮箱。</p>
-            <div class="form-group">
-              <label for="passportEndpointInput">身份验证服务地址</label>
+            <div class="wallet-identity-heading">
+              <h3>🪪 钱包身份</h3>
+              <span id="walletIdentityStatusIcon" class="wallet-identity-status pending" role="img" aria-label="待验证" title="待验证"></span>
+            </div>
+            <p class="wallet-identity-description">创建一次钱包身份并完成验证后，后续 Web3 应用可在你的授权下复用用户名和邮箱等资料，减少重复验证，让登录和使用更顺畅。</p>
+            <div class="form-group" id="identityServiceConfig">
+              <label for="passportEndpointInput">身份服务地址</label>
               <input type="url" id="passportEndpointInput" class="input" placeholder="https://node.yeying.pub" />
             </div>
             <p id="passportStatusText" class="settings-hint"></p>
             <div class="settings-row">
               <button id="passportIdentityBtn" class="btn btn-primary btn-small">验证</button>
-              <button id="passportUnlinkBtn" class="btn btn-danger btn-small hidden">移除验证服务关联</button>
+              <button id="viewWalletIdentityBtn" class="btn btn-secondary btn-small btn-block hidden" type="button">查看详情</button>
             </div>
             <p id="passportEmailStatusText" class="settings-hint"></p>
           </div>
@@ -1976,6 +1979,46 @@
             关闭
           </button>
         </div>
+      </div>
+    </div>
+
+    <div id="identityInputModal" class="modal hidden">
+      <div class="modal-overlay"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="identityInputTitle">钱包身份</h3>
+          <button class="btn-close" id="closeIdentityInputModal" type="button">✕</button>
+        </div>
+        <div class="modal-body">
+          <p id="identityInputHint" class="settings-hint"></p>
+          <div class="form-group">
+            <label id="identityInputLabel" for="identityInputValue">内容</label>
+            <input id="identityInputValue" class="input" type="text" autocomplete="off" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="cancelIdentityInputBtn" type="button">取消</button>
+          <button class="btn btn-primary" id="confirmIdentityInputBtn" type="button">继续</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="walletIdentityDetailModal" class="modal hidden">
+      <div class="modal-overlay"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>钱包身份</h3>
+          <button class="btn-close" id="closeWalletIdentityDetailModal" type="button">✕</button>
+        </div>
+        <div class="modal-body wallet-identity-details">
+          <div class="detail-row"><span class="detail-label">状态</span><span class="detail-value" id="walletIdentityDetailStatus">-</span></div>
+          <div class="detail-row"><span class="detail-label">用户名</span><span class="detail-value" id="walletIdentityDetailUsername">-</span></div>
+          <div class="detail-row"><span class="detail-label">邮箱</span><span class="detail-value" id="walletIdentityDetailEmail">-</span></div>
+          <div class="detail-row"><span class="detail-label">钱包账户</span><span class="detail-value" id="walletIdentityDetailAddress">-</span></div>
+          <div class="detail-row"><span class="detail-label">身份 DID</span><span class="detail-value" id="walletIdentityDetailDid">-</span></div>
+          <div class="detail-row"><span class="detail-label">身份服务</span><span class="detail-value" id="walletIdentityDetailEndpoint">-</span></div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-primary" id="changeWalletIdentityBtn" type="button">变更验证资料</button></div>
       </div>
     </div>
 

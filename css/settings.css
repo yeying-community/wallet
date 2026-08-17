@@ -99,6 +99,43 @@
   color: #777;
 }
 
+.wallet-identity-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wallet-identity-heading h3 {
+  margin-bottom: 0;
+}
+
+.wallet-identity-status {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border-radius: 50%;
+  background: #9ca3af;
+  box-shadow: 0 0 0 3px rgba(156, 163, 175, 0.16);
+}
+
+.wallet-identity-status.verified {
+  background: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.16);
+}
+
+.wallet-identity-status.pending {
+  background: #d97706;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.16);
+}
+
+.wallet-identity-description {
+  margin: 10px 0 14px;
+  color: #4b5563;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 /* 版授权网站项 */
 .authorized-site-item {
   display: flex;
