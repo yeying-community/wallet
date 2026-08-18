@@ -169,6 +169,14 @@
   overflow-wrap: anywhere;
 }
 
+.settings-detail-row code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #374151;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
 .custody-summary {
   margin: 14px 0;
   border-top: 1px solid #e5e7eb;

@@ -58,6 +58,10 @@ import {
   normalizeBearerToken
 } from './sync/sync-utils.js';
 
+const LEGACY_SYNC_ENDPOINT = 'https://webdav.yeying.pub/dav';
+const MISTYPED_SYNC_ENDPOINT = 'https://warenouse.tidukongjian.com/dav';
+const MIGRATED_SYNC_ENDPOINT = 'https://warehouse.tidukongjian.com/dav';
+
 function isEthereumAddress(value) {
   return typeof value === 'string' && /^0x[0-9a-fA-F]{40}$/.test(value);
 }
@@ -905,6 +909,8 @@ class BackupSyncService {
     const endpoint = await getUserSetting(SETTINGS_KEYS.endpoint, '');
     if (!endpoint) {
       await updateUserSetting(SETTINGS_KEYS.endpoint, DEFAULT_SYNC_ENDPOINT).catch(() => {});
+    } else if (endpoint === LEGACY_SYNC_ENDPOINT || endpoint === MISTYPED_SYNC_ENDPOINT) {
+      await updateUserSetting(SETTINGS_KEYS.endpoint, MIGRATED_SYNC_ENDPOINT).catch(() => {});
     }
 
     const mode = await getUserSetting(SETTINGS_KEYS.authMode, '');
@@ -949,7 +955,11 @@ class BackupSyncService {
   }
 
   async _resolveBaseEndpoint() {
-    const endpoint = await getUserSetting(SETTINGS_KEYS.endpoint, '');
+    let endpoint = await getUserSetting(SETTINGS_KEYS.endpoint, '');
+    if (endpoint === LEGACY_SYNC_ENDPOINT || endpoint === MISTYPED_SYNC_ENDPOINT) {
+      endpoint = MIGRATED_SYNC_ENDPOINT;
+      await updateUserSetting(SETTINGS_KEYS.endpoint, endpoint).catch(() => {});
+    }
     if (!endpoint) return '';
 
     const appId = await this._getAppScopeAppId();

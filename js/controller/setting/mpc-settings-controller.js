@@ -356,6 +356,7 @@ export class MpcSettingsController {
   openMpcDetailPage() {
     showPage('mpcDetailPage');
     this.loadMpcInvites(false);
+    this.loadMpcDeviceInfo(false);
   }
 
   closeCustodyConfigModal() {
@@ -1187,9 +1188,17 @@ export class MpcSettingsController {
     } catch (error) {
       console.error('[MpcSettings] 加载 MPC 邀请失败:', error);
       this.mpcInvites = [];
-      this.renderMpcInvites([], error.message || '加载失败');
+      this.renderMpcInvites([], this.getMpcInviteLoadErrorMessage(error));
       if (showToast) showError('刷新失败: ' + error.message);
     }
+  }
+
+  getMpcInviteLoadErrorMessage(error) {
+    const message = String(error?.message || error || '加载失败');
+    if (/ucan\s+capability\s+denied/i.test(message)) {
+      return '当前钱包尚未获得查看多签邀请的授权。请确认使用受邀地址连接此服务后刷新。';
+    }
+    return '待处理邀请暂时无法加载，请稍后重试。';
   }
 
   renderMpcInvites(items = [], errorText = '') {

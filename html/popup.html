@@ -1427,12 +1427,31 @@
             <h2>多签钱包</h2>
           </div>
           <div class="settings-body">
-            <p class="settings-card-description">与其他成员共同管理钱包，达到设定门限后才能完成关键操作。这里可以管理协调器连接、参与者邀请和 MPC 审计记录。</p>
+            <p class="settings-card-description">这里管理当前设备参与多签会话所需的协调器连接和设备身份。设备 ID、签名公钥和 E2E 公钥属于当前钱包插件安装，会被此设备创建或加入的多签钱包复用；它们不属于某一个单独的多签钱包。</p>
+            <div class="form-group">
+              <label for="mpcCoordinatorEndpointInput">协调器服务</label>
+              <input type="url" id="mpcCoordinatorEndpointInput" class="input" placeholder="https://node.yeying.pub" />
+            </div>
             <div class="settings-row settings-action-grid">
-              <button id="mpcServiceConfigBtn" class="btn btn-secondary btn-small">服务配置</button>
-              <button id="mpcConnectionInfoBtn" class="btn btn-secondary btn-small">连接信息</button>
+              <button id="mpcCoordinatorSaveBtn" class="btn btn-secondary btn-small">保存服务配置</button>
               <button id="mpcAuditBtn" class="btn btn-secondary btn-small">日志审计</button>
             </div>
+            <div class="settings-detail-list">
+              <div class="settings-detail-row">
+                <span>设备 ID：</span>
+                <code id="mpcDeviceIdText">-</code>
+              </div>
+              <div class="settings-detail-row">
+                <span>签名公钥：</span>
+                <code id="mpcDeviceSigningKeyText">-</code>
+              </div>
+              <div class="settings-detail-row">
+                <span>E2E 公钥：</span>
+                <code id="mpcDeviceE2eKeyText">-</code>
+              </div>
+            </div>
+            <button id="mpcDeviceRefreshBtn" class="btn btn-secondary btn-small btn-block" type="button">刷新连接信息</button>
+            <p class="settings-hint" id="mpcDeviceInfoStatus">正在加载连接信息。</p>
             <div class="mpc-invite-panel">
               <div class="mpc-invite-header">
                 <span>待处理邀请</span>
@@ -1459,11 +1478,11 @@
               <input type="url" id="backupSyncEndpointInput" class="input" placeholder="https://warehouse.tidukongjian.com/dav" />
             </div>
             <div class="form-group">
-              <label for="backupSyncUsernameInput">用户名</label>
+              <label for="backupSyncUsernameInput">用户名（可选）</label>
               <input type="text" id="backupSyncUsernameInput" class="input" autocomplete="username" />
             </div>
             <div class="form-group">
-              <label for="backupSyncPasswordInput">密码</label>
+              <label for="backupSyncPasswordInput">密码（可选）</label>
               <input type="password" id="backupSyncPasswordInput" class="input" autocomplete="current-password" />
             </div>
             <p class="settings-hint">如服务要求账号密码，请同时填写用户名和密码；留空则使用钱包签名授权。</p>
@@ -1526,67 +1545,6 @@
             <button id="custodyStatusBtn" class="btn btn-secondary">检查服务状态</button>
             <button id="custodySaveBtn" class="btn btn-primary">保存配置</button>
             <button id="cancelCustodyConfigBtn" class="btn btn-secondary">取消</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- MPC 服务配置 -->
-      <div id="mpcServiceConfigModal" class="modal hidden">
-        <div class="modal-overlay"></div>
-        <div class="modal-content">
-          <div class="modal-header">
-            <h3>MPC 服务配置</h3>
-            <button class="btn-close" id="closeMpcServiceConfigModal">✕</button>
-          </div>
-          <div class="modal-body">
-            <div class="form-group">
-              <label>默认协调器地址</label>
-              <input
-                type="text"
-                id="mpcCoordinatorEndpointInput"
-                class="input"
-                placeholder="https://node.yeying.pub"
-              />
-            </div>
-            <p class="settings-hint">创建 MPC 钱包时默认使用该服务。普通用户通常无需修改。</p>
-          </div>
-          <div class="modal-footer">
-            <button id="mpcCoordinatorSaveBtn" class="btn btn-primary">保存默认值</button>
-            <button id="cancelMpcServiceConfigBtn" class="btn btn-secondary">取消</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- MPC 连接信息 -->
-      <div id="mpcConnectionInfoModal" class="modal hidden">
-        <div class="modal-overlay"></div>
-        <div class="modal-content">
-          <div class="modal-header">
-            <h3>MPC 连接信息</h3>
-            <button class="btn-close" id="closeMpcConnectionInfoModal">✕</button>
-          </div>
-          <div class="modal-body">
-            <div class="mpc-device-card">
-              <div class="mpc-device-row">
-                <span>Device ID</span>
-                <code id="mpcDeviceIdText">-</code>
-              </div>
-              <div class="mpc-device-row">
-                <span>签名公钥</span>
-                <button class="mpc-device-copy" type="button" data-mpc-device-copy="signing" title="复制签名公钥">复制</button>
-              </div>
-              <code class="mpc-device-key" id="mpcDeviceSigningKeyText">-</code>
-              <div class="mpc-device-row">
-                <span>E2E 公钥</span>
-                <button class="mpc-device-copy" type="button" data-mpc-device-copy="e2e" title="复制 E2E 公钥">复制</button>
-              </div>
-              <code class="mpc-device-key" id="mpcDeviceE2eKeyText">-</code>
-            </div>
-            <p class="settings-hint" id="mpcDeviceInfoStatus">设备信息用于成员排障和会话身份确认。</p>
-          </div>
-          <div class="modal-footer">
-            <button id="mpcDeviceRefreshBtn" class="btn btn-primary">刷新</button>
-            <button id="closeMpcConnectionInfoBtn" class="btn btn-secondary">关闭</button>
           </div>
         </div>
       </div>
