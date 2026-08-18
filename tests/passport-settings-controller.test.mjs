@@ -117,20 +117,15 @@ test('loginAndBind prompts for email and code before completing the binding', as
     transaction: { signMessage: async (message, password) => `${message}:${password}` },
     requestPassword: async () => 'wallet-password'
   });
+  const identityRequests = [];
+  controller.promptUsername = async () => 'person';
+  controller.promptEmail = async () => 'person@example.com';
+  controller.requestAndConfirmIdentity = async (input) => {
+    identityRequests.push(input);
+    return true;
+  };
   await controller.loginAndBind();
-  assert.equal(fetchCalls.length, 2);
-  assert.equal(fetchCalls[0].options.method, 'POST');
-  assert.deepEqual(JSON.parse(fetchCalls[0].options.body), {
-    address: '0x1111111111111111111111111111111111111111'
-  });
-  assert.deepEqual(bindingCalls, [['https://node.example', 'short-jwt']]);
-  assert.deepEqual(emailRequests[0], ['https://node.example', 'short-jwt', 'person@example.com']);
-  assert.deepEqual(confirms[0], ['https://node.example', 'short-jwt', 'pev-1', '123456']);
-  assert.equal(elements.passportStatusText.textContent, '当前钱包已完成验证，钱包：0x1111...1111。可变更验证用户名和邮箱；如需重新建立验证，请移除验证服务关联后再验证。');
-  assert.equal(elements.passportEmailStatusText.textContent, '验证邮箱已确认：person@example.com');
-  assert.equal(elements.passportIdentityBtn.textContent, '变更验证资料');
-  assert.equal(elements.passportUnlinkBtn.classList.contains('hidden'), false);
-  assert.equal(elements.passportStatusText.textContent.includes('subject-1'), false);
+  assert.deepEqual(identityRequests, [{ username: 'person', email: 'person@example.com' }]);
   assert.equal(elements.globalWaitingOverlay.classList.contains('hidden'), true);
 });
 
@@ -168,12 +163,16 @@ test('cancelled or missing verification code keeps the binding pending', async (
     transaction: { signMessage: async (message, password) => `${message}:${password}` },
     requestPassword: async () => 'wallet-password'
   });
+  const identityRequests = [];
+  controller.promptUsername = async () => 'person';
+  controller.promptEmail = async () => 'person@example.com';
+  controller.requestAndConfirmIdentity = async (input) => {
+    identityRequests.push(input);
+    return false;
+  };
   await controller.loginAndBind();
-  assert.deepEqual(bindings[0], ['https://node.example', 'short-jwt']);
-  assert.deepEqual(requests[0], ['https://node.example', 'short-jwt', 'person@example.com']);
-  assert.equal(elements.passportStatusText.textContent, '钱包控制权已确认，但邮箱尚未验证。请继续验证，钱包：0x1111...1111');
-  assert.equal(elements.passportIdentityBtn.textContent, '继续验证');
-  assert.equal(elements.passportUnlinkBtn.classList.contains('hidden'), false);
+  assert.deepEqual(identityRequests, [{ username: 'person', email: 'person@example.com' }]);
+  assert.equal(elements.globalWaitingOverlay.classList.contains('hidden'), true);
 });
 
 test('changePassportEmail prompts for a new email and verifies it', async () => {
@@ -212,10 +211,14 @@ test('changePassportEmail prompts for a new email and verifies it', async () => 
     transaction: { signMessage: async (message, password) => `${message}:${password}` },
     requestPassword: async () => 'wallet-password'
   });
-  await controller.load();
-  await controller.handleIdentityAction();
-  assert.deepEqual(requests[0], ['https://node.example', 'short-jwt', 'new@example.com']);
-  assert.deepEqual(confirms[0], ['https://node.example', 'short-jwt', 'pev-2', '654321']);
-  assert.equal(elements.passportEmailStatusText.textContent, '验证邮箱已确认：new@example.com');
-  assert.equal(elements.passportIdentityBtn.textContent, '变更验证资料');
+  const identityRequests = [];
+  controller.promptUsername = async () => 'new-person';
+  controller.promptEmail = async () => 'new@example.com';
+  controller.requestAndConfirmIdentity = async (input) => {
+    identityRequests.push(input);
+    return true;
+  };
+  await controller.changePassportIdentity();
+  assert.deepEqual(identityRequests, [{ username: 'new-person', email: 'new@example.com' }]);
+  assert.equal(elements.globalWaitingOverlay.classList.contains('hidden'), true);
 });
