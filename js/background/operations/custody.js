@@ -201,8 +201,14 @@ async function getAuthorizedCustodyClient(options = {}) {
 
 export async function handleListCustodySecrets(options = {}) {
   try {
-    const client = await getAuthorizedCustodyClient(options);
-    return { success: true, secrets: await client.listSecrets() };
+    const recoveryToken = String(options.recoveryToken || '').trim();
+    const client = recoveryToken
+      ? new CustodyClient({ endpoint: options.endpoint || (await getCustodySettingsRaw()).endpoint })
+      : await getAuthorizedCustodyClient(options);
+    const secrets = recoveryToken
+      ? await client.listRecoverySecrets(recoveryToken)
+      : await client.listSecrets();
+    return { success: true, secrets };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to list custody secrets' };
   }
@@ -248,8 +254,13 @@ export async function handleRestoreCustodySecret(options = {}) {
     if (!walletId) throw new Error('钱包标识不能为空');
     if (!password) throw new Error('请输入原钱包密码');
 
-    const client = await getAuthorizedCustodyClient(options);
-    const record = await client.getSecret(walletId);
+    const recoveryToken = String(options.recoveryToken || '').trim();
+    const client = recoveryToken
+      ? new CustodyClient({ endpoint: options.endpoint || (await getCustodySettingsRaw()).endpoint })
+      : await getAuthorizedCustodyClient(options);
+    const record = recoveryToken
+      ? await client.getRecoverySecret(walletId, recoveryToken)
+      : await client.getSecret(walletId);
     if (!record?.ciphertext) throw new Error('托管记录缺少密文');
     const material = validateCustodySecret(await decryptObject(record.ciphertext, password));
     const result = material.type === 'hd'

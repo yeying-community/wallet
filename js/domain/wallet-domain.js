@@ -935,6 +935,15 @@ export class WalletDomain extends BaseDomain {
     return result;
   }
 
+  async getWalletRecoveryCallback() {
+    const result = await this._sendMessage(WalletMessageType.WALLET_RECOVERY_GET_CALLBACK);
+    return result?.callback || null;
+  }
+
+  async clearWalletRecoveryCallback() {
+    return await this._sendMessage(WalletMessageType.WALLET_RECOVERY_CLEAR_CALLBACK);
+  }
+
   async enableCustody(options = {}) {
     return await this._sendMessage(WalletMessageType.CUSTODY_ENABLE, options);
   }

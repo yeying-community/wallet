@@ -441,9 +441,6 @@ export class MpcSettingsController {
   renderCustodySettings(settings = {}) {
     const enabledToggle = document.getElementById('custodyEnabledToggle');
     const endpointInput = document.getElementById('custodyEndpointInput');
-    const resourceInput = document.getElementById('custodyUcanResourceInput');
-    const actionInput = document.getElementById('custodyUcanActionInput');
-    const audienceInput = document.getElementById('custodyUcanAudienceInput');
     const statusText = document.getElementById('custodyStatusText');
     const passkeyStatus = document.getElementById('custodyPasskeyStatus');
     const recordSummary = document.getElementById('custodyRecordSummary');
@@ -451,9 +448,6 @@ export class MpcSettingsController {
     const endpoint = settings.endpoint || DEFAULT_CUSTODY_ENDPOINT;
     if (enabledToggle) enabledToggle.checked = Boolean(settings.enabled);
     if (endpointInput) endpointInput.value = endpoint;
-    if (resourceInput) resourceInput.value = settings.ucanResource || DEFAULT_CUSTODY_UCAN_RESOURCE;
-    if (actionInput) actionInput.value = settings.ucanAction || DEFAULT_CUSTODY_UCAN_ACTION;
-    if (audienceInput) audienceInput.value = settings.ucanAudience || deriveUcanAudience(endpoint);
 
     if (statusText) {
       const status = settings.lastStatus || {};
@@ -478,14 +472,11 @@ export class MpcSettingsController {
         throw new Error('托管服务地址格式不正确');
       }
     }
-    const resource = String(document.getElementById('custodyUcanResourceInput')?.value || '').trim() || DEFAULT_CUSTODY_UCAN_RESOURCE;
-    const action = String(document.getElementById('custodyUcanActionInput')?.value || '').trim() || DEFAULT_CUSTODY_UCAN_ACTION;
-    const audience = String(document.getElementById('custodyUcanAudienceInput')?.value || '').trim() || deriveUcanAudience(endpoint || DEFAULT_CUSTODY_ENDPOINT);
     return {
       endpoint: endpoint || DEFAULT_CUSTODY_ENDPOINT,
-      ucanResource: resource,
-      ucanAction: action,
-      ucanAudience: audience
+      ucanResource: DEFAULT_CUSTODY_UCAN_RESOURCE,
+      ucanAction: DEFAULT_CUSTODY_UCAN_ACTION,
+      ucanAudience: deriveUcanAudience(endpoint || DEFAULT_CUSTODY_ENDPOINT)
     };
   }
 

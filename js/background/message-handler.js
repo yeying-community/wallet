@@ -933,6 +933,28 @@ const popupHandlers = new Map([
       return { success: false, error: error.message };
     }
   }],
+  ['WALLET_RECOVERY_CALLBACK', async (data, context = {}) => {
+    const senderUrl = String(context?.sender?.url || '');
+    const extensionOrigin = `chrome-extension://${chrome.runtime.id}/`;
+    if (!senderUrl.startsWith(extensionOrigin)) throw new Error('非法恢复回调来源');
+    const callback = data || {};
+    if (!callback.code || !callback.state) throw new Error('恢复回调参数不完整');
+    await updateUserSetting('walletRecoveryCallback', {
+      code: String(callback.code),
+      state: String(callback.state),
+      receivedAt: Date.now(),
+      senderUrl
+    });
+    return { success: true };
+  }],
+  ['WALLET_RECOVERY_GET_CALLBACK', async () => ({
+    success: true,
+    callback: await getUserSetting('walletRecoveryCallback', null)
+  })],
+  ['WALLET_RECOVERY_CLEAR_CALLBACK', async () => {
+    await updateUserSetting('walletRecoveryCallback', null);
+    return { success: true };
+  }],
 
   // 注：原 switch 中另有一个 case 'SWITCH_NETWORK'（调用未定义的 switchNetwork），
   // 因与 NetworkMessageType.SWITCH_NETWORK 同值（'SWITCH_NETWORK'）且位于其后，
@@ -982,7 +1004,7 @@ const popupHandlers = new Map([
  * @param {Object} message - 消息对象
  * @param {Function} response - 响应函数
  */
-export async function handlePopupMessage(message, response) {
+export async function handlePopupMessage(message, response, sender = {}) {
   const { type, data } = message;
 
   console.log('📨 Received popup message:', type);
@@ -995,7 +1017,7 @@ export async function handlePopupMessage(message, response) {
   }
 
   try {
-    const result = await handler(data, { message });
+    const result = await handler(data, { message, sender });
     if (typeof result !== 'undefined') {
       response(result);
     }
@@ -1060,7 +1082,7 @@ export function initMessageListeners() {
       response({ success: true });
       return false;
     }
-    handlePopupMessage(message, response);
+    handlePopupMessage(message, response, sender);
     return true; // 保持消息通道开启
   });
 

@@ -34,6 +34,25 @@
         <button id="welcomeImportWalletBtn" class="btn btn-secondary">
           导入钱包
         </button>
+        <button id="welcomeRecoverWalletBtn" class="btn btn-secondary">
+          恢复托管钱包
+        </button>
+      </div>
+
+      <div id="custodyRecoveryPage" class="page hidden">
+        <div class="page-header">
+          <button id="custodyRecoveryBackBtn" class="back-btn" type="button">←</button>
+          <h2>恢复托管钱包</h2>
+        </div>
+        <div class="settings-body">
+          <p class="settings-card-description">选择要恢复的钱包，并输入创建托管记录时使用的钱包密码。</p>
+          <div id="custodyRecoveryList" class="custody-summary"></div>
+          <div class="form-group">
+            <label for="custodyRecoveryPassword">原钱包密码</label>
+            <input id="custodyRecoveryPassword" class="input" type="password" autocomplete="current-password" />
+          </div>
+          <button id="custodyRecoveryConfirmBtn" class="btn btn-primary btn-block" type="button">恢复钱包</button>
+        </div>
       </div>
 
       <!-- 主钱包页面 -->
@@ -1287,7 +1306,7 @@
           </div>
           <div class="settings-body">
             <p class="settings-card-description">备份会同步账户名称、联系人、网络和钱包配置等加密资料。新设备需先恢复助记词或私钥，再通过备份恢复这些资料。</p>
-            <div class="settings-detail-list">
+            <div class="settings-detail-list settings-summary-list">
               <div class="settings-detail-row">
                 <span>备份服务：</span>
                 <span id="backupSyncEndpointValue">-</span>
@@ -1345,7 +1364,7 @@
           </div>
           <div class="settings-body">
             <p class="settings-card-description">多签钱包通过当前设备与协调器及其他成员安全协作。这里显示这台设备的连接信息；同一设备创建或加入的多签钱包会使用同一套设备身份。</p>
-            <div class="settings-detail-list">
+            <div class="settings-detail-list settings-summary-list">
               <div class="settings-detail-row">
                 <span>协调器服务：</span>
                 <span id="mpcCoordinatorEndpointValue">-</span>
@@ -1436,39 +1455,10 @@
                 placeholder="https://node.yeying.pub"
               />
             </div>
-            <div class="form-group">
-              <label>UCAN Resource</label>
-              <input
-                type="text"
-                id="custodyUcanResourceInput"
-                class="input"
-                placeholder="custody"
-              />
-            </div>
-            <div class="form-group">
-              <label>UCAN Action</label>
-              <input
-                type="text"
-                id="custodyUcanActionInput"
-                class="input"
-                placeholder="write"
-              />
-            </div>
-            <div class="form-group">
-              <label>UCAN Audience</label>
-              <input
-                type="text"
-                id="custodyUcanAudienceInput"
-                class="input"
-                placeholder="did:web:node.yeying.pub"
-              />
-            </div>
-            <p class="settings-hint">这些是托管服务连接参数，日常开启/关闭托管无需反复修改。</p>
+            <p class="settings-hint">普通用户只需要确认托管服务地址，其他授权参数由钱包自动管理。</p>
           </div>
           <div class="modal-footer">
-            <button id="custodyStatusBtn" class="btn btn-secondary">检查服务状态</button>
             <button id="custodySaveBtn" class="btn btn-primary">保存配置</button>
-            <button id="cancelCustodyConfigBtn" class="btn btn-secondary">取消</button>
           </div>
         </div>
       </div>

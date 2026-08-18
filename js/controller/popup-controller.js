@@ -43,7 +43,7 @@ export class PopupController {
     this.transactionPollingTimer = null;
     this.storageUnsubscribe = null;
 
-    this.welcomeController = new WelcomeController();
+    this.welcomeController = new WelcomeController({ wallet: this.wallet });
     this.unlockWalletController = new UnlockWalletController({
       wallet: this.wallet,
       onUnlocked: async () => {
