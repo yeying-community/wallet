@@ -1129,7 +1129,7 @@ export class MpcSettingsController {
   getMpcInviteLoadErrorMessage(error) {
     const message = String(error?.message || error || '加载失败');
     if (/ucan\s+capability\s+denied/i.test(message)) {
-      return '当前钱包尚未获得查看多签邀请的授权。请确认使用受邀地址连接此服务后刷新。';
+      return '暂无多签邀请的授权';
     }
     return '待处理邀请暂时无法加载，请稍后重试。';
   }
