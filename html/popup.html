@@ -1220,88 +1220,18 @@
         <div id="backupSyncLogsFooter" class="sync-log-footer hidden"></div>
       </div>
 
-      <!-- MPC 日志审计页面 -->
+      <!-- 多签活动页面 -->
       <div id="mpcLogsPage" class="page hidden">
         <div class="page-header">
           <button class="back-btn">←</button>
-          <h2>MPC 日志审计</h2>
-          <div class="page-actions">
-            <button id="mpcClearLogsBtn" class="btn btn-secondary btn-small">
-              清空日志
-            </button>
-          </div>
+          <h2>多签活动</h2>
+          <div class="page-actions"></div>
         </div>
-        <div class="sync-log-toolbar">
-          <input
-            type="text"
-            id="mpcLogsSearchInput"
-            class="input"
-            placeholder="搜索日志（动作/Session/关键字）"
-          />
-        </div>
-        <div class="sync-log-config">
-          <div class="form-group">
-            <label>Webhook 地址</label>
-            <input
-              type="text"
-              id="mpcAuditExportEndpointInput"
-              class="input"
-              placeholder="https://audit.example.com/hooks/mpc"
-            />
-          </div>
-          <div class="form-group">
-            <label>启用导出</label>
-            <label class="settings-toggle">
-              <input type="checkbox" id="mpcAuditExportEnabledToggle" />
-              <span>启用</span>
-            </label>
-          </div>
-          <div class="form-group" style="grid-column: span 2;">
-            <label>Webhook Headers (JSON)</label>
-            <textarea
-              id="mpcAuditExportHeadersInput"
-              class="input"
-              placeholder="{\"Authorization\":\"Bearer <token>\"}"
-            ></textarea>
-          </div>
-        </div>
-        <div class="settings-row sync-log-config-actions">
-          <button id="mpcAuditExportSaveBtn" class="btn btn-secondary btn-small">
-            保存导出配置
-          </button>
-          <button id="mpcAuditExportFlushBtn" class="btn btn-secondary btn-small">
-            推送队列
-          </button>
-          <button id="mpcAuditExportAllBtn" class="btn btn-secondary btn-small">
-            推送全部
-          </button>
-          <button id="mpcAuditExportJsonBtn" class="btn btn-secondary btn-small">
-            导出 JSON
-          </button>
-          <button id="mpcAuditExportCsvBtn" class="btn btn-secondary btn-small">
-            导出 CSV
-          </button>
-        </div>
-        <p class="settings-hint" id="mpcAuditExportStatus">最近推送: -</p>
-        <div class="sync-log-summary">
-          <div class="sync-log-metric">
-            <div class="sync-log-label">最近事件</div>
-            <div class="sync-log-value" id="mpcLogsLastEvent">-</div>
-          </div>
-          <div class="sync-log-metric">
-            <div class="sync-log-label">日志总数</div>
-            <div class="sync-log-value" id="mpcLogsTotal">0</div>
-          </div>
-          <div class="sync-log-metric">
-            <div class="sync-log-label">匹配结果</div>
-            <div class="sync-log-value" id="mpcLogsMatch">0</div>
-          </div>
-        </div>
-        <h3 class="sync-log-title">MPC 日志</h3>
+        <p class="settings-hint">查看这台设备参与的多签钱包创建、邀请和会话状态。</p>
+        <h3 class="sync-log-title">最近活动</h3>
         <div id="mpcLogsList" class="sync-activity-list sync-log-list">
-          <div class="empty-message">暂无日志</div>
+          <div class="empty-message">暂无多签活动</div>
         </div>
-        <div id="mpcLogsFooter" class="sync-log-footer hidden"></div>
       </div>
 
       <!-- MPC 钱包详情 -->
@@ -1427,16 +1357,16 @@
             <h2>多签钱包</h2>
           </div>
           <div class="settings-body">
-            <p class="settings-card-description">这里管理当前设备参与多签会话所需的协调器连接和设备身份。设备 ID、签名公钥和 E2E 公钥属于当前钱包插件安装，会被此设备创建或加入的多签钱包复用；它们不属于某一个单独的多签钱包。</p>
-            <div class="form-group">
-              <label for="mpcCoordinatorEndpointInput">协调器服务</label>
-              <input type="url" id="mpcCoordinatorEndpointInput" class="input" placeholder="https://node.yeying.pub" />
-            </div>
-            <div class="settings-row settings-action-grid">
-              <button id="mpcCoordinatorSaveBtn" class="btn btn-secondary btn-small">保存服务配置</button>
-              <button id="mpcAuditBtn" class="btn btn-secondary btn-small">日志审计</button>
-            </div>
+            <p class="settings-card-description">多签钱包通过当前设备与协调器及其他成员安全协作。这里显示这台设备的连接信息；同一设备创建或加入的多签钱包会使用同一套设备身份。</p>
             <div class="settings-detail-list">
+              <div class="settings-detail-row">
+                <span>协调器服务：</span>
+                <span id="mpcCoordinatorEndpointValue">-</span>
+              </div>
+              <div class="settings-detail-row">
+                <span>设备状态：</span>
+                <span id="mpcDeviceStatusValue">正在准备</span>
+              </div>
               <div class="settings-detail-row">
                 <span>设备 ID：</span>
                 <code id="mpcDeviceIdText">-</code>
@@ -1450,8 +1380,10 @@
                 <code id="mpcDeviceE2eKeyText">-</code>
               </div>
             </div>
-            <button id="mpcDeviceRefreshBtn" class="btn btn-secondary btn-small btn-block" type="button">刷新连接信息</button>
-            <p class="settings-hint" id="mpcDeviceInfoStatus">正在加载连接信息。</p>
+            <div class="settings-row settings-action-grid">
+              <button id="mpcServiceConfigBtn" class="btn btn-secondary btn-small">高级设置</button>
+              <button id="mpcAuditBtn" class="btn btn-secondary btn-small">多签活动</button>
+            </div>
             <div class="mpc-invite-panel">
               <div class="mpc-invite-header">
                 <span>待处理邀请</span>
@@ -1545,6 +1477,28 @@
             <button id="custodyStatusBtn" class="btn btn-secondary">检查服务状态</button>
             <button id="custodySaveBtn" class="btn btn-primary">保存配置</button>
             <button id="cancelCustodyConfigBtn" class="btn btn-secondary">取消</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 多签钱包高级设置 -->
+      <div id="mpcServiceConfigModal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>多签钱包高级设置</h3>
+            <button class="btn-close" id="closeMpcServiceConfigModal">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="mpcCoordinatorEndpointInput">协调器服务地址</label>
+              <input type="url" id="mpcCoordinatorEndpointInput" class="input" placeholder="https://node.yeying.pub" />
+            </div>
+            <p class="settings-hint">更换服务只会影响后续创建或加入多签钱包时使用的协调器。</p>
+          </div>
+          <div class="modal-footer">
+            <button id="mpcCoordinatorSaveBtn" class="btn btn-primary">保存</button>
+            <button id="cancelMpcServiceConfigBtn" class="btn btn-secondary">取消</button>
           </div>
         </div>
       </div>

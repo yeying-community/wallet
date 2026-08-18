@@ -341,6 +341,12 @@ class MpcService {
       createdAt: getTimestamp(),
       expiresAt: payload.expiresAt
     });
+    await this._appendAuditLog({
+      sessionId,
+      level: 'info',
+      action: 'session-created',
+      message: '已发起多签钱包创建'
+    });
     return { session, response };
   }
 
@@ -396,6 +402,12 @@ class MpcService {
       participants: [participantId],
       updatedAt: now
     });
+    await this._appendAuditLog({
+      sessionId,
+      level: 'info',
+      action: 'session-joined',
+      message: '已加入多签钱包创建'
+    });
 
     return { participant: participantRecord, session, response };
   }
@@ -417,6 +429,12 @@ class MpcService {
     const session = await this._syncSessionSnapshot(response, {
       ...(local || { id: sessionId }),
       status: 'cancelled',
+    });
+    await this._appendAuditLog({
+      sessionId,
+      level: 'info',
+      action: 'session-cancelled',
+      message: '已取消多签钱包创建'
     });
     return { session, response };
   }

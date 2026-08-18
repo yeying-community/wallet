@@ -637,7 +637,7 @@ export class PopupController {
       contactsPage: document.getElementById('contactsPage')?.dataset?.returnPage || 'walletPage',
       sitesPage: 'walletPage',
       backupSyncLogsPage: document.getElementById('backupSyncLogsPage')?.dataset?.returnPage || 'settingsPage',
-      mpcLogsPage: 'settingsPage',
+      mpcLogsPage: 'mpcDetailPage',
       backupSyncDetailPage: 'settingsPage',
       custodyDetailPage: 'settingsPage',
       mpcDetailPage: 'settingsPage',
