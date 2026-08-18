@@ -67,6 +67,12 @@ export class BackupSyncSettingsController {
         await this.handleBackupSyncConfigSave();
       });
     }
+    const backupSyncAuthSaveBtn = document.getElementById('backupSyncAuthSaveBtn');
+    if (backupSyncAuthSaveBtn) {
+      backupSyncAuthSaveBtn.addEventListener('click', async () => {
+        await this.handleBackupSyncConfigSave();
+      });
+    }
 
     const backupSyncAuthModeSelect = document.getElementById('backupSyncAuthModeSelect');
     if (backupSyncAuthModeSelect) {
@@ -88,13 +94,6 @@ export class BackupSyncSettingsController {
     if (backupSyncSiweRefreshBtn) {
       backupSyncSiweRefreshBtn.addEventListener('click', async () => {
         await this.handleBackupSyncSiweRefresh();
-      });
-    }
-
-    const backupSyncUcanGenerateBtn = document.getElementById('backupSyncUcanGenerateBtn');
-    if (backupSyncUcanGenerateBtn) {
-      backupSyncUcanGenerateBtn.addEventListener('click', async () => {
-        await this.handleBackupSyncUcanGenerate();
       });
     }
 
@@ -244,7 +243,11 @@ export class BackupSyncSettingsController {
 
   async loadSettings() {
     try {
-      const settings = await this.wallet.getBackupSyncSettings();
+      let settings = await this.wallet.getBackupSyncSettings();
+      if (settings?.authMode !== 'ucan' && settings?.authMode !== 'basic') {
+        const result = await this.wallet.updateBackupSyncSettings({ authMode: 'ucan' });
+        settings = result?.settings || { ...settings, authMode: 'ucan' };
+      }
       this.syncSettings = settings || {};
       this.renderBackupSyncSettings(settings);
     } catch (error) {
@@ -256,48 +259,27 @@ export class BackupSyncSettingsController {
     const enabledToggle = document.getElementById('backupSyncEnabledToggle');
     const endpointInput = document.getElementById('backupSyncEndpointInput');
     const authModeSelect = document.getElementById('backupSyncAuthModeSelect');
-    const ucanResourceInput = document.getElementById('backupSyncUcanResourceInput');
-    const ucanActionInput = document.getElementById('backupSyncUcanActionInput');
-    const ucanAudienceInput = document.getElementById('backupSyncUcanAudienceInput');
-    const ucanTtlInput = document.getElementById('backupSyncUcanTtlInput');
-    const basicInput = document.getElementById('backupSyncBasicInput');
+    const usernameInput = document.getElementById('backupSyncUsernameInput');
+    const passwordInput = document.getElementById('backupSyncPasswordInput');
     const tokenStatus = document.getElementById('backupSyncTokenStatus');
-    const lastStatus = document.getElementById('backupSyncLastStatus');
-    const lastStatusDetail = document.getElementById('backupSyncLastStatusDetail');
-    const summary = document.getElementById('backupSyncSummary');
+    const endpointValue = document.getElementById('backupSyncEndpointValue');
+    const connectionStatus = document.getElementById('backupSyncConnectionStatus');
+    const lastPullValue = document.getElementById('backupSyncLastPullValue');
+    const lastPushValue = document.getElementById('backupSyncLastPushValue');
 
     if (enabledToggle) enabledToggle.checked = Boolean(settings.enabled);
-    if (endpointInput) endpointInput.value = settings.endpoint || 'https://webdav.yeying.pub/dav';
-    if (authModeSelect) authModeSelect.value = settings.authMode || 'ucan';
-    if (ucanResourceInput) {
-      const normalizedResource = normalizeUcanResource(settings.ucanResource || '');
-      ucanResourceInput.value = normalizedResource;
-      ucanResourceInput.readOnly = true;
-    }
-    if (ucanActionInput) {
-      const normalizedResource = normalizeUcanResource(settings.ucanResource || '');
-      ucanActionInput.value = normalizeUcanAction(settings.ucanAction || '', normalizedResource);
-      ucanActionInput.readOnly = true;
-    }
-    if (ucanAudienceInput) {
-      ucanAudienceInput.value = settings.ucanAudience || deriveUcanAudience(settings.endpoint || '');
-      ucanAudienceInput.readOnly = true;
-    }
-    if (ucanTtlInput && !ucanTtlInput.value) {
-      ucanTtlInput.value = '24';
-    }
-    if (basicInput) basicInput.value = settings.basicAuth || '';
+    if (endpointInput) endpointInput.value = settings.endpoint || 'https://warehouse.tidukongjian.com/dav';
+    const authMode = settings.authMode === 'basic' ? 'basic' : 'ucan';
+    if (authModeSelect) authModeSelect.value = authMode;
+    if (usernameInput) usernameInput.value = this.getBackupSyncBasicUsername(settings.basicAuth || '');
+    if (passwordInput) passwordInput.value = '';
 
-    this.updateBackupSyncAuthPanel(settings.authMode || 'ucan');
+    this.updateBackupSyncAuthPanel(authMode);
     this.updateBackupSyncTokenStatus(settings, tokenStatus);
-    this.updateBackupSyncLastStatus(settings, lastStatus);
-    this.updateBackupSyncLastStatus(settings, lastStatusDetail);
-    if (summary) {
-      const endpoint = settings.endpoint || 'https://webdav.yeying.pub/dav';
-      const mode = String(settings.authMode || 'ucan').toUpperCase();
-      const enabled = settings.enabled ? '已启用' : '未启用';
-      summary.textContent = `${enabled} · ${mode} · ${endpoint}`;
-    }
+    if (endpointValue) endpointValue.textContent = settings.endpoint || 'https://warehouse.tidukongjian.com/dav';
+    if (connectionStatus) connectionStatus.textContent = settings.enabled ? '已安全连接' : '未启用';
+    if (lastPullValue) lastPullValue.textContent = settings.lastPullAt ? formatLocaleDateTime(settings.lastPullAt) : '-';
+    if (lastPushValue) lastPushValue.textContent = settings.lastPushAt ? formatLocaleDateTime(settings.lastPushAt) : '-';
     this.updateBackupSyncEnabledState(Boolean(settings.enabled));
     window.refreshWalletSelects?.();
 
@@ -310,12 +292,21 @@ export class BackupSyncSettingsController {
 
   updateBackupSyncAuthPanel(mode) {
     const siwePanel = document.getElementById('backupSyncSiwePanel');
-    const ucanPanel = document.getElementById('backupSyncUcanPanel');
     const basicPanel = document.getElementById('backupSyncBasicPanel');
 
     if (siwePanel) siwePanel.classList.toggle('hidden', mode !== 'siwe');
-    if (ucanPanel) ucanPanel.classList.toggle('hidden', mode !== 'ucan');
     if (basicPanel) basicPanel.classList.toggle('hidden', mode !== 'basic');
+  }
+
+  getBackupSyncBasicUsername(value) {
+    const encoded = String(value || '').replace(/^Basic\s+/i, '').trim();
+    if (!encoded) return '';
+    try {
+      const decoded = atob(encoded);
+      return decoded.split(':', 1)[0] || '';
+    } catch {
+      return '';
+    }
   }
 
   updateBackupSyncEnabledState(enabled) {
@@ -325,10 +316,13 @@ export class BackupSyncSettingsController {
 
     if (endpointInput) endpointInput.disabled = !enabled;
     if (authModeSelect) authModeSelect.disabled = !enabled;
-    if (nowBtn) nowBtn.disabled = !enabled;
+    if (nowBtn) {
+      nowBtn.disabled = !enabled;
+      nowBtn.classList.toggle('hidden', !enabled);
+    }
 
     const panelControls = document.querySelectorAll(
-      '#backupSyncSiwePanel button, #backupSyncUcanPanel button, #backupSyncUcanPanel input, #backupSyncUcanPanel textarea, #backupSyncBasicPanel button, #backupSyncBasicPanel input'
+      '#backupSyncSiwePanel button, #backupSyncBasicPanel button, #backupSyncBasicPanel input'
     );
     panelControls.forEach(el => {
       el.disabled = !enabled;
@@ -402,6 +396,7 @@ export class BackupSyncSettingsController {
   }
 
   async openBackupSyncLogsPage() {
+    document.getElementById('backupSyncLogsPage').dataset.returnPage = 'backupSyncDetailPage';
     showPage('backupSyncLogsPage');
     await this.loadBackupSyncLogs();
   }
@@ -813,7 +808,8 @@ export class BackupSyncSettingsController {
 
   async saveBackupSyncConnectionSettings() {
     const endpointInput = document.getElementById('backupSyncEndpointInput');
-    const authModeSelect = document.getElementById('backupSyncAuthModeSelect');
+    const usernameInput = document.getElementById('backupSyncUsernameInput');
+    const passwordInput = document.getElementById('backupSyncPasswordInput');
     const trimmed = String(endpointInput?.value || this.syncSettings?.endpoint || '').trim();
     if (!trimmed) {
       throw new Error('请输入 WebDAV 地址');
@@ -825,10 +821,19 @@ export class BackupSyncSettingsController {
     }
 
     const resolved = await this.detectBackupSyncEndpoint(trimmed);
-    const result = await this.wallet.updateBackupSyncSettings({
+    const username = String(usernameInput?.value || '').trim();
+    const password = String(passwordInput?.value || '');
+    if ((username && !password) || (!username && password)) {
+      throw new Error('请同时填写用户名和密码');
+    }
+    const updates = {
       endpoint: resolved,
-      authMode: authModeSelect?.value || this.syncSettings?.authMode || 'ucan'
-    });
+      authMode: username ? 'basic' : 'ucan'
+    };
+    if (username) {
+      updates.basicAuth = normalizeBasicAuth(`${username}:${password}`);
+    }
+    const result = await this.wallet.updateBackupSyncSettings(updates);
     if (result?.settings) {
       this.syncSettings = result.settings;
       this.renderBackupSyncSettings(result.settings);

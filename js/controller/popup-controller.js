@@ -636,7 +636,7 @@ export class PopupController {
       settingsPage: 'walletPage',
       contactsPage: document.getElementById('contactsPage')?.dataset?.returnPage || 'walletPage',
       sitesPage: 'walletPage',
-      backupSyncLogsPage: 'settingsPage',
+      backupSyncLogsPage: document.getElementById('backupSyncLogsPage')?.dataset?.returnPage || 'settingsPage',
       mpcLogsPage: 'settingsPage',
       backupSyncDetailPage: 'settingsPage',
       custodyDetailPage: 'settingsPage',
@@ -650,6 +650,9 @@ export class PopupController {
         if (contactsPage?.dataset?.returnPage) {
           delete contactsPage.dataset.returnPage;
         }
+      }
+      if (currentPage === 'backupSyncLogsPage') {
+        delete document.getElementById('backupSyncLogsPage')?.dataset.returnPage;
       }
       showPage(targetPage);
       if (targetPage === 'networkManagePage') {

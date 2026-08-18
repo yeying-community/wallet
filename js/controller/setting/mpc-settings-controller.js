@@ -511,6 +511,8 @@ export class MpcSettingsController {
     const actionInput = document.getElementById('custodyUcanActionInput');
     const audienceInput = document.getElementById('custodyUcanAudienceInput');
     const statusText = document.getElementById('custodyStatusText');
+    const passkeyStatus = document.getElementById('custodyPasskeyStatus');
+    const recordSummary = document.getElementById('custodyRecordSummary');
 
     const endpoint = settings.endpoint || DEFAULT_CUSTODY_ENDPOINT;
     if (enabledToggle) enabledToggle.checked = Boolean(settings.enabled);
@@ -521,11 +523,15 @@ export class MpcSettingsController {
 
     if (statusText) {
       const status = settings.lastStatus || {};
-      const passkey = status.passkeyBound ? '已绑定通行证' : '未绑定通行证';
-      const enabled = settings.enabled ? '托管已开启' : '托管未开启';
-      const count = Number.isFinite(status.recordCount) ? ` · ${status.recordCount} 份托管记录` : '';
-      const last = settings.lastBackupAt ? ` · 最近备份 ${formatLocaleDateTime(settings.lastBackupAt)}` : '';
-      statusText.textContent = `${enabled} · ${passkey}${count}${last}`;
+      statusText.textContent = settings.enabled ? '已开启' : '未开启';
+      if (passkeyStatus) {
+        passkeyStatus.textContent = status.passkeyBound ? '已绑定，可用于恢复' : '尚未绑定';
+      }
+      if (recordSummary) {
+        const count = Number.isFinite(status.recordCount) ? status.recordCount : 0;
+        const last = settings.lastBackupAt ? ` · 最近 ${formatLocaleDateTime(settings.lastBackupAt)}` : '';
+        recordSummary.textContent = count ? `${count} 份${last}` : '暂无记录';
+      }
     }
   }
 

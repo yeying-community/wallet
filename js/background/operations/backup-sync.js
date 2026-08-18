@@ -15,7 +15,7 @@ import { backupSyncService } from '../sync-service.js';
 import { isDeveloperFeatureEnabled } from '../../config/index.js';
 import { getTimestamp } from '../../common/utils/time-utils.js';
 
-const DEFAULT_BACKUP_SYNC_ENDPOINT = 'https://webdav.yeying.pub/dav';
+const DEFAULT_BACKUP_SYNC_ENDPOINT = 'https://warehouse.tidukongjian.com/dav';
 const BACKUP_SYNC_MODES = new Set(['siwe', 'ucan', 'basic']);
 
 function normalizeBackupSyncEndpoint(value) {

@@ -961,6 +961,7 @@
             <div class="settings-section-heading">
               <h3>☁️ 数据备份</h3>
               <div class="settings-section-heading-actions">
+                <button id="backupSyncNowBtn" class="settings-heading-icon-btn hidden" type="button" aria-label="立即备份" title="立即备份">⟳</button>
                 <label class="settings-toggle settings-section-toggle" title="启用数据备份">
                   <input type="checkbox" id="backupSyncEnabledToggle" />
                   <span class="settings-switch" aria-hidden="true"></span>
@@ -970,8 +971,6 @@
               </div>
             </div>
             <p class="settings-hint settings-card-description">将钱包数据加密备份到你选择的服务，便于在新设备恢复；备份不会替代助记词或私钥备份。</p>
-            <p class="settings-hint" id="backupSyncSummary">未启用 · UCAN · https://webdav.yeying.pub/dav</p>
-            <p class="settings-hint" id="backupSyncLastStatus">最近拉取: - · 最近推送: -</p>
             <button id="backupSyncDetailBtn" class="btn btn-secondary btn-small btn-block" type="button">查看详情</button>
           </div>
 
@@ -997,7 +996,6 @@
               </div>
             </div>
             <p class="settings-hint settings-card-description">由受信服务协助保存加密恢复资料，便于恢复和跨设备使用；服务不能直接获得你的明文私钥。</p>
-            <p class="settings-hint" id="custodyStatusText">启用前需要当前钱包地址已绑定通行证。</p>
             <button id="custodyDetailBtn" class="btn btn-secondary btn-small btn-block" type="button">查看详情</button>
           </div>
 
@@ -1371,16 +1369,30 @@
             <h2>数据备份</h2>
           </div>
           <div class="settings-body">
-            <p class="settings-card-description">备份数据经过加密后上传，只有使用相同钱包凭证才能恢复。数据备份用于设备恢复，不替代助记词或私钥备份。</p>
-            <p class="settings-hint" id="backupSyncLastStatusDetail">最近拉取: - · 最近推送: -</p>
+            <p class="settings-card-description">备份会同步账户名称、联系人、网络和钱包配置等加密资料。新设备需先恢复助记词或私钥，再通过备份恢复这些资料。</p>
+            <div class="settings-detail-list">
+              <div class="settings-detail-row">
+                <span>备份服务：</span>
+                <span id="backupSyncEndpointValue">-</span>
+              </div>
+              <div class="settings-detail-row">
+                <span>连接状态：</span>
+                <span id="backupSyncConnectionStatus">未启用</span>
+              </div>
+              <div class="settings-detail-row">
+                <span>最近拉取：</span>
+                <span id="backupSyncLastPullValue">-</span>
+              </div>
+              <div class="settings-detail-row">
+                <span>最近推送：</span>
+                <span id="backupSyncLastPushValue">-</span>
+              </div>
+            </div>
             <div class="settings-row settings-action-grid">
-              <button id="backupSyncConfigBtn" class="btn btn-secondary btn-small">服务配置</button>
+              <button id="backupSyncConfigBtn" class="btn btn-secondary btn-small">高级设置</button>
               <button id="backupSyncAuditBtn" class="btn btn-secondary btn-small">日志审计</button>
             </div>
-            <div class="settings-row">
-              <button id="backupSyncNowBtn" class="btn btn-secondary btn-small">立即备份</button>
-              <button id="backupSyncClearRemoteBtn" class="btn btn-danger btn-small">清除远端备份</button>
-            </div>
+            <button id="backupSyncClearRemoteBtn" class="btn btn-danger btn-small btn-block" type="button">清除远端备份</button>
             <div id="backupSyncDebugRow" class="settings-row hidden">
               <button id="backupSyncSimulateConflictBtn" class="btn btn-secondary btn-small">模拟冲突</button>
             </div>
@@ -1394,11 +1406,17 @@
             <h2>密钥托管</h2>
           </div>
           <div class="settings-body">
-            <p class="settings-card-description">托管服务只处理加密后的恢复资料，钱包私钥仍由你控制。详情中可以配置服务并检查当前状态。</p>
-            <div class="settings-row settings-action-grid">
-              <button id="custodyConfigBtn" class="btn btn-secondary btn-small">服务配置</button>
-              <button id="custodyStatusBtn" class="btn btn-secondary btn-small">检查状态</button>
+            <p class="settings-card-description">密钥托管会把加密后的恢复资料交给受信服务，方便你在新设备恢复钱包；服务不会看到你的明文私钥。</p>
+            <div class="custody-summary" aria-live="polite">
+              <div class="custody-summary-row"><span>托管服务</span><strong id="custodyServiceName">夜莺密钥托管服务</strong></div>
+              <div class="custody-summary-row"><span>当前状态</span><strong id="custodyStatusText">尚未配置</strong></div>
+              <div class="custody-summary-row"><span>通行证</span><strong id="custodyPasskeyStatus">未检查</strong></div>
+              <div class="custody-summary-row"><span>托管记录</span><strong id="custodyRecordSummary">暂无记录</strong></div>
             </div>
+            <div class="settings-row settings-action-grid">
+              <button id="custodyConfigBtn" class="btn btn-secondary btn-small">高级设置</button>
+            </div>
+            <p class="settings-hint">普通使用只需开启托管并完成通行证绑定；高级设置通常无需修改。</p>
           </div>
       </div>
 
@@ -1437,90 +1455,21 @@
           </div>
           <div class="modal-body">
             <div class="form-group">
-              <label>WebDAV 地址</label>
-              <input
-                type="url"
-                id="backupSyncEndpointInput"
-                placeholder="https://webdav.yeying.pub/dav"
-              />
+              <label for="backupSyncEndpointInput">备份服务地址</label>
+              <input type="url" id="backupSyncEndpointInput" class="input" placeholder="https://warehouse.tidukongjian.com/dav" />
             </div>
             <div class="form-group">
-              <label>认证方式</label>
-              <select id="backupSyncAuthModeSelect" class="input">
-                <option value="siwe">SIWE (钱包签名)</option>
-                <option value="ucan">UCAN</option>
-                <option value="basic">Basic</option>
-              </select>
+              <label for="backupSyncUsernameInput">用户名</label>
+              <input type="text" id="backupSyncUsernameInput" class="input" autocomplete="username" />
             </div>
-
-            <div id="backupSyncSiwePanel" class="sync-auth-panel">
-              <div class="form-group">
-                <label>当前地址</label>
-                <div class="sync-address" id="backupSyncAccountAddress">-</div>
-              </div>
-              <div class="settings-row">
-                <button id="backupSyncSiweLoginBtn" class="btn btn-primary btn-small">SIWE 登录</button>
-                <button id="backupSyncSiweRefreshBtn" class="btn btn-secondary btn-small">刷新 Token</button>
-              </div>
-              <p class="settings-hint" id="backupSyncTokenStatus">未登录</p>
+            <div class="form-group">
+              <label for="backupSyncPasswordInput">密码</label>
+              <input type="password" id="backupSyncPasswordInput" class="input" autocomplete="current-password" />
             </div>
-
-            <div id="backupSyncUcanPanel" class="sync-auth-panel hidden">
-              <div class="form-group">
-                <label>Audience (did:web)</label>
-                <input
-                  type="text"
-                  id="backupSyncUcanAudienceInput"
-                  placeholder="did:web:webdav.yeying.pub"
-                />
-              </div>
-              <div class="form-group">
-                <label>Capability Resource</label>
-                <input
-                  type="text"
-                  id="backupSyncUcanResourceInput"
-                  placeholder="app:<extension-id>"
-                />
-              </div>
-              <div class="form-group">
-                <label>Capability Action</label>
-                <input
-                  type="text"
-                  id="backupSyncUcanActionInput"
-                  placeholder="write"
-                />
-              </div>
-              <div class="form-group">
-                <label>有效期 (小时)</label>
-                <input
-                  type="number"
-                  id="backupSyncUcanTtlInput"
-                  min="1"
-                  max="168"
-                  step="1"
-                  value="24"
-                />
-              </div>
-              <div class="settings-row">
-                <button id="backupSyncUcanGenerateBtn" class="btn btn-secondary btn-small">生成 UCAN</button>
-              </div>
-            </div>
-
-            <div id="backupSyncBasicPanel" class="sync-auth-panel hidden">
-              <div class="form-group">
-                <label>Basic 凭证</label>
-                <input
-                  type="text"
-                  id="backupSyncBasicInput"
-                  placeholder="username:password 或 Basic base64"
-                />
-              </div>
-              <button id="backupSyncBasicSaveBtn" class="btn btn-primary btn-small">保存凭证</button>
-            </div>
-            <p class="settings-hint">普通用户只需要确认服务地址和认证方式；高级凭证会按所选认证方式显示。</p>
+            <p class="settings-hint">如服务要求账号密码，请同时填写用户名和密码；留空则使用钱包签名授权。</p>
           </div>
           <div class="modal-footer">
-            <button id="backupSyncConfigSaveBtn" class="btn btn-primary">保存配置</button>
+            <button id="backupSyncConfigSaveBtn" class="btn btn-primary">保存</button>
             <button id="cancelBackupSyncConfigBtn" class="btn btn-secondary">取消</button>
           </div>
         </div>
@@ -1574,6 +1523,7 @@
             <p class="settings-hint">这些是托管服务连接参数，日常开启/关闭托管无需反复修改。</p>
           </div>
           <div class="modal-footer">
+            <button id="custodyStatusBtn" class="btn btn-secondary">检查服务状态</button>
             <button id="custodySaveBtn" class="btn btn-primary">保存配置</button>
             <button id="cancelCustodyConfigBtn" class="btn btn-secondary">取消</button>
           </div>
