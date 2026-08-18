@@ -39,8 +39,8 @@ export class CustodyClient {
     return this._getToken ? await this._getToken() : '';
   }
 
-  async request(path, { method = 'GET', body } = {}) {
-    const token = await this._resolveToken();
+  async request(path, { method = 'GET', body, token: explicitToken } = {}) {
+    const token = explicitToken || await this._resolveToken();
     const headers = { 'Content-Type': 'application/json' };
     if (token) {
       headers.Authorization = `Bearer ${token}`;
@@ -66,6 +66,26 @@ export class CustodyClient {
 
   async getStatus() {
     return this.request('/api/v1/public/custody/status');
+  }
+
+  async listSecrets() {
+    return this.request('/api/v1/public/custody/secrets');
+  }
+
+  async getSecret(walletId) {
+    const id = String(walletId || '').trim();
+    if (!id) throw new Error('钱包标识不能为空');
+    return this.request(`/api/v1/public/custody/secrets/${encodeURIComponent(id)}`);
+  }
+
+  async listRecoverySecrets(token) {
+    return this.request('/api/v1/public/custody/recovery/secrets', { token });
+  }
+
+  async getRecoverySecret(walletId, token) {
+    const id = String(walletId || '').trim();
+    if (!id) throw new Error('钱包标识不能为空');
+    return this.request(`/api/v1/public/custody/recovery/secrets/${encodeURIComponent(id)}`, { token });
   }
 
   async upsertSecret(payload) {

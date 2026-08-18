@@ -34,6 +34,25 @@
         <button id="welcomeImportWalletBtn" class="btn btn-secondary">
           导入钱包
         </button>
+        <button id="welcomeRecoverWalletBtn" class="btn btn-secondary">
+          恢复托管钱包
+        </button>
+      </div>
+
+      <div id="custodyRecoveryPage" class="page hidden">
+        <div class="page-header">
+          <button id="custodyRecoveryBackBtn" class="back-btn" type="button">←</button>
+          <h2>恢复托管钱包</h2>
+        </div>
+        <div class="settings-body">
+          <p class="settings-card-description">选择要恢复的钱包，并输入创建托管记录时使用的钱包密码。</p>
+          <div id="custodyRecoveryList" class="custody-summary"></div>
+          <div class="form-group">
+            <label for="custodyRecoveryPassword">原钱包密码</label>
+            <input id="custodyRecoveryPassword" class="input" type="password" autocomplete="current-password" />
+          </div>
+          <button id="custodyRecoveryConfirmBtn" class="btn btn-primary btn-block" type="button">恢复钱包</button>
+        </div>
       </div>
 
       <!-- 主钱包页面 -->
@@ -927,60 +946,56 @@
 
         <div class="settings-body">
           <div class="settings-section" id="passportSettingsSection">
-            <h3>🪪 社区身份</h3>
-            <p class="settings-hint">将当前钱包绑定到社区身份，并完成社区邮箱验证。</p>
-            <div class="form-group">
-              <label for="passportEndpointInput">Node 服务地址</label>
+            <div class="wallet-identity-heading">
+              <h3>🪪 钱包身份</h3>
+              <span id="walletIdentityStatusIcon" class="wallet-identity-status pending" role="img" aria-label="待验证" title="待验证"></span>
+            </div>
+            <p class="wallet-identity-description">创建一次钱包身份并完成验证后，后续 Web3 应用可在你的授权下复用用户名和邮箱等资料，减少重复验证，让登录和使用更顺畅。</p>
+            <div class="form-group" id="identityServiceConfig">
+              <label for="passportEndpointInput">身份服务地址</label>
               <input type="url" id="passportEndpointInput" class="input" placeholder="https://node.yeying.pub" />
             </div>
             <p id="passportStatusText" class="settings-hint"></p>
             <div class="settings-row">
-              <button id="passportIdentityBtn" class="btn btn-primary btn-small">绑定社区身份</button>
-              <button id="passportUnlinkBtn" class="btn btn-danger btn-small hidden">解绑社区身份</button>
+              <button id="passportIdentityBtn" class="btn btn-primary btn-small">验证</button>
+              <button id="viewWalletIdentityBtn" class="btn btn-secondary btn-small btn-block hidden" type="button">查看详情</button>
             </div>
             <p id="passportEmailStatusText" class="settings-hint"></p>
           </div>
-          <!-- 安全设置 -->
+          <!-- 账户安全 -->
           <div class="settings-section">
-            <h3>🔐 安全设置</h3>
-            <button id="changePasswordBtn" class="btn btn-primary">
-              修改密码
-            </button>
-
-            <div class="settings-divider"></div>
-
-            <button id="resetWalletBtn" class="btn btn-danger">重置钱包</button>
-            <p style="font-size: 12px; color: #999; margin-top: 8px">
-              ⚠️ 重置后将清除所有数据，请确保已备份私钥
-            </p>
+            <h3>🔐 账户安全</h3>
+            <p class="settings-hint security-card-description">本地密码用于加密此设备上的钱包数据。请自行妥善保管，钱包无法找回或重置该密码；遗忘后只能重置钱包并从已备份的资料恢复。</p>
+            <button id="changePasswordBtn" class="btn btn-primary btn-small btn-block" type="button">修改密码</button>
           </div>
 
-          <!-- 备份与同步 -->
+          <div class="settings-section settings-section-danger">
+            <h3>⚠️ 重置钱包</h3>
+            <p class="settings-hint security-card-description">此操作会删除本机钱包、钱包身份和相关本地数据。请先确认已备份必要密钥。</p>
+            <button id="resetWalletBtn" class="btn btn-danger btn-small btn-block" type="button">重置钱包</button>
+          </div>
+
+          <!-- 数据备份 -->
           <div class="settings-section" id="backupSyncSection">
             <div class="settings-section-heading">
-              <h3>☁️ 备份与同步</h3>
-              <button id="backupSyncConflictBtn" class="btn btn-danger btn-small hidden" type="button">冲突</button>
+              <h3>☁️ 数据备份</h3>
+              <div class="settings-section-heading-actions">
+                <button id="backupSyncNowBtn" class="settings-heading-icon-btn hidden" type="button" aria-label="立即备份" title="立即备份">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+                    <path d="M21 3v6h-6"></path>
+                  </svg>
+                </button>
+                <label class="settings-toggle settings-section-toggle" title="启用数据备份">
+                  <input type="checkbox" id="backupSyncEnabledToggle" />
+                  <span class="settings-switch" aria-hidden="true"></span>
+                  <span class="sr-only">启用数据备份</span>
+                </label>
+                <button id="backupSyncConflictBtn" class="btn btn-danger btn-small hidden" type="button">冲突</button>
+              </div>
             </div>
-            <div class="settings-row">
-              <label class="settings-toggle">
-                <input type="checkbox" id="backupSyncEnabledToggle" />
-                <span>启用备份与同步</span>
-              </label>
-            </div>
-            <p class="settings-hint" id="backupSyncSummary">未启用 · UCAN · https://webdav.yeying.pub/dav</p>
-            <div class="settings-row settings-action-grid">
-              <button id="backupSyncConfigBtn" class="btn btn-secondary btn-small">服务配置</button>
-              <button id="backupSyncAuditBtn" class="btn btn-secondary btn-small">日志审计</button>
-            </div>
-            <div class="settings-row">
-              <button id="backupSyncNowBtn" class="btn btn-secondary">立即同步</button>
-              <button id="backupSyncClearRemoteBtn" class="btn btn-danger btn-small">清除远端备份</button>
-            </div>
-            <p class="settings-hint" id="backupSyncLastStatus">最近拉取: - · 最近推送: -</p>
-
-            <div id="backupSyncDebugRow" class="settings-row hidden">
-              <button id="backupSyncSimulateConflictBtn" class="btn btn-secondary btn-small">模拟冲突</button>
-            </div>
+            <p class="settings-hint settings-card-description">将钱包数据加密备份到你选择的服务，便于在新设备恢复；备份不会替代助记词或私钥备份。</p>
+            <button id="backupSyncDetailBtn" class="btn btn-secondary btn-small btn-block" type="button">查看详情</button>
           </div>
 
           <!-- 日志审计 -->
@@ -994,37 +1009,26 @@
 
           <!-- 密钥托管 -->
           <div class="settings-section" id="custodySettingsSection">
-            <h3>🛡️ 密钥托管</h3>
-            <div class="settings-row">
-              <label class="settings-toggle">
-                <input type="checkbox" id="custodyEnabledToggle" />
-                <span>启用密钥托管服务</span>
-              </label>
+            <div class="settings-section-heading">
+              <h3>🛡️ 密钥托管</h3>
+              <div class="settings-section-heading-actions">
+                <label class="settings-toggle settings-section-toggle" title="启用密钥托管">
+                  <input type="checkbox" id="custodyEnabledToggle" />
+                  <span class="settings-switch" aria-hidden="true"></span>
+                  <span class="sr-only">启用密钥托管</span>
+                </label>
+              </div>
             </div>
-            <div class="settings-row">
-              <button id="custodyConfigBtn" class="btn btn-secondary btn-small">服务配置</button>
-              <button id="custodyStatusBtn" class="btn btn-secondary btn-small">检查通行证</button>
-            </div>
-            <p class="settings-hint" id="custodyStatusText">启用前需要当前钱包地址已绑定通行证。</p>
+            <p class="settings-hint settings-card-description">由受信服务协助保存加密恢复资料，便于恢复和跨设备使用；服务不能直接获得你的明文私钥。</p>
+            <button id="custodyDetailBtn" class="btn btn-secondary btn-small btn-block" type="button">查看详情</button>
           </div>
 
-          <!-- MPC 门限钱包设置 -->
+          <!-- 多签钱包设置 -->
           <div class="settings-section" id="mpcSettingsSection">
-            <h3>🧩 MPC 门限钱包</h3>
+            <h3>🧩 多签钱包</h3>
+            <p class="settings-hint settings-card-description">与其他成员共同管理钱包，达到设定门限后才能完成关键操作；邀请、连接和审计记录都在详情中管理。</p>
             <p class="settings-hint" id="mpcSettingsSummary">默认协调器：https://node.yeying.pub</p>
-            <div class="settings-row settings-action-grid">
-              <button id="mpcServiceConfigBtn" class="btn btn-secondary btn-small">服务配置</button>
-              <button id="mpcConnectionInfoBtn" class="btn btn-secondary btn-small">连接信息</button>
-            </div>
-            <div class="mpc-invite-panel">
-              <div class="mpc-invite-header">
-                <span>待处理邀请</span>
-                <button id="mpcInvitesRefreshBtn" class="btn btn-secondary btn-small">刷新</button>
-              </div>
-              <div id="mpcInvitesList" class="mpc-invite-list">
-                <div class="mpc-invite-empty">暂无待处理邀请</div>
-              </div>
-            </div>
+            <button id="mpcDetailBtn" class="btn btn-secondary btn-small btn-block" type="button">查看详情</button>
           </div>
 
           <!-- MPC 会话操作（开发者排障） -->
@@ -1162,14 +1166,6 @@
             <textarea id="mpcMessageDetailPayload" class="input" readonly placeholder="解密后的 payload 会显示在这里"></textarea>
           </div>
 
-          <!-- MPC 日志审计 -->
-          <div class="settings-section" id="mpcAuditSection">
-            <h3>📒 MPC 日志审计</h3>
-            <div class="settings-row">
-              <button id="mpcAuditBtn" class="btn btn-secondary">进入 MPC 日志审计</button>
-            </div>
-            <p class="settings-hint">查看 MPC 协调器事件日志</p>
-          </div>
         </div>
       </div>
 
@@ -1223,24 +1219,6 @@
             保存留存策略
           </button>
         </div>
-        <div class="sync-log-summary">
-          <div class="sync-log-metric">
-            <div class="sync-log-label">最近拉取</div>
-            <div class="sync-log-value" id="backupSyncLogsLastPull">-</div>
-          </div>
-          <div class="sync-log-metric">
-            <div class="sync-log-label">最近推送</div>
-            <div class="sync-log-value" id="backupSyncLogsLastPush">-</div>
-          </div>
-          <div class="sync-log-metric">
-            <div class="sync-log-label">日志总数</div>
-            <div class="sync-log-value" id="backupSyncLogsTotal">0</div>
-          </div>
-          <div class="sync-log-metric">
-            <div class="sync-log-label">匹配结果</div>
-            <div class="sync-log-value" id="backupSyncLogsMatch">0</div>
-          </div>
-        </div>
         <h3 class="sync-log-title">同步日志</h3>
         <div id="backupSyncLogsList" class="sync-activity-list sync-log-list">
           <div class="empty-message">暂无日志</div>
@@ -1248,88 +1226,18 @@
         <div id="backupSyncLogsFooter" class="sync-log-footer hidden"></div>
       </div>
 
-      <!-- MPC 日志审计页面 -->
+      <!-- 多签活动页面 -->
       <div id="mpcLogsPage" class="page hidden">
         <div class="page-header">
           <button class="back-btn">←</button>
-          <h2>MPC 日志审计</h2>
-          <div class="page-actions">
-            <button id="mpcClearLogsBtn" class="btn btn-secondary btn-small">
-              清空日志
-            </button>
-          </div>
+          <h2>多签活动</h2>
+          <div class="page-actions"></div>
         </div>
-        <div class="sync-log-toolbar">
-          <input
-            type="text"
-            id="mpcLogsSearchInput"
-            class="input"
-            placeholder="搜索日志（动作/Session/关键字）"
-          />
-        </div>
-        <div class="sync-log-config">
-          <div class="form-group">
-            <label>Webhook 地址</label>
-            <input
-              type="text"
-              id="mpcAuditExportEndpointInput"
-              class="input"
-              placeholder="https://audit.example.com/hooks/mpc"
-            />
-          </div>
-          <div class="form-group">
-            <label>启用导出</label>
-            <label class="settings-toggle">
-              <input type="checkbox" id="mpcAuditExportEnabledToggle" />
-              <span>启用</span>
-            </label>
-          </div>
-          <div class="form-group" style="grid-column: span 2;">
-            <label>Webhook Headers (JSON)</label>
-            <textarea
-              id="mpcAuditExportHeadersInput"
-              class="input"
-              placeholder="{\"Authorization\":\"Bearer <token>\"}"
-            ></textarea>
-          </div>
-        </div>
-        <div class="settings-row sync-log-config-actions">
-          <button id="mpcAuditExportSaveBtn" class="btn btn-secondary btn-small">
-            保存导出配置
-          </button>
-          <button id="mpcAuditExportFlushBtn" class="btn btn-secondary btn-small">
-            推送队列
-          </button>
-          <button id="mpcAuditExportAllBtn" class="btn btn-secondary btn-small">
-            推送全部
-          </button>
-          <button id="mpcAuditExportJsonBtn" class="btn btn-secondary btn-small">
-            导出 JSON
-          </button>
-          <button id="mpcAuditExportCsvBtn" class="btn btn-secondary btn-small">
-            导出 CSV
-          </button>
-        </div>
-        <p class="settings-hint" id="mpcAuditExportStatus">最近推送: -</p>
-        <div class="sync-log-summary">
-          <div class="sync-log-metric">
-            <div class="sync-log-label">最近事件</div>
-            <div class="sync-log-value" id="mpcLogsLastEvent">-</div>
-          </div>
-          <div class="sync-log-metric">
-            <div class="sync-log-label">日志总数</div>
-            <div class="sync-log-value" id="mpcLogsTotal">0</div>
-          </div>
-          <div class="sync-log-metric">
-            <div class="sync-log-label">匹配结果</div>
-            <div class="sync-log-value" id="mpcLogsMatch">0</div>
-          </div>
-        </div>
-        <h3 class="sync-log-title">MPC 日志</h3>
+        <p class="settings-hint">查看这台设备参与的多签钱包创建、邀请和会话状态。</p>
+        <h3 class="sync-log-title">最近活动</h3>
         <div id="mpcLogsList" class="sync-activity-list sync-log-list">
-          <div class="empty-message">暂无日志</div>
+          <div class="empty-message">暂无多签活动</div>
         </div>
-        <div id="mpcLogsFooter" class="sync-log-footer hidden"></div>
       </div>
 
       <!-- MPC 钱包详情 -->
@@ -1338,7 +1246,12 @@
         <div class="modal-content mpc-wallet-detail-modal">
           <div class="modal-header">
             <h3 id="mpcWalletDetailName">MPC 钱包</h3>
-            <button class="btn-close" id="closeMpcWalletDetailModal">✕</button>
+            <div class="modal-header-actions">
+              <button class="modal-icon-btn" id="refreshMpcWalletDetailBtn" type="button" aria-label="刷新 MPC 钱包详情" title="刷新">
+                ↻
+              </button>
+              <button class="modal-icon-btn" id="closeMpcWalletDetailModal" type="button" aria-label="关闭 MPC 钱包详情" title="关闭">✕</button>
+            </div>
           </div>
           <div class="modal-body">
             <div class="detail-row">
@@ -1364,8 +1277,6 @@
           </div>
           <div class="modal-footer">
             <button id="cancelMpcWalletCreationBtn" class="btn btn-danger hidden">取消创建</button>
-            <button id="refreshMpcWalletDetailBtn" class="btn btn-secondary">刷新</button>
-            <button id="closeMpcWalletDetailBtn" class="btn btn-secondary">关闭</button>
           </div>
         </div>
       </div>
@@ -1387,100 +1298,140 @@
         </div>
       </div>
 
-      <!-- 备份与同步服务配置 -->
+      <!-- 数据备份服务配置 -->
+      <div id="backupSyncDetailPage" class="page hidden">
+          <div class="page-header">
+            <button class="back-btn" type="button">←</button>
+            <h2>数据备份</h2>
+          </div>
+          <div class="settings-body">
+            <p class="settings-card-description">备份会同步账户名称、联系人、网络和钱包配置等加密资料。新设备需先恢复助记词或私钥，再通过备份恢复这些资料。</p>
+            <div class="settings-detail-list settings-summary-list">
+              <div class="settings-detail-row">
+                <span>备份服务：</span>
+                <span id="backupSyncEndpointValue">-</span>
+              </div>
+              <div class="settings-detail-row">
+                <span>连接状态：</span>
+                <span id="backupSyncConnectionStatus">未启用</span>
+              </div>
+              <div class="settings-detail-row">
+                <span>最近拉取：</span>
+                <span id="backupSyncLastPullValue">-</span>
+              </div>
+              <div class="settings-detail-row">
+                <span>最近推送：</span>
+                <span id="backupSyncLastPushValue">-</span>
+              </div>
+            </div>
+            <div class="settings-row settings-action-grid">
+              <button id="backupSyncConfigBtn" class="btn btn-secondary btn-small">高级设置</button>
+              <button id="backupSyncAuditBtn" class="btn btn-secondary btn-small">日志审计</button>
+            </div>
+            <button id="backupSyncClearRemoteBtn" class="btn btn-danger btn-small btn-block" type="button">清除远端备份</button>
+            <div id="backupSyncDebugRow" class="settings-row hidden">
+              <button id="backupSyncSimulateConflictBtn" class="btn btn-secondary btn-small">模拟冲突</button>
+            </div>
+          </div>
+      </div>
+
+      <!-- 密钥托管详情 -->
+      <div id="custodyDetailPage" class="page hidden">
+          <div class="page-header">
+            <button class="back-btn" type="button">←</button>
+            <h2>密钥托管</h2>
+          </div>
+          <div class="settings-body">
+            <p class="settings-card-description">密钥托管会把加密后的恢复资料交给受信服务，方便你在新设备恢复钱包；服务不会看到你的明文私钥。</p>
+            <div class="custody-summary" aria-live="polite">
+              <div class="custody-summary-row"><span>托管服务</span><strong id="custodyServiceName">夜莺密钥托管服务</strong></div>
+              <div class="custody-summary-row"><span>当前状态</span><strong id="custodyStatusText">尚未配置</strong></div>
+              <div class="custody-summary-row"><span>通行证</span><strong id="custodyPasskeyStatus">未检查</strong></div>
+              <div class="custody-summary-row"><span>托管记录</span><strong id="custodyRecordSummary">暂无记录</strong></div>
+            </div>
+            <div class="settings-row settings-action-grid">
+              <button id="custodyConfigBtn" class="btn btn-secondary btn-small">高级设置</button>
+            </div>
+            <p class="settings-hint">普通使用只需开启托管并完成通行证绑定；高级设置通常无需修改。</p>
+          </div>
+      </div>
+
+      <!-- 多签钱包详情 -->
+      <div id="mpcDetailPage" class="page hidden">
+          <div class="page-header">
+            <button class="back-btn" type="button">←</button>
+            <h2>多签钱包</h2>
+          </div>
+          <div class="settings-body">
+            <p class="settings-card-description">多签钱包通过当前设备与协调器及其他成员安全协作。这里显示这台设备的连接信息；同一设备创建或加入的多签钱包会使用同一套设备身份。</p>
+            <div class="settings-detail-list settings-summary-list">
+              <div class="settings-detail-row">
+                <span>协调器服务：</span>
+                <span id="mpcCoordinatorEndpointValue">-</span>
+              </div>
+              <div class="settings-detail-row">
+                <span>设备状态：</span>
+                <span id="mpcDeviceStatusValue">正在准备</span>
+              </div>
+              <div class="settings-detail-row">
+                <span>设备 ID：</span>
+                <code id="mpcDeviceIdText">-</code>
+              </div>
+              <div class="settings-detail-row">
+                <span>签名公钥：</span>
+                <code id="mpcDeviceSigningKeyText">-</code>
+              </div>
+              <div class="settings-detail-row">
+                <span>E2E 公钥：</span>
+                <code id="mpcDeviceE2eKeyText">-</code>
+              </div>
+            </div>
+            <div class="settings-row settings-action-grid">
+              <button id="mpcServiceConfigBtn" class="btn btn-secondary btn-small">高级设置</button>
+              <button id="mpcAuditBtn" class="btn btn-secondary btn-small">多签活动</button>
+            </div>
+            <div class="mpc-invite-panel">
+              <div class="mpc-invite-header">
+                <span>待处理邀请</span>
+                <button id="mpcInvitesRefreshBtn" class="settings-heading-icon-btn" type="button" aria-label="刷新待处理邀请" title="刷新待处理邀请">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+                    <path d="M21 3v6h-6"></path>
+                  </svg>
+                </button>
+              </div>
+              <div id="mpcInvitesList" class="mpc-invite-list">
+                <div class="mpc-invite-empty">暂无待处理邀请</div>
+              </div>
+            </div>
+          </div>
+      </div>
+
+      <!-- 数据备份服务配置 -->
       <div id="backupSyncConfigModal" class="modal hidden">
         <div class="modal-overlay"></div>
         <div class="modal-content">
           <div class="modal-header">
-            <h3>备份与同步配置</h3>
+            <h3>数据备份配置</h3>
             <button class="btn-close" id="closeBackupSyncConfigModal">✕</button>
           </div>
           <div class="modal-body">
             <div class="form-group">
-              <label>WebDAV 地址</label>
-              <input
-                type="url"
-                id="backupSyncEndpointInput"
-                placeholder="https://webdav.yeying.pub/dav"
-              />
+              <label for="backupSyncEndpointInput">备份服务地址</label>
+              <input type="url" id="backupSyncEndpointInput" class="input" placeholder="https://warehouse.tidukongjian.com/dav" />
             </div>
             <div class="form-group">
-              <label>认证方式</label>
-              <select id="backupSyncAuthModeSelect" class="input">
-                <option value="siwe">SIWE (钱包签名)</option>
-                <option value="ucan">UCAN</option>
-                <option value="basic">Basic</option>
-              </select>
+              <label for="backupSyncUsernameInput">用户名（可选）</label>
+              <input type="text" id="backupSyncUsernameInput" class="input" autocomplete="username" />
             </div>
-
-            <div id="backupSyncSiwePanel" class="sync-auth-panel">
-              <div class="form-group">
-                <label>当前地址</label>
-                <div class="sync-address" id="backupSyncAccountAddress">-</div>
-              </div>
-              <div class="settings-row">
-                <button id="backupSyncSiweLoginBtn" class="btn btn-primary btn-small">SIWE 登录</button>
-                <button id="backupSyncSiweRefreshBtn" class="btn btn-secondary btn-small">刷新 Token</button>
-              </div>
-              <p class="settings-hint" id="backupSyncTokenStatus">未登录</p>
+            <div class="form-group">
+              <label for="backupSyncPasswordInput">密码（可选）</label>
+              <input type="password" id="backupSyncPasswordInput" class="input" autocomplete="current-password" />
             </div>
-
-            <div id="backupSyncUcanPanel" class="sync-auth-panel hidden">
-              <div class="form-group">
-                <label>Audience (did:web)</label>
-                <input
-                  type="text"
-                  id="backupSyncUcanAudienceInput"
-                  placeholder="did:web:webdav.yeying.pub"
-                />
-              </div>
-              <div class="form-group">
-                <label>Capability Resource</label>
-                <input
-                  type="text"
-                  id="backupSyncUcanResourceInput"
-                  placeholder="app:<extension-id>"
-                />
-              </div>
-              <div class="form-group">
-                <label>Capability Action</label>
-                <input
-                  type="text"
-                  id="backupSyncUcanActionInput"
-                  placeholder="write"
-                />
-              </div>
-              <div class="form-group">
-                <label>有效期 (小时)</label>
-                <input
-                  type="number"
-                  id="backupSyncUcanTtlInput"
-                  min="1"
-                  max="168"
-                  step="1"
-                  value="24"
-                />
-              </div>
-              <div class="settings-row">
-                <button id="backupSyncUcanGenerateBtn" class="btn btn-secondary btn-small">生成 UCAN</button>
-              </div>
-            </div>
-
-            <div id="backupSyncBasicPanel" class="sync-auth-panel hidden">
-              <div class="form-group">
-                <label>Basic 凭证</label>
-                <input
-                  type="text"
-                  id="backupSyncBasicInput"
-                  placeholder="username:password 或 Basic base64"
-                />
-              </div>
-              <button id="backupSyncBasicSaveBtn" class="btn btn-primary btn-small">保存凭证</button>
-            </div>
-            <p class="settings-hint">普通用户只需要确认服务地址和认证方式；高级凭证会按所选认证方式显示。</p>
+            <p class="settings-hint">如服务要求账号密码，请同时填写用户名和密码；留空则使用钱包签名授权。</p>
           </div>
           <div class="modal-footer">
-            <button id="backupSyncConfigSaveBtn" class="btn btn-primary">保存配置</button>
+            <button id="backupSyncConfigSaveBtn" class="btn btn-primary">保存</button>
             <button id="cancelBackupSyncConfigBtn" class="btn btn-secondary">取消</button>
           </div>
         </div>
@@ -1504,99 +1455,32 @@
                 placeholder="https://node.yeying.pub"
               />
             </div>
-            <div class="form-group">
-              <label>UCAN Resource</label>
-              <input
-                type="text"
-                id="custodyUcanResourceInput"
-                class="input"
-                placeholder="custody"
-              />
-            </div>
-            <div class="form-group">
-              <label>UCAN Action</label>
-              <input
-                type="text"
-                id="custodyUcanActionInput"
-                class="input"
-                placeholder="write"
-              />
-            </div>
-            <div class="form-group">
-              <label>UCAN Audience</label>
-              <input
-                type="text"
-                id="custodyUcanAudienceInput"
-                class="input"
-                placeholder="did:web:node.yeying.pub"
-              />
-            </div>
-            <p class="settings-hint">这些是托管服务连接参数，日常开启/关闭托管无需反复修改。</p>
+            <p class="settings-hint">普通用户只需要确认托管服务地址，其他授权参数由钱包自动管理。</p>
           </div>
           <div class="modal-footer">
             <button id="custodySaveBtn" class="btn btn-primary">保存配置</button>
-            <button id="cancelCustodyConfigBtn" class="btn btn-secondary">取消</button>
           </div>
         </div>
       </div>
 
-      <!-- MPC 服务配置 -->
+      <!-- 多签钱包高级设置 -->
       <div id="mpcServiceConfigModal" class="modal hidden">
         <div class="modal-overlay"></div>
         <div class="modal-content">
           <div class="modal-header">
-            <h3>MPC 服务配置</h3>
+            <h3>多签钱包高级设置</h3>
             <button class="btn-close" id="closeMpcServiceConfigModal">✕</button>
           </div>
           <div class="modal-body">
             <div class="form-group">
-              <label>默认协调器地址</label>
-              <input
-                type="text"
-                id="mpcCoordinatorEndpointInput"
-                class="input"
-                placeholder="https://node.yeying.pub"
-              />
+              <label for="mpcCoordinatorEndpointInput">协调器服务地址</label>
+              <input type="url" id="mpcCoordinatorEndpointInput" class="input" placeholder="https://node.yeying.pub" />
             </div>
-            <p class="settings-hint">创建 MPC 钱包时默认使用该服务。普通用户通常无需修改。</p>
+            <p class="settings-hint">更换服务只会影响后续创建或加入多签钱包时使用的协调器。</p>
           </div>
           <div class="modal-footer">
-            <button id="mpcCoordinatorSaveBtn" class="btn btn-primary">保存默认值</button>
+            <button id="mpcCoordinatorSaveBtn" class="btn btn-primary">保存</button>
             <button id="cancelMpcServiceConfigBtn" class="btn btn-secondary">取消</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- MPC 连接信息 -->
-      <div id="mpcConnectionInfoModal" class="modal hidden">
-        <div class="modal-overlay"></div>
-        <div class="modal-content">
-          <div class="modal-header">
-            <h3>MPC 连接信息</h3>
-            <button class="btn-close" id="closeMpcConnectionInfoModal">✕</button>
-          </div>
-          <div class="modal-body">
-            <div class="mpc-device-card">
-              <div class="mpc-device-row">
-                <span>Device ID</span>
-                <code id="mpcDeviceIdText">-</code>
-              </div>
-              <div class="mpc-device-row">
-                <span>签名公钥</span>
-                <button class="mpc-device-copy" type="button" data-mpc-device-copy="signing" title="复制签名公钥">复制</button>
-              </div>
-              <code class="mpc-device-key" id="mpcDeviceSigningKeyText">-</code>
-              <div class="mpc-device-row">
-                <span>E2E 公钥</span>
-                <button class="mpc-device-copy" type="button" data-mpc-device-copy="e2e" title="复制 E2E 公钥">复制</button>
-              </div>
-              <code class="mpc-device-key" id="mpcDeviceE2eKeyText">-</code>
-            </div>
-            <p class="settings-hint" id="mpcDeviceInfoStatus">设备信息用于成员排障和会话身份确认。</p>
-          </div>
-          <div class="modal-footer">
-            <button id="mpcDeviceRefreshBtn" class="btn btn-primary">刷新</button>
-            <button id="closeMpcConnectionInfoBtn" class="btn btn-secondary">关闭</button>
           </div>
         </div>
       </div>
@@ -1973,6 +1857,46 @@
             关闭
           </button>
         </div>
+      </div>
+    </div>
+
+    <div id="identityInputModal" class="modal hidden">
+      <div class="modal-overlay"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="identityInputTitle">钱包身份</h3>
+          <button class="btn-close" id="closeIdentityInputModal" type="button">✕</button>
+        </div>
+        <div class="modal-body">
+          <p id="identityInputHint" class="settings-hint"></p>
+          <div class="form-group">
+            <label id="identityInputLabel" for="identityInputValue">内容</label>
+            <input id="identityInputValue" class="input" type="text" autocomplete="off" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="cancelIdentityInputBtn" type="button">取消</button>
+          <button class="btn btn-primary" id="confirmIdentityInputBtn" type="button">继续</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="walletIdentityDetailModal" class="modal hidden">
+      <div class="modal-overlay"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>钱包身份</h3>
+          <button class="btn-close" id="closeWalletIdentityDetailModal" type="button">✕</button>
+        </div>
+        <div class="modal-body wallet-identity-details">
+          <div class="detail-row"><span class="detail-label">状态</span><span class="detail-value" id="walletIdentityDetailStatus">-</span></div>
+          <div class="detail-row"><span class="detail-label">用户名</span><span class="detail-value" id="walletIdentityDetailUsername">-</span></div>
+          <div class="detail-row"><span class="detail-label">邮箱</span><span class="detail-value" id="walletIdentityDetailEmail">-</span></div>
+          <div class="detail-row"><span class="detail-label">钱包账户</span><span class="detail-value" id="walletIdentityDetailAddress">-</span></div>
+          <div class="detail-row"><span class="detail-label">身份 DID</span><span class="detail-value" id="walletIdentityDetailDid">-</span></div>
+          <div class="detail-row"><span class="detail-label">身份服务</span><span class="detail-value" id="walletIdentityDetailEndpoint">-</span></div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-primary" id="changeWalletIdentityBtn" type="button">变更验证资料</button></div>
       </div>
     </div>
 

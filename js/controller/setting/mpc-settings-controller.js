@@ -1,7 +1,7 @@
 /**
  * MpcSettingsController — MPC 门限钱包设置子控制器
  * 从 SettingController 拆出：默认协调器 / 设备信息 /
- * 审计日志与导出。Keygen / Join / 消息发送等高级排障方法保留为隐藏能力。
+ * 多签活动、默认协调器与设备信息。Keygen / Join / 消息发送等高级排障方法保留为隐藏能力。
  *
  * 依赖通过构造参数注入：{ wallet, requestPassword }
  */
@@ -29,10 +29,6 @@ export class MpcSettingsController {
     this.mpcSettings = null;
     this.custodySettings = null;
     this.mpcLogs = [];
-    this.mpcLogQuery = '';
-    this.mpcLogFiltered = [];
-    this.mpcLogPageSize = 30;
-    this.mpcLogVisibleCount = 0;
     this.mpcMessages = [];
     this.mpcMessageCursor = null;
     this.mpcMessagePollTimer = null;
@@ -44,66 +40,14 @@ export class MpcSettingsController {
   }
 
   bindEvents() {
+    const mpcDetailBtn = document.getElementById('mpcDetailBtn');
+    if (mpcDetailBtn) {
+      mpcDetailBtn.addEventListener('click', () => this.openMpcDetailPage());
+    }
     const mpcAuditBtn = document.getElementById('mpcAuditBtn');
     if (mpcAuditBtn) {
       mpcAuditBtn.addEventListener('click', async () => {
         await this.openMpcLogsPage();
-      });
-    }
-
-    const mpcLogsSearchInput = document.getElementById('mpcLogsSearchInput');
-    if (mpcLogsSearchInput) {
-      mpcLogsSearchInput.addEventListener('input', () => {
-        this.applyMpcLogsFilter(mpcLogsSearchInput.value);
-      });
-    }
-
-    const mpcLogsList = document.getElementById('mpcLogsList');
-    if (mpcLogsList) {
-      mpcLogsList.addEventListener('scroll', () => {
-        this.handleMpcLogsScroll();
-      });
-    }
-
-    const mpcClearLogsBtn = document.getElementById('mpcClearLogsBtn');
-    if (mpcClearLogsBtn) {
-      mpcClearLogsBtn.addEventListener('click', async () => {
-        await this.handleMpcClearLogs();
-      });
-    }
-
-    const mpcAuditExportSaveBtn = document.getElementById('mpcAuditExportSaveBtn');
-    if (mpcAuditExportSaveBtn) {
-      mpcAuditExportSaveBtn.addEventListener('click', async () => {
-        await this.handleMpcAuditExportSave();
-      });
-    }
-
-    const mpcAuditExportFlushBtn = document.getElementById('mpcAuditExportFlushBtn');
-    if (mpcAuditExportFlushBtn) {
-      mpcAuditExportFlushBtn.addEventListener('click', async () => {
-        await this.handleMpcAuditExportFlush();
-      });
-    }
-
-    const mpcAuditExportAllBtn = document.getElementById('mpcAuditExportAllBtn');
-    if (mpcAuditExportAllBtn) {
-      mpcAuditExportAllBtn.addEventListener('click', async () => {
-        await this.handleMpcAuditExportAll();
-      });
-    }
-
-    const mpcAuditExportJsonBtn = document.getElementById('mpcAuditExportJsonBtn');
-    if (mpcAuditExportJsonBtn) {
-      mpcAuditExportJsonBtn.addEventListener('click', async () => {
-        await this.handleMpcAuditExportJson();
-      });
-    }
-
-    const mpcAuditExportCsvBtn = document.getElementById('mpcAuditExportCsvBtn');
-    if (mpcAuditExportCsvBtn) {
-      mpcAuditExportCsvBtn.addEventListener('click', async () => {
-        await this.handleMpcAuditExportCsv();
       });
     }
 
@@ -163,13 +107,6 @@ export class MpcSettingsController {
       });
     }
 
-    const mpcDeviceRefreshBtn = document.getElementById('mpcDeviceRefreshBtn');
-    if (mpcDeviceRefreshBtn) {
-      mpcDeviceRefreshBtn.addEventListener('click', async () => {
-        await this.loadMpcDeviceInfo(true);
-      });
-    }
-
     const mpcConnectionInfoModal = document.getElementById('mpcConnectionInfoModal');
     if (mpcConnectionInfoModal) {
       mpcConnectionInfoModal.addEventListener('click', async (event) => {
@@ -214,6 +151,11 @@ export class MpcSettingsController {
       custodyConfigBtn.addEventListener('click', () => {
         this.openCustodyConfigModal();
       });
+    }
+
+    const custodyDetailBtn = document.getElementById('custodyDetailBtn');
+    if (custodyDetailBtn) {
+      custodyDetailBtn.addEventListener('click', () => this.openCustodyDetailPage());
     }
 
     const custodySaveBtn = document.getElementById('custodySaveBtn');
@@ -339,6 +281,17 @@ export class MpcSettingsController {
     }
   }
 
+  openCustodyDetailPage() {
+    this.renderCustodySettings(this.custodySettings || {});
+    showPage('custodyDetailPage');
+  }
+
+  openMpcDetailPage() {
+    showPage('mpcDetailPage');
+    this.loadMpcInvites(false);
+    this.loadMpcDeviceInfo(false);
+  }
+
   closeCustodyConfigModal() {
     const modal = document.getElementById('custodyConfigModal');
     if (modal) {
@@ -373,6 +326,7 @@ export class MpcSettingsController {
     const suiteSelect = document.getElementById('mpcE2eSuiteSelect');
     const refreshSelect = document.getElementById('mpcRefreshPolicySelect');
     const endpointInput = document.getElementById('mpcCoordinatorEndpointInput');
+    const endpointValue = document.getElementById('mpcCoordinatorEndpointValue');
     const ucanResourceInput = document.getElementById('mpcCoordinatorUcanResourceInput');
     const ucanActionInput = document.getElementById('mpcCoordinatorUcanActionInput');
     const ucanAudienceInput = document.getElementById('mpcCoordinatorUcanAudienceInput');
@@ -390,6 +344,9 @@ export class MpcSettingsController {
     }
     if (endpointInput) {
       endpointInput.value = settings.coordinatorEndpoint || DEFAULT_MPC_COORDINATOR_ENDPOINT;
+    }
+    if (endpointValue) {
+      endpointValue.textContent = settings.coordinatorEndpoint || DEFAULT_MPC_COORDINATOR_ENDPOINT;
     }
     if (ucanResourceInput) {
       ucanResourceInput.value = normalizeMpcUcanResource(settings.ucanResource || '');
@@ -417,7 +374,6 @@ export class MpcSettingsController {
   }
 
   async loadMpcDeviceInfo(showToast = false) {
-    const statusEl = document.getElementById('mpcDeviceInfoStatus');
     try {
       const result = await this.wallet.getMpcDeviceInfo?.();
       if (!result?.success) {
@@ -430,9 +386,6 @@ export class MpcSettingsController {
       console.error('[MpcSettings] 加载 MPC 设备信息失败:', error);
       this.mpcDeviceInfo = null;
       this.renderMpcDeviceInfo(null);
-      if (statusEl) {
-        statusEl.textContent = '设备信息不可用，请先解锁钱包或创建/加入 MPC 会话。';
-      }
       if (showToast) showError('刷新失败: ' + error.message);
     }
   }
@@ -441,16 +394,16 @@ export class MpcSettingsController {
     const deviceIdEl = document.getElementById('mpcDeviceIdText');
     const signingKeyEl = document.getElementById('mpcDeviceSigningKeyText');
     const e2eKeyEl = document.getElementById('mpcDeviceE2eKeyText');
-    const statusEl = document.getElementById('mpcDeviceInfoStatus');
+    const statusValueEl = document.getElementById('mpcDeviceStatusValue');
     const keys = device?.keys || {};
 
     if (deviceIdEl) deviceIdEl.textContent = device?.deviceId || keys.deviceId || '-';
     if (signingKeyEl) signingKeyEl.textContent = keys.signingPublicKey || '-';
     if (e2eKeyEl) e2eKeyEl.textContent = keys.e2ePublicKey || '-';
-    if (statusEl) {
-      statusEl.textContent = keys.signingPublicKey && keys.e2ePublicKey
-        ? '设备信息已就绪，可复制给其他成员用于排障或身份确认。'
-        : '设备密钥尚未初始化，解锁钱包后会自动准备。';
+    if (statusValueEl) {
+      statusValueEl.textContent = keys.signingPublicKey && keys.e2ePublicKey
+        ? '已就绪'
+        : '未就绪';
     }
   }
 
@@ -488,25 +441,25 @@ export class MpcSettingsController {
   renderCustodySettings(settings = {}) {
     const enabledToggle = document.getElementById('custodyEnabledToggle');
     const endpointInput = document.getElementById('custodyEndpointInput');
-    const resourceInput = document.getElementById('custodyUcanResourceInput');
-    const actionInput = document.getElementById('custodyUcanActionInput');
-    const audienceInput = document.getElementById('custodyUcanAudienceInput');
     const statusText = document.getElementById('custodyStatusText');
+    const passkeyStatus = document.getElementById('custodyPasskeyStatus');
+    const recordSummary = document.getElementById('custodyRecordSummary');
 
     const endpoint = settings.endpoint || DEFAULT_CUSTODY_ENDPOINT;
     if (enabledToggle) enabledToggle.checked = Boolean(settings.enabled);
     if (endpointInput) endpointInput.value = endpoint;
-    if (resourceInput) resourceInput.value = settings.ucanResource || DEFAULT_CUSTODY_UCAN_RESOURCE;
-    if (actionInput) actionInput.value = settings.ucanAction || DEFAULT_CUSTODY_UCAN_ACTION;
-    if (audienceInput) audienceInput.value = settings.ucanAudience || deriveUcanAudience(endpoint);
 
     if (statusText) {
       const status = settings.lastStatus || {};
-      const passkey = status.passkeyBound ? '已绑定通行证' : '未绑定通行证';
-      const enabled = settings.enabled ? '托管已开启' : '托管未开启';
-      const count = Number.isFinite(status.recordCount) ? ` · ${status.recordCount} 份托管记录` : '';
-      const last = settings.lastBackupAt ? ` · 最近备份 ${formatLocaleDateTime(settings.lastBackupAt)}` : '';
-      statusText.textContent = `${enabled} · ${passkey}${count}${last}`;
+      statusText.textContent = settings.enabled ? '已开启' : '未开启';
+      if (passkeyStatus) {
+        passkeyStatus.textContent = status.passkeyBound ? '已绑定，可用于恢复' : '尚未绑定';
+      }
+      if (recordSummary) {
+        const count = Number.isFinite(status.recordCount) ? status.recordCount : 0;
+        const last = settings.lastBackupAt ? ` · 最近 ${formatLocaleDateTime(settings.lastBackupAt)}` : '';
+        recordSummary.textContent = count ? `${count} 份${last}` : '暂无记录';
+      }
     }
   }
 
@@ -519,14 +472,11 @@ export class MpcSettingsController {
         throw new Error('托管服务地址格式不正确');
       }
     }
-    const resource = String(document.getElementById('custodyUcanResourceInput')?.value || '').trim() || DEFAULT_CUSTODY_UCAN_RESOURCE;
-    const action = String(document.getElementById('custodyUcanActionInput')?.value || '').trim() || DEFAULT_CUSTODY_UCAN_ACTION;
-    const audience = String(document.getElementById('custodyUcanAudienceInput')?.value || '').trim() || deriveUcanAudience(endpoint || DEFAULT_CUSTODY_ENDPOINT);
     return {
       endpoint: endpoint || DEFAULT_CUSTODY_ENDPOINT,
-      ucanResource: resource,
-      ucanAction: action,
-      ucanAudience: audience
+      ucanResource: DEFAULT_CUSTODY_UCAN_RESOURCE,
+      ucanAction: DEFAULT_CUSTODY_UCAN_ACTION,
+      ucanAudience: deriveUcanAudience(endpoint || DEFAULT_CUSTODY_ENDPOINT)
     };
   }
 
@@ -1162,9 +1112,17 @@ export class MpcSettingsController {
     } catch (error) {
       console.error('[MpcSettings] 加载 MPC 邀请失败:', error);
       this.mpcInvites = [];
-      this.renderMpcInvites([], error.message || '加载失败');
+      this.renderMpcInvites([], this.getMpcInviteLoadErrorMessage(error));
       if (showToast) showError('刷新失败: ' + error.message);
     }
+  }
+
+  getMpcInviteLoadErrorMessage(error) {
+    const message = String(error?.message || error || '加载失败');
+    if (/ucan\s+capability\s+denied/i.test(message)) {
+      return '暂无多签邀请的授权';
+    }
+    return '待处理邀请暂时无法加载，请稍后重试。';
   }
 
   renderMpcInvites(items = [], errorText = '') {
@@ -1256,7 +1214,6 @@ export class MpcSettingsController {
   async openMpcLogsPage() {
     showPage('mpcLogsPage');
     await this.loadMpcLogs();
-    await this.loadMpcAuditExportConfig();
   }
 
   async loadMpcLogs() {
@@ -1271,107 +1228,76 @@ export class MpcSettingsController {
   }
 
   updateMpcLogs(logs = []) {
-    this.mpcLogs = Array.isArray(logs) ? logs : [];
-    this.updateMpcLogsSummary();
-    this.applyMpcLogsFilter();
+    this.mpcLogs = Array.isArray(logs) ? [...logs] : [];
+    this.renderMpcLogsList();
   }
 
-  applyMpcLogsFilter(keyword) {
-    const inputValue = arguments.length > 0
-      ? keyword
-      : (document.getElementById('mpcLogsSearchInput')?.value || '');
-    const normalized = String(inputValue || '').trim().toLowerCase();
-    this.mpcLogQuery = normalized;
-    const source = Array.isArray(this.mpcLogs) ? this.mpcLogs : [];
-    this.mpcLogFiltered = normalized
-      ? source.filter(entry => this.matchMpcLog(entry, normalized))
-      : [...source];
-    this.mpcLogVisibleCount = Math.min(this.mpcLogPageSize, this.mpcLogFiltered.length);
-    this.updateMpcLogsSummary();
-    this.renderMpcLogsList(false);
+  formatMpcActivity(entry = {}) {
+    const action = String(entry.action || '').toLowerCase();
+    const level = String(entry.level || 'info').toLowerCase();
+    const eventType = action.startsWith('event-') ? action.slice(6) : '';
+    const activity = { title: '多签操作已更新', detail: '请在多签钱包中查看当前状态。', status: '已记录', statusClass: 'info' };
 
-    const container = document.getElementById('mpcLogsList');
-    if (container) {
-      container.scrollTop = 0;
+    if (action === 'stream-start') {
+      Object.assign(activity, { title: '已开始同步多签进度', detail: '正在接收协调器发送的会话状态。' });
+    } else if (action === 'stream-stop') {
+      Object.assign(activity, { title: '已停止同步多签进度', detail: '该会话不再接收新的状态更新。' });
+    } else if (action === 'session-created') {
+      Object.assign(activity, { title: '已发起多签钱包创建', detail: '已向其他成员发送加入邀请。' });
+    } else if (action === 'session-joined') {
+      Object.assign(activity, { title: '已加入多签钱包创建', detail: '正在等待其他成员完成加入。' });
+    } else if (action === 'session-cancelled') {
+      Object.assign(activity, { title: '已取消多签钱包创建', detail: '该会话和相关邀请将不再继续。' });
+    } else if (action === 'stream-close') {
+      Object.assign(activity, { title: '多签连接已断开', detail: '需要时会自动重新连接。', status: '需注意', statusClass: 'warn' });
+    } else if (action === 'stream-error') {
+      Object.assign(activity, { title: '多签连接未完成', detail: '暂时无法获取最新状态，请稍后再试。', status: '未完成', statusClass: 'error' });
+    } else if (eventType === 'participant-joined') {
+      Object.assign(activity, { title: '成员已加入多签钱包', detail: '正在等待其他成员完成加入。' });
+    } else if (eventType === 'session-update') {
+      Object.assign(activity, { title: '多签钱包创建进度已更新', detail: '请在多签钱包详情中查看当前进度。' });
+    } else if (eventType === 'message') {
+      Object.assign(activity, { title: '收到多签会话更新', detail: '多签钱包正在与其他成员协作。' });
+    } else if (eventType) {
+      Object.assign(activity, { title: '多签会话状态已更新', detail: '请在多签钱包详情中查看当前进度。' });
     }
+
+    if (level === 'error') {
+      Object.assign(activity, { status: '未完成', statusClass: 'error' });
+    } else if (level === 'warn' && activity.statusClass === 'info') {
+      Object.assign(activity, { status: '需注意', statusClass: 'warn' });
+    }
+    return activity;
   }
 
-  matchMpcLog(entry, keyword) {
-    if (!keyword) return true;
-    const timeText = entry?.time ? formatLocaleDateTime(entry.time) : '';
-    const fields = [
-      entry?.message,
-      entry?.action,
-      entry?.level,
-      entry?.sessionId,
-      entry?.id,
-      timeText
-    ].filter(Boolean);
-    const haystack = fields.join(' ').toLowerCase();
-    return haystack.includes(keyword);
-  }
-
-  handleMpcLogsScroll() {
+  renderMpcLogsList() {
     const container = document.getElementById('mpcLogsList');
     if (!container) return;
-    if (this.mpcLogVisibleCount >= this.mpcLogFiltered.length) return;
-    const threshold = 24;
-    if (container.scrollTop + container.clientHeight >= container.scrollHeight - threshold) {
-      this.mpcLogVisibleCount = Math.min(
-        this.mpcLogFiltered.length,
-        this.mpcLogVisibleCount + this.mpcLogPageSize
-      );
-      this.renderMpcLogsList(true);
-    }
-  }
-
-  renderMpcLogsList(preserveScroll = false) {
-    const container = document.getElementById('mpcLogsList');
-    if (!container) return;
-    const list = Array.isArray(this.mpcLogFiltered) ? this.mpcLogFiltered : [];
-    const total = list.length;
-    const baseCount = this.mpcLogVisibleCount || this.mpcLogPageSize;
-    const visibleCount = Math.min(baseCount, total);
-    this.mpcLogVisibleCount = visibleCount;
-    const entries = list.slice(0, visibleCount);
-    const scrollTop = preserveScroll ? container.scrollTop : 0;
+    const entries = [...this.mpcLogs].reverse();
 
     if (entries.length === 0) {
-      const emptyText = this.mpcLogQuery ? '没有匹配的日志' : '暂无日志';
-      container.innerHTML = `<div class="empty-message">${emptyText}</div>`;
-      this.updateMpcLogsFooter(total, visibleCount);
+      container.innerHTML = '<div class="empty-message">暂无多签活动</div>';
       return;
     }
 
     container.innerHTML = entries.map(entry => {
       const timeText = entry?.time ? formatLocaleDateTime(entry.time) : '-';
-      const message = escapeHtml(entry?.message || '-');
-      const level = String(entry?.level || 'info').toLowerCase();
-      const levelClass = level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'info';
-      const levelLabel = levelClass === 'error' ? '错误' : levelClass === 'warn' ? '警告' : '信息';
-      const actionLabel = entry?.action ? `动作 ${entry.action}` : '';
-      const sessionLabel = entry?.sessionId ? `会话 ${entry.sessionId}` : '';
+      const activity = this.formatMpcActivity(entry);
 
       return `
         <div class="sync-activity-item">
           <div class="sync-activity-time">${escapeHtml(timeText)}</div>
           <div class="sync-activity-main">
-            <div class="sync-activity-message">${message}</div>
+            <div class="sync-activity-message">${escapeHtml(activity.title)}</div>
             <div class="sync-activity-meta">
-              <span class="sync-activity-tag level-${levelClass}">${escapeHtml(levelLabel)}</span>
-              ${actionLabel ? `<span class="sync-activity-tag">${escapeHtml(actionLabel)}</span>` : ''}
-              ${sessionLabel ? `<span class="sync-activity-tag">${escapeHtml(sessionLabel)}</span>` : ''}
+              <span class="sync-activity-tag level-${activity.statusClass}">${escapeHtml(activity.status)}</span>
+              <span>${escapeHtml(activity.detail)}</span>
             </div>
           </div>
         </div>
       `;
     }).join('');
 
-    if (preserveScroll) {
-      container.scrollTop = scrollTop;
-    }
-
-    this.updateMpcLogsFooter(total, visibleCount);
   }
 
   updateMpcLogsFooter(total, visibleCount) {

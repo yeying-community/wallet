@@ -5,7 +5,7 @@
 export const SYNC_PAYLOAD_VERSION = 1;
 export const SYNC_FILENAME = 'payload.json.enc';
 export const SYNC_DEBOUNCE_MS = 1500;
-export const DEFAULT_SYNC_ENDPOINT = 'https://webdav.yeying.pub/dav';
+export const DEFAULT_SYNC_ENDPOINT = 'https://warehouse.tidukongjian.com/dav';
 export const LEGACY_DEFAULT_APP_ID = 'yeying-wallet';
 export const DEFAULT_UCAN_ACTION = 'write';
 export const APP_SCOPE_PREFIX = 'apps';

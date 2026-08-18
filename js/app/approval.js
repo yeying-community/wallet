@@ -61,6 +61,9 @@ class ApprovalApp {
     if (type === 'passport_assertion') {
       return 'passport';
     }
+    if (type === 'identity_presentation') {
+      return 'identity';
+    }
     return type;
   }
 
@@ -301,6 +304,9 @@ class ApprovalApp {
       case 'passport':
         this.renderPassportRequest();
         break;
+      case 'identity':
+        this.renderIdentityRequest();
+        break;
       case 'addChain':
         this.renderAddChainRequest();
         break;
@@ -413,8 +419,9 @@ class ApprovalApp {
       : (Array.isArray(request.scope) ? request.scope : ['identity.basic', 'identity.wallet']);
 
     const scopeLabels = {
-      'identity.basic': '社区身份',
+      'identity.basic': '钱包身份',
       'identity.wallet': '钱包地址',
+      'identity.username': '已验证用户名',
       'identity.email': '已验证邮箱'
     };
 
@@ -439,6 +446,24 @@ class ApprovalApp {
     if (emailWarning) {
       emailWarning.classList.toggle('hidden', !scopes.includes('identity.email'));
     }
+  }
+
+  renderIdentityRequest() {
+    document.getElementById('identityRequest').classList.remove('hidden');
+    const request = this.requestData.request || {};
+    document.getElementById('identityOrigin').textContent = this.requestData.origin || '未知网站';
+    document.getElementById('identityAppId').textContent = request.appId || '-';
+    document.getElementById('identityAudience').textContent = request.audience || '-';
+    document.getElementById('identityNonce').textContent = request.nonce || '-';
+    const labels = { 'identity.basic': '钱包身份', 'identity.wallet': '钱包账户', 'identity.username': '已验证用户名', 'identity.email': '已验证邮箱' };
+    const list = document.getElementById('identityScopeList');
+    list.innerHTML = '';
+    (request.scopes || []).forEach((scope) => {
+      const item = document.createElement('div');
+      item.className = 'permission-item';
+      item.textContent = labels[scope] || scope;
+      list.appendChild(item);
+    });
   }
 
   parseRecapFromSiwe(message, siweInfo) {

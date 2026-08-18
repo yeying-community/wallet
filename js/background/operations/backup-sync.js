@@ -15,11 +15,17 @@ import { backupSyncService } from '../sync-service.js';
 import { isDeveloperFeatureEnabled } from '../../config/index.js';
 import { getTimestamp } from '../../common/utils/time-utils.js';
 
-const DEFAULT_BACKUP_SYNC_ENDPOINT = 'https://webdav.yeying.pub/dav';
+const DEFAULT_BACKUP_SYNC_ENDPOINT = 'https://warehouse.tidukongjian.com/dav';
+const LEGACY_BACKUP_SYNC_ENDPOINT = 'https://webdav.yeying.pub/dav';
+const MISTYPED_BACKUP_SYNC_ENDPOINT = 'https://warenouse.tidukongjian.com/dav';
+const MIGRATED_BACKUP_SYNC_ENDPOINT = 'https://warehouse.tidukongjian.com/dav';
 const BACKUP_SYNC_MODES = new Set(['siwe', 'ucan', 'basic']);
 
 function normalizeBackupSyncEndpoint(value) {
   const trimmed = String(value || '').trim();
+  if (trimmed === LEGACY_BACKUP_SYNC_ENDPOINT || trimmed === MISTYPED_BACKUP_SYNC_ENDPOINT) {
+    return MIGRATED_BACKUP_SYNC_ENDPOINT;
+  }
   return trimmed || DEFAULT_BACKUP_SYNC_ENDPOINT;
 }
 
@@ -39,9 +45,14 @@ function buildConflictLabel(conflict) {
 
 export async function handleGetBackupSyncSettings() {
   try {
+    const storedEndpoint = await getUserSetting('backupSyncEndpoint', DEFAULT_BACKUP_SYNC_ENDPOINT);
+    const endpoint = normalizeBackupSyncEndpoint(storedEndpoint);
+    if (endpoint !== storedEndpoint) {
+      await updateUserSetting('backupSyncEndpoint', endpoint);
+    }
     const settings = {
       enabled: await getUserSetting('backupSyncEnabled', true),
-      endpoint: await getUserSetting('backupSyncEndpoint', DEFAULT_BACKUP_SYNC_ENDPOINT),
+      endpoint,
       authMode: await getUserSetting('backupSyncAuthMode', 'ucan'),
       authToken: await getUserSetting('backupSyncAuthToken', ''),
       authTokenExpiresAt: await getUserSetting('backupSyncAuthTokenExpiresAt', null),

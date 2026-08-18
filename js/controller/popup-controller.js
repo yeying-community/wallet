@@ -43,7 +43,7 @@ export class PopupController {
     this.transactionPollingTimer = null;
     this.storageUnsubscribe = null;
 
-    this.welcomeController = new WelcomeController();
+    this.welcomeController = new WelcomeController({ wallet: this.wallet });
     this.unlockWalletController = new UnlockWalletController({
       wallet: this.wallet,
       onUnlocked: async () => {
@@ -207,6 +207,18 @@ export class PopupController {
         break;
       case 'settingsPage':
         await this.openSettingsPage();
+        break;
+      case 'backupSyncDetailPage':
+        await this.openSettingsPage();
+        this.settingController.backupController.openBackupSyncDetailPage();
+        break;
+      case 'custodyDetailPage':
+        await this.openSettingsPage();
+        this.settingController.mpcController.openCustodyDetailPage();
+        break;
+      case 'mpcDetailPage':
+        await this.openSettingsPage();
+        this.settingController.mpcController.openMpcDetailPage();
         break;
       case 'sitesPage':
         await this.openSitesPage();
@@ -624,8 +636,11 @@ export class PopupController {
       settingsPage: 'walletPage',
       contactsPage: document.getElementById('contactsPage')?.dataset?.returnPage || 'walletPage',
       sitesPage: 'walletPage',
-      backupSyncLogsPage: 'settingsPage',
-      mpcLogsPage: 'settingsPage',
+      backupSyncLogsPage: document.getElementById('backupSyncLogsPage')?.dataset?.returnPage || 'settingsPage',
+      mpcLogsPage: 'mpcDetailPage',
+      backupSyncDetailPage: 'settingsPage',
+      custodyDetailPage: 'settingsPage',
+      mpcDetailPage: 'settingsPage',
     };
 
     const targetPage = backMap[currentPage];
@@ -635,6 +650,9 @@ export class PopupController {
         if (contactsPage?.dataset?.returnPage) {
           delete contactsPage.dataset.returnPage;
         }
+      }
+      if (currentPage === 'backupSyncLogsPage') {
+        delete document.getElementById('backupSyncLogsPage')?.dataset.returnPage;
       }
       showPage(targetPage);
       if (targetPage === 'networkManagePage') {

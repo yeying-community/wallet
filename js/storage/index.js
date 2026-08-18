@@ -16,7 +16,8 @@ export {
   TransactionStorageKeys,
   ContactsStorageKeys,
   UcanStorageKeys,
-  MpcStorageKeys
+  MpcStorageKeys,
+  IdentityStorageKeys
 } from './storage-keys.js';
 
 // ==================== 基础存储 ====================
@@ -110,6 +111,17 @@ export {
   resetUserSettings,
   updateUserSettings
 } from './settings-storage.js';
+
+export {
+  saveIdentity,
+  saveEncryptedIdentity,
+  getIdentity,
+  getIdentities,
+  deleteIdentity,
+  decryptIdentityKeyMaterial,
+  saveIdentityCredentials,
+  getIdentityCredentials
+} from './identity-storage.js';
 
 // ==================== 交易存储 ====================
 export {

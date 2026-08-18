@@ -8,21 +8,21 @@
 
 夜莺钱包是社区的用户侧身份、密钥与授权确认组件。它负责本地保存钱包密钥、完成 EVM 签名、向 DApp 暴露 EIP-1193 Provider，并协助完成 SIWE 身份认证和 UCAN 能力授权。
 
-Wallet 不拥有社区业务账户、应用目录或业务权限：Node 负责社区身份映射、应用登记和授权协作；Chat、Project 等系统拥有各自业务状态；资源服务独立校验 UCAN 或 scoped credential。
+Wallet 由用户控制并持有钱包身份、密钥与用户确认权，不拥有社区业务账户、应用目录或业务权限。Node 是可替换的身份验证、凭证签发和授权协作服务；Chat、Project 等系统拥有各自业务状态；资源服务独立校验 UCAN 或 scoped credential。
 
 ```plantuml
 @startuml
 left to right direction
 actor User
 component "Wallet\n密钥、签名、用户确认" as Wallet
-component "Node\n社区身份、应用登记、授权协作" as Node
+component "Node\n身份验证、凭证签发、授权协作" as Node
 component "DApp\nChat / Project / Agent" as App
 component "Resource Services\nRouter / Warehouse" as Resource
 
 User --> Wallet : 管理钱包、签名、确认授权
 User --> App : 使用业务功能
-Wallet --> Node : SIWE / 身份与授权协作
-Node --> App : subject / session / 授权结果
+Wallet --> Node : SIWE / 验证与授权协作
+Node --> App : 验证声明 / session / 授权结果
 App --> Wallet : EIP-1193 / UCAN 请求
 App --> Resource : UCAN / scoped credential
 @enduml
@@ -36,7 +36,7 @@ App --> Resource : UCAN / scoped credential
 | --- | --- | --- | --- |
 | [钱包架构 V1](./钱包架构V1.md) | 当前实现基线 | 产品、维护者、架构师 | 当前钱包已经实现什么、各组件如何协作 |
 | [钱包架构 V2](./钱包架构V2.md) | 目标架构 | 产品、维护者、跨系统架构师 | 尚未实现的下一阶段能力、依赖与完成条件 |
-| [钱包架构 V3](./钱包架构V3.md) | 长期演进方向 | 产品、维护者、跨系统架构师 | 非 EVM 网络适配与社区身份主体去中心化 |
+| [钱包架构 V3](./钱包架构V3.md) | 长期演进方向 | 产品、维护者、跨系统架构师 | 非 EVM 网络适配与钱包身份凭证化 |
 | [用户使用手册](./用户使用手册.md) | 当前用户指南 | 普通用户、支持人员 | 如何安装、安全使用和排查问题 |
 | [Web3 应用集成手册](./web3应用集成手册.md) | 当前集成指南 | Web3 应用开发者 | 怎样连接钱包、登录、授权和联调 |
 
@@ -56,6 +56,8 @@ App --> Resource : UCAN / scoped credential
 | [SIWE 协议说明](./SIWE协议说明.md) | 规范与实现指南 | 地址控制证明和登录声明，不承载完整能力授权 |
 | [UCAN 协议说明](./UCAN协议说明.md) | 规范与项目约定 | 能力委托、能力衰减和请求级授权 |
 | [通行证登录方案](./通行证登录方案.md) | 提案 | WebAuthn passkey 与钱包地址绑定、无插件登录和恢复 |
+| [钱包身份协议与数据模型](./钱包身份协议与数据模型.md) | 实施前设计基线 | Wallet identity、多链账户关联、控制器、验证凭证与 DApp presentation |
+| [钱包身份 V1 跨仓库契约](./钱包身份V1跨仓库契约.md) | V1 实现契约 | 身份文档、账户 proof、JWT-VC、JWKS、撤销与 presentation API |
 
 ## 3. 推荐阅读路径
 
@@ -71,10 +73,10 @@ App --> Resource : UCAN / scoped credential
 Web3 应用集成手册 -> SIWE 协议说明 -> UCAN 协议说明
 ```
 
-设计社区身份体系：
+设计钱包身份与验证体系：
 
 ```text
-SIWE 协议说明 -> 通行证登录方案 -> UCAN 协议说明 -> 系统间身份与授权边界
+钱包身份协议与数据模型 -> 钱包身份 V1 跨仓库契约 -> SIWE 协议说明 -> UCAN 协议说明
 ```
 
 ## 4. 状态定义

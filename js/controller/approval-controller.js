@@ -68,6 +68,9 @@ export class ApprovalController {
       case 'passport':
         this.bindPassportEvents();
         break;
+      case 'identity':
+        this.bindIdentityEvents();
+        break;
       case 'addChain':
         this.bindAddChainEvents();
         break;
@@ -160,6 +163,7 @@ export class ApprovalController {
       yeying_ucan_sign: { label: 'UCAN', detail: 'UCAN 签名' },
       yeying_ucan_session: { label: 'UCAN', detail: 'UCAN 会话' },
       yeying_passport_assertion: { label: '通行证', detail: '通行证登录' },
+      yeying_identity_presentation: { label: '身份', detail: '身份资料授权' },
       eth_requestAccounts: { label: '连接', detail: '连接钱包' },
       eth_sendTransaction: { label: '交易', detail: '发送交易' },
       eth_signTransaction: { label: '交易', detail: '签名交易' },
@@ -450,6 +454,26 @@ export class ApprovalController {
     } catch (error) {
       this.isProcessing = false;
       showError('授权失败: ' + error.message);
+    }
+  }
+
+  bindIdentityEvents() {
+    this.addDomListener(document.getElementById('approveIdentity'), 'click', () => this.approveIdentity());
+    this.addDomListener(document.getElementById('rejectIdentity'), 'click', () => this.reject());
+    setTimeout(() => document.getElementById('identityPassword')?.focus(), 0);
+  }
+
+  async approveIdentity() {
+    if (this.isProcessing) return;
+    const password = document.getElementById('identityPassword')?.value || '';
+    if (!password) { showError('请输入钱包密码'); return; }
+    this.isProcessing = true;
+    try {
+      await this.sendResponse({ approved: true, password });
+      this.closeWindow();
+    } catch (error) {
+      this.isProcessing = false;
+      showError('身份授权失败: ' + error.message);
     }
   }
 

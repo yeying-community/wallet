@@ -16,8 +16,14 @@ export class PassportSettingsController {
 
   bindEvents() {
     document.getElementById('passportIdentityBtn')?.addEventListener('click', () => this.handleIdentityAction());
-    document.getElementById('passportUnlinkBtn')?.addEventListener('click', () => this.loginAndUnlink());
     document.getElementById('passportEndpointInput')?.addEventListener('change', () => this.renderBindingAction());
+    document.getElementById('viewWalletIdentityBtn')?.addEventListener('click', () => this.openIdentityDetails());
+    document.getElementById('closeWalletIdentityDetailModal')?.addEventListener('click', () => this.closeIdentityDetails());
+    document.getElementById('changeWalletIdentityBtn')?.addEventListener('click', () => {
+      this.closeIdentityDetails();
+      this.changePassportIdentity();
+    });
+    document.querySelector('#walletIdentityDetailModal .modal-overlay')?.addEventListener('click', () => this.closeIdentityDetails());
   }
 
   endpoint() { return String(document.getElementById('passportEndpointInput')?.value || '').trim(); }
@@ -73,32 +79,104 @@ export class PassportSettingsController {
   async renderBindingAction() {
     const button = document.getElementById('passportIdentityBtn');
     if (!button) return;
-    const unlinkButton = document.getElementById('passportUnlinkBtn');
     let state = '';
     let account = null;
     try {
       account = await this.wallet.getCurrentAccount();
       state = this.loadBindingState(this.endpoint(), account?.address);
+      const identities = await this.wallet.listIdentities();
+      const identityId = identities?.selectedIdentityId || identities?.identities?.[0]?.document?.walletIdentityId;
+      if (!identityId) {
+        state = '';
+        this.persistBindingState(this.endpoint(), account?.address, null);
+      } else if (state === BINDING_STATE_COMPLETE) {
+        const credentials = await this.wallet.listIdentityCredentials(identityId);
+        if (!Array.isArray(credentials?.credentials) || credentials.credentials.length === 0) {
+          state = '';
+          this.persistBindingState(this.endpoint(), account?.address, null);
+        }
+      }
     } catch { state = ''; }
     const pending = state === BINDING_STATE_PENDING_EMAIL;
     const complete = state === BINDING_STATE_COMPLETE;
+    const statusIcon = document.getElementById('walletIdentityStatusIcon');
+    const serviceConfig = document.getElementById('identityServiceConfig');
+    const detailsButton = document.getElementById('viewWalletIdentityBtn');
     button.dataset.state = state || 'none';
-    button.textContent = complete ? '变更社区邮箱' : (pending ? '继续完成绑定' : '绑定社区身份');
+    button.textContent = pending ? '继续验证' : '验证';
+    button.classList.toggle('hidden', complete);
     button.classList.toggle('btn-primary', true);
     button.classList.toggle('btn-danger', false);
-    unlinkButton?.classList.toggle('hidden', !complete && !pending);
+    serviceConfig?.classList.toggle('hidden', complete);
+    detailsButton?.classList.toggle('hidden', !complete);
     if (complete) {
-      this.setStatus(`夜莺社区身份已绑定，绑定钱包：${this.formatWalletAddress(account?.address)}。可变更社区邮箱；如此前未完成邮箱验证，请解绑后重新绑定。`);
+      this.setIdentityStatusIcon(statusIcon, 'verified', '已验证');
+      this.setStatus('');
     } else if (pending) {
-      this.setStatus(`已完成钱包绑定但邮箱尚未确认，请继续完成绑定。绑定钱包：${this.formatWalletAddress(account?.address)}`);
+      this.setIdentityStatusIcon(statusIcon, 'pending', '验证进行中');
+      this.setStatus(`钱包控制权已确认，但邮箱尚未验证。请继续验证，钱包：${this.formatWalletAddress(account?.address)}`);
     } else {
+      this.setIdentityStatusIcon(statusIcon, 'pending', '待验证');
       this.setStatus('');
     }
   }
 
+  setIdentityStatusIcon(element, state, label) {
+    if (!element) return;
+    element.className = `wallet-identity-status ${state}`;
+    element.setAttribute('aria-label', label);
+    element.setAttribute('title', label);
+  }
+
+  async openIdentityDetails() {
+    try {
+      const [account, identities] = await Promise.all([this.wallet.getCurrentAccount(), this.wallet.listIdentities()]);
+      const identityId = identities?.selectedIdentityId || identities?.identities?.[0]?.document?.walletIdentityId;
+      if (!identityId) throw new Error('请先创建钱包身份');
+      if (!identities?.selectedIdentityId) await this.wallet.selectIdentity(identityId);
+      const identity = await this.wallet.getIdentity(identityId);
+      const credentials = await this.wallet.listIdentityCredentials(identityId);
+      const values = { username: '-', email: '-' };
+      for (const item of credentials?.credentials || []) {
+        const token = item?.credential || item?.jwt || item;
+        const payload = this.decodeCredentialPayload(token);
+        const subject = payload?.vc?.credentialSubject || {};
+        if (subject.usernameQualified || subject.username) values.username = subject.usernameQualified || subject.username;
+        if (subject.email) values.email = subject.email;
+      }
+      this.setDetailValue('walletIdentityDetailStatus', '已验证');
+      this.setDetailValue('walletIdentityDetailUsername', values.username);
+      this.setDetailValue('walletIdentityDetailEmail', values.email);
+      this.setDetailValue('walletIdentityDetailAddress', account?.address || '-');
+      this.setDetailValue('walletIdentityDetailDid', identity?.document?.id || '-');
+      this.setDetailValue('walletIdentityDetailEndpoint', this.endpoint() || DEFAULT_NODE_ENDPOINT);
+      document.getElementById('walletIdentityDetailModal')?.classList.remove('hidden');
+    } catch (error) {
+      showError(error?.message || '无法读取钱包身份详情');
+    }
+  }
+
+  closeIdentityDetails() {
+    document.getElementById('walletIdentityDetailModal')?.classList.add('hidden');
+  }
+
+  setDetailValue(id, value) {
+    const element = document.getElementById(id);
+    if (element) element.textContent = value || '-';
+  }
+
+  decodeCredentialPayload(token) {
+    try {
+      const encoded = String(token || '').split('.')[1];
+      if (!encoded) return null;
+      const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+      return JSON.parse(atob(`${base64}${'='.repeat((4 - base64.length % 4) % 4)}`));
+    } catch { return null; }
+  }
+
   async handleIdentityAction() {
     const state = document.getElementById('passportIdentityBtn')?.dataset.state || 'none';
-    if (state === BINDING_STATE_COMPLETE) return this.changePassportEmail();
+    if (state === BINDING_STATE_COMPLETE) return this.changePassportIdentity();
     if (state === BINDING_STATE_PENDING_EMAIL) return this.continueEmailVerification();
     return this.loginAndBind();
   }
@@ -125,31 +203,27 @@ export class PassportSettingsController {
       if (!endpoint) throw new Error('请输入 Node 服务地址');
       this.persistEndpoint(endpoint);
       const result = await this.wallet.getPassportStatus(endpoint);
-      if (!result?.success || !result.status?.enabled) throw new Error(result?.error || 'Passport 服务不可用');
-      this.setStatus('服务可用，等待钱包绑定');
-      if (!quiet) showSuccess('社区身份服务可用');
+      if (!result?.success || !result.status?.enabled) throw new Error(result?.error || '身份验证服务不可用');
+      this.setStatus('服务可用，等待验证');
+      if (!quiet) showSuccess('身份验证服务可用');
     } catch (error) {
       this.setStatus(`服务不可用：${error.message || '未知错误'}`);
-      if (!quiet) showError(error.message || '社区身份服务不可用');
+      if (!quiet) showError(error.message || '身份验证服务不可用');
     }
   }
 
   async loginAndBind() {
     try {
-      const email = this.promptEmail();
+      const username = await this.promptUsername();
+      if (!username) return;
+      const email = await this.promptEmail();
       if (!email) return;
-      const auth = await this.authenticateWithCurrentWallet();
-      if (!auth) return;
-      const { endpoint, account, accessToken } = auth;
-      const result = await this.wallet.createPassportBinding(endpoint, accessToken);
-      if (!result?.success || !result.binding?.subjectId) throw new Error(result?.error || 'Passport 绑定失败');
-      this.persistBindingState(endpoint, account.address, BINDING_STATE_PENDING_EMAIL);
-      const completed = await this.sendAndConfirmEmail(auth, email);
+      const completed = await this.requestAndConfirmIdentity({ username, email });
       await this.renderBindingAction();
-      if (completed) showSuccess('社区身份已绑定');
+      if (completed) showSuccess('钱包验证已完成');
     } catch (error) {
-      this.setStatus(`绑定未完成：${error.message || '未知错误'}`);
-      showError(error.message || '社区身份绑定未完成');
+      this.setStatus(`验证未完成：${error.message || '未知错误'}`);
+      showError(error.message || '钱包验证未完成');
     } finally { hideWaiting(); }
   }
 
@@ -197,20 +271,72 @@ export class PassportSettingsController {
     return { endpoint, account, accessToken, password };
   }
 
-  promptEmail(defaultValue = '') {
-    const value = globalThis.prompt?.('请输入社区邮箱', defaultValue) ?? null;
+  async promptEmail(defaultValue = '') {
+    const value = await this.promptIdentityInput({ title: '验证邮箱', hint: '请输入用于钱包身份验证的邮箱。', label: '邮箱', placeholder: 'name@example.com', defaultValue, inputMode: 'email' });
     if (value === null) return '';
     const email = String(value || '').trim().toLowerCase();
-    if (!email) throw new Error('请输入社区邮箱');
+    if (!email) throw new Error('请输入验证邮箱');
     return email;
   }
 
-  promptVerificationCode() {
-    const value = globalThis.prompt?.('请输入邮件中的 6 位验证码') ?? null;
+  async promptUsername(defaultValue = '') {
+    const value = await this.promptIdentityInput({ title: '验证用户名', hint: '用户名为 3-32 位小写字母、数字、点、下划线或连字符。', label: '用户名', placeholder: 'username', defaultValue });
+    if (value === null) return '';
+    const username = String(value || '').trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username)) throw new Error('用户名须为 3-32 位小写字母、数字、点、下划线或连字符');
+    return username;
+  }
+
+  async promptVerificationCode() {
+    const value = await this.promptIdentityInput({ title: '输入验证码', hint: '验证码已发送到验证邮箱。', label: '6 位验证码', placeholder: '123456', inputMode: 'numeric', pattern: '\\d{6}' });
     if (value === null) return '';
     const code = String(value || '').trim();
     if (!/^\d{6}$/.test(code)) throw new Error('请输入 6 位验证码');
     return code;
+  }
+
+  promptIdentityInput({ title, hint, label, placeholder = '', defaultValue = '', inputMode = 'text', pattern = '' }) {
+    const modal = document.getElementById('identityInputModal');
+    const overlay = modal?.querySelector('.modal-overlay');
+    const titleEl = document.getElementById('identityInputTitle');
+    const hintEl = document.getElementById('identityInputHint');
+    const labelEl = document.getElementById('identityInputLabel');
+    const input = document.getElementById('identityInputValue');
+    const confirm = document.getElementById('confirmIdentityInputBtn');
+    const cancel = document.getElementById('cancelIdentityInputBtn');
+    const close = document.getElementById('closeIdentityInputModal');
+    if (!modal || !input || !confirm || !cancel || !close) return Promise.resolve(null);
+    titleEl.textContent = title;
+    hintEl.textContent = hint;
+    labelEl.textContent = label;
+    input.placeholder = placeholder;
+    input.value = defaultValue;
+    input.inputMode = inputMode;
+    input.pattern = pattern;
+    modal.classList.remove('hidden');
+
+    return new Promise((resolve) => {
+      const cleanup = () => {
+        confirm.removeEventListener('click', handleConfirm);
+        cancel.removeEventListener('click', handleCancel);
+        close.removeEventListener('click', handleCancel);
+        overlay?.removeEventListener('click', handleCancel);
+        input.removeEventListener('keydown', handleKeydown);
+        modal.classList.add('hidden');
+      };
+      const handleCancel = () => { cleanup(); resolve(null); };
+      const handleConfirm = () => { cleanup(); resolve(input.value); };
+      const handleKeydown = (event) => {
+        if (event.key === 'Enter') handleConfirm();
+        if (event.key === 'Escape') handleCancel();
+      };
+      confirm.addEventListener('click', handleConfirm);
+      cancel.addEventListener('click', handleCancel);
+      close.addEventListener('click', handleCancel);
+      overlay?.addEventListener('click', handleCancel);
+      input.addEventListener('keydown', handleKeydown);
+      setTimeout(() => input.focus(), 0);
+    });
   }
 
   async sendEmailVerification(auth, email) {
@@ -229,13 +355,92 @@ export class PassportSettingsController {
   async sendAndConfirmEmail(auth, email) {
     await this.sendEmailVerification(auth, email);
     hideWaiting();
-    const code = this.promptVerificationCode();
+    const code = await this.promptVerificationCode();
     if (!code) {
-      this.setStatus('验证码已发送，请稍后继续完成社区身份绑定。');
+      this.setStatus('验证码已发送，请稍后继续验证。');
       return false;
     }
     showWaiting();
     return await this.confirmEmailVerificationWithAuth(auth, code);
+  }
+
+  async requestAndConfirmIdentity({ username, email }) {
+    const endpoint = this.endpoint();
+    if (!endpoint) throw new Error('请输入 Node 服务地址');
+    this.persistEndpoint(endpoint);
+    const account = await this.wallet.getCurrentAccount();
+    if (!account?.address) throw new Error('未找到当前账户');
+    const password = await this.requestPassword?.();
+    if (!password) return false;
+    const identities = await this.wallet.listIdentities();
+    let identityId = identities?.selectedIdentityId || identities?.identities?.[0]?.document?.walletIdentityId;
+    if (!identityId) {
+      const created = await this.wallet.createIdentity(password);
+      identityId = created?.document?.walletIdentityId;
+    }
+    if (!identityId) throw new Error('无法创建钱包身份');
+    await this.wallet.selectIdentity(identityId);
+    const identityDocument = await this.wallet.exportIdentityDocument(identityId);
+    if (!identityDocument?.document?.id && !identityDocument?.id) throw new Error('未选择钱包身份');
+    const identity = await this.wallet.signIdentityDocument(identityDocument.document || identityDocument, password, identityId);
+    const identityDid = identity.id;
+    showWaiting();
+    const chainKey = account.chainKey || `eip155:${account.chainId || 1}`;
+    const linkChallenge = await this.fetchIdentityLinkChallenge(endpoint, identityDid, { chainKey, address: account.address });
+    const accountSignature = await this.transaction.signMessage(linkChallenge.message, password);
+    const linkResult = await this.verifyIdentityLink(endpoint, {
+      identityDocument: identity,
+      identity: identityDid,
+      account: { chainKey, address: account.address },
+      nonce: linkChallenge.nonce,
+      issuedAt: linkChallenge.issuedAt,
+      expiresAt: linkChallenge.expiresAt,
+      accountSignature
+    });
+    if (!linkResult?.verifiedAt) throw new Error('钱包账户关联失败');
+    const requested = await this.wallet.requestIdentityVerification(endpoint, {
+      types: ['email', 'username'],
+      identity: identityDid,
+      account: { chainKey, address: account.address },
+      email,
+      username
+    });
+    if (!requested?.verificationId) throw new Error('Node 未返回验证事务 ID');
+    this.persistBindingState(endpoint, account.address, BINDING_STATE_PENDING_EMAIL);
+    this.persistEmailVerificationState(endpoint, account.address, { verificationId: requested.verificationId, email, username, expiresAt: requested.expiresAt || '' });
+    this.setEmailStatus(`验证码已发送至 ${requested.email || email}，请查收邮件后输入 6 位验证码。`);
+    hideWaiting();
+    const code = await this.promptVerificationCode();
+    if (!code) {
+      this.setStatus('验证码已发送，请稍后继续验证。');
+      return false;
+    }
+    showWaiting();
+    const result = await this.wallet.confirmIdentityVerification(endpoint, requested.verificationId, code, ['email', 'username']);
+    if (!Array.isArray(result?.credentials) || result.credentials.length < 2) throw new Error('Node 未返回完整身份凭证');
+    this.persistBindingState(endpoint, account.address, BINDING_STATE_COMPLETE);
+    this.persistEmailVerificationState(endpoint, account.address, null);
+    this.setEmailStatus(`已验证邮箱：${email}`);
+    return true;
+  }
+
+  async fetchIdentityLinkChallenge(endpoint, identity, account) {
+    const response = await fetch(new URL('/api/v1/public/identity/account-links/challenge', endpoint), {
+      method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identity, account })
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || json.code !== 0 || !json.data?.message) throw new Error(json.message || '获取钱包身份关联 challenge 失败');
+    return json.data;
+  }
+
+  async verifyIdentityLink(endpoint, body) {
+    const response = await fetch(new URL('/api/v1/public/identity/account-links/verify', endpoint), {
+      method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || json.code !== 0) throw new Error(json.message || '钱包身份关联失败');
+    return json.data;
   }
 
   async confirmEmailVerificationWithAuth(auth, code) {
@@ -246,34 +451,33 @@ export class PassportSettingsController {
     if (!result?.success || !result.verification?.email) throw new Error(result?.error || '邮箱确认失败');
     this.persistBindingState(auth.endpoint, auth.account.address, BINDING_STATE_COMPLETE);
     this.persistEmailVerificationState(auth.endpoint, auth.account.address, null);
-    this.setEmailStatus(`社区邮箱已验证：${result.verification.email}`);
+    this.setEmailStatus(`验证邮箱已确认：${result.verification.email}`);
     return true;
   }
 
   async continueEmailVerification() {
     try {
-      const email = this.promptEmail();
+      const email = await this.promptEmail();
       if (!email) return;
-      const auth = await this.authenticateWithCurrentWallet();
-      if (!auth) return;
-      const completed = await this.sendAndConfirmEmail(auth, email);
+      const state = this.loadEmailVerificationState(this.endpoint(), (await this.wallet.getCurrentAccount())?.address);
+      const completed = await this.requestAndConfirmIdentity({ username: state?.username || await this.promptUsername(), email });
       await this.renderBindingAction();
-      if (completed) showSuccess('社区身份已绑定');
+      if (completed) showSuccess('钱包验证已完成');
     } catch (error) {
-      this.setEmailStatus(`绑定未完成：${error.message || '未知错误'}`);
-      showError(error.message || '社区身份绑定未完成');
+      this.setEmailStatus(`验证未完成：${error.message || '未知错误'}`);
+      showError(error.message || '钱包验证未完成');
     } finally { hideWaiting(); }
   }
 
-  async changePassportEmail() {
+  async changePassportIdentity() {
     try {
-      const email = this.promptEmail();
+      const username = await this.promptUsername();
+      if (!username) return;
+      const email = await this.promptEmail();
       if (!email) return;
-      const auth = await this.authenticateWithCurrentWallet();
-      if (!auth) return;
-      const completed = await this.sendAndConfirmEmail(auth, email);
+      const completed = await this.requestAndConfirmIdentity({ username, email });
       await this.renderBindingAction();
-      if (completed) showSuccess('社区邮箱已更新');
+      if (completed) showSuccess('验证用户名和邮箱已更新');
     } catch (error) {
       this.setEmailStatus(`邮箱变更失败：${error.message || '未知错误'}`);
       showError(error.message || '邮箱变更失败');
@@ -281,7 +485,7 @@ export class PassportSettingsController {
   }
 
   async loginAndUnlink() {
-    if (!globalThis.confirm?.('解绑后，该社区身份下的通行证和未完成授权将被撤销。确认继续？')) return;
+    if (!globalThis.confirm?.('移除后，此验证服务签发的通行证和未完成授权将被撤销。确认继续？')) return;
     try {
       const endpoint = this.endpoint();
       if (!endpoint) throw new Error('请输入 Node 服务地址');
@@ -308,9 +512,9 @@ export class PassportSettingsController {
       this.persistBindingState(endpoint, account.address, false);
       this.persistEmailVerificationState(endpoint, account.address, null);
       await this.renderBindingAction();
-      showSuccess('社区身份已解绑');
+      showSuccess('已移除验证服务关联');
     } catch (error) {
-      showError(error.message || '社区身份解绑失败');
+      showError(error.message || '移除验证服务关联失败');
     } finally { hideWaiting(); }
   }
 

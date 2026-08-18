@@ -824,6 +824,34 @@ textarea.input {
   transform: rotate(90deg);
 }
 
+.modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.modal-icon-btn {
+  background: none;
+  border: none;
+  color: #6c757d;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s;
+  padding: 0;
+  line-height: 1;
+  font-size: 19px;
+}
+
+.modal-icon-btn:hover {
+  background: #f6f8fa;
+  color: #24292e;
+}
+
 .modal-body {
   padding: 20px;
 }

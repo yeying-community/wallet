@@ -2,7 +2,7 @@
  * AccountSettingsController — 设置页「账户设置」子控制器
  * 从 SettingController 拆出：修改密码、重置钱包、清除所有授权按钮。
  *
- * 依赖通过构造参数注入：{ wallet }
+ * 依赖通过构造参数注入：{ wallet, onClearAllAuthorizations }
  */
 import { showPage, showSuccess, showError, showWaiting } from '../../common/ui/index.js';
 
