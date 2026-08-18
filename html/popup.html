@@ -946,11 +946,8 @@
           <!-- 账户安全 -->
           <div class="settings-section">
             <h3>🔐 账户安全</h3>
-            <p class="settings-hint security-card-description">锁定钱包会结束当前解锁会话；修改密码会更新本地加密口令。</p>
-            <div class="settings-row settings-action-grid">
-              <button id="lockWalletFromSettingsBtn" class="btn btn-secondary btn-small" type="button">锁定钱包</button>
-              <button id="changePasswordBtn" class="btn btn-primary btn-small" type="button">修改密码</button>
-            </div>
+            <p class="settings-hint security-card-description">本地密码用于加密此设备上的钱包数据。请自行妥善保管，钱包无法找回或重置该密码；遗忘后只能重置钱包并从已备份的资料恢复。</p>
+            <button id="changePasswordBtn" class="btn btn-primary btn-small btn-block" type="button">修改密码</button>
           </div>
 
           <div class="settings-section settings-section-danger">
@@ -963,12 +960,14 @@
           <div class="settings-section" id="backupSyncSection">
             <div class="settings-section-heading">
               <h3>☁️ 数据备份</h3>
-              <label class="settings-toggle settings-section-toggle" title="启用数据备份">
-                <input type="checkbox" id="backupSyncEnabledToggle" />
-                <span class="settings-switch" aria-hidden="true"></span>
-                <span class="sr-only">启用数据备份</span>
-              </label>
-              <button id="backupSyncConflictBtn" class="btn btn-danger btn-small hidden" type="button">冲突</button>
+              <div class="settings-section-heading-actions">
+                <label class="settings-toggle settings-section-toggle" title="启用数据备份">
+                  <input type="checkbox" id="backupSyncEnabledToggle" />
+                  <span class="settings-switch" aria-hidden="true"></span>
+                  <span class="sr-only">启用数据备份</span>
+                </label>
+                <button id="backupSyncConflictBtn" class="btn btn-danger btn-small hidden" type="button">冲突</button>
+              </div>
             </div>
             <p class="settings-hint settings-card-description">将钱包数据加密备份到你选择的服务，便于在新设备恢复；备份不会替代助记词或私钥备份。</p>
             <p class="settings-hint" id="backupSyncSummary">未启用 · UCAN · https://webdav.yeying.pub/dav</p>
@@ -989,11 +988,13 @@
           <div class="settings-section" id="custodySettingsSection">
             <div class="settings-section-heading">
               <h3>🛡️ 密钥托管</h3>
-              <label class="settings-toggle settings-section-toggle" title="启用密钥托管">
-                <input type="checkbox" id="custodyEnabledToggle" />
-                <span class="settings-switch" aria-hidden="true"></span>
-                <span class="sr-only">启用密钥托管</span>
-              </label>
+              <div class="settings-section-heading-actions">
+                <label class="settings-toggle settings-section-toggle" title="启用密钥托管">
+                  <input type="checkbox" id="custodyEnabledToggle" />
+                  <span class="settings-switch" aria-hidden="true"></span>
+                  <span class="sr-only">启用密钥托管</span>
+                </label>
+              </div>
             </div>
             <p class="settings-hint settings-card-description">由受信服务协助保存加密恢复资料，便于恢复和跨设备使用；服务不能直接获得你的明文私钥。</p>
             <p class="settings-hint" id="custodyStatusText">启用前需要当前钱包地址已绑定通行证。</p>
@@ -1364,15 +1365,13 @@
       </div>
 
       <!-- 数据备份服务配置 -->
-      <div id="backupSyncDetailModal" class="modal hidden">
-        <div class="modal-overlay"></div>
-        <div class="modal-content">
-          <div class="modal-header">
-            <h3>数据备份详情</h3>
-            <button class="btn-close" id="closeBackupSyncDetailModal">✕</button>
+      <div id="backupSyncDetailPage" class="page hidden">
+          <div class="page-header">
+            <button class="back-btn" type="button">←</button>
+            <h2>数据备份</h2>
           </div>
-          <div class="modal-body">
-            <p class="settings-hint">备份数据经过加密后上传，只有使用相同钱包凭证才能恢复。</p>
+          <div class="settings-body">
+            <p class="settings-card-description">备份数据经过加密后上传，只有使用相同钱包凭证才能恢复。数据备份用于设备恢复，不替代助记词或私钥备份。</p>
             <p class="settings-hint" id="backupSyncLastStatusDetail">最近拉取: - · 最近推送: -</p>
             <div class="settings-row settings-action-grid">
               <button id="backupSyncConfigBtn" class="btn btn-secondary btn-small">服务配置</button>
@@ -1386,37 +1385,31 @@
               <button id="backupSyncSimulateConflictBtn" class="btn btn-secondary btn-small">模拟冲突</button>
             </div>
           </div>
-        </div>
       </div>
 
       <!-- 密钥托管详情 -->
-      <div id="custodyDetailModal" class="modal hidden">
-        <div class="modal-overlay"></div>
-        <div class="modal-content">
-          <div class="modal-header">
-            <h3>密钥托管详情</h3>
-            <button class="btn-close" id="closeCustodyDetailModal">✕</button>
+      <div id="custodyDetailPage" class="page hidden">
+          <div class="page-header">
+            <button class="back-btn" type="button">←</button>
+            <h2>密钥托管</h2>
           </div>
-          <div class="modal-body">
-            <p class="settings-hint">托管服务只处理加密后的恢复资料，钱包私钥仍由你控制。</p>
+          <div class="settings-body">
+            <p class="settings-card-description">托管服务只处理加密后的恢复资料，钱包私钥仍由你控制。详情中可以配置服务并检查当前状态。</p>
             <div class="settings-row settings-action-grid">
               <button id="custodyConfigBtn" class="btn btn-secondary btn-small">服务配置</button>
               <button id="custodyStatusBtn" class="btn btn-secondary btn-small">检查状态</button>
             </div>
           </div>
-        </div>
       </div>
 
       <!-- 多签钱包详情 -->
-      <div id="mpcDetailModal" class="modal hidden">
-        <div class="modal-overlay"></div>
-        <div class="modal-content">
-          <div class="modal-header">
-            <h3>多签钱包详情</h3>
-            <button class="btn-close" id="closeMpcDetailModal">✕</button>
+      <div id="mpcDetailPage" class="page hidden">
+          <div class="page-header">
+            <button class="back-btn" type="button">←</button>
+            <h2>多签钱包</h2>
           </div>
-          <div class="modal-body">
-            <p class="settings-hint">管理协调器连接、参与者邀请和 MPC 审计记录。</p>
+          <div class="settings-body">
+            <p class="settings-card-description">与其他成员共同管理钱包，达到设定门限后才能完成关键操作。这里可以管理协调器连接、参与者邀请和 MPC 审计记录。</p>
             <div class="settings-row settings-action-grid">
               <button id="mpcServiceConfigBtn" class="btn btn-secondary btn-small">服务配置</button>
               <button id="mpcConnectionInfoBtn" class="btn btn-secondary btn-small">连接信息</button>
@@ -1432,7 +1425,6 @@
               </div>
             </div>
           </div>
-        </div>
       </div>
 
       <!-- 数据备份服务配置 -->

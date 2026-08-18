@@ -258,18 +258,32 @@
 
 .settings-section-heading {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  min-height: 24px;
   margin-bottom: 12px;
 }
 
 .settings-section-heading h3 {
   margin: 0;
   flex: 1 1 auto;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  line-height: 1;
 }
 
-.settings-section-heading .btn {
+.settings-section-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+.settings-section-heading-actions .btn {
   width: auto;
   margin: 0;
   flex-shrink: 0;

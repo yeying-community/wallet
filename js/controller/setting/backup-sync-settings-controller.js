@@ -45,7 +45,7 @@ export class BackupSyncSettingsController {
   bindEvents() {
     const backupSyncDetailBtn = document.getElementById('backupSyncDetailBtn');
     if (backupSyncDetailBtn) {
-      backupSyncDetailBtn.addEventListener('click', () => this.openBackupSyncDetailModal());
+      backupSyncDetailBtn.addEventListener('click', () => this.openBackupSyncDetailPage());
     }
     const backupSyncEnabledToggle = document.getElementById('backupSyncEnabledToggle');
     if (backupSyncEnabledToggle) {
@@ -151,11 +151,6 @@ export class BackupSyncSettingsController {
       closeIds: ['closeBackupSyncConfigModal', 'cancelBackupSyncConfigBtn'],
       onClose: () => this.closeBackupSyncConfigModal()
     });
-    this.bindSimpleModal({
-      modalId: 'backupSyncDetailModal',
-      closeIds: ['closeBackupSyncDetailModal'],
-      onClose: () => this.closeBackupSyncDetailModal()
-    });
 
     const conflictBtn = document.getElementById('backupSyncConflictBtn');
     if (conflictBtn) {
@@ -224,13 +219,9 @@ export class BackupSyncSettingsController {
     }
   }
 
-  openBackupSyncDetailModal() {
+  openBackupSyncDetailPage() {
     this.renderBackupSyncSettings(this.syncSettings || {});
-    document.getElementById('backupSyncDetailModal')?.classList.remove('hidden');
-  }
-
-  closeBackupSyncDetailModal() {
-    document.getElementById('backupSyncDetailModal')?.classList.add('hidden');
+    showPage('backupSyncDetailPage');
   }
 
   openBackupSyncConflictModal() {
@@ -272,6 +263,7 @@ export class BackupSyncSettingsController {
     const basicInput = document.getElementById('backupSyncBasicInput');
     const tokenStatus = document.getElementById('backupSyncTokenStatus');
     const lastStatus = document.getElementById('backupSyncLastStatus');
+    const lastStatusDetail = document.getElementById('backupSyncLastStatusDetail');
     const summary = document.getElementById('backupSyncSummary');
 
     if (enabledToggle) enabledToggle.checked = Boolean(settings.enabled);
@@ -299,6 +291,7 @@ export class BackupSyncSettingsController {
     this.updateBackupSyncAuthPanel(settings.authMode || 'ucan');
     this.updateBackupSyncTokenStatus(settings, tokenStatus);
     this.updateBackupSyncLastStatus(settings, lastStatus);
+    this.updateBackupSyncLastStatus(settings, lastStatusDetail);
     if (summary) {
       const endpoint = settings.endpoint || 'https://webdav.yeying.pub/dav';
       const mode = String(settings.authMode || 'ucan').toUpperCase();

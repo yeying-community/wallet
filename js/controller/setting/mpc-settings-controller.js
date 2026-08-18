@@ -46,7 +46,7 @@ export class MpcSettingsController {
   bindEvents() {
     const mpcDetailBtn = document.getElementById('mpcDetailBtn');
     if (mpcDetailBtn) {
-      mpcDetailBtn.addEventListener('click', () => this.openMpcDetailModal());
+      mpcDetailBtn.addEventListener('click', () => this.openMpcDetailPage());
     }
     const mpcAuditBtn = document.getElementById('mpcAuditBtn');
     if (mpcAuditBtn) {
@@ -198,16 +198,6 @@ export class MpcSettingsController {
       closeIds: ['closeCustodyConfigModal', 'cancelCustodyConfigBtn'],
       onClose: () => this.closeCustodyConfigModal()
     });
-    this.bindSimpleModal({
-      modalId: 'custodyDetailModal',
-      closeIds: ['closeCustodyDetailModal'],
-      onClose: () => this.closeCustodyDetailModal()
-    });
-    this.bindSimpleModal({
-      modalId: 'mpcDetailModal',
-      closeIds: ['closeMpcDetailModal'],
-      onClose: () => this.closeMpcDetailModal()
-    });
 
     const mpcCoordinatorUcanGenerateBtn = document.getElementById('mpcCoordinatorUcanGenerateBtn');
     if (mpcCoordinatorUcanGenerateBtn) {
@@ -232,7 +222,7 @@ export class MpcSettingsController {
 
     const custodyDetailBtn = document.getElementById('custodyDetailBtn');
     if (custodyDetailBtn) {
-      custodyDetailBtn.addEventListener('click', () => this.openCustodyDetailModal());
+      custodyDetailBtn.addEventListener('click', () => this.openCustodyDetailPage());
     }
 
     const custodySaveBtn = document.getElementById('custodySaveBtn');
@@ -358,22 +348,14 @@ export class MpcSettingsController {
     }
   }
 
-  openCustodyDetailModal() {
+  openCustodyDetailPage() {
     this.renderCustodySettings(this.custodySettings || {});
-    document.getElementById('custodyDetailModal')?.classList.remove('hidden');
+    showPage('custodyDetailPage');
   }
 
-  closeCustodyDetailModal() {
-    document.getElementById('custodyDetailModal')?.classList.add('hidden');
-  }
-
-  openMpcDetailModal() {
-    document.getElementById('mpcDetailModal')?.classList.remove('hidden');
+  openMpcDetailPage() {
+    showPage('mpcDetailPage');
     this.loadMpcInvites(false);
-  }
-
-  closeMpcDetailModal() {
-    document.getElementById('mpcDetailModal')?.classList.add('hidden');
   }
 
   closeCustodyConfigModal() {

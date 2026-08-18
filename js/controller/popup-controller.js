@@ -56,8 +56,7 @@ export class PopupController {
     this.settingController = new SettingController({
       wallet: this.wallet,
       transaction: this.transaction,
-      requestPassword: () => this.promptWalletPassword(),
-      onLockWallet: () => this.lockWallet()
+      requestPassword: () => this.promptWalletPassword()
     });
     this.contactController = new ContactController({ wallet: this.wallet });
     this.transactionDetailController = new TransactionDetailController({
@@ -208,6 +207,18 @@ export class PopupController {
         break;
       case 'settingsPage':
         await this.openSettingsPage();
+        break;
+      case 'backupSyncDetailPage':
+        await this.openSettingsPage();
+        this.settingController.backupController.openBackupSyncDetailPage();
+        break;
+      case 'custodyDetailPage':
+        await this.openSettingsPage();
+        this.settingController.mpcController.openCustodyDetailPage();
+        break;
+      case 'mpcDetailPage':
+        await this.openSettingsPage();
+        this.settingController.mpcController.openMpcDetailPage();
         break;
       case 'sitesPage':
         await this.openSitesPage();
@@ -627,6 +638,9 @@ export class PopupController {
       sitesPage: 'walletPage',
       backupSyncLogsPage: 'settingsPage',
       mpcLogsPage: 'settingsPage',
+      backupSyncDetailPage: 'settingsPage',
+      custodyDetailPage: 'settingsPage',
+      mpcDetailPage: 'settingsPage',
     };
 
     const targetPage = backMap[currentPage];

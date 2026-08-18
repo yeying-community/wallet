@@ -2,12 +2,12 @@
  * AccountSettingsController — 设置页「账户设置」子控制器
  * 从 SettingController 拆出：修改密码、重置钱包、清除所有授权按钮。
  *
- * 依赖通过构造参数注入：{ wallet }
+ * 依赖通过构造参数注入：{ wallet, onClearAllAuthorizations }
  */
 import { showPage, showSuccess, showError, showWaiting } from '../../common/ui/index.js';
 
 export class AccountSettingsController {
-  constructor({ wallet, onClearAllAuthorizations, onLockWallet }) {
+  constructor({ wallet, onClearAllAuthorizations }) {
     this.wallet = wallet;
     this.resetConfirmKeyword = 'RESET';
     // 清除全部授权的回调由 SettingController 注入（实际逻辑在 AuthorizedSitesController），
@@ -15,13 +15,9 @@ export class AccountSettingsController {
     this.onClearAllAuthorizations = typeof onClearAllAuthorizations === 'function'
       ? onClearAllAuthorizations
       : () => {};
-    this.onLockWallet = typeof onLockWallet === 'function' ? onLockWallet : null;
   }
 
   bindEvents() {
-    document.getElementById('lockWalletFromSettingsBtn')?.addEventListener('click', async () => {
-      if (this.onLockWallet) await this.onLockWallet();
-    });
     const changePasswordBtn = document.getElementById('changePasswordBtn');
     if (changePasswordBtn) {
       changePasswordBtn.addEventListener('click', () => {
