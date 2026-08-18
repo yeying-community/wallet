@@ -429,7 +429,6 @@ export class BackupSyncSettingsController {
 
   updateBackupSyncLogs(logs = []) {
     this.syncLogs = Array.isArray(logs) ? logs : [];
-    this.updateBackupSyncLogsSummary();
     this.applyBackupSyncLogsFilter();
   }
 
@@ -444,7 +443,6 @@ export class BackupSyncSettingsController {
       ? source.filter(entry => this.matchBackupSyncLog(entry, normalized))
       : [...source];
     this.syncLogVisibleCount = Math.min(this.syncLogPageSize, this.syncLogFiltered.length);
-    this.updateBackupSyncLogsSummary();
     this.renderBackupSyncLogsList(false);
 
     const container = document.getElementById('backupSyncLogsList');
@@ -548,35 +546,6 @@ export class BackupSyncSettingsController {
       footer.textContent = `已加载 ${visibleCount} / ${total}，向下滚动加载更多`;
     } else {
       footer.textContent = `已加载全部 ${total} 条日志`;
-    }
-  }
-
-  updateBackupSyncLogsSummary() {
-    const lastPullEl = document.getElementById('backupSyncLogsLastPull');
-    const lastPushEl = document.getElementById('backupSyncLogsLastPush');
-    const totalEl = document.getElementById('backupSyncLogsTotal');
-    const matchEl = document.getElementById('backupSyncLogsMatch');
-
-    if (lastPullEl) {
-      const pullText = this.syncSettings?.lastPullAt
-        ? formatLocaleDateTime(this.syncSettings.lastPullAt)
-        : '-';
-      lastPullEl.textContent = pullText;
-    }
-
-    if (lastPushEl) {
-      const pushText = this.syncSettings?.lastPushAt
-        ? formatLocaleDateTime(this.syncSettings.lastPushAt)
-        : '-';
-      lastPushEl.textContent = pushText;
-    }
-
-    if (totalEl) {
-      totalEl.textContent = String(Array.isArray(this.syncLogs) ? this.syncLogs.length : 0);
-    }
-
-    if (matchEl) {
-      matchEl.textContent = String(Array.isArray(this.syncLogFiltered) ? this.syncLogFiltered.length : 0);
     }
   }
 
