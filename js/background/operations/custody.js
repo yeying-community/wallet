@@ -2,8 +2,9 @@
  * Key custody operations.
  */
 
-import { encryptObject } from '../../common/crypto/index.js';
+import { encryptObject, decryptObject } from '../../common/crypto/index.js';
 import { getTimestamp } from '../../common/utils/time-utils.js';
+import { ethers } from '../../../lib/ethers-6.16.esm.min.js';
 import {
   getUserSetting,
   updateUserSettings,
@@ -14,6 +15,7 @@ import {
 import { getWalletMnemonic, getAccountPrivateKey } from '../vault.js';
 import { ensureTargetUcanToken } from '../target-ucan-manager.js';
 import { CustodyClient } from '../custody-client.js';
+import { handleImportHDWallet, handleImportPrivateKeyWallet } from './wallet.js';
 
 const DEFAULT_CUSTODY_ENDPOINT = 'https://node.yeying.pub';
 const DEFAULT_CUSTODY_UCAN_RESOURCE = 'custody';
@@ -180,6 +182,83 @@ export async function handleGetCustodyStatus(options = {}) {
     return { success: true, status, settings: await getCustodySettingsRaw() };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to get custody status' };
+  }
+}
+
+async function getAuthorizedCustodyClient(options = {}) {
+  const settings = await getCustodySettingsRaw();
+  const endpoint = normalizeEndpoint(options.endpoint || settings.endpoint);
+  if (!endpoint) throw new Error('托管服务地址未配置');
+  await ensureCustodyToken({
+    endpoint,
+    password: options.password,
+    resource: settings.ucanResource,
+    action: settings.ucanAction,
+    audience: settings.ucanAudience
+  });
+  return createClient({ ...settings, endpoint });
+}
+
+export async function handleListCustodySecrets(options = {}) {
+  try {
+    const client = await getAuthorizedCustodyClient(options);
+    return { success: true, secrets: await client.listSecrets() };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to list custody secrets' };
+  }
+}
+
+export async function handleGetCustodySecret(options = {}) {
+  try {
+    const walletId = String(options.walletId || '').trim();
+    if (!walletId) throw new Error('钱包标识不能为空');
+    const client = await getAuthorizedCustodyClient(options);
+    return { success: true, secret: await client.getSecret(walletId) };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to get custody secret' };
+  }
+}
+
+function validateCustodySecret(secret) {
+  if (!secret || secret.version !== 1 || !secret.wallet || !Array.isArray(secret.accounts) || !secret.accounts.length) {
+    throw new Error('托管记录格式不受支持');
+  }
+  const first = secret.accounts[0];
+  const expected = String(first?.address || '').toLowerCase();
+  if (!expected) throw new Error('托管记录缺少钱包地址');
+
+  if (secret.wallet.type === 'hd') {
+    if (!secret.mnemonic) throw new Error('托管记录缺少助记词');
+    const path = first.derivationPath || "m/44'/60'/0'/0/0";
+    const derived = ethers.HDNodeWallet.fromPhrase(secret.mnemonic, undefined, path).address.toLowerCase();
+    if (derived !== expected) throw new Error('托管记录地址校验失败');
+    return { type: 'hd', key: secret.mnemonic, name: secret.wallet.name || '恢复的钱包' };
+  }
+
+  if (!first.privateKey) throw new Error('托管记录缺少私钥');
+  const derived = new ethers.Wallet(first.privateKey).address.toLowerCase();
+  if (derived !== expected) throw new Error('托管记录地址校验失败');
+  return { type: 'privateKey', key: first.privateKey, name: secret.wallet.name || '恢复的钱包' };
+}
+
+export async function handleRestoreCustodySecret(options = {}) {
+  try {
+    const walletId = String(options.walletId || '').trim();
+    const password = String(options.password || '');
+    if (!walletId) throw new Error('钱包标识不能为空');
+    if (!password) throw new Error('请输入原钱包密码');
+
+    const client = await getAuthorizedCustodyClient(options);
+    const record = await client.getSecret(walletId);
+    if (!record?.ciphertext) throw new Error('托管记录缺少密文');
+    const material = validateCustodySecret(await decryptObject(record.ciphertext, password));
+    const result = material.type === 'hd'
+      ? await handleImportHDWallet(material.name, material.key, password)
+      : await handleImportPrivateKeyWallet(material.name, material.key, password);
+    if (!result?.success) throw new Error(result?.error || '恢复钱包失败');
+    return { success: true, wallet: result.wallet, account: result.account };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to restore custody secret' };
   }
 }
 

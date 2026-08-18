@@ -920,6 +920,21 @@ export class WalletDomain extends BaseDomain {
     return await this._sendMessage(WalletMessageType.CUSTODY_GET_STATUS, options);
   }
 
+  async listCustodySecrets(options = {}) {
+    return await this._sendMessage(WalletMessageType.CUSTODY_LIST_SECRETS, options);
+  }
+
+  async getCustodySecret(walletId, options = {}) {
+    return await this._sendMessage(WalletMessageType.CUSTODY_GET_SECRET, { ...options, walletId });
+  }
+
+  async restoreCustodySecret(walletId, password, options = {}) {
+    const result = await this._sendMessage(WalletMessageType.CUSTODY_RESTORE_SECRET, { ...options, walletId, password });
+    if (!result?.success) throw new Error(result?.error || '恢复钱包失败');
+    this._currentAccount = result.account;
+    return result;
+  }
+
   async enableCustody(options = {}) {
     return await this._sendMessage(WalletMessageType.CUSTODY_ENABLE, options);
   }

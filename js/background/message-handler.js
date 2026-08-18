@@ -110,6 +110,9 @@ import {
   handleGetCustodySettings,
   handleUpdateCustodySettings,
   handleGetCustodyStatus,
+  handleListCustodySecrets,
+  handleGetCustodySecret,
+  handleRestoreCustodySecret,
   handleEnableCustody,
   handleDisableCustody
 } from './operations/custody.js';
@@ -898,6 +901,9 @@ const popupHandlers = new Map([
   [WalletMessageType.CUSTODY_GET_SETTINGS, async () => await handleGetCustodySettings()],
   [WalletMessageType.CUSTODY_UPDATE_SETTINGS, async (data) => await handleUpdateCustodySettings(data?.updates)],
   [WalletMessageType.CUSTODY_GET_STATUS, async (data) => await handleGetCustodyStatus(data)],
+  [WalletMessageType.CUSTODY_LIST_SECRETS, async (data) => await handleListCustodySecrets(data)],
+  [WalletMessageType.CUSTODY_GET_SECRET, async (data) => await handleGetCustodySecret(data)],
+  [WalletMessageType.CUSTODY_RESTORE_SECRET, async (data) => await handleRestoreCustodySecret(data)],
   [WalletMessageType.CUSTODY_ENABLE, async (data) => await handleEnableCustody(data)],
   [WalletMessageType.CUSTODY_DISABLE, async (data) => await handleDisableCustody(data)],
 
