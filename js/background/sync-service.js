@@ -22,6 +22,7 @@ import {
   ContactsStorageKeys
 } from '../storage/index.js';
 import { WALLET_TYPE, deriveSubAccount, getWalletMnemonic } from './vault.js';
+import { ensureTargetUcanToken } from './target-ucan-manager.js';
 import { getCachedPassword } from './password-cache.js';
 import {
   SYNC_PAYLOAD_VERSION,
@@ -133,6 +134,7 @@ class BackupSyncService {
 
   async onUnlocked(password) {
     await this._prepareContexts(password);
+    await this._ensureConfiguredAuth(password);
     await this._handlePendingDelete();
     await this.syncAll('unlock');
     this.startAutoSync();
@@ -171,6 +173,7 @@ class BackupSyncService {
   async syncAll(reason = 'manual') {
     if (!(await this._isEnabled())) return;
     if (this._syncInFlight) return;
+    await this._ensureConfiguredAuth();
     this._syncInFlight = true;
     const startedAt = getTimestamp();
     await this._appendActivityLog(this._buildLogEntry({
@@ -1231,6 +1234,31 @@ class BackupSyncService {
 
   async _getCachedPassword() {
     return getCachedPassword();
+  }
+
+  async _ensureConfiguredAuth(password) {
+    const mode = String(await getUserSetting(SETTINGS_KEYS.authMode, 'ucan')).toLowerCase();
+    if (mode !== 'ucan') return;
+    const endpoint = await this._resolveBaseEndpoint();
+    if (!endpoint) return;
+    const resource = normalizeUcanResource(await getUserSetting(
+      SETTINGS_KEYS.ucanResource,
+      getDefaultUcanResource()
+    ));
+    const action = normalizeUcanAction(await getUserSetting(
+      SETTINGS_KEYS.ucanAction,
+      DEFAULT_UCAN_ACTION
+    ));
+    await ensureTargetUcanToken({
+      endpoint,
+      tokenSettingKey: SETTINGS_KEYS.ucanToken,
+      audienceSettingKey: SETTINGS_KEYS.ucanAudience,
+      resourceSettingKey: SETTINGS_KEYS.ucanResource,
+      actionSettingKey: SETTINGS_KEYS.ucanAction,
+      defaultResource: resource,
+      defaultAction: action,
+      password
+    });
   }
 
   async _payloadPath(fingerprint) {

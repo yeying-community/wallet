@@ -52,6 +52,9 @@ import { notifyUnlocked } from '../unlock-flow.js';
 import { updateKeepAlive } from '../offscreen.js';
 import { getTimestamp } from '../../common/utils/time-utils.js';
 import { mpcService } from '../mpc-service.js';
+import { getIdentities, saveIdentity } from '../../storage/identity-storage.js';
+import { IdentityStorageKeys } from '../../storage/storage-keys.js';
+import { getValue, setValue } from '../../storage/storage-base.js';
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -559,6 +562,9 @@ export async function handleExportAccountsFile(password) {
   }
   try {
     const wallets = await getWallets();
+    const identities = await getIdentities();
+    const selectedIdentityId = await getValue(IdentityStorageKeys.SELECTED_IDENTITY, null);
+    const selectedAccount = await getSelectedAccount();
     const exportedWallets = [];
     for (const wallet of Object.values(wallets || {})) {
       if (wallet.type !== WALLET_TYPE.HD && wallet.type !== WALLET_TYPE.IMPORTED) continue;
@@ -590,6 +596,9 @@ export async function handleExportAccountsFile(password) {
       version: 1,
       exportedAt: getTimestamp(),
       wallets: exportedWallets
+      , identities: Object.values(identities || {}).map(({ privateJwk, recoveryPrivateJwk, ...record }) => record),
+      selectedIdentityId,
+      selectedAddress: selectedAccount?.address || ''
     };
     return {
       success: true,
@@ -624,6 +633,15 @@ export async function handleImportAccountsFile(file, password) {
     );
     let imported = 0;
     let skipped = 0;
+    let firstImportedAccountId = '';
+    for (const identity of Array.isArray(payload.identities) ? payload.identities : []) {
+      if (identity?.document?.walletIdentityId && identity?.encryptedKeyMaterial) {
+        await saveIdentity(identity.document.walletIdentityId, identity);
+      }
+    }
+    if (payload.selectedIdentityId && payload.identities?.some(item => item?.document?.walletIdentityId === payload.selectedIdentityId)) {
+      await setValue(IdentityStorageKeys.SELECTED_IDENTITY, payload.selectedIdentityId);
+    }
 
     for (const source of payload.wallets) {
       const sourceAccounts = Array.isArray(source.accounts) ? source.accounts : [];
@@ -642,6 +660,7 @@ export async function handleImportAccountsFile(file, password) {
           usernameUpdatedAt: firstMeta.usernameUpdatedAt || 0
         });
         await saveAccount(preview.mainAccount);
+        if (!firstImportedAccountId) firstImportedAccountId = preview.mainAccount.id;
         existingAddresses.add(preview.mainAccount.address.toLowerCase());
         imported += 1;
         for (const meta of sourceAccounts.filter(account => Number.isInteger(account.index) && account.index > 0).sort((a, b) => a.index - b.index)) {
@@ -665,12 +684,18 @@ export async function handleImportAccountsFile(file, password) {
           preview.mainAccount.usernameUpdatedAt = meta.usernameUpdatedAt || 0;
           await saveWallet(preview.wallet);
           await saveAccount(preview.mainAccount);
+          if (!firstImportedAccountId) firstImportedAccountId = preview.mainAccount.id;
           existingAddresses.add(preview.mainAccount.address.toLowerCase());
           imported += 1;
         }
       }
     }
     if (imported === 0 && skipped === 0) return { success: false, error: '备份文件中没有可导入的账户' };
+    if (payload.selectedAddress) {
+      const importedAccounts = await getAccountList();
+      const selected = importedAccounts.find(item => String(item.address || '').toLowerCase() === String(payload.selectedAddress).toLowerCase());
+      if (selected?.id) await setSelectedAccountId(selected.id);
+    }
     return { success: true, imported, skipped };
   } catch (error) {
     return { success: false, error: error.message || '密码错误或备份文件损坏' };

@@ -1169,6 +1169,42 @@
         </div>
       </div>
 
+      <div id="walletIdentityDetailPage" class="page hidden">
+        <div class="page-header"><button id="walletIdentityDetailBackBtn" class="back-btn" type="button">←</button><h2>钱包身份详情</h2></div>
+        <div class="settings-body wallet-identity-details">
+          <p class="settings-card-description">钱包身份用于在受支持的社区应用中复用你的验证资料。地址、用户名和邮箱会作为同一身份关联进行管理。</p>
+          <div class="detail-row"><span class="detail-label">状态</span><span class="detail-value" id="walletIdentityDetailStatusPage">-</span></div>
+          <div class="detail-row"><span class="detail-label">用户名</span><span class="detail-value" id="walletIdentityDetailUsernamePage">-</span></div>
+          <div class="detail-row"><span class="detail-label">邮箱</span><span class="detail-value" id="walletIdentityDetailEmailPage">-</span></div>
+          <div class="detail-row"><span class="detail-label">钱包地址</span><span class="detail-value" id="walletIdentityDetailAddressPage">-</span></div>
+          <div class="detail-row"><span class="detail-label">身份 DID</span><span class="detail-value" id="walletIdentityDetailDidPage">-</span></div>
+          <div class="detail-row"><span class="detail-label">身份服务</span><span class="detail-value" id="walletIdentityDetailEndpointPage">-</span></div>
+          <div class="settings-row identity-detail-actions"><button id="changeWalletIdentityPageBtn" class="btn btn-primary">变更资料</button><button id="unlinkWalletIdentityBtn" class="btn btn-danger">解除验证</button></div>
+        </div>
+      </div>
+
+      <div id="walletIdentityEditModal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+          <div class="modal-header"><h3>变更钱包身份资料</h3><button class="btn-close" id="closeWalletIdentityEditModal" type="button">✕</button></div>
+          <div class="modal-body">
+            <p class="settings-hint">选择要绑定的地址，并确认用户名和邮箱。修改后需要重新验证。</p>
+            <div class="form-group"><label for="walletIdentityEditAddress">钱包地址</label><select id="walletIdentityEditAddress" class="input"></select></div>
+            <div class="form-group"><label for="walletIdentityEditUsername">用户名</label><input id="walletIdentityEditUsername" class="input" autocomplete="username" /></div>
+            <div class="form-group"><label for="walletIdentityEditEmail">邮箱</label><input id="walletIdentityEditEmail" class="input" type="email" autocomplete="email" /></div>
+          </div>
+          <div class="modal-footer"><button id="confirmWalletIdentityEditBtn" class="btn btn-primary">继续验证</button><button id="cancelWalletIdentityEditBtn" class="btn btn-secondary">取消</button></div>
+        </div>
+      </div>
+      <div id="walletIdentityUnlinkModal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+          <div class="modal-header"><h3>解除钱包身份验证</h3><button class="btn-close" id="closeWalletIdentityUnlinkModal" type="button">✕</button></div>
+          <div class="modal-body"><p class="settings-card-description">解除后，此验证服务签发的通行证和未完成授权将被撤销。钱包地址和本地身份资料不会被删除。</p></div>
+          <div class="modal-footer"><button id="confirmWalletIdentityUnlinkBtn" class="btn btn-danger">确认解除</button><button id="cancelWalletIdentityUnlinkBtn" class="btn btn-secondary">取消</button></div>
+        </div>
+      </div>
+
       <!-- 同步日志审计页面 -->
       <div id="backupSyncLogsPage" class="page hidden">
         <div class="page-header">
@@ -1312,6 +1348,10 @@
                 <span id="backupSyncEndpointValue">-</span>
               </div>
               <div class="settings-detail-row">
+                <span>认证方式：</span>
+                <span id="backupSyncAuthModeValue">-</span>
+              </div>
+              <div class="settings-detail-row">
                 <span>连接状态：</span>
                 <span id="backupSyncConnectionStatus">未启用</span>
               </div>
@@ -1348,11 +1388,12 @@
               <div class="custody-summary-row"><span>当前状态</span><strong id="custodyStatusText">尚未配置</strong></div>
               <div class="custody-summary-row"><span>通行证</span><strong id="custodyPasskeyStatus">未检查</strong></div>
               <div class="custody-summary-row"><span>托管记录</span><strong id="custodyRecordSummary">暂无记录</strong></div>
+              <div class="custody-summary-row"><span>最近同步</span><strong id="custodyLastSyncSummary">从未同步</strong></div>
             </div>
             <div class="settings-row settings-action-grid">
+              <button id="custodySyncBtn" class="btn btn-primary btn-small">立即同步</button>
               <button id="custodyConfigBtn" class="btn btn-secondary btn-small">高级设置</button>
             </div>
-            <p class="settings-hint">普通使用只需开启托管并完成通行证绑定；高级设置通常无需修改。</p>
           </div>
       </div>
 
@@ -1421,14 +1462,24 @@
               <input type="url" id="backupSyncEndpointInput" class="input" placeholder="https://warehouse.tidukongjian.com/dav" />
             </div>
             <div class="form-group">
-              <label for="backupSyncUsernameInput">用户名（可选）</label>
-              <input type="text" id="backupSyncUsernameInput" class="input" autocomplete="username" />
+              <label for="backupSyncAuthModeSelect">认证方式</label>
+              <select id="backupSyncAuthModeSelect" class="input">
+                <option value="ucan">钱包授权</option>
+                <option value="basic">用户名和密码</option>
+              </select>
             </div>
-            <div class="form-group">
-              <label for="backupSyncPasswordInput">密码（可选）</label>
-              <input type="password" id="backupSyncPasswordInput" class="input" autocomplete="current-password" />
+            <div id="backupSyncBasicPanel" class="hidden">
+              <div class="form-group">
+                <label for="backupSyncUsernameInput">用户名</label>
+                <input type="text" id="backupSyncUsernameInput" class="input" autocomplete="username" />
+              </div>
+              <div class="form-group">
+                <label for="backupSyncPasswordInput">密码</label>
+                <input type="password" id="backupSyncPasswordInput" class="input" autocomplete="current-password" />
+              </div>
+              <p class="settings-hint">请输入备份服务提供的用户名和密码。</p>
             </div>
-            <p class="settings-hint">如服务要求账号密码，请同时填写用户名和密码；留空则使用钱包签名授权。</p>
+            <p id="backupSyncUcanHint" class="settings-hint">使用钱包授权访问备份服务，无需填写用户名和密码。</p>
           </div>
           <div class="modal-footer">
             <button id="backupSyncConfigSaveBtn" class="btn btn-primary">保存</button>

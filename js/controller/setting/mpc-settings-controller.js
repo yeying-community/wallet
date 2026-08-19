@@ -152,6 +152,9 @@ export class MpcSettingsController {
         this.openCustodyConfigModal();
       });
     }
+    document.getElementById('custodySyncBtn')?.addEventListener('click', async () => {
+      await this.handleCustodySync();
+    });
 
     const custodyDetailBtn = document.getElementById('custodyDetailBtn');
     if (custodyDetailBtn) {
@@ -444,6 +447,7 @@ export class MpcSettingsController {
     const statusText = document.getElementById('custodyStatusText');
     const passkeyStatus = document.getElementById('custodyPasskeyStatus');
     const recordSummary = document.getElementById('custodyRecordSummary');
+    const lastSyncSummary = document.getElementById('custodyLastSyncSummary');
 
     const endpoint = settings.endpoint || DEFAULT_CUSTODY_ENDPOINT;
     if (enabledToggle) enabledToggle.checked = Boolean(settings.enabled);
@@ -460,6 +464,7 @@ export class MpcSettingsController {
         const last = settings.lastBackupAt ? ` · 最近 ${formatLocaleDateTime(settings.lastBackupAt)}` : '';
         recordSummary.textContent = count ? `${count} 份${last}` : '暂无记录';
       }
+      if (lastSyncSummary) lastSyncSummary.textContent = settings.lastBackupAt ? formatLocaleDateTime(settings.lastBackupAt) : '从未同步';
     }
   }
 
@@ -523,6 +528,26 @@ export class MpcSettingsController {
     } catch (error) {
       console.error('[MpcSettings] 检查托管状态失败:', error);
       showError('检查失败: ' + error.message);
+    } finally {
+      hideWaiting();
+    }
+  }
+
+  async handleCustodySync() {
+    try {
+      const settings = this.custodySettings || {};
+      if (!settings.enabled) throw new Error('请先开启密钥托管');
+      const password = await this.requestPassword?.();
+      if (!password) return;
+      showWaiting();
+      const form = this.readCustodyForm();
+      const result = await this.wallet.enableCustody({ ...form, password, forceRefresh: true });
+      if (!result?.success) throw new Error(result?.error || '同步失败');
+      this.custodySettings = result.settings || this.custodySettings;
+      this.renderCustodySettings(this.custodySettings);
+      showSuccess('托管数据已同步');
+    } catch (error) {
+      showError(`同步失败: ${error.message}`);
     } finally {
       hideWaiting();
     }
@@ -1285,15 +1310,12 @@ export class MpcSettingsController {
       const activity = this.formatMpcActivity(entry);
 
       return `
-        <div class="sync-activity-item">
-          <div class="sync-activity-time">${escapeHtml(timeText)}</div>
-          <div class="sync-activity-main">
-            <div class="sync-activity-message">${escapeHtml(activity.title)}</div>
-            <div class="sync-activity-meta">
-              <span class="sync-activity-tag level-${activity.statusClass}">${escapeHtml(activity.status)}</span>
-              <span>${escapeHtml(activity.detail)}</span>
-            </div>
+        <div class="sync-activity-item mpc-activity-item">
+          <div class="mpc-activity-header">
+            <div class="sync-activity-time">${escapeHtml(timeText)}</div>
+            <span class="sync-activity-tag level-${activity.statusClass}">${escapeHtml(activity.status)}</span>
           </div>
+          <div class="mpc-activity-content">${escapeHtml(activity.title)}：${escapeHtml(activity.detail)}</div>
         </div>
       `;
     }).join('');

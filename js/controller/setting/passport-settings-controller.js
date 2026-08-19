@@ -1,4 +1,4 @@
-import { showError, showSuccess, showWaiting, hideWaiting } from '../../common/ui/index.js';
+import { showPage, showError, showSuccess, showWaiting, hideWaiting } from '../../common/ui/index.js';
 
 const DEFAULT_NODE_ENDPOINT = 'https://node.yeying.pub';
 const ENDPOINT_STORAGE_KEY = 'passportNodeEndpoint';
@@ -6,6 +6,7 @@ const BINDING_STORAGE_PREFIX = 'passportIdentityBinding:';
 const EMAIL_VERIFICATION_STORAGE_PREFIX = 'passportEmailVerification:';
 const BINDING_STATE_PENDING_EMAIL = 'pending-email';
 const BINDING_STATE_COMPLETE = 'complete';
+const USERNAME_NAMESPACE_SUFFIX = '@node.yeying.pub';
 
 export class PassportSettingsController {
   constructor({ wallet, transaction, requestPassword }) {
@@ -19,7 +20,19 @@ export class PassportSettingsController {
     document.getElementById('passportEndpointInput')?.addEventListener('change', () => this.renderBindingAction());
     document.getElementById('viewWalletIdentityBtn')?.addEventListener('click', () => this.openIdentityDetails());
     document.getElementById('closeWalletIdentityDetailModal')?.addEventListener('click', () => this.closeIdentityDetails());
+    document.getElementById('walletIdentityDetailBackBtn')?.addEventListener('click', () => showPage('settingsPage'));
+    document.getElementById('changeWalletIdentityPageBtn')?.addEventListener('click', () => this.changePassportIdentity());
+    document.getElementById('unlinkWalletIdentityBtn')?.addEventListener('click', () => this.openUnlinkConfirm());
+    document.getElementById('closeWalletIdentityUnlinkModal')?.addEventListener('click', () => this.closeUnlinkConfirm());
+    document.getElementById('cancelWalletIdentityUnlinkBtn')?.addEventListener('click', () => this.closeUnlinkConfirm());
+    document.querySelector('#walletIdentityUnlinkModal .modal-overlay')?.addEventListener('click', () => this.closeUnlinkConfirm());
+    document.getElementById('confirmWalletIdentityUnlinkBtn')?.addEventListener('click', async () => { this.closeUnlinkConfirm(); await this.loginAndUnlink(); });
+    document.getElementById('closeWalletIdentityEditModal')?.addEventListener('click', () => this.closeIdentityEdit());
+    document.getElementById('cancelWalletIdentityEditBtn')?.addEventListener('click', () => this.closeIdentityEdit());
+    document.querySelector('#walletIdentityEditModal .modal-overlay')?.addEventListener('click', () => this.closeIdentityEdit());
+    document.getElementById('confirmWalletIdentityEditBtn')?.addEventListener('click', () => this.submitIdentityEdit());
     document.getElementById('changeWalletIdentityBtn')?.addEventListener('click', () => {
+      this.selectedIdentityAddress = document.getElementById('walletIdentityAddressSelect')?.value || '';
       this.closeIdentityDetails();
       this.changePassportIdentity();
     });
@@ -83,6 +96,7 @@ export class PassportSettingsController {
     let account = null;
     try {
       account = await this.wallet.getCurrentAccount();
+      await this.renderAddressPicker(account);
       state = this.loadBindingState(this.endpoint(), account?.address);
       const identities = await this.wallet.listIdentities();
       const identityId = identities?.selectedIdentityId || identities?.identities?.[0]?.document?.walletIdentityId;
@@ -121,6 +135,22 @@ export class PassportSettingsController {
     }
   }
 
+  async renderAddressPicker(currentAccount) {
+    const selector = document.getElementById('walletIdentityAddressSelect');
+    if (!selector) return;
+    const wallets = await this.wallet.getWalletList();
+    const accounts = wallets.flatMap(wallet => Array.isArray(wallet.accounts) ? wallet.accounts : []).filter(item => item?.address);
+    const options = accounts.length ? accounts : (currentAccount ? [currentAccount] : []);
+    selector.replaceChildren();
+    options.forEach(item => {
+      const option = document.createElement('option');
+      option.value = item.address;
+      option.textContent = `${item.name || '钱包账户'} · ${this.formatWalletAddress(item.address)}`;
+      option.selected = String(item.address).toLowerCase() === String(currentAccount?.address || '').toLowerCase();
+      selector.appendChild(option);
+    });
+  }
+
   setIdentityStatusIcon(element, state, label) {
     if (!element) return;
     element.className = `wallet-identity-status ${state}`;
@@ -141,16 +171,16 @@ export class PassportSettingsController {
         const token = item?.credential || item?.jwt || item;
         const payload = this.decodeCredentialPayload(token);
         const subject = payload?.vc?.credentialSubject || {};
-        if (subject.usernameQualified || subject.username) values.username = subject.usernameQualified || subject.username;
+        if (subject.usernameQualified || subject.username) values.username = this.displayUsername(subject.username || subject.usernameQualified);
         if (subject.email) values.email = subject.email;
       }
-      this.setDetailValue('walletIdentityDetailStatus', '已验证');
-      this.setDetailValue('walletIdentityDetailUsername', values.username);
-      this.setDetailValue('walletIdentityDetailEmail', values.email);
-      this.setDetailValue('walletIdentityDetailAddress', account?.address || '-');
-      this.setDetailValue('walletIdentityDetailDid', identity?.document?.id || '-');
-      this.setDetailValue('walletIdentityDetailEndpoint', this.endpoint() || DEFAULT_NODE_ENDPOINT);
-      document.getElementById('walletIdentityDetailModal')?.classList.remove('hidden');
+      this.setDetailValue('walletIdentityDetailStatusPage', '已验证');
+      this.setDetailValue('walletIdentityDetailUsernamePage', values.username);
+      this.setDetailValue('walletIdentityDetailEmailPage', values.email);
+      this.setDetailValue('walletIdentityDetailAddressPage', account?.address || '-');
+      this.setDetailValue('walletIdentityDetailDidPage', identity?.document?.id || '-');
+      this.setDetailValue('walletIdentityDetailEndpointPage', this.endpoint() || DEFAULT_NODE_ENDPOINT);
+      showPage('walletIdentityDetailPage');
     } catch (error) {
       showError(error?.message || '无法读取钱包身份详情');
     }
@@ -158,6 +188,96 @@ export class PassportSettingsController {
 
   closeIdentityDetails() {
     document.getElementById('walletIdentityDetailModal')?.classList.add('hidden');
+  }
+
+  closeIdentityEdit() { document.getElementById('walletIdentityEditModal')?.classList.add('hidden'); }
+  openUnlinkConfirm() { document.getElementById('walletIdentityUnlinkModal')?.classList.remove('hidden'); }
+  closeUnlinkConfirm() { document.getElementById('walletIdentityUnlinkModal')?.classList.add('hidden'); }
+
+  async openIdentityEdit() {
+    const current = await this.wallet.getCurrentAccount();
+    const selector = document.getElementById('walletIdentityEditAddress');
+    const options = [];
+    const seen = new Set();
+    const addOption = (item) => {
+      const address = String(item?.address || '').trim();
+      const key = address.toLowerCase();
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      options.push({ ...item, address });
+    };
+    // Populate the current account before any optional wallet-list RPC. This
+    // keeps the editor usable when an imported wallet is still being restored.
+    addOption(current);
+    if (selector) {
+      this.renderIdentityAddressOptions(selector, options, current);
+    }
+    try {
+      const walletResult = typeof this.wallet.getWalletList === 'function'
+        ? await this.wallet.getWalletList()
+        : [];
+      const wallets = Array.isArray(walletResult) ? walletResult : walletResult?.wallets;
+      const accounts = (Array.isArray(wallets) ? wallets : [])
+        .flatMap(wallet => Array.isArray(wallet?.accounts) ? wallet.accounts : [])
+        .filter(item => item?.address);
+      accounts.forEach(addOption);
+    } catch (error) {
+      console.warn('[PassportSettings] 加载钱包地址列表失败，将继续使用当前地址:', error?.message || error);
+    }
+    if (selector) {
+      this.renderIdentityAddressOptions(selector, options, current);
+    }
+    let username = '', email = '';
+    const identities = typeof this.wallet.listIdentities === 'function'
+      ? await this.wallet.listIdentities()
+      : null;
+    const identityId = identities?.selectedIdentityId || identities?.identities?.[0]?.document?.walletIdentityId;
+    const credentialResult = identityId && typeof this.wallet.listIdentityCredentials === 'function'
+      ? await this.wallet.listIdentityCredentials(identityId)
+      : null;
+    for (const item of credentialResult?.credentials || []) {
+      const subject = this.decodeCredentialPayload(item?.credential || item)?.vc?.credentialSubject || {};
+      username = this.displayUsername(subject.username || subject.usernameQualified) || username;
+      email = subject.email || email;
+    }
+    const usernameInput = document.getElementById('walletIdentityEditUsername');
+    const emailInput = document.getElementById('walletIdentityEditEmail');
+    if (!document.getElementById('walletIdentityEditModal')) {
+      const username = await this.promptUsername();
+      if (!username) return;
+      const email = await this.promptEmail();
+      if (!email) return;
+      await this.requestAndConfirmIdentity({ username, email });
+      return;
+    }
+    if (usernameInput) usernameInput.value = username;
+    if (emailInput) emailInput.value = email;
+    document.getElementById('walletIdentityEditModal')?.classList.remove('hidden');
+  }
+
+  renderIdentityAddressOptions(selector, options, current) {
+    selector.replaceChildren(...options.map(item => {
+      const option = document.createElement('option');
+      option.value = item.address;
+      option.textContent = `${item.name || '钱包账户'} · ${this.formatWalletAddress(item.address)}`;
+      option.selected = item.address.toLowerCase() === String(current?.address || '').toLowerCase();
+      return option;
+    }));
+    if (!selector.options.length) selector.innerHTML = '<option value="">暂无可用钱包地址</option>';
+    // PopupController mirrors native selects into a custom trigger/menu.
+    // Refresh that mirror after replacing options dynamically.
+    selector._customSelectSync?.();
+  }
+
+  async submitIdentityEdit() {
+    const username = String(document.getElementById('walletIdentityEditUsername')?.value || '').trim().toLowerCase();
+    const email = String(document.getElementById('walletIdentityEditEmail')?.value || '').trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username)) throw new Error('用户名须为 3-32 位小写字母、数字、点、下划线或连字符');
+    if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('请输入有效邮箱');
+    this.selectedIdentityAddress = document.getElementById('walletIdentityEditAddress')?.value || '';
+    this.closeIdentityEdit();
+    await this.requestAndConfirmIdentity({ username, email });
+    await this.renderBindingAction();
   }
 
   setDetailValue(id, value) {
@@ -175,6 +295,7 @@ export class PassportSettingsController {
   }
 
   async handleIdentityAction() {
+    this.selectedIdentityAddress = document.getElementById('walletIdentityAddressSelect')?.value || '';
     const state = document.getElementById('passportIdentityBtn')?.dataset.state || 'none';
     if (state === BINDING_STATE_COMPLETE) return this.changePassportIdentity();
     if (state === BINDING_STATE_PENDING_EMAIL) return this.continueEmailVerification();
@@ -368,10 +489,17 @@ export class PassportSettingsController {
     const endpoint = this.endpoint();
     if (!endpoint) throw new Error('请输入 Node 服务地址');
     this.persistEndpoint(endpoint);
-    const account = await this.wallet.getCurrentAccount();
+    const currentAccount = await this.wallet.getCurrentAccount();
+    const requestedAddress = String(this.selectedIdentityAddress || currentAccount?.address || '').trim();
+    const account = requestedAddress && requestedAddress.toLowerCase() !== String(currentAccount?.address || '').toLowerCase()
+      ? (await this.wallet.getWalletList()).flatMap(wallet => Array.isArray(wallet.accounts) ? wallet.accounts : []).find(item => String(item.address || '').toLowerCase() === requestedAddress.toLowerCase())
+      : currentAccount;
     if (!account?.address) throw new Error('未找到当前账户');
     const password = await this.requestPassword?.();
     if (!password) return false;
+    if (account.id && account.id !== currentAccount?.id) {
+      await this.wallet.switchAccount(account.id, password);
+    }
     const identities = await this.wallet.listIdentities();
     let identityId = identities?.selectedIdentityId || identities?.identities?.[0]?.document?.walletIdentityId;
     if (!identityId) {
@@ -471,13 +599,8 @@ export class PassportSettingsController {
 
   async changePassportIdentity() {
     try {
-      const username = await this.promptUsername();
-      if (!username) return;
-      const email = await this.promptEmail();
-      if (!email) return;
-      const completed = await this.requestAndConfirmIdentity({ username, email });
-      await this.renderBindingAction();
-      if (completed) showSuccess('验证用户名和邮箱已更新');
+      await this.openIdentityEdit();
+      return;
     } catch (error) {
       this.setEmailStatus(`邮箱变更失败：${error.message || '未知错误'}`);
       showError(error.message || '邮箱变更失败');
@@ -485,7 +608,6 @@ export class PassportSettingsController {
   }
 
   async loginAndUnlink() {
-    if (!globalThis.confirm?.('移除后，此验证服务签发的通行证和未完成授权将被撤销。确认继续？')) return;
     try {
       const endpoint = this.endpoint();
       if (!endpoint) throw new Error('请输入 Node 服务地址');
@@ -522,5 +644,12 @@ export class PassportSettingsController {
     const value = String(address || '').trim();
     if (value.length <= 12) return value || '-';
     return `${value.slice(0, 6)}...${value.slice(-4)}`;
+  }
+
+  displayUsername(value) {
+    const username = String(value || '').trim();
+    return username.toLowerCase().endsWith(USERNAME_NAMESPACE_SUFFIX)
+      ? username.slice(0, -USERNAME_NAMESPACE_SUFFIX.length)
+      : username;
   }
 }

@@ -15,6 +15,7 @@ import { notifyUnlocked } from './unlock-flow.js';
 import { updateKeepAlive } from './offscreen.js';
 import { backupSyncService } from './sync-service.js';
 import { mpcService } from './mpc-service.js';
+import { onCustodyUnlocked } from './operations/custody.js';
 import { diagnostics } from './diagnostics.js';
 
 /**
@@ -74,6 +75,9 @@ export async function unlockWallet(password, accountId, source = 'unknown') {
     });
     mpcService.onUnlocked(password).catch((error) => {
       console.warn('[MPC] unlock hook failed:', error?.message || error);
+    });
+    onCustodyUnlocked(password).catch((error) => {
+      console.warn('[Custody] unlock hook failed:', error?.message || error);
     });
 
     console.log('✅ Wallet unlocked');

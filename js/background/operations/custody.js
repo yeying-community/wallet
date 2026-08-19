@@ -71,6 +71,19 @@ async function ensureCustodyToken(options = {}) {
   });
 }
 
+export async function onCustodyUnlocked(password) {
+  const settings = await getCustodySettingsRaw();
+  if (!settings.enabled) return { enabled: false };
+  await ensureCustodyToken({
+    endpoint: settings.endpoint,
+    password,
+    resource: settings.ucanResource,
+    action: settings.ucanAction,
+    audience: settings.ucanAudience
+  });
+  return { enabled: true };
+}
+
 async function buildCustodyPayload(password) {
   const account = await getSelectedAccount();
   if (!account?.id || !account?.walletId) {
