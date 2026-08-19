@@ -17,7 +17,6 @@ export class PassportSettingsController {
 
   bindEvents() {
     document.getElementById('passportIdentityBtn')?.addEventListener('click', () => this.handleIdentityAction());
-    document.getElementById('passportEndpointInput')?.addEventListener('change', () => this.renderBindingAction());
     document.getElementById('viewWalletIdentityBtn')?.addEventListener('click', () => this.openIdentityDetails());
     document.getElementById('closeWalletIdentityDetailModal')?.addEventListener('click', () => this.closeIdentityDetails());
     document.getElementById('walletIdentityDetailBackBtn')?.addEventListener('click', () => showPage('settingsPage'));
@@ -39,7 +38,11 @@ export class PassportSettingsController {
     document.querySelector('#walletIdentityDetailModal .modal-overlay')?.addEventListener('click', () => this.closeIdentityDetails());
   }
 
-  endpoint() { return String(document.getElementById('passportEndpointInput')?.value || '').trim(); }
+  endpoint() {
+    return String(
+      document.getElementById('passportEndpointInput')?.value || this.loadStoredEndpoint() || DEFAULT_NODE_ENDPOINT
+    ).trim();
+  }
 
   loadStoredEndpoint() {
     try { return String(globalThis.localStorage?.getItem(ENDPOINT_STORAGE_KEY) || '').trim(); } catch { return ''; }
@@ -114,14 +117,12 @@ export class PassportSettingsController {
     const pending = state === BINDING_STATE_PENDING_EMAIL;
     const complete = state === BINDING_STATE_COMPLETE;
     const statusIcon = document.getElementById('walletIdentityStatusIcon');
-    const serviceConfig = document.getElementById('identityServiceConfig');
     const detailsButton = document.getElementById('viewWalletIdentityBtn');
     button.dataset.state = state || 'none';
     button.textContent = pending ? '继续验证' : '验证';
     button.classList.toggle('hidden', complete);
     button.classList.toggle('btn-primary', true);
     button.classList.toggle('btn-danger', false);
-    serviceConfig?.classList.toggle('hidden', complete);
     detailsButton?.classList.toggle('hidden', !complete);
     if (complete) {
       this.setIdentityStatusIcon(statusIcon, 'verified', '已验证');
@@ -240,6 +241,7 @@ export class PassportSettingsController {
       username = this.displayUsername(subject.username || subject.usernameQualified) || username;
       email = subject.email || email;
     }
+    const endpointInput = document.getElementById('walletIdentityEditEndpoint');
     const usernameInput = document.getElementById('walletIdentityEditUsername');
     const emailInput = document.getElementById('walletIdentityEditEmail');
     if (!document.getElementById('walletIdentityEditModal')) {
@@ -250,6 +252,7 @@ export class PassportSettingsController {
       await this.requestAndConfirmIdentity({ username, email });
       return;
     }
+    if (endpointInput) endpointInput.value = this.endpoint();
     if (usernameInput) usernameInput.value = username;
     if (emailInput) emailInput.value = email;
     document.getElementById('walletIdentityEditModal')?.classList.remove('hidden');
@@ -270,12 +273,15 @@ export class PassportSettingsController {
   }
 
   async submitIdentityEdit() {
+    const endpoint = String(document.getElementById('walletIdentityEditEndpoint')?.value || '').trim();
     const username = String(document.getElementById('walletIdentityEditUsername')?.value || '').trim().toLowerCase();
     const email = String(document.getElementById('walletIdentityEditEmail')?.value || '').trim().toLowerCase();
+    if (!endpoint) throw new Error('请输入身份服务地址');
     if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username)) throw new Error('用户名须为 3-32 位小写字母、数字、点、下划线或连字符');
     if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('请输入有效邮箱');
     this.selectedIdentityAddress = document.getElementById('walletIdentityEditAddress')?.value || '';
     this.closeIdentityEdit();
+    this.persistEndpoint(endpoint);
     await this.requestAndConfirmIdentity({ username, email });
     await this.renderBindingAction();
   }
@@ -335,13 +341,7 @@ export class PassportSettingsController {
 
   async loginAndBind() {
     try {
-      const username = await this.promptUsername();
-      if (!username) return;
-      const email = await this.promptEmail();
-      if (!email) return;
-      const completed = await this.requestAndConfirmIdentity({ username, email });
-      await this.renderBindingAction();
-      if (completed) showSuccess('钱包验证已完成');
+      await this.openIdentityEdit();
     } catch (error) {
       this.setStatus(`验证未完成：${error.message || '未知错误'}`);
       showError(error.message || '钱包验证未完成');
