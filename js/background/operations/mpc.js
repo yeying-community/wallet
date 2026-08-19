@@ -18,7 +18,7 @@ import {
 import { mpcService } from '../mpc-service.js';
 import { getTimestamp } from '../../common/utils/time-utils.js';
 import { generateId } from '../../common/utils/index.js';
-import { normalizeBearerToken } from '../../common/ucan-utils.js';
+import { deriveUcanAudience, normalizeBearerToken } from '../../common/ucan-utils.js';
 
 const DEFAULT_MPC_AUTH_SCHEME = 'ucan';
 const DEFAULT_MPC_E2E_SUITE = 'x25519-aes-gcm';
@@ -85,6 +85,10 @@ export async function handleCreateMpcWallet(options = {}) {
         throw new Error('协调器地址格式不正确');
       }
       settingsUpdates.mpcCoordinatorEndpoint = coordinatorEndpoint;
+      settingsUpdates.mpcCoordinatorUcanAudience = deriveUcanAudience(coordinatorEndpoint);
+      settingsUpdates.mpcCoordinatorUcanResource = DEFAULT_MPC_UCAN_RESOURCE;
+      settingsUpdates.mpcCoordinatorUcanAction = DEFAULT_MPC_UCAN_ACTION;
+      settingsUpdates.mpcCoordinatorUcanToken = '';
       await mpcService.setCoordinatorEndpoint(coordinatorEndpoint);
     }
     if (ucanToken) {
@@ -101,7 +105,10 @@ export async function handleCreateMpcWallet(options = {}) {
       participants,
       curve,
       password: options.password,
-      endpoint: coordinatorEndpoint || undefined
+      endpoint: coordinatorEndpoint || undefined,
+      resource: DEFAULT_MPC_UCAN_RESOURCE,
+      action: DEFAULT_MPC_UCAN_ACTION,
+      forceRefresh: true
     });
     const now = getTimestamp();
     const wallet = {
@@ -157,6 +164,12 @@ export async function handleGetMpcSettings() {
 export async function handleUpdateMpcSettings(updates = {}) {
   try {
     const sanitized = {};
+    const previousEndpoint = String(await getUserSetting('mpcCoordinatorEndpoint', DEFAULT_MPC_COORDINATOR_ENDPOINT) || '').trim();
+    const previousAudience = String(await getUserSetting('mpcCoordinatorUcanAudience', '') || '').trim();
+    const nextEndpoint = 'coordinatorEndpoint' in updates
+      ? String(updates.coordinatorEndpoint || '').trim()
+      : previousEndpoint;
+    const endpointChanged = nextEndpoint !== previousEndpoint;
 
     if ('authScheme' in updates) {
       const value = String(updates.authScheme || '').toLowerCase();
@@ -180,7 +193,14 @@ export async function handleUpdateMpcSettings(updates = {}) {
     }
 
     if ('coordinatorEndpoint' in updates) {
-      sanitized.mpcCoordinatorEndpoint = String(updates.coordinatorEndpoint || '').trim();
+      sanitized.mpcCoordinatorEndpoint = nextEndpoint;
+      if (endpointChanged) {
+        const submittedAudience = String(updates.ucanAudience || '').trim();
+        if (!submittedAudience || submittedAudience === previousAudience) {
+          sanitized.mpcCoordinatorUcanAudience = deriveUcanAudience(sanitized.mpcCoordinatorEndpoint);
+        }
+        sanitized.mpcCoordinatorUcanToken = '';
+      }
     }
 
     if ('ucanResource' in updates) {
@@ -192,11 +212,16 @@ export async function handleUpdateMpcSettings(updates = {}) {
     }
 
     if ('ucanAudience' in updates) {
-      sanitized.mpcCoordinatorUcanAudience = String(updates.ucanAudience || '').trim();
+      const submittedAudience = String(updates.ucanAudience || '').trim();
+      if (!endpointChanged || (submittedAudience && submittedAudience !== previousAudience)) {
+        sanitized.mpcCoordinatorUcanAudience = submittedAudience;
+      }
     }
 
     if ('ucanToken' in updates) {
-      sanitized.mpcCoordinatorUcanToken = normalizeBearerToken(updates.ucanToken || '');
+      if (!endpointChanged) {
+        sanitized.mpcCoordinatorUcanToken = normalizeBearerToken(updates.ucanToken || '');
+      }
     }
 
     if (Object.keys(sanitized).length > 0) {

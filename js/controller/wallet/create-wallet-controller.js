@@ -8,10 +8,7 @@ import {
   getPageOrigin,
   setPageOrigin
 } from '../../common/ui/index.js';
-import {
-  DEFAULT_MPC_COORDINATOR_ENDPOINT,
-  normalizeUcanToken
-} from '../setting/settings-utils.js';
+import { DEFAULT_MPC_COORDINATOR_ENDPOINT } from '../setting/settings-utils.js';
 
 const CREATE_WALLET_DRAFT_KEY = 'createWalletDraft';
 
@@ -170,7 +167,6 @@ export class CreateWalletController {
     const mpcThresholdInput = document.getElementById('mpcCreateThresholdInput');
     const mpcCurveSelect = document.getElementById('mpcCreateCurveSelect');
     const mpcCoordinatorEndpointInput = document.getElementById('mpcCreateCoordinatorEndpointInput');
-    const mpcCoordinatorUcanTokenInput = document.getElementById('mpcCreateCoordinatorUcanTokenInput');
     const mpcAdvancedOptions = document.querySelector('.mpc-advanced-options');
     const mpcResult = document.getElementById('mpcCreateWalletResult');
 
@@ -181,7 +177,6 @@ export class CreateWalletController {
     if (mpcThresholdInput) mpcThresholdInput.value = '';
     if (mpcCurveSelect) mpcCurveSelect.value = 'secp256k1';
     if (mpcCoordinatorEndpointInput) mpcCoordinatorEndpointInput.value = '';
-    if (mpcCoordinatorUcanTokenInput) mpcCoordinatorUcanTokenInput.value = '';
     if (mpcAdvancedOptions) mpcAdvancedOptions.open = false;
     if (mpcResult) {
       mpcResult.textContent = '-';
@@ -683,12 +678,6 @@ export class CreateWalletController {
       throw new Error('协调器地址格式不正确');
     }
 
-    const ucanToken = normalizeUcanToken(
-      String(document.getElementById('mpcCreateCoordinatorUcanTokenInput')?.value || '').trim()
-    );
-    return {
-      coordinatorEndpoint: endpoint,
-      ucanToken
-    };
+    return { coordinatorEndpoint: endpoint };
   }
 }

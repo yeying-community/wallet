@@ -222,3 +222,39 @@ test('changePassportEmail prompts for a new email and verifies it', async () => 
   assert.deepEqual(identityRequests, [{ username: 'new-person', email: 'new@example.com' }]);
   assert.equal(elements.globalWaitingOverlay.classList.contains('hidden'), true);
 });
+
+test('continueEmailVerification resumes the stored verification without relinking the account', async () => {
+  const endpoint = 'http://127.0.0.1:8100';
+  const address = '0x1111111111111111111111111111111111111111';
+  elements.passportEndpointInput.value = endpoint;
+  const verificationKey = `passportEmailVerification:${endpoint}:${address.toLowerCase()}`;
+  const values = new Map([[verificationKey, JSON.stringify({
+    verificationId: 'verification-1',
+    username: 'person',
+    email: 'person@example.com'
+  })]]);
+  globalThis.localStorage = {
+    getItem: (key) => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key)
+  };
+  const confirms = [];
+  const controller = new PassportSettingsController({
+    wallet: {
+      getCurrentAccount: async () => ({ address }),
+      confirmIdentityVerification: async (...args) => {
+        confirms.push(args);
+        return { credentials: [{ type: 'EmailCredential' }, { type: 'UsernameCredential' }] };
+      }
+    }
+  });
+  controller.promptVerificationCode = async () => '123456';
+  controller.requestAndConfirmIdentity = async () => { throw new Error('account link must not be retried'); };
+  controller.renderBindingAction = async () => {};
+
+  await controller.continueEmailVerification();
+
+  assert.deepEqual(confirms, [[endpoint, 'verification-1', '123456', ['email', 'username']]]);
+  assert.equal(values.has(verificationKey), false);
+  assert.equal(values.get(`passportIdentityBinding:${endpoint}:${address}`), 'complete');
+});

@@ -15,7 +15,6 @@ function setup() {
     mpcCreateThresholdInput: { tagName: 'input', value: '2' },
     mpcCreateCurveSelect: { tagName: 'select', value: 'secp256k1' },
     mpcCreateCoordinatorEndpointInput: { tagName: 'input', value: 'http://127.0.0.1:8100' },
-    mpcCreateCoordinatorUcanTokenInput: { tagName: 'input', value: 'must-not-persist' },
     mpcAdvancedOptions: { tagName: 'details', _classes: 'mpc-advanced-options', open: true },
   });
   globalThis.document = document;
@@ -28,7 +27,7 @@ test.afterEach(() => {
   delete globalThis.chrome;
 });
 
-test('MPC 创建草稿保留非敏感表单，不包含密码和 UCAN 凭证', () => {
+test('MPC 创建草稿保留非敏感表单，不包含密码', () => {
   setup();
   const controller = new CreateWalletController({ wallet: {}, onCreated: null });
   controller.selectedMpcParticipants = ['0x1111111111111111111111111111111111111111'];
