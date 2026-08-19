@@ -79,6 +79,21 @@
   margin: 0 0 20px;
 }
 
+/* Settings actions share the identity detail action height, including small variants. */
+#settingsPage .settings-section .btn,
+#walletIdentityDetailPage .settings-body .btn,
+#backupSyncDetailPage .settings-body .btn,
+#custodyDetailPage .settings-body .btn,
+#mpcDetailPage .settings-body .btn {
+  box-sizing: border-box;
+  height: 42px;
+  min-height: 42px;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
 /* 设置页块容器 */
 .settings-section {
   margin: 20px 0;
@@ -144,6 +159,15 @@
 .settings-card-description {
   margin: -6px 0 12px;
   line-height: 1.5;
+}
+
+/* 设置卡片操作按钮统一使用身份详情页的标准高度。 */
+.settings-section > .btn,
+.settings-section .settings-row > .btn,
+.settings-section .settings-action-grid > .btn {
+  min-height: 42px;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .settings-detail-list {
@@ -230,6 +254,10 @@
   text-align: right;
   word-break: break-word;
 }
+
+.identity-detail-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 18px; }
+.wallet-identity-details .detail-label,
+.wallet-identity-details .detail-value { font-size: 13px; font-weight: 400; color: #374151; }
 
 .settings-section-danger {
   border: 1px solid #fed7d7;
@@ -634,6 +662,26 @@
 .sync-activity-tag.level-info {
   background: #e0f2fe;
   color: #075985;
+}
+
+.mpc-activity-item {
+  display: block;
+}
+
+.mpc-activity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mpc-activity-content {
+  margin-top: 8px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #111827;
+  overflow-wrap: anywhere;
 }
 
 .sync-log-toolbar {

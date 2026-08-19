@@ -263,6 +263,7 @@ export class BackupSyncSettingsController {
     const passwordInput = document.getElementById('backupSyncPasswordInput');
     const tokenStatus = document.getElementById('backupSyncTokenStatus');
     const endpointValue = document.getElementById('backupSyncEndpointValue');
+    const authModeValue = document.getElementById('backupSyncAuthModeValue');
     const connectionStatus = document.getElementById('backupSyncConnectionStatus');
     const lastPullValue = document.getElementById('backupSyncLastPullValue');
     const lastPushValue = document.getElementById('backupSyncLastPushValue');
@@ -277,6 +278,7 @@ export class BackupSyncSettingsController {
     this.updateBackupSyncAuthPanel(authMode);
     this.updateBackupSyncTokenStatus(settings, tokenStatus);
     if (endpointValue) endpointValue.textContent = settings.endpoint || 'https://warehouse.tidukongjian.com/dav';
+    if (authModeValue) authModeValue.textContent = this.getBackupSyncAuthModeLabel(authMode);
     if (connectionStatus) connectionStatus.textContent = settings.enabled ? '已安全连接' : '未启用';
     if (lastPullValue) lastPullValue.textContent = settings.lastPullAt ? formatLocaleDateTime(settings.lastPullAt) : '-';
     if (lastPushValue) lastPushValue.textContent = settings.lastPushAt ? formatLocaleDateTime(settings.lastPushAt) : '-';
@@ -293,9 +295,17 @@ export class BackupSyncSettingsController {
   updateBackupSyncAuthPanel(mode) {
     const siwePanel = document.getElementById('backupSyncSiwePanel');
     const basicPanel = document.getElementById('backupSyncBasicPanel');
+    const ucanHint = document.getElementById('backupSyncUcanHint');
 
     if (siwePanel) siwePanel.classList.toggle('hidden', mode !== 'siwe');
     if (basicPanel) basicPanel.classList.toggle('hidden', mode !== 'basic');
+    if (ucanHint) ucanHint.classList.toggle('hidden', mode !== 'ucan');
+  }
+
+  getBackupSyncAuthModeLabel(mode) {
+    if (mode === 'basic') return '用户名和密码';
+    if (mode === 'siwe') return '钱包签名';
+    return '钱包授权';
   }
 
   getBackupSyncBasicUsername(value) {
@@ -777,6 +787,7 @@ export class BackupSyncSettingsController {
 
   async saveBackupSyncConnectionSettings() {
     const endpointInput = document.getElementById('backupSyncEndpointInput');
+    const authModeSelect = document.getElementById('backupSyncAuthModeSelect');
     const usernameInput = document.getElementById('backupSyncUsernameInput');
     const passwordInput = document.getElementById('backupSyncPasswordInput');
     const trimmed = String(endpointInput?.value || this.syncSettings?.endpoint || '').trim();
@@ -792,14 +803,18 @@ export class BackupSyncSettingsController {
     const resolved = await this.detectBackupSyncEndpoint(trimmed);
     const username = String(usernameInput?.value || '').trim();
     const password = String(passwordInput?.value || '');
-    if ((username && !password) || (!username && password)) {
+    const authMode = authModeSelect?.value === 'basic' ? 'basic' : 'ucan';
+    if (authMode === 'basic' && ((username && !password) || (!username && password))) {
       throw new Error('请同时填写用户名和密码');
+    }
+    if (authMode === 'basic' && !username && !password) {
+      throw new Error('请输入用户名和密码');
     }
     const updates = {
       endpoint: resolved,
-      authMode: username ? 'basic' : 'ucan'
+      authMode
     };
-    if (username) {
+    if (authMode === 'basic') {
       updates.basicAuth = normalizeBasicAuth(`${username}:${password}`);
     }
     const result = await this.wallet.updateBackupSyncSettings(updates);

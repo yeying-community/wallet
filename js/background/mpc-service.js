@@ -77,6 +77,9 @@ class MpcService {
     await this.init();
     if (!password) return;
     await this.ensureDeviceKeys(password);
+    // MPC has no user-facing enable switch. Prepare its coordinator session
+    // as part of wallet unlock so notifications are authorized immediately.
+    await this._ensureCoordinatorToken({ password });
   }
 
   async onLocked() {
@@ -596,6 +599,15 @@ class MpcService {
 
   async listInvites(options = {}) {
     await this.init();
+    await this._ensureCoordinatorToken({
+      endpoint: options.endpoint,
+      password: options.password,
+      audience: options.audience,
+      resource: options.resource,
+      action: options.action,
+      ttlHours: options.ttlHours,
+      forceRefresh: options.forceRefresh
+    });
     const response = await this._coordinator.listNotifications({
       unreadOnly: options.unreadOnly !== false,
       source: 'mpc',
