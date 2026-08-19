@@ -951,13 +951,9 @@
               <span id="walletIdentityStatusIcon" class="wallet-identity-status pending" role="img" aria-label="待验证" title="待验证"></span>
             </div>
             <p class="wallet-identity-description">创建一次钱包身份并完成验证后，后续 Web3 应用可在你的授权下复用用户名和邮箱等资料，减少重复验证，让登录和使用更顺畅。</p>
-            <div class="form-group" id="identityServiceConfig">
-              <label for="passportEndpointInput">身份服务地址</label>
-              <input type="url" id="passportEndpointInput" class="input" placeholder="https://node.yeying.pub" />
-            </div>
             <p id="passportStatusText" class="settings-hint"></p>
             <div class="settings-row">
-              <button id="passportIdentityBtn" class="btn btn-primary btn-small">验证</button>
+              <button id="passportIdentityBtn" class="btn btn-primary btn-small btn-block">验证</button>
               <button id="viewWalletIdentityBtn" class="btn btn-secondary btn-small btn-block hidden" type="button">查看详情</button>
             </div>
             <p id="passportEmailStatusText" class="settings-hint"></p>
@@ -1186,14 +1182,15 @@
       <div id="walletIdentityEditModal" class="modal hidden">
         <div class="modal-overlay"></div>
         <div class="modal-content">
-          <div class="modal-header"><h3>变更钱包身份资料</h3><button class="btn-close" id="closeWalletIdentityEditModal" type="button">✕</button></div>
+          <div class="modal-header"><h3>验证资料</h3><button class="btn-close" id="closeWalletIdentityEditModal" type="button">✕</button></div>
           <div class="modal-body">
-            <p class="settings-hint">选择要绑定的地址，并确认用户名和邮箱。修改后需要重新验证。</p>
+            <p class="settings-hint">选择地址并填写用户名和邮箱，确认后将向邮箱发送验证码。</p>
+            <div class="form-group"><label for="walletIdentityEditEndpoint">身份服务地址</label><input id="walletIdentityEditEndpoint" class="input" type="url" autocomplete="url" /></div>
             <div class="form-group"><label for="walletIdentityEditAddress">钱包地址</label><select id="walletIdentityEditAddress" class="input"></select></div>
             <div class="form-group"><label for="walletIdentityEditUsername">用户名</label><input id="walletIdentityEditUsername" class="input" autocomplete="username" /></div>
             <div class="form-group"><label for="walletIdentityEditEmail">邮箱</label><input id="walletIdentityEditEmail" class="input" type="email" autocomplete="email" /></div>
           </div>
-          <div class="modal-footer"><button id="confirmWalletIdentityEditBtn" class="btn btn-primary">继续验证</button><button id="cancelWalletIdentityEditBtn" class="btn btn-secondary">取消</button></div>
+          <div class="modal-footer"><button id="confirmWalletIdentityEditBtn" class="btn btn-primary">验证</button><button id="cancelWalletIdentityEditBtn" class="btn btn-secondary">取消</button></div>
         </div>
       </div>
       <div id="walletIdentityUnlinkModal" class="modal hidden">
