@@ -106,6 +106,21 @@ export class MpcSettingsController {
         await this.handleMpcCoordinatorSave();
       });
     }
+    const mpcCoordinatorEndpointInput = document.getElementById('mpcCoordinatorEndpointInput');
+    if (mpcCoordinatorEndpointInput) {
+      mpcCoordinatorEndpointInput.addEventListener('input', () => {
+        const audienceInput = document.getElementById('mpcCoordinatorUcanAudienceInput');
+        const tokenInput = document.getElementById('mpcCoordinatorUcanTokenInput');
+        const previousEndpoint = this.mpcSettings?.coordinatorEndpoint || DEFAULT_MPC_COORDINATOR_ENDPOINT;
+        const previousAudience = this.mpcSettings?.ucanAudience || deriveUcanAudience(previousEndpoint);
+        if (audienceInput && (!audienceInput.value.trim() || audienceInput.value.trim() === previousAudience)) {
+          audienceInput.value = deriveUcanAudience(mpcCoordinatorEndpointInput.value);
+        }
+        if (tokenInput && mpcCoordinatorEndpointInput.value.trim() !== previousEndpoint) {
+          tokenInput.value = '';
+        }
+      });
+    }
 
     const mpcConnectionInfoModal = document.getElementById('mpcConnectionInfoModal');
     if (mpcConnectionInfoModal) {

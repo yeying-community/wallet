@@ -21,6 +21,23 @@ import {
 
 const DEFAULT_UCAN_TTL_HOURS = 24;
 
+function isLocalEndpoint(endpoint) {
+  try {
+    const hostname = new URL(endpoint).hostname.toLowerCase();
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  } catch {
+    return false;
+  }
+}
+
+export function resolveTargetUcanAudience({ endpoint, explicitAudience = '', storedAudience = '' } = {}) {
+  const endpointAudience = deriveUcanAudience(endpoint);
+  return String(explicitAudience || '').trim()
+    || (isLocalEndpoint(endpoint) ? endpointAudience : '')
+    || String(storedAudience || '').trim()
+    || endpointAudience;
+}
+
 async function getSigningAccount() {
   let account = await getSelectedAccount();
   if (account?.id && account?.address) {
@@ -79,7 +96,7 @@ export async function ensureTargetUcanToken(options = {}) {
   const storedResource = String(await getUserSetting(resourceSettingKey, '') || '').trim();
   const storedAction = String(await getUserSetting(actionSettingKey, '') || '').trim();
 
-  const audience = explicitAudience || storedAudience || deriveUcanAudience(endpoint);
+  const audience = resolveTargetUcanAudience({ endpoint, explicitAudience, storedAudience });
   const resource = explicitResource || storedResource || defaultResource;
   const action = explicitAction || storedAction || defaultAction;
 
