@@ -245,10 +245,9 @@ export class PassportSettingsController {
     const usernameInput = document.getElementById('walletIdentityEditUsername');
     const emailInput = document.getElementById('walletIdentityEditEmail');
     if (!document.getElementById('walletIdentityEditModal')) {
-      const username = await this.promptUsername();
-      if (!username) return;
-      const email = await this.promptEmail();
-      if (!email) return;
+      const profile = await this.promptIdentityProfile({ username, email, endpoint: this.endpoint() });
+      if (!profile) return;
+      ({ username, email } = profile);
       await this.requestAndConfirmIdentity({ username, email });
       return;
     }
@@ -408,6 +407,82 @@ export class PassportSettingsController {
     return username;
   }
 
+  async promptIdentityProfile({ username: defaultUsername = '', email: defaultEmail = '', endpoint: defaultEndpoint = '' } = {}) {
+    const modal = document.getElementById('identityInputModal');
+    const overlay = modal?.querySelector('.modal-overlay');
+    const titleEl = document.getElementById('identityInputTitle');
+    const hintEl = document.getElementById('identityInputHint');
+    const body = modal?.querySelector('.modal-body');
+    const confirm = document.getElementById('confirmIdentityInputBtn');
+    const cancel = document.getElementById('cancelIdentityInputBtn');
+    const close = document.getElementById('closeIdentityInputModal');
+    if (!modal || !body || !confirm || !cancel || !close) {
+      const username = await this.promptUsername(defaultUsername);
+      if (!username) return null;
+      const email = await this.promptEmail(defaultEmail);
+      if (!email) return null;
+      return { username, email, endpoint: defaultEndpoint };
+    }
+
+    const originalBody = body.innerHTML;
+    if (titleEl) titleEl.textContent = '验证资料';
+    if (hintEl) hintEl.textContent = '填写用户名和邮箱，确认后将向邮箱发送验证码。';
+    body.innerHTML = `
+      <p id="identityInputHint" class="settings-hint">填写用户名和邮箱，确认后将向邮箱发送验证码。</p>
+      <div class="form-group"><label for="identityProfileEndpoint">身份服务地址</label><input id="identityProfileEndpoint" class="input" type="url" autocomplete="url" /></div>
+      <div class="form-group"><label for="identityProfileUsername">用户名</label><input id="identityProfileUsername" class="input" autocomplete="username" /></div>
+      <div class="form-group"><label for="identityProfileEmail">邮箱</label><input id="identityProfileEmail" class="input" type="email" autocomplete="email" /></div>
+    `;
+    const endpointInput = document.getElementById('identityProfileEndpoint') || body.querySelector('#identityProfileEndpoint');
+    const usernameInput = document.getElementById('identityProfileUsername') || body.querySelector('#identityProfileUsername');
+    const emailInput = document.getElementById('identityProfileEmail') || body.querySelector('#identityProfileEmail');
+    if (endpointInput) endpointInput.value = defaultEndpoint || this.endpoint();
+    if (usernameInput) usernameInput.value = defaultUsername;
+    if (emailInput) emailInput.value = defaultEmail;
+    modal.classList.remove('hidden');
+
+    return new Promise((resolve, reject) => {
+      const cleanup = () => {
+        confirm.removeEventListener('click', handleConfirm);
+        cancel.removeEventListener('click', handleCancel);
+        close.removeEventListener('click', handleCancel);
+        overlay?.removeEventListener('click', handleCancel);
+        usernameInput?.removeEventListener('keydown', handleKeydown);
+        emailInput?.removeEventListener('keydown', handleKeydown);
+        modal.classList.add('hidden');
+        body.innerHTML = originalBody;
+      };
+      const handleCancel = () => { cleanup(); resolve(null); };
+      const handleConfirm = () => {
+        try {
+          const endpoint = String(endpointInput?.value || '').trim();
+          const username = String(usernameInput?.value || '').trim().toLowerCase();
+          const email = String(emailInput?.value || '').trim().toLowerCase();
+          if (!endpoint) throw new Error('请输入身份服务地址');
+          if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username)) throw new Error('用户名须为 3-32 位小写字母、数字、点、下划线或连字符');
+          if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('请输入有效邮箱');
+          cleanup();
+          this.persistEndpoint(endpoint);
+          resolve({ username, email, endpoint });
+        } catch (error) {
+          cleanup();
+          reject(error);
+        }
+      };
+      const handleKeydown = (event) => {
+        if (event.key === 'Enter') handleConfirm();
+        if (event.key === 'Escape') handleCancel();
+      };
+      confirm.addEventListener('click', handleConfirm);
+      cancel.addEventListener('click', handleCancel);
+      close.addEventListener('click', handleCancel);
+      overlay?.addEventListener('click', handleCancel);
+      usernameInput?.addEventListener('keydown', handleKeydown);
+      emailInput?.addEventListener('keydown', handleKeydown);
+      setTimeout(() => usernameInput?.focus(), 0);
+    });
+  }
+
   async promptVerificationCode() {
     const value = await this.promptIdentityInput({ title: '输入验证码', hint: '验证码已发送到验证邮箱。', label: '6 位验证码', placeholder: '123456', inputMode: 'numeric', pattern: '\\d{6}' });
     if (value === null) return '';
@@ -516,15 +591,21 @@ export class PassportSettingsController {
     const chainKey = account.chainKey || `eip155:${account.chainId || 1}`;
     const linkChallenge = await this.fetchIdentityLinkChallenge(endpoint, identityDid, { chainKey, address: account.address });
     const accountSignature = await this.transaction.signMessage(linkChallenge.message, password);
-    const linkResult = await this.verifyIdentityLink(endpoint, {
-      identityDocument: identity,
-      identity: identityDid,
-      account: { chainKey, address: account.address },
-      nonce: linkChallenge.nonce,
-      issuedAt: linkChallenge.issuedAt,
-      expiresAt: linkChallenge.expiresAt,
-      accountSignature
-    });
+    let linkResult;
+    try {
+      linkResult = await this.verifyIdentityLink(endpoint, {
+        identityDocument: identity,
+        identity: identityDid,
+        account: { chainKey, address: account.address },
+        nonce: linkChallenge.nonce,
+        issuedAt: linkChallenge.issuedAt,
+        expiresAt: linkChallenge.expiresAt,
+        accountSignature
+      });
+    } catch (error) {
+      if (!this.isDuplicateAccountLinkError(error)) throw error;
+      linkResult = { verifiedAt: new Date().toISOString(), duplicate: true };
+    }
     if (!linkResult?.verifiedAt) throw new Error('钱包账户关联失败');
     const requested = await this.wallet.requestIdentityVerification(endpoint, {
       types: ['email', 'username'],
@@ -571,6 +652,12 @@ export class PassportSettingsController {
     return json.data;
   }
 
+  isDuplicateAccountLinkError(error) {
+    const message = String(error?.message || error || '');
+    return message.includes('uidx_identity_account_link')
+      || (message.includes('duplicate key value') && message.includes('identity_account_link'));
+  }
+
   async confirmEmailVerificationWithAuth(auth, code) {
     const state = this.loadEmailVerificationState(auth.endpoint, auth.account.address);
     const verificationId = String(state?.verificationId || '').trim();
@@ -585,10 +672,23 @@ export class PassportSettingsController {
 
   async continueEmailVerification() {
     try {
-      const email = await this.promptEmail();
-      if (!email) return;
-      const state = this.loadEmailVerificationState(this.endpoint(), (await this.wallet.getCurrentAccount())?.address);
-      const completed = await this.requestAndConfirmIdentity({ username: state?.username || await this.promptUsername(), email });
+      const endpoint = this.endpoint();
+      const account = await this.wallet.getCurrentAccount();
+      const state = this.loadEmailVerificationState(endpoint, account?.address);
+      let completed = false;
+      if (state?.verificationId) {
+        const code = await this.promptVerificationCode();
+        if (!code) return;
+        showWaiting();
+        const result = await this.wallet.confirmIdentityVerification(endpoint, state.verificationId, code, ['email', 'username']);
+        if (!Array.isArray(result?.credentials) || result.credentials.length < 2) throw new Error('Node 未返回完整身份凭证');
+        this.persistBindingState(endpoint, account.address, BINDING_STATE_COMPLETE);
+        this.persistEmailVerificationState(endpoint, account.address, null);
+        this.setEmailStatus(`已验证邮箱：${state.email || result.email || ''}`);
+        completed = true;
+      } else {
+        await this.openIdentityEdit();
+      }
       await this.renderBindingAction();
       if (completed) showSuccess('钱包验证已完成');
     } catch (error) {
