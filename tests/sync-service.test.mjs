@@ -227,6 +227,15 @@ test('init() 加载设置、注册存储监听器；_prepareContexts 派生 fing
 
 test('pullRemote 远端空 → 本地不变', async () => {
   await backupSyncService._prepareContexts('TestPassword123');
+  // 此用例只覆盖远端空时的 WebDAV 写路径，使用已配置的基础认证避免触发
+  // UCAN 钱包签名，从而不需要伪造与测试账户地址匹配的私钥。
+  const settings = (await chrome.storage.local.get('user_settings')).user_settings || {};
+  await chrome.storage.local.set({
+    user_settings: { ...settings, backupSyncAuthMode: 'basic' }
+  });
+  // syncAll() 仍要求调用方处于解锁态；模拟真实解锁流程写入密码缓存。
+  const stateModule = await import('../js/background/state.js');
+  stateModule.state.passwordCache = 'TestPassword123';
   fetchResponses.length = 0;
   // HEAD + GET 都返回 404（默认 fetch 行为）。syncAll 会随后 push（MKCOL 也 404）
   // 因此错误是预期的 —— 用 try/catch 吞掉避免变成 unhandled rejection 影响其它用例。
