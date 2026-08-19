@@ -197,13 +197,6 @@ export class PassportSettingsController {
   async openIdentityEdit() {
     const current = await this.wallet.getCurrentAccount();
     const selector = document.getElementById('walletIdentityEditAddress');
-    const walletResult = typeof this.wallet.getWalletList === 'function'
-      ? await this.wallet.getWalletList()
-      : [];
-    const wallets = Array.isArray(walletResult) ? walletResult : walletResult?.wallets;
-    const accounts = (Array.isArray(wallets) ? wallets : [])
-      .flatMap(wallet => Array.isArray(wallet?.accounts) ? wallet.accounts : [])
-      .filter(item => item?.address);
     const options = [];
     const seen = new Set();
     const addOption = (item) => {
@@ -213,13 +206,26 @@ export class PassportSettingsController {
       seen.add(key);
       options.push({ ...item, address });
     };
-    // Always keep the currently selected account available, even while the
-    // wallet list is still loading or an imported wallet has no expanded list.
+    // Populate the current account before any optional wallet-list RPC. This
+    // keeps the editor usable when an imported wallet is still being restored.
     addOption(current);
-    accounts.forEach(addOption);
     if (selector) {
-      selector.replaceChildren(...options.map(item => { const o = document.createElement('option'); o.value = item.address; o.textContent = `${item.name || '钱包账户'} · ${this.formatWalletAddress(item.address)}`; o.selected = item.address.toLowerCase() === String(current?.address || '').toLowerCase(); return o; }));
-      if (!selector.options.length) selector.innerHTML = '<option value="">暂无可用钱包地址</option>';
+      this.renderIdentityAddressOptions(selector, options, current);
+    }
+    try {
+      const walletResult = typeof this.wallet.getWalletList === 'function'
+        ? await this.wallet.getWalletList()
+        : [];
+      const wallets = Array.isArray(walletResult) ? walletResult : walletResult?.wallets;
+      const accounts = (Array.isArray(wallets) ? wallets : [])
+        .flatMap(wallet => Array.isArray(wallet?.accounts) ? wallet.accounts : [])
+        .filter(item => item?.address);
+      accounts.forEach(addOption);
+    } catch (error) {
+      console.warn('[PassportSettings] 加载钱包地址列表失败，将继续使用当前地址:', error?.message || error);
+    }
+    if (selector) {
+      this.renderIdentityAddressOptions(selector, options, current);
     }
     let username = '', email = '';
     const identities = typeof this.wallet.listIdentities === 'function'
@@ -247,6 +253,20 @@ export class PassportSettingsController {
     if (usernameInput) usernameInput.value = username;
     if (emailInput) emailInput.value = email;
     document.getElementById('walletIdentityEditModal')?.classList.remove('hidden');
+  }
+
+  renderIdentityAddressOptions(selector, options, current) {
+    selector.replaceChildren(...options.map(item => {
+      const option = document.createElement('option');
+      option.value = item.address;
+      option.textContent = `${item.name || '钱包账户'} · ${this.formatWalletAddress(item.address)}`;
+      option.selected = item.address.toLowerCase() === String(current?.address || '').toLowerCase();
+      return option;
+    }));
+    if (!selector.options.length) selector.innerHTML = '<option value="">暂无可用钱包地址</option>';
+    // PopupController mirrors native selects into a custom trigger/menu.
+    // Refresh that mirror after replacing options dynamically.
+    selector._customSelectSync?.();
   }
 
   async submitIdentityEdit() {
