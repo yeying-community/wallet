@@ -25,7 +25,6 @@ import { withPopupBoundsAsync } from './window-utils.js';
 import { POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { handleUcanSession, handleUcanSign } from './ucan.js';
-import { requestPassportAssertion } from './passport-assertion.js';
 import { requestIdentityPresentation as handleIdentityPresentation } from './identity-presentation.js';
 import { handleYeyingGetProfile } from './profile-handler.js';
 import {
@@ -227,7 +226,6 @@ export async function routeRequest(method, params, metadata) {
     'eth_signTypedData_v4',
     'yeying_ucan_session',
     'yeying_ucan_sign',
-    'yeying_passport_assertion',
     'yeying_identity_presentation',
     'yeying_encrypt',
     'yeying_decrypt'
@@ -304,11 +302,6 @@ export async function routeRequest(method, params, metadata) {
     return handleUcanSign(origin, account, params);
   }
 
-  if (method === 'yeying_passport_assertion') {
-    await ensureSiteAuthorized(origin);
-    return handlePassportAssertion(account, paramsArray, origin, tabId, clientRequestId);
-  }
-
   if (method === 'yeying_identity_presentation') {
     await ensureSiteAuthorized(origin);
     return handleIdentityPresentationApproval(account, paramsArray, origin, tabId, clientRequestId);
@@ -369,50 +362,6 @@ export async function routeRequest(method, params, metadata) {
   return handleRpcMethod(method, rpcParams);
 }
 
-async function handlePassportAssertion(account, params, origin, tabId, clientRequestId) {
-  const request = Array.isArray(params) ? (params[0] || {}) : (params || {});
-  if (!request || typeof request !== 'object') {
-    throw createInvalidParams('Invalid Passport assertion parameters');
-  }
-
-  const pending = findPendingRequest('passport_assertion', origin, tabId);
-  const clientRequestKey = getClientRequestKey(origin, tabId, 'yeying_passport_assertion', clientRequestId);
-  const existingPending = findPendingRequestByClientKey(clientRequestKey);
-  if (pending && !existingPending) {
-    focusPendingWindow(pending);
-    throw createError(-32002, 'Passport assertion request already pending');
-  }
-
-  return waitForApprovalAndExecute({
-    existingPending,
-    requestType: 'passport_assertion',
-    origin,
-    tabId,
-    reuseSession: true,
-    createPending: () => {
-      const requestId = `passport_assertion_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
-      addPendingRequest(requestId, {
-        type: 'passport_assertion',
-        approvalType: 'passport_assertion',
-        origin,
-        tabId,
-        reuseSession: true,
-        clientRequestKey,
-        expiresAt: Date.now() + TIMEOUTS.REQUEST,
-        data: {
-          origin,
-          accountId: account.id,
-          address: account.address,
-          request
-        },
-        timestamp: getTimestamp()
-      });
-      return requestId;
-    },
-    onApproved: async () => requestPassportAssertion({ account, params: request, origin }),
-    onRejectedMessage: 'User rejected the Passport login request'
-  });
-}
 
 async function handleIdentityPresentationApproval(account, params, origin, tabId, clientRequestId) {
   const request = Array.isArray(params) ? (params[0] || {}) : (params || {});

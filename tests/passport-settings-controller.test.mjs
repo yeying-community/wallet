@@ -29,41 +29,38 @@ test.afterEach(() => {
   delete globalThis.prompt;
 });
 
-test('loginAndUnlink performs recent SIWE auth and signs the one-time unlink message', async () => {
+test('loginAndUnlink clears local identity verification state', async () => {
   elements.passportEndpointInput.value = 'http://127.0.0.1:8100';
-  globalThis.confirm = () => true;
-  globalThis.fetch = async (url) => ({
-    ok: true,
-    json: async () => String(url).includes('/challenge')
-      ? { code: 0, data: { challenge: 'login-message' } }
-      : { code: 0, data: { token: 'short-jwt' } }
-  });
-  const signed = [];
-  const confirmed = [];
+  const values = new Map([
+    ['passportIdentityBinding:http://127.0.0.1:8100:0x1111111111111111111111111111111111111111', 'complete'],
+    ['passportEmailVerification:http://127.0.0.1:8100:0x1111111111111111111111111111111111111111', '{"verificationId":"v1"}']
+  ]);
+  globalThis.localStorage = {
+    getItem: (key) => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key)
+  };
   const controller = new PassportSettingsController({
     wallet: {
       getCurrentAccount: async () => ({ address: '0x1111111111111111111111111111111111111111' }),
-      createPassportUnlink: async () => ({ success: true, unlink: { requestId: 'pun-1', timestamp: '2026-08-03T00:00:00Z', message: 'unlink-message' } }),
-      confirmPassportUnlink: async (...args) => { confirmed.push(args); return { success: true }; }
-    },
-    transaction: { signMessage: async (message) => { signed.push(message); return `sig:${message}`; } },
-    requestPassword: async () => 'wallet-password'
+    }
   });
+  controller.renderBindingAction = async () => {};
   await controller.loginAndUnlink();
-  assert.deepEqual(signed, ['login-message', 'unlink-message']);
-  assert.deepEqual(confirmed[0][2], {
-    requestId: 'pun-1', timestamp: '2026-08-03T00:00:00Z', signature: 'sig:unlink-message'
-  });
+  assert.equal(values.has('passportIdentityBinding:http://127.0.0.1:8100:0x1111111111111111111111111111111111111111'), false);
+  assert.equal(values.has('passportEmailVerification:http://127.0.0.1:8100:0x1111111111111111111111111111111111111111'), false);
 });
 
-test('load restores the default Node endpoint without probing the service', async () => {
-  let called = false;
+test('load restores the default Node endpoint without probing the old Passport service', async () => {
   const controller = new PassportSettingsController({
-    wallet: { getPassportStatus: async () => { called = true; return { success: true, status: { enabled: true } }; } }
+    wallet: {
+      getCurrentAccount: async () => null,
+      listIdentities: async () => ({ identities: [], selectedIdentityId: '' }),
+      getWalletList: async () => []
+    }
   });
   await controller.load();
   assert.equal(elements.passportEndpointInput.value, 'https://node.yeying.pub');
-  assert.equal(called, false);
 });
 
 test('load restores a locally configured Node endpoint', async () => {
@@ -73,7 +70,7 @@ test('load restores a locally configured Node endpoint', async () => {
     setItem: (key, value) => values.set(key, value)
   };
   const controller = new PassportSettingsController({
-    wallet: { getPassportStatus: async () => ({ success: true, status: { enabled: true } }) }
+    wallet: {}
   });
   await controller.load();
   assert.equal(elements.passportEndpointInput.value, 'http://127.0.0.1:8100');
@@ -103,16 +100,6 @@ test('loginAndBind prompts for email and code before completing the binding', as
   const controller = new PassportSettingsController({
     wallet: {
       getCurrentAccount: async () => ({ address: '0x1111111111111111111111111111111111111111' }),
-      createPassportBinding: async (...args) => { bindingCalls.push(args); return { success: true, binding: { subjectId: 'subject-1' } }; },
-      setPassportUsername: async (...args) => ({ success: true, username: { username: args[2], usernameVerified: true } }),
-      requestPassportEmailVerification: async (...args) => {
-        emailRequests.push(args);
-        return { success: true, verification: { verificationId: 'pev-1', emailHint: 'p***@example.com' } };
-      },
-      confirmPassportEmailVerification: async (...args) => {
-        confirms.push(args);
-        return { success: true, verification: { email: 'person@example.com' } };
-      }
     },
     transaction: { signMessage: async (message, password) => `${message}:${password}` },
     requestPassword: async () => 'wallet-password'
@@ -150,15 +137,6 @@ test('cancelled or missing verification code keeps the binding pending', async (
   const controller = new PassportSettingsController({
     wallet: {
       getCurrentAccount: async () => ({ address: '0x1111111111111111111111111111111111111111' }),
-      createPassportBinding: async (...args) => {
-        bindings.push(args);
-        return { success: true, binding: { subjectId: 'subject-1' } };
-      },
-      setPassportUsername: async (...args) => ({ success: true, username: { username: args[2], usernameVerified: true } }),
-      requestPassportEmailVerification: async (...args) => {
-        requests.push(args);
-        return { success: true, verification: { verificationId: 'pev-1', emailHint: 'p***@example.com' } };
-      }
     },
     transaction: { signMessage: async (message, password) => `${message}:${password}` },
     requestPassword: async () => 'wallet-password'
@@ -198,15 +176,6 @@ test('changePassportEmail prompts for a new email and verifies it', async () => 
   const controller = new PassportSettingsController({
     wallet: {
       getCurrentAccount: async () => ({ address: '0x1111111111111111111111111111111111111111' }),
-      setPassportUsername: async (...args) => ({ success: true, username: { username: args[2], usernameVerified: true } }),
-      requestPassportEmailVerification: async (...args) => {
-        requests.push(args);
-        return { success: true, verification: { verificationId: 'pev-2', emailHint: 'n***@example.com' } };
-      },
-      confirmPassportEmailVerification: async (...args) => {
-        confirms.push(args);
-        return { success: true, verification: { email: 'new@example.com' } };
-      }
     },
     transaction: { signMessage: async (message, password) => `${message}:${password}` },
     requestPassword: async () => 'wallet-password'

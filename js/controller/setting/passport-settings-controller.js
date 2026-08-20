@@ -49,6 +49,8 @@ export class PassportSettingsController {
         await this.submitIdentityEdit();
       } catch (error) {
         showError(error?.message || '验证资料提交失败');
+      } finally {
+        hideWaiting();
       }
     });
     document.getElementById('changeWalletIdentityBtn')?.addEventListener('click', () => {
@@ -581,6 +583,7 @@ export class PassportSettingsController {
     this.persistBindingState(endpoint, account.address, BINDING_STATE_COMPLETE);
     this.persistEmailVerificationState(endpoint, account.address, null);
     this.setEmailStatus(`已验证邮箱：${email}`);
+    hideWaiting();
     return true;
   }
 
@@ -745,6 +748,7 @@ export class PassportSettingsController {
     } catch (error) {
       const message = error?.message || 'Passkey 注册未完成';
       this.setStatus(`钱包身份已验证；${message}，无钱包登录可能暂不可用`);
+      hideWaiting();
       return null;
     }
   }

@@ -574,59 +574,6 @@ export class WalletDomain extends BaseDomain {
     return await this._sendMessage(WalletMessageType.CLEAR_ALL_AUTHORIZATIONS);
   }
 
-  // ==================== Community Passport ====================
-
-  async getPassportStatus(endpoint) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_GET_STATUS, { endpoint });
-  }
-
-  async createPassportBinding(endpoint, accessToken) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_CREATE_BINDING, { endpoint, accessToken });
-  }
-
-  async getPassportBindings(endpoint, accessToken) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_GET_BINDINGS, { endpoint, accessToken });
-  }
-
-  async setPassportUsername(endpoint, accessToken, username) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_SET_USERNAME, { endpoint, accessToken, username });
-  }
-
-  async requestPassportEmailVerification(endpoint, accessToken, email) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_EMAIL_VERIFICATION_REQUEST, {
-      endpoint,
-      accessToken,
-      email
-    });
-  }
-
-  async confirmPassportEmailVerification(endpoint, accessToken, verificationId, code) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_EMAIL_VERIFICATION_CONFIRM, {
-      endpoint,
-      accessToken,
-      verificationId,
-      code
-    });
-  }
-
-  async createPassportUnlink(endpoint, accessToken) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_CREATE_UNLINK, { endpoint, accessToken });
-  }
-
-  async confirmPassportUnlink(endpoint, accessToken, request) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_CONFIRM_UNLINK, {
-      endpoint, accessToken, ...request
-    });
-  }
-
-  async approvePassportAuthorization(endpoint, accessToken, requestId) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_APPROVE_AUTHORIZATION, {
-      endpoint,
-      accessToken,
-      requestId
-    });
-  }
-
   // ==================== 联系人管理 ====================
 
   /**
