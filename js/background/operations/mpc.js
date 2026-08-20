@@ -29,6 +29,7 @@ const DEFAULT_MPC_UCAN_ACTION = 'coordinate';
 const MPC_AUTH_SCHEMES = new Set(['ucan']);
 const MPC_E2E_SUITES = new Set(['x25519-aes-gcm']);
 const MPC_REFRESH_POLICIES = new Set(['manual']);
+const GENERIC_MPC_INVITE_TITLES = new Set(['MPC 钱包创建邀请', 'MPC 钱包邀请']);
 
 export function resolveMpcWalletName(source = {}, fallback = 'MPC Wallet') {
   const payload = source?.payload && typeof source.payload === 'object' ? source.payload : source;
@@ -41,9 +42,9 @@ export function resolveMpcWalletName(source = {}, fallback = 'MPC Wallet') {
   ];
   const value = String(candidates.find(item => {
     const text = String(item || '').trim();
-    return text && text !== 'MPC 钱包创建邀请';
+    return text && !GENERIC_MPC_INVITE_TITLES.has(text);
   }) || fallback).trim();
-  return value && value !== 'MPC 钱包创建邀请' ? value : fallback;
+  return value && !GENERIC_MPC_INVITE_TITLES.has(value) ? value : fallback;
 }
 
 /**

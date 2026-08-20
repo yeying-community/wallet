@@ -153,6 +153,29 @@ test('session 数字字段缺失时不会把本地值误同步为 0', async () =
   assert.deepEqual(wallet.participants, ['0x1', '0x2']);
 });
 
+test('session 同步不会把通用邀请标题写成 MPC 钱包名称', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: '社区金库',
+    type: 'mpc',
+    status: 'keygen_pending',
+    keygenSessionId: 'session-1',
+    threshold: 2,
+    participants: ['0x1', '0x2'],
+  });
+
+  await mpcService.syncWalletFromSession({
+    id: 'session-1',
+    name: 'MPC 钱包邀请',
+    type: 'keygen',
+    walletId: 'mpc-wallet-1',
+    status: 'created',
+  });
+
+  const wallet = await getMpcWallet('mpc-wallet-1');
+  assert.equal(wallet.name, '社区金库');
+});
+
 
 test('listInvites 过滤本地已接受的 MPC 邀请', async () => {
   const originalEnsure = mpcService._ensureCoordinatorToken;

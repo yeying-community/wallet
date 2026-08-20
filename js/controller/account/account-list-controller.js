@@ -348,7 +348,7 @@ export class AccountListController {
         </div>
         <div class="wallet-info">
           <div class="wallet-name">
-            ${escapeHtml(walletName)}
+            ${isMpc ? 'MPC Wallet' : escapeHtml(walletName)}
           </div>
           ${isMpc ? `<div class="wallet-meta">门限 ${mpcThreshold || '-'} / ${mpcParticipantCount || '-'} · ${escapeHtml(mpcStatus)}</div>` : ''}
         </div>
@@ -400,7 +400,6 @@ export class AccountListController {
         ` : ''}
         ${isMpc ? `
           <div class="mpc-wallet-actions">
-            <button class="mpc-wallet-action-btn mpc-wallet-detail-text-btn" data-wallet-id="${escapeHtml(wallet.id)}">查看详情</button>
             <button class="mpc-wallet-action-btn mpc-participant-change-btn" data-action="add">增加参与方</button>
             <button class="mpc-wallet-action-btn mpc-participant-change-btn" data-action="remove">移除参与方</button>
           </div>
@@ -466,7 +465,7 @@ export class AccountListController {
     ];
     const value = String(candidates.find(value => {
       const text = String(value || '').trim();
-      return text && text !== 'MPC 钱包创建邀请';
+      return text && text !== 'MPC 钱包创建邀请' && text !== 'MPC 钱包邀请';
     }) || '').trim();
     return value || 'MPC 钱包邀请';
   }
@@ -722,13 +721,6 @@ export class AccountListController {
     });
 
     container.querySelectorAll('.mpc-wallet-detail-btn').forEach(btn => {
-      btn.addEventListener('click', (event) => {
-        event.stopPropagation();
-        void this.openMpcWalletDetail(btn.dataset.walletId);
-      });
-    });
-
-    container.querySelectorAll('.mpc-wallet-detail-text-btn').forEach(btn => {
       btn.addEventListener('click', (event) => {
         event.stopPropagation();
         void this.openMpcWalletDetail(btn.dataset.walletId);
