@@ -54,8 +54,53 @@ test('账户管理把待处理 MPC 邀请展示为可接受的钱包卡片', () 
     assert.match(elements.walletList.innerHTML, /团队金库/);
     assert.match(elements.walletList.innerHTML, /待接受邀请/);
     assert.match(elements.walletList.innerHTML, /接受邀请/);
+    assert.match(elements.walletList.innerHTML, /mpc-invite-detail-btn/);
+    assert.match(elements.walletList.innerHTML, /查看 MPC 钱包详情/);
     assert.match(elements.walletList.innerHTML, /data-mpc-invite-accept="notification-1"/);
     assert.doesNotMatch(elements.walletList.innerHTML, /暂无钱包/);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test('待接受 MPC 邀请详情图标打开邀请详情', () => {
+  const { document, elements } = createDocument({
+    walletList: { tagName: 'div' },
+    mpcWalletDetailModal: { tagName: 'div', _classes: 'hidden' },
+    mpcWalletDetailName: { tagName: 'h3' },
+    mpcWalletDetailStatus: { tagName: 'div' },
+    mpcWalletDetailAddress: { tagName: 'div' },
+    mpcWalletDetailThreshold: { tagName: 'div' },
+    mpcWalletDetailParticipants: { tagName: 'div' },
+    mpcWalletDetailSessions: { tagName: 'div' },
+    cancelMpcWalletCreationBtn: { tagName: 'button', _classes: 'hidden' },
+    mpcWalletDetailFooter: { tagName: 'div', _classes: 'modal-footer' },
+  });
+  elements.cancelMpcWalletCreationBtn.closest = () => elements.mpcWalletDetailFooter;
+  globalThis.document = document;
+  try {
+    const controller = new AccountListController({ wallet: {} });
+    controller.pendingMpcInvites = [{
+      notificationUid: 'notification-1',
+      subjectId: '61705018-13b2-43e9-ab09-2698b64759f6',
+      payload: {
+        name: 'mcp10',
+        walletId: 'mpc-wallet-1',
+        sessionId: '61705018-13b2-43e9-ab09-2698b64759f6',
+        threshold: 2,
+        participants: ['0x1', '0x2'],
+      },
+      session: { status: 'created', round: 0 },
+    }];
+
+    controller.openMpcInviteDetail('notification-1');
+
+    assert.equal(elements.mpcWalletDetailModal.classList.contains('hidden'), false);
+    assert.equal(elements.mpcWalletDetailName.textContent, 'mcp10');
+    assert.equal(elements.mpcWalletDetailStatus.textContent, '待接受邀请');
+    assert.equal(elements.mpcWalletDetailThreshold.textContent, '2 / 2');
+    assert.equal(elements.mpcWalletDetailParticipants.textContent, '0x1, 0x2');
+    assert.match(elements.mpcWalletDetailSessions.innerHTML, /61705018-13b2-43e9-ab09-2698b64759f6/);
   } finally {
     delete globalThis.document;
   }

@@ -431,6 +431,20 @@ export class AccountListController {
           <div class="wallet-name">MPC Wallet</div>
           <div class="wallet-meta">门限 ${escapeHtml(threshold)} / ${escapeHtml(participantCount)} · 待接受邀请</div>
         </div>
+        <div class="wallet-header-actions">
+          <button
+            class="wallet-header-btn mpc-invite-detail-btn"
+            data-notification-uid="${escapeHtml(notificationUid)}"
+            title="查看 MPC 钱包详情"
+            aria-label="查看 MPC 钱包详情"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M12 16v-4"></path>
+              <path d="M12 8h.01"></path>
+            </svg>
+          </button>
+        </div>
       </div>
       <div class="account-list">
         <div class="account-item mpc-wallet-identity mpc-invite-wallet-identity">
@@ -481,6 +495,35 @@ export class AccountListController {
     return statusLabels[status] || '地址生成中';
   }
 
+  openMpcInviteDetail(notificationUid) {
+    const invite = this.pendingMpcInvites.find((item) =>
+      String(item?.notificationUid || item?.uid || '') === String(notificationUid || '')
+    );
+    if (!invite) return;
+    const payload = invite.payload || {};
+    const participants = Array.isArray(payload.participants) ? payload.participants : [];
+    const wallet = {
+      id: payload.walletId || invite.subjectId || notificationUid,
+      name: this.getMpcInviteWalletName(invite),
+      type: 'mpc',
+      status: 'pending_invite',
+      address: payload.address || '',
+      threshold: payload.threshold || '',
+      participants,
+    };
+    const sessionId = payload.sessionId || invite.subjectId || '';
+    const sessions = sessionId ? [{
+      id: sessionId,
+      type: 'keygen',
+      status: invite.session?.status || 'pending_invite',
+      round: Number.isFinite(invite.session?.round) ? invite.session.round : 0,
+      createdAt: invite.createdAt || invite.session?.createdAt || ''
+    }] : [];
+    this.activeMpcWalletId = '';
+    this.renderMpcWalletDetail(wallet, sessions);
+    document.getElementById('mpcWalletDetailModal')?.classList.remove('hidden');
+  }
+
   shortenText(value, head = 8, tail = 6) {
     const text = String(value || '').trim();
     if (text.length <= head + tail + 3) return text;
@@ -528,6 +571,7 @@ export class AccountListController {
     };
     const participants = Array.isArray(wallet?.participants) ? wallet.participants : [];
     const statusLabels = {
+      pending_invite: '待接受邀请',
       keygen_pending: '等待参与者完成密钥生成',
       active: '可用',
       failed: '密钥生成失败',
@@ -724,6 +768,13 @@ export class AccountListController {
       btn.addEventListener('click', (event) => {
         event.stopPropagation();
         void this.openMpcWalletDetail(btn.dataset.walletId);
+      });
+    });
+
+    container.querySelectorAll('.mpc-invite-detail-btn').forEach(btn => {
+      btn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.openMpcInviteDetail(btn.dataset.notificationUid || '');
       });
     });
 

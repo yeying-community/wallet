@@ -260,3 +260,44 @@ test('listInvites 过滤本地已加入参与者的 MPC 邀请', async () => {
     mpcService._coordinator = originalCoordinator;
   }
 });
+
+test('listInvites 用 session 详情补齐邀请中的 MPC 钱包名称', async () => {
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    listNotifications: async () => ({
+      items: [{
+        type: 'mpc.keygen.invited',
+        notificationUid: 'notification-1',
+        subjectId: '61705018-13b2-43e9-ab09-2698b64759f6',
+        payload: {
+          sessionId: '61705018-13b2-43e9-ab09-2698b64759f6',
+          walletId: 'mpc-wallet-1',
+        },
+      }],
+    }),
+    getSession: async () => ({
+      id: '61705018-13b2-43e9-ab09-2698b64759f6',
+      name: 'mcp10',
+      type: 'keygen',
+      walletId: 'mpc-wallet-1',
+      status: 'created',
+      threshold: 2,
+      participants: ['0x1', '0x2'],
+    }),
+  };
+  try {
+    const result = await mpcService.listInvites({ unreadOnly: true });
+
+    assert.equal(result.items.length, 1);
+    assert.equal(result.items[0].payload.name, 'mcp10');
+    assert.equal(result.items[0].payload.threshold, 2);
+    assert.deepEqual(result.items[0].payload.participants, ['0x1', '0x2']);
+    assert.equal(result.items[0].session.name, 'mcp10');
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+  }
+});

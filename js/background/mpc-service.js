@@ -741,9 +741,10 @@ class MpcService {
           continue;
         }
       }
+      let session = null;
       if (sessionId) {
         try {
-          const session = await this.getSession(sessionId);
+          session = await this.getSession(sessionId);
           if (String(session?.status || '').toLowerCase() === 'cancelled') {
             continue;
           }
@@ -753,11 +754,34 @@ class MpcService {
           }
         }
       }
-      visible.push(item);
+      visible.push(this._enrichInviteWithSession(item, session));
     }
     return {
       ...response,
       items: visible
+    };
+  }
+
+  _enrichInviteWithSession(item, session) {
+    if (!session) return item;
+    const payload = item?.payload && typeof item.payload === 'object' ? item.payload : {};
+    const enrichedPayload = {
+      ...payload,
+      sessionId: payload.sessionId || session.id,
+      walletId: payload.walletId || session.walletId,
+      name: this._resolveWalletName(payload, this._resolveWalletName(session, '')),
+      threshold: payload.threshold ?? session.threshold,
+      participants: Array.isArray(payload.participants) && payload.participants.length
+        ? payload.participants
+        : this._normalizeParticipantIds(session.participants),
+      curve: payload.curve || session.curve,
+      keyVersion: payload.keyVersion ?? session.keyVersion,
+      shareVersion: payload.shareVersion ?? session.shareVersion
+    };
+    return {
+      ...item,
+      payload: enrichedPayload,
+      session
     };
   }
 
