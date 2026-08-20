@@ -37,10 +37,13 @@ export function resolveMpcWalletName(source = {}, fallback = 'MPC Wallet') {
     payload?.walletName,
     payload?.wallet?.name,
     payload?.metadata?.walletName,
-    payload?.metadata?.name,
-    source?.title
+    payload?.metadata?.name
   ];
-  return String(candidates.find(value => String(value || '').trim()) || fallback).trim() || fallback;
+  const value = String(candidates.find(item => {
+    const text = String(item || '').trim();
+    return text && text !== 'MPC 钱包创建邀请';
+  }) || fallback).trim();
+  return value && value !== 'MPC 钱包创建邀请' ? value : fallback;
 }
 
 /**

@@ -18,13 +18,13 @@ test('账户管理按三行结构展示待 Keygen 的 MPC 钱包', () => {
       accounts: [],
     }]);
 
-    assert.match(elements.walletList.innerHTML, /MPC Wallet/);
+    assert.match(elements.walletList.innerHTML, /家庭金库/);
     assert.match(elements.walletList.innerHTML, /等待密钥生成/);
     assert.match(elements.walletList.innerHTML, /门限 2 \/ 3 · 等待密钥生成/);
+    assert.match(elements.walletList.innerHTML, />查看详情<\/button>/);
     assert.match(elements.walletList.innerHTML, /增加参与方/);
     assert.match(elements.walletList.innerHTML, /移除参与方/);
     assert.match(elements.walletList.innerHTML, /查看 MPC 钱包详情/);
-    assert.doesNotMatch(elements.walletList.innerHTML, />详情<\/button>/);
     assert.doesNotMatch(elements.walletList.innerHTML, /暂无账户/);
   } finally {
     delete globalThis.document;
