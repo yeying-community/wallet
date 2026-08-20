@@ -680,6 +680,19 @@ class MpcService {
     const visible = [];
     for (const item of invites) {
       const sessionId = String(item?.payload?.sessionId || item?.subjectId || '').trim();
+      const walletId = String(item?.payload?.walletId || '').trim();
+      if (walletId && await getMpcWallet(walletId)) {
+        continue;
+      }
+      if (sessionId) {
+        const participants = Array.isArray(item?.payload?.participants)
+          ? item.payload.participants.map(participant => String(participant || '').trim()).filter(Boolean)
+          : [];
+        const joined = await Promise.all(participants.map(participantId => getMpcParticipant(sessionId, participantId)));
+        if (joined.some(Boolean)) {
+          continue;
+        }
+      }
       if (sessionId) {
         try {
           const session = await this.getSession(sessionId);
@@ -713,7 +726,17 @@ class MpcService {
     const sessions = await getMpcSessionList();
     const normalizedWalletId = String(walletId || '').trim();
     if (!normalizedWalletId) return sessions;
-    return sessions.filter(session => String(session?.walletId || '').trim() === normalizedWalletId);
+    const matched = sessions.filter(session => String(session?.walletId || '').trim() === normalizedWalletId);
+    const refreshed = [];
+    for (const session of matched) {
+      try {
+        const result = await this._refreshSessionFromCoordinator(session.id);
+        refreshed.push(result.session || session);
+      } catch {
+        refreshed.push(session);
+      }
+    }
+    return refreshed;
   }
 
   async startEventStream(sessionId, options = {}) {

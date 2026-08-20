@@ -33,7 +33,7 @@ globalThis.chrome = {
 };
 
 const { mpcService } = await import('../js/background/mpc-service.js');
-const { getMpcWallet, saveMpcSession, saveMpcWallet } = await import('../js/storage/index.js');
+const { getMpcWallet, saveMpcParticipant, saveMpcSession, saveMpcWallet } = await import('../js/storage/index.js');
 
 test.beforeEach(async () => {
   await chrome.storage.local.clear();
@@ -83,3 +83,86 @@ test('keygen session 完成时同步本地 MPC 钱包状态和地址', async () 
   assert.equal(wallet.shareVersion, 3);
 });
 
+test('listInvites 过滤本地已接受的 MPC 邀请', async () => {
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    listNotifications: async () => ({
+      items: [{
+        type: 'mpc.keygen.invited',
+        notificationUid: 'notification-1',
+        subjectId: 'session-1',
+        payload: {
+          sessionId: 'session-1',
+          walletId: 'mpc-wallet-1',
+          participants: ['0x1', '0x2'],
+        },
+      }],
+    }),
+    getSession: async () => ({
+      id: 'session-1',
+      type: 'keygen',
+      walletId: 'mpc-wallet-1',
+      status: 'created',
+    }),
+  };
+  try {
+    await saveMpcWallet({
+      id: 'mpc-wallet-1',
+      name: '团队金库',
+      type: 'mpc',
+      status: 'keygen_pending',
+      keygenSessionId: 'session-1',
+    });
+
+    const result = await mpcService.listInvites({ unreadOnly: true });
+
+    assert.deepEqual(result.items, []);
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+  }
+});
+
+test('listInvites 过滤本地已加入参与者的 MPC 邀请', async () => {
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    listNotifications: async () => ({
+      items: [{
+        type: 'mpc.keygen.invited',
+        notificationUid: 'notification-1',
+        subjectId: 'session-1',
+        payload: {
+          sessionId: 'session-1',
+          walletId: 'mpc-wallet-1',
+          participants: ['0x1', '0x2'],
+        },
+      }],
+    }),
+    getSession: async () => ({
+      id: 'session-1',
+      type: 'keygen',
+      walletId: 'mpc-wallet-1',
+      status: 'created',
+    }),
+  };
+  try {
+    await saveMpcParticipant({
+      id: '0x2',
+      sessionId: 'session-1',
+      status: 'active',
+    });
+
+    const result = await mpcService.listInvites({ unreadOnly: true });
+
+    assert.deepEqual(result.items, []);
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+  }
+});

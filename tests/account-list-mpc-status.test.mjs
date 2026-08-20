@@ -144,6 +144,15 @@ test('MPC 钱包详情只请求并展示当前钱包的会话', async () => {
           requestedWalletIds.push(walletId);
           return {
             success: true,
+            wallet: {
+              id: 'mpc-1',
+              name: '家庭金库',
+              type: 'mpc',
+              status: 'active',
+              address: '0x1111111111111111111111111111111111111111',
+              threshold: 2,
+              participants: ['0x1', '0x2', '0x3'],
+            },
             sessions: [{ id: 'session-keygen-1', type: 'keygen', status: 'active', round: 2 }],
           };
         },
@@ -163,9 +172,11 @@ test('MPC 钱包详情只请求并展示当前钱包的会话', async () => {
 
     assert.deepEqual(requestedWalletIds, ['mpc-1']);
     assert.equal(elements.mpcWalletDetailName.textContent, '家庭金库');
+    assert.equal(elements.mpcWalletDetailStatus.textContent, '可用');
+    assert.equal(elements.mpcWalletDetailAddress.textContent, '0x1111111111111111111111111111111111111111');
     assert.equal(elements.mpcWalletDetailThreshold.textContent, '2 / 3');
-    assert.equal(elements.cancelMpcWalletCreationBtn.classList.contains('hidden'), false);
-    assert.equal(elements.mpcWalletDetailFooter.classList.contains('hidden'), false);
+    assert.equal(elements.cancelMpcWalletCreationBtn.classList.contains('hidden'), true);
+    assert.equal(elements.mpcWalletDetailFooter.classList.contains('hidden'), true);
     assert.match(elements.mpcWalletDetailSessions.innerHTML, /轮次 2/);
     assert.doesNotMatch(elements.mpcWalletDetailSessions.innerHTML, /暂无会话/);
   } finally {

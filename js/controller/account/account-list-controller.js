@@ -506,7 +506,11 @@ export class AccountListController {
     try {
       const result = await this.wallet.getMpcSessions(walletId);
       if (!result?.success) throw new Error(result?.error || '加载失败');
-      this.renderMpcWalletDetail(wallet, Array.isArray(result.sessions) ? result.sessions : []);
+      const freshWallet = result.wallet && typeof result.wallet === 'object' ? result.wallet : wallet;
+      if (freshWallet?.id) {
+        this.mpcWalletsById.set(freshWallet.id, freshWallet);
+      }
+      this.renderMpcWalletDetail(freshWallet, Array.isArray(result.sessions) ? result.sessions : []);
     } catch (error) {
       if (container) container.innerHTML = '<div class="empty-message">会话加载失败</div>';
       showError('MPC 会话加载失败: ' + (error?.message || '未知错误'));

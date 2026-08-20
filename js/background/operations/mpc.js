@@ -488,7 +488,9 @@ export async function handleMpcGetSession(sessionId) {
 export async function handleMpcGetSessions(options = {}) {
   try {
     const sessions = await mpcService.getSessions(options?.walletId);
-    return { success: true, sessions };
+    const walletId = String(options?.walletId || '').trim();
+    const wallet = walletId ? await getMpcWallet(walletId) : null;
+    return { success: true, sessions, wallet };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to get sessions' };
   }
