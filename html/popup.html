@@ -1014,9 +1014,13 @@
           <!-- 多签钱包设置 -->
           <div class="settings-section" id="mpcSettingsSection">
             <h3>🧩 多签钱包</h3>
-            <p class="settings-hint settings-card-description">与其他成员共同管理钱包，达到设定门限后才能完成关键操作；邀请、连接和审计记录都在详情中管理。</p>
+            <p class="settings-hint settings-card-description">与其他成员共同管理钱包，达到设定门限后才能完成关键操作；待处理邀请会集中显示在多签活动中。</p>
             <p class="settings-hint" id="mpcSettingsSummary">默认协调器：https://node.yeying.pub</p>
-            <button id="mpcDetailBtn" class="btn btn-secondary btn-small btn-block" type="button">查看详情</button>
+            <p class="settings-hint hidden" id="mpcSettingsInviteHint"></p>
+            <div class="settings-row settings-action-grid">
+              <button id="mpcDetailBtn" class="btn btn-secondary btn-small" type="button">查看详情</button>
+              <button id="mpcSettingsActivityBtn" class="btn btn-secondary btn-small" type="button">多签活动</button>
+            </div>
           </div>
 
           <!-- MPC 会话操作（开发者排障） -->
@@ -1171,18 +1175,21 @@
         </div>
       </div>
 
-      <div id="walletIdentityEditModal" class="modal hidden">
-        <div class="modal-overlay"></div>
-        <div class="modal-content">
-          <div class="modal-header"><h3>验证资料</h3><button class="btn-close" id="closeWalletIdentityEditModal" type="button">✕</button></div>
-          <div class="modal-body">
-            <p class="settings-hint">选择地址并填写用户名和邮箱，确认后将向邮箱发送验证码。</p>
-            <div class="form-group"><label for="walletIdentityEditEndpoint">身份服务地址</label><input id="walletIdentityEditEndpoint" class="input" type="url" autocomplete="url" /></div>
-            <div class="form-group"><label for="walletIdentityEditAddress">钱包地址</label><select id="walletIdentityEditAddress" class="input"></select></div>
-            <div class="form-group"><label for="walletIdentityEditUsername">用户名</label><input id="walletIdentityEditUsername" class="input" autocomplete="username" /></div>
-            <div class="form-group"><label for="walletIdentityEditEmail">邮箱</label><input id="walletIdentityEditEmail" class="input" type="email" autocomplete="email" /></div>
+      <div id="walletIdentityEditPage" class="page hidden">
+        <div class="page-header">
+          <button class="back-btn" id="walletIdentityEditBackBtn" type="button">←</button>
+          <h2>变更验证资料</h2>
+        </div>
+        <div class="settings-body wallet-identity-details">
+          <p class="settings-card-description">选择地址并填写用户名和邮箱，确认后将向邮箱发送验证码。</p>
+          <div class="form-group"><label for="walletIdentityEditEndpoint">身份服务地址</label><input id="walletIdentityEditEndpoint" class="input" type="url" autocomplete="url" /></div>
+          <div class="form-group"><label for="walletIdentityEditAddress">钱包地址</label><select id="walletIdentityEditAddress" class="input"></select></div>
+          <div class="form-group"><label for="walletIdentityEditUsername">用户名</label><input id="walletIdentityEditUsername" class="input" autocomplete="username" /></div>
+          <div class="form-group"><label for="walletIdentityEditEmail">邮箱</label><input id="walletIdentityEditEmail" class="input" type="email" autocomplete="email" /></div>
+          <div class="settings-row identity-detail-actions">
+            <button id="confirmWalletIdentityEditBtn" class="btn btn-primary" type="button">验证</button>
+            <button id="cancelWalletIdentityEditBtn" class="btn btn-secondary" type="button">取消</button>
           </div>
-          <div class="modal-footer"><button id="confirmWalletIdentityEditBtn" class="btn btn-primary">验证</button><button id="cancelWalletIdentityEditBtn" class="btn btn-secondary">取消</button></div>
         </div>
       </div>
       <div id="walletIdentityUnlinkModal" class="modal hidden">
@@ -1259,6 +1266,20 @@
           <div class="page-actions"></div>
         </div>
         <p class="settings-hint">查看这台设备参与的多签钱包创建、邀请和会话状态。</p>
+        <div class="mpc-invite-panel">
+          <div class="mpc-invite-header">
+            <span>待处理邀请</span>
+            <button id="mpcInvitesRefreshBtn" class="settings-heading-icon-btn" type="button" aria-label="刷新待处理邀请" title="刷新待处理邀请">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+                <path d="M21 3v6h-6"></path>
+              </svg>
+            </button>
+          </div>
+          <div id="mpcInvitesList" class="mpc-invite-list">
+            <div class="mpc-invite-empty">暂无待处理邀请</div>
+          </div>
+        </div>
         <h3 class="sync-log-title">最近活动</h3>
         <div id="mpcLogsList" class="sync-activity-list sync-log-list">
           <div class="empty-message">暂无多签活动</div>
@@ -1419,20 +1440,6 @@
             <div class="settings-row settings-action-grid">
               <button id="mpcServiceConfigBtn" class="btn btn-secondary btn-small">高级设置</button>
               <button id="mpcAuditBtn" class="btn btn-secondary btn-small">多签活动</button>
-            </div>
-            <div class="mpc-invite-panel">
-              <div class="mpc-invite-header">
-                <span>待处理邀请</span>
-                <button id="mpcInvitesRefreshBtn" class="settings-heading-icon-btn" type="button" aria-label="刷新待处理邀请" title="刷新待处理邀请">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
-                    <path d="M21 3v6h-6"></path>
-                  </svg>
-                </button>
-              </div>
-              <div id="mpcInvitesList" class="mpc-invite-list">
-                <div class="mpc-invite-empty">暂无待处理邀请</div>
-              </div>
             </div>
           </div>
       </div>

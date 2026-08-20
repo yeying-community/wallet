@@ -5,7 +5,7 @@
  *
  * 依赖通过构造参数注入：{ wallet, requestPassword }
  */
-import { showPage, showSuccess, showError, showWaiting, hideWaiting, copyToClipboard } from '../../common/ui/index.js';
+import { showPage, getCurrentPage, showSuccess, showError, showWaiting, hideWaiting, copyToClipboard } from '../../common/ui/index.js';
 import { formatLocaleDateTime } from '../../common/utils/time-utils.js';
 import { escapeHtml } from '../../common/ui/html-ui.js';
 import { deriveUcanAudience } from '../../common/ucan-utils.js';
@@ -47,6 +47,12 @@ export class MpcSettingsController {
     const mpcAuditBtn = document.getElementById('mpcAuditBtn');
     if (mpcAuditBtn) {
       mpcAuditBtn.addEventListener('click', async () => {
+        await this.openMpcLogsPage();
+      });
+    }
+    const mpcSettingsActivityBtn = document.getElementById('mpcSettingsActivityBtn');
+    if (mpcSettingsActivityBtn) {
+      mpcSettingsActivityBtn.addEventListener('click', async () => {
         await this.openMpcLogsPage();
       });
     }
@@ -306,7 +312,6 @@ export class MpcSettingsController {
 
   openMpcDetailPage() {
     showPage('mpcDetailPage');
-    this.loadMpcInvites(false);
     this.loadMpcDeviceInfo(false);
   }
 
@@ -327,6 +332,11 @@ export class MpcSettingsController {
     } catch (error) {
       console.error('[MpcSettings] 获取 MPC 设置失败:', error);
     }
+  }
+
+  async loadSessions() {
+    await this.loadMpcLogs();
+    window.refreshWalletSelects?.();
   }
 
   async loadCustodySettings() {
@@ -388,6 +398,7 @@ export class MpcSettingsController {
       const endpoint = settings.coordinatorEndpoint || DEFAULT_MPC_COORDINATOR_ENDPOINT;
       summary.textContent = `默认协调器：${endpoint}`;
     }
+    this.renderMpcInviteSummary();
     window.refreshWalletSelects?.();
   }
 
@@ -1148,13 +1159,40 @@ export class MpcSettingsController {
       }
       this.mpcInvites = Array.isArray(result.items) ? result.items : [];
       this.renderMpcInvites(this.mpcInvites);
+      this.renderMpcInviteSummary();
       if (showToast) showSuccess('MPC 邀请已刷新');
     } catch (error) {
       console.error('[MpcSettings] 加载 MPC 邀请失败:', error);
       this.mpcInvites = [];
       this.renderMpcInvites([], this.getMpcInviteLoadErrorMessage(error));
+      this.renderMpcInviteSummary(error);
       if (showToast) showError('刷新失败: ' + error.message);
     }
+  }
+
+  renderMpcInviteSummary(error = null) {
+    const hint = document.getElementById('mpcSettingsInviteHint');
+    const activityBtn = document.getElementById('mpcSettingsActivityBtn');
+    if (!hint) return;
+    if (error) {
+      hint.textContent = this.getMpcInviteLoadErrorMessage(error);
+      hint.classList.remove('hidden');
+      activityBtn?.classList.remove('btn-primary');
+      activityBtn?.classList.add('btn-secondary');
+      return;
+    }
+    const count = Array.isArray(this.mpcInvites) ? this.mpcInvites.length : 0;
+    if (count > 0) {
+      hint.textContent = `有 ${count} 个待处理邀请，请前往多签活动处理。`;
+      hint.classList.remove('hidden');
+      activityBtn?.classList.remove('btn-secondary');
+      activityBtn?.classList.add('btn-primary');
+      return;
+    }
+    hint.textContent = '';
+    hint.classList.add('hidden');
+    activityBtn?.classList.remove('btn-primary');
+    activityBtn?.classList.add('btn-secondary');
   }
 
   getMpcInviteLoadErrorMessage(error) {
@@ -1252,8 +1290,14 @@ export class MpcSettingsController {
   }
 
   async openMpcLogsPage() {
+    const returnPage = getCurrentPage() === 'settingsPage' ? 'settingsPage' : 'mpcDetailPage';
+    const page = document.getElementById('mpcLogsPage');
+    if (page) page.dataset.returnPage = returnPage;
     showPage('mpcLogsPage');
-    await this.loadMpcLogs();
+    await Promise.all([
+      this.loadMpcInvites(false),
+      this.loadMpcLogs()
+    ]);
   }
 
   async loadMpcLogs() {

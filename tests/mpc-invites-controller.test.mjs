@@ -54,6 +54,7 @@ test('loadMpcInvites 渲染待处理 MPC 邀请', async () => {
 test('handleMpcInviteAccept 使用通知 payload 接受邀请', async () => {
   setup();
   let accepted = null;
+  let auditLoaded = false;
   const controller = new MpcSettingsController({
     wallet: {
       acceptMpcInvite: async (input) => {
@@ -61,10 +62,13 @@ test('handleMpcInviteAccept 使用通知 payload 接受邀请', async () => {
         return { success: true };
       },
       listMpcInvites: async () => ({ success: true, items: [] }),
+      getMpcAuditLogs: async () => {
+        auditLoaded = true;
+        return { logs: [] };
+      },
     },
     requestPassword: async () => 'password123',
   });
-  controller.loadSessions = async () => {};
   controller.mpcInvites = [{
     notificationUid: 'notification-1',
     subjectId: 'session-1',
@@ -88,4 +92,5 @@ test('handleMpcInviteAccept 使用通知 payload 接受邀请', async () => {
     },
     password: 'password123',
   });
+  assert.equal(auditLoaded, true);
 });
