@@ -378,7 +378,6 @@ class MpcService {
     const actionPayload = {
       requestedSessionId: '',
       type: payload.type,
-      name: payload.name || '',
       walletId: String(payload.walletId || ''),
       threshold: Number(payload.threshold),
       participants: payload.participants,

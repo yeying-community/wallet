@@ -120,3 +120,22 @@ test('MPC create session request preserves wallet name for invite payloads', asy
     globalThis.fetch = originalFetch;
   }
 });
+
+test('MPC session create signature payload excludes display-only wallet name', async () => {
+  const payload = {
+    requestedSessionId: '',
+    type: 'keygen',
+    walletId: 'wallet-1',
+    threshold: 2,
+    participants: ['0x1', '0x2'],
+    curve: 'secp256k1',
+    expiresAt: '',
+    keyVersion: undefined,
+    shareVersion: undefined,
+  };
+  const canonical = '{"curve":"secp256k1","expiresAt":"","participants":["0x1","0x2"],"requestedSessionId":"","threshold":2,"type":"keygen","walletId":"wallet-1"}';
+  const expectedHash = createHash('sha256').update(canonical).digest('hex');
+
+  assert.equal(await buildActionPayloadHash(payload), expectedHash);
+  assert.equal(Object.hasOwn(payload, 'name'), false);
+});
