@@ -19,8 +19,8 @@ test('账户管理按三行结构展示待 Keygen 的 MPC 钱包', () => {
     }]);
 
     assert.match(elements.walletList.innerHTML, /MPC Wallet/);
-    assert.match(elements.walletList.innerHTML, /地址生成中/);
-    assert.match(elements.walletList.innerHTML, /门限 2 \/ 3/);
+    assert.match(elements.walletList.innerHTML, /等待密钥生成/);
+    assert.match(elements.walletList.innerHTML, /门限 2 \/ 3 · 等待密钥生成/);
     assert.match(elements.walletList.innerHTML, /增加参与方/);
     assert.match(elements.walletList.innerHTML, /移除参与方/);
     assert.match(elements.walletList.innerHTML, /查看 MPC 钱包详情/);
@@ -28,6 +28,96 @@ test('账户管理按三行结构展示待 Keygen 的 MPC 钱包', () => {
     assert.doesNotMatch(elements.walletList.innerHTML, /暂无账户/);
   } finally {
     delete globalThis.document;
+  }
+});
+
+test('账户管理把待处理 MPC 邀请展示为可接受的钱包卡片', () => {
+  const { document, elements } = createDocument({ walletList: { tagName: 'div' } });
+  globalThis.document = document;
+  try {
+    const controller = new AccountListController({ wallet: {} });
+    controller.renderWalletList([], null, null, null, null, null, [{
+      notificationUid: 'notification-1',
+      subjectId: 'session-1',
+      title: 'MPC 钱包创建邀请',
+      actor: 'did:pkh:eth:0xabc',
+      payload: {
+        name: '团队金库',
+        walletId: 'mpc-wallet-1',
+        sessionId: 'session-1',
+        threshold: 2,
+        participants: ['a', 'b'],
+      },
+    }]);
+
+    assert.match(elements.walletList.innerHTML, /MPC Wallet/);
+    assert.match(elements.walletList.innerHTML, /团队金库/);
+    assert.match(elements.walletList.innerHTML, /待接受邀请/);
+    assert.match(elements.walletList.innerHTML, /接受邀请/);
+    assert.match(elements.walletList.innerHTML, /data-mpc-invite-accept="notification-1"/);
+    assert.doesNotMatch(elements.walletList.innerHTML, /暂无钱包/);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test('账户管理接受 MPC 邀请后刷新钱包列表和外层钱包状态', async () => {
+  const { document } = createDocument({
+    walletList: { tagName: 'div' },
+    globalWaitingOverlay: { tagName: 'div', _classes: 'hidden' },
+    globalToast: { tagName: 'div' },
+  });
+  globalThis.document = document;
+  globalThis.window = { refreshWalletSelects: () => {} };
+  let accepted = null;
+  let walletListLoads = 0;
+  let outerRefreshes = 0;
+  try {
+    const controller = new AccountListController({
+      wallet: {
+        getWalletList: async () => {
+          walletListLoads += 1;
+          return [];
+        },
+        listMpcInvites: async () => ({ success: true, items: [] }),
+        acceptMpcInvite: async (input) => {
+          accepted = input;
+          return { success: true };
+        },
+      },
+      promptPassword: async () => 'password123',
+      onWalletUpdated: async () => {
+        outerRefreshes += 1;
+      },
+    });
+    controller.pendingMpcInvites = [{
+      notificationUid: 'notification-1',
+      subjectId: 'session-1',
+      payload: {
+        walletId: 'mpc-wallet-1',
+        sessionId: 'session-1',
+        participants: ['a', 'b'],
+      },
+    }];
+
+    await controller.handleMpcInviteAccept('notification-1');
+
+    assert.deepEqual(accepted, {
+      notificationUid: 'notification-1',
+      sessionId: 'session-1',
+      walletId: 'mpc-wallet-1',
+      payload: {
+        walletId: 'mpc-wallet-1',
+        sessionId: 'session-1',
+        participants: ['a', 'b'],
+      },
+      password: 'password123',
+    });
+    assert.equal(walletListLoads, 1);
+    assert.equal(outerRefreshes, 1);
+  } finally {
+    delete globalThis.document;
+    delete globalThis.window;
   }
 });
 
