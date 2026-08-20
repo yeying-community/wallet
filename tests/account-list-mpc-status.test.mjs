@@ -42,7 +42,7 @@ test('账户管理把待处理 MPC 邀请展示为可接受的钱包卡片', () 
       title: 'MPC 钱包创建邀请',
       actor: 'did:pkh:eth:0xabc',
       payload: {
-        name: '团队金库',
+        metadata: { walletName: '团队金库' },
         walletId: 'mpc-wallet-1',
         sessionId: 'session-1',
         threshold: 2,

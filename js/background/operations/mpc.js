@@ -30,6 +30,19 @@ const MPC_AUTH_SCHEMES = new Set(['ucan']);
 const MPC_E2E_SUITES = new Set(['x25519-aes-gcm']);
 const MPC_REFRESH_POLICIES = new Set(['manual']);
 
+export function resolveMpcWalletName(source = {}, fallback = 'MPC Wallet') {
+  const payload = source?.payload && typeof source.payload === 'object' ? source.payload : source;
+  const candidates = [
+    payload?.name,
+    payload?.walletName,
+    payload?.wallet?.name,
+    payload?.metadata?.walletName,
+    payload?.metadata?.name,
+    source?.title
+  ];
+  return String(candidates.find(value => String(value || '').trim()) || fallback).trim() || fallback;
+}
+
 /**
  * 创建 MPC 钱包（并创建 Keygen 会话）
  * @param {Object} options
@@ -100,6 +113,7 @@ export async function handleCreateMpcWallet(options = {}) {
 
     const sessionResult = await mpcService.createSession({
       type: 'keygen',
+      name,
       walletId,
       threshold,
       participants,
@@ -393,7 +407,7 @@ export async function handleMpcAcceptInvite(options = {}) {
       const now = getTimestamp();
       await saveMpcWallet({
         id: walletId,
-        name: String(payload.name || 'MPC Wallet').trim() || 'MPC Wallet',
+        name: resolveMpcWalletName(payload),
         type: 'mpc',
         status: 'keygen_pending',
         keygenSessionId: sessionId,

@@ -366,6 +366,7 @@ class MpcService {
     const type = String(options.type || 'keygen').toLowerCase();
     const payload = {
       type,
+      name: String(options.name || options.walletName || '').trim() || undefined,
       walletId: options.walletId || null,
       threshold: options.threshold ?? null,
       participants: Array.isArray(options.participants) ? options.participants : [],
@@ -377,6 +378,7 @@ class MpcService {
     const actionPayload = {
       requestedSessionId: '',
       type: payload.type,
+      name: payload.name || '',
       walletId: String(payload.walletId || ''),
       threshold: Number(payload.threshold),
       participants: payload.participants,

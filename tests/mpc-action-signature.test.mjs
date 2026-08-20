@@ -95,3 +95,28 @@ test('unset MPC session expiry is omitted instead of serialized as null', async 
     globalThis.fetch = originalFetch;
   }
 });
+
+test('MPC create session request preserves wallet name for invite payloads', async () => {
+  let requestBody;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    requestBody = JSON.parse(options.body);
+    return new Response(JSON.stringify({ code: 0, data: { id: 'session-1' } }), { status: 200 });
+  };
+  try {
+    const client = new MpcCoordinatorClient({ endpoint: 'http://127.0.0.1:8100' });
+    await client.createSession({
+      type: 'keygen',
+      name: '团队金库',
+      walletId: 'wallet-1',
+    }, {
+      requestId: 'action-1',
+      timestamp: '1786062000000',
+      signature: '0xsig',
+    });
+    assert.equal(requestBody.name, '团队金库');
+    assert.equal(requestBody.walletId, 'wallet-1');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

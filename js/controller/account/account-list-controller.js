@@ -417,7 +417,7 @@ export class AccountListController {
   renderPendingMpcInviteCard(invite) {
     const payload = invite?.payload || {};
     const notificationUid = invite?.notificationUid || invite?.uid || '';
-    const walletName = String(payload.name || invite?.title || 'MPC 钱包邀请').trim() || 'MPC 钱包邀请';
+    const walletName = this.getMpcInviteWalletName(invite);
     const walletId = payload.walletId || '';
     const sessionId = payload.sessionId || invite?.subjectId || '';
     const threshold = payload.threshold || '-';
@@ -451,6 +451,19 @@ export class AccountListController {
       </div>
     </div>
   `;
+  }
+
+  getMpcInviteWalletName(invite) {
+    const payload = invite?.payload || {};
+    const candidates = [
+      payload.name,
+      payload.walletName,
+      payload.wallet?.name,
+      payload.metadata?.walletName,
+      payload.metadata?.name,
+      invite?.title
+    ];
+    return String(candidates.find(value => String(value || '').trim()) || 'MPC 钱包邀请').trim() || 'MPC 钱包邀请';
   }
 
   getMpcWalletStatusText(wallet) {
