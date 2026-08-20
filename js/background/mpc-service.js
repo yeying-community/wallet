@@ -176,21 +176,47 @@ class MpcService {
   }
 
   _buildParticipantRecord(sessionId, participant = {}) {
-    const participantId = String(participant.participantId || participant.id || '').trim();
+    const participantId = String(participant?.participantId || participant?.id || participant || '').trim();
     if (!sessionId || !participantId) {
       return null;
     }
     return {
       id: participantId,
       sessionId,
-      label: participant.label || participantId,
-      deviceId: String(participant.deviceId || '').trim(),
-      identity: String(participant.identity || '').trim(),
-      signingPublicKey: String(participant.signingPublicKey || '').trim(),
-      e2ePublicKey: String(participant.e2ePublicKey || '').trim(),
-      status: String(participant.status || 'active').trim() || 'active',
-      joinedAt: participant.joinedAt || getTimestamp()
+      label: participant?.label || participantId,
+      deviceId: String(participant?.deviceId || '').trim(),
+      identity: String(participant?.identity || '').trim(),
+      signingPublicKey: String(participant?.signingPublicKey || '').trim(),
+      e2ePublicKey: String(participant?.e2ePublicKey || '').trim(),
+      status: String(participant?.status || 'active').trim() || 'active',
+      joinedAt: participant?.joinedAt || getTimestamp()
     };
+  }
+
+  _normalizeParticipantIds(participants = []) {
+    if (!Array.isArray(participants)) return [];
+    const normalized = [];
+    const seen = new Set();
+    for (const participant of participants) {
+      const id = String(participant?.participantId || participant?.id || participant?.address || participant || '').trim();
+      const key = id.toLowerCase();
+      if (!id || seen.has(key)) continue;
+      seen.add(key);
+      normalized.push(id);
+    }
+    return normalized;
+  }
+
+  _resolveWalletName(source = {}, fallback = '') {
+    const candidates = [
+      source?.name,
+      source?.walletName,
+      source?.wallet?.name,
+      source?.metadata?.walletName,
+      source?.metadata?.name,
+      fallback
+    ];
+    return String(candidates.find(value => String(value || '').trim()) || '').trim();
   }
 
   _buildSessionRecord(input = {}, fallback = {}) {
@@ -201,15 +227,18 @@ class MpcService {
     return {
       id: sessionId,
       type: String(input.type || fallback.type || 'keygen').trim() || 'keygen',
+      name: this._resolveWalletName(input, fallback.name || ''),
       walletId: String(input.walletId || fallback.walletId || '').trim(),
       threshold: input.threshold ?? fallback.threshold ?? null,
-      participants: Array.isArray(input.participants) ? input.participants : (Array.isArray(fallback.participants) ? fallback.participants : []),
+      participants: this._normalizeParticipantIds(Array.isArray(input.participants) ? input.participants : fallback.participants),
       curve: String(input.curve || fallback.curve || 'secp256k1').trim() || 'secp256k1',
       status: String(input.status || fallback.status || 'created').trim() || 'created',
       round: Number.isFinite(input.round) ? input.round : (Number.isFinite(fallback.round) ? fallback.round : 0),
       createdAt: input.createdAt || fallback.createdAt || getTimestamp(),
       updatedAt: getTimestamp(),
-      expiresAt: input.expiresAt || fallback.expiresAt || ''
+      expiresAt: input.expiresAt || fallback.expiresAt || '',
+      keyVersion: Number.isFinite(input.keyVersion) ? input.keyVersion : fallback.keyVersion,
+      shareVersion: Number.isFinite(input.shareVersion) ? input.shareVersion : fallback.shareVersion
     };
   }
 
@@ -266,6 +295,21 @@ class MpcService {
       next[targetKey] = value;
       changed = true;
     };
+    const setNumberIfPresent = (targetKey, ...sources) => {
+      const value = sources.find(item => item !== undefined && item !== null && String(item).trim() !== '' && Number.isFinite(Number(item)));
+      if (value === undefined) return;
+      const numberValue = Number(value);
+      if (next[targetKey] === numberValue) return;
+      next[targetKey] = numberValue;
+      changed = true;
+    };
+    const setArrayIfPresent = (targetKey, value) => {
+      const normalized = this._normalizeParticipantIds(value);
+      if (!normalized.length) return;
+      if (JSON.stringify(next[targetKey] || []) === JSON.stringify(normalized)) return;
+      next[targetKey] = normalized;
+      changed = true;
+    };
 
     if (MPC_SESSION_ACTIVE_STATUSES.has(status) && next.status !== 'active') {
       next.status = 'active';
@@ -275,17 +319,16 @@ class MpcService {
       changed = true;
     }
 
+    setIfPresent('name', this._resolveWalletName(rawSession, session?.name || ''), this._resolveWalletName(result));
+    setIfPresent('keygenSessionId', session?.id, rawSession?.id);
+    setIfPresent('curve', rawSession?.curve, session?.curve, result?.curve);
     setIfPresent('address', rawSession?.address, result?.address, result?.walletAddress, result?.accountAddress);
     setIfPresent('publicKey', rawSession?.publicKey, result?.publicKey, result?.groupPublicKey, result?.aggregatePublicKey);
     setIfPresent('chainCode', rawSession?.chainCode, result?.chainCode);
-    if (Number.isFinite(rawSession?.keyVersion) && next.keyVersion !== rawSession.keyVersion) {
-      next.keyVersion = rawSession.keyVersion;
-      changed = true;
-    }
-    if (Number.isFinite(rawSession?.shareVersion) && next.shareVersion !== rawSession.shareVersion) {
-      next.shareVersion = rawSession.shareVersion;
-      changed = true;
-    }
+    setNumberIfPresent('threshold', rawSession?.threshold, session?.threshold, result?.threshold);
+    setNumberIfPresent('keyVersion', rawSession?.keyVersion, session?.keyVersion, result?.keyVersion);
+    setNumberIfPresent('shareVersion', rawSession?.shareVersion, session?.shareVersion, result?.shareVersion);
+    setArrayIfPresent('participants', rawSession?.participants || session?.participants || result?.participants);
 
     if (!changed) {
       return wallet;
@@ -395,6 +438,7 @@ class MpcService {
     const sessionId = response?.sessionId || response?.id || options.sessionId || generateId('mpc_session');
     const session = await this._syncSessionSnapshot(response, {
       id: sessionId,
+      name: payload.name || '',
       type,
       walletId: payload.walletId,
       threshold: payload.threshold,
