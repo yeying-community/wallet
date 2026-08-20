@@ -128,6 +128,7 @@ export async function handleCreateMpcWallet(options = {}) {
     };
 
     await saveMpcWallet(wallet);
+    await mpcService.syncWalletFromSession(sessionResult.session || wallet.keygenSessionId).catch(() => null);
 
     return {
       success: true,
@@ -406,6 +407,7 @@ export async function handleMpcAcceptInvite(options = {}) {
         updatedAt: now
       });
     }
+    await mpcService.syncWalletFromSession(joinResult.session || sessionId).catch(() => null);
 
     if (notificationUid) {
       await mpcService.markInviteRead(notificationUid).catch(() => null);

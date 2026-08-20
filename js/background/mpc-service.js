@@ -14,6 +14,8 @@ import {
   saveMpcDeviceKey,
   getMpcParticipant,
   saveMpcParticipant,
+  getMpcWallet,
+  saveMpcWallet,
   getMpcSession,
   saveMpcSession,
   getMpcSessionList,
@@ -48,6 +50,8 @@ const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
 const DEFAULT_MPC_UCAN_RESOURCE = 'mpc';
 const DEFAULT_MPC_UCAN_ACTION = 'coordinate';
 const DEFAULT_MPC_UCAN_TTL_HOURS = 24;
+const MPC_SESSION_ACTIVE_STATUSES = new Set(['active', 'completed', 'complete', 'succeeded', 'success']);
+const MPC_SESSION_FAILED_STATUSES = new Set(['failed', 'error']);
 
 class MpcService {
   constructor() {
@@ -231,7 +235,63 @@ class MpcService {
       : [];
     await saveMpcSession(session);
     await this._syncSessionParticipants(session.id, joinedParticipants);
+    await this._syncWalletFromSession(session, sessionInput);
     return session;
+  }
+
+  async syncWalletFromSession(sessionOrId) {
+    const session = typeof sessionOrId === 'string'
+      ? await getMpcSession(sessionOrId)
+      : sessionOrId;
+    return await this._syncWalletFromSession(session, session);
+  }
+
+  async _syncWalletFromSession(session, rawSession = {}) {
+    const walletId = String(session?.walletId || rawSession?.walletId || '').trim();
+    if (!walletId || String(session?.type || rawSession?.type || '').toLowerCase() !== 'keygen') {
+      return null;
+    }
+    const wallet = await getMpcWallet(walletId);
+    if (!wallet) {
+      return null;
+    }
+
+    const result = rawSession?.result || rawSession?.keygenResult || rawSession?.output || {};
+    const status = String(rawSession?.status || session?.status || '').toLowerCase();
+    const next = { ...wallet, updatedAt: getTimestamp() };
+    let changed = false;
+    const setIfPresent = (targetKey, ...sources) => {
+      const value = sources.map(item => String(item || '').trim()).find(Boolean);
+      if (!value || String(next[targetKey] || '') === value) return;
+      next[targetKey] = value;
+      changed = true;
+    };
+
+    if (MPC_SESSION_ACTIVE_STATUSES.has(status) && next.status !== 'active') {
+      next.status = 'active';
+      changed = true;
+    } else if (MPC_SESSION_FAILED_STATUSES.has(status) && next.status !== 'failed') {
+      next.status = 'failed';
+      changed = true;
+    }
+
+    setIfPresent('address', rawSession?.address, result?.address, result?.walletAddress, result?.accountAddress);
+    setIfPresent('publicKey', rawSession?.publicKey, result?.publicKey, result?.groupPublicKey, result?.aggregatePublicKey);
+    setIfPresent('chainCode', rawSession?.chainCode, result?.chainCode);
+    if (Number.isFinite(rawSession?.keyVersion) && next.keyVersion !== rawSession.keyVersion) {
+      next.keyVersion = rawSession.keyVersion;
+      changed = true;
+    }
+    if (Number.isFinite(rawSession?.shareVersion) && next.shareVersion !== rawSession.shareVersion) {
+      next.shareVersion = rawSession.shareVersion;
+      changed = true;
+    }
+
+    if (!changed) {
+      return wallet;
+    }
+    await saveMpcWallet(next);
+    return next;
   }
 
   async _refreshSessionFromCoordinator(sessionId) {
@@ -881,12 +941,14 @@ class MpcService {
     if (eventType === 'session-update') {
       const session = await getMpcSession(sessionId);
       if (session) {
-        await saveMpcSession({
+        const nextSession = {
           ...session,
           status: data?.status || session.status,
           round: Number.isFinite(data?.round) ? data.round : session.round,
           updatedAt: getTimestamp()
-        });
+        };
+        await saveMpcSession(nextSession);
+        await this._syncWalletFromSession(nextSession, data);
       }
     }
 
