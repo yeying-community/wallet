@@ -4,6 +4,7 @@ use cggmp24::{signing, trusted_dealer, DataToSign, ExecutionId, KeyShare, Signat
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+use wasm_bindgen::prelude::*;
 
 pub const ENGINE_ID: &str = "cggmp24";
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -24,6 +25,8 @@ cggmp24::define_security_level!(SpikeSecurityLevel {
 pub type SecpKeyShare = KeyShare<Secp256k1, SpikeSecurityLevel>;
 pub type SecpSignature = Signature<Secp256k1>;
 pub type SecpSigningMessage = cggmp24::signing::msg::Msg<Secp256k1, Sha256>;
+pub type SecpThresholdKeygenMessage =
+    cggmp24_keygen::ThresholdMsg<Secp256k1, SpikeSecurityLevel, Sha256>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -152,6 +155,68 @@ pub fn serialize_signature_hex(signature: &SecpSignature) -> String {
     let mut out = vec![0u8; SecpSignature::serialized_len()];
     signature.write_to_slice(&mut out);
     hex::encode(out)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WasmEngineMetadata {
+    pub engine: String,
+    pub protocol_version: u32,
+    pub curve: String,
+    pub protocols: Vec<MpcProtocolKind>,
+    pub state_machine_api: Vec<String>,
+}
+
+fn to_js_error(error: impl core::fmt::Display) -> JsValue {
+    JsValue::from_str(&error.to_string())
+}
+
+#[wasm_bindgen(js_name = cggmp24EngineMetadataJson)]
+pub fn cggmp24_engine_metadata_json() -> Result<String, JsValue> {
+    serde_json::to_string(&WasmEngineMetadata {
+        engine: ENGINE_ID.to_string(),
+        protocol_version: PROTOCOL_VERSION,
+        curve: "secp256k1".to_string(),
+        protocols: vec![
+            MpcProtocolKind::Keygen,
+            MpcProtocolKind::AuxInfo,
+            MpcProtocolKind::Sign,
+        ],
+        state_machine_api: vec![
+            "startKeygen".to_string(),
+            "startSign".to_string(),
+            "receiveMessage".to_string(),
+            "advance".to_string(),
+            "getOutgoingMessages".to_string(),
+            "getResult".to_string(),
+        ],
+    })
+    .map_err(to_js_error)
+}
+
+#[wasm_bindgen(js_name = normalizeWireMessageJson)]
+pub fn normalize_wire_message_json(json: &str) -> Result<String, JsValue> {
+    let message: MpcWireMessage<serde_json::Value> =
+        serde_json::from_str(json).map_err(to_js_error)?;
+    if message.protocol_version != PROTOCOL_VERSION {
+        return Err(JsValue::from_str("MPC_WIRE_PROTOCOL_VERSION_UNSUPPORTED"));
+    }
+    if message.engine != ENGINE_ID {
+        return Err(JsValue::from_str("MPC_WIRE_ENGINE_UNSUPPORTED"));
+    }
+    serde_json::to_string(&message).map_err(to_js_error)
+}
+
+#[wasm_bindgen(js_name = normalizeSigningPayloadJson)]
+pub fn normalize_signing_payload_json(json: &str) -> Result<String, JsValue> {
+    let message: SecpSigningMessage = serde_json::from_str(json).map_err(to_js_error)?;
+    serde_json::to_string(&message).map_err(to_js_error)
+}
+
+#[wasm_bindgen(js_name = normalizeThresholdKeygenPayloadJson)]
+pub fn normalize_threshold_keygen_payload_json(json: &str) -> Result<String, JsValue> {
+    let message: SecpThresholdKeygenMessage = serde_json::from_str(json).map_err(to_js_error)?;
+    serde_json::to_string(&message).map_err(to_js_error)
 }
 
 #[cfg(test)]

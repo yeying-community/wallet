@@ -194,6 +194,22 @@ export function getMpcTssEngine() {
   return engine;
 }
 
+export function installMpcTssEngine(nextEngine) {
+  if (!nextEngine) {
+    throw new Error('MPC_TSS_ENGINE_REQUIRED');
+  }
+  [
+    'startSign',
+    'startKeygen',
+    'advance',
+    'receiveMessage',
+    'getOutgoingMessages',
+    'getResult'
+  ].forEach((name) => requireFunction(nextEngine, name));
+  engine = nextEngine;
+  return engine;
+}
+
 export function setMpcTssEngineForTests(nextEngine) {
   engine = nextEngine || new UnconfiguredMpcTssEngine();
 }

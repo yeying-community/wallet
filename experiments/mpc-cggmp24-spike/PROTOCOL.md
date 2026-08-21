@@ -140,11 +140,18 @@ but real TSS needs a lower-level message log:
 
 - Measure `aux_info_gen` separately from keygen and signing.
 - Decide whether aux info is pregenerated and cached per participant group.
-- Build a minimal WASM wrapper around:
-  - initialize keygen/sign state machine
-  - advance local state
-  - accept one incoming message
-  - emit zero or more outgoing messages
-  - return output or explicit error
+- Build the full WASM state-machine wrapper. The current spike exports the
+  initial ABI surface and JSON validation helpers:
+  - `cggmp24EngineMetadataJson()`
+  - `normalizeWireMessageJson(json)`
+  - `normalizeSigningPayloadJson(json)`
+  - `normalizeThresholdKeygenPayloadJson(json)`
+  The production adapter expects the loaded JS engine to expose:
+  - `startKeygen`
+  - `startSign`
+  - `receiveMessage`
+  - `advance`
+  - `getOutgoingMessages`
+  - `getResult`
 - Add node message-log persistence before wiring wallet UI.
 - Add wallet encrypted local storage for `KeyShare` and `AuxInfo`.
