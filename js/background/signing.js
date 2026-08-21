@@ -5,9 +5,55 @@
 
 import { getWalletInstance } from './keyring.js';
 import { state } from './state.js';
-import { getNetworkByChainId, getNetworkConfigByKey } from '../storage/index.js';
+import { getMpcWallet, getMpcWalletList, getNetworkByChainId, getNetworkConfigByKey } from '../storage/index.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
 import { ethers } from '../../lib/ethers-6.16.esm.min.js';
+
+export const MPC_ACCOUNT_ID_PREFIX = 'mpc:';
+
+export function getMpcAccountId(walletId) {
+  const id = String(walletId || '').trim();
+  return id ? `${MPC_ACCOUNT_ID_PREFIX}${id}` : '';
+}
+
+export function isMpcAccountId(accountId) {
+  return String(accountId || '').startsWith(MPC_ACCOUNT_ID_PREFIX);
+}
+
+function getMpcWalletIdFromAccountId(accountId) {
+  return String(accountId || '').slice(MPC_ACCOUNT_ID_PREFIX.length).trim();
+}
+
+function normalizeAddress(value) {
+  const address = String(value || '').trim();
+  return ethers.isAddress(address) ? ethers.getAddress(address).toLowerCase() : '';
+}
+
+function ensureMpcWalletCanSign(wallet) {
+  if (!wallet?.id) {
+    throw new Error('MPC_WALLET_NOT_FOUND');
+  }
+  if (String(wallet.status || '').trim() !== 'active' || !normalizeAddress(wallet.address)) {
+    throw new Error('MPC_KEYGEN_NOT_COMPLETED');
+  }
+  throw new Error('MPC_SIGNER_NOT_CONFIGURED');
+}
+
+export async function resolveMpcAccountIdByAddress(address) {
+  const normalized = normalizeAddress(address);
+  if (!normalized) return '';
+  const wallets = await getMpcWalletList();
+  const wallet = wallets.find((item) =>
+    String(item?.status || '').trim() === 'active'
+    && normalizeAddress(item?.address) === normalized
+  );
+  return wallet?.id ? getMpcAccountId(wallet.id) : '';
+}
+
+async function getMpcWalletForSigning(accountId) {
+  const walletId = getMpcWalletIdFromAccountId(accountId);
+  return walletId ? await getMpcWallet(walletId) : null;
+}
 
 /**
  * 签名交易
@@ -17,6 +63,9 @@ import { ethers } from '../../lib/ethers-6.16.esm.min.js';
  */
 export async function signTransaction(accountId, transaction) {
   try {
+    if (isMpcAccountId(accountId)) {
+      ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
+    }
     const wallet = getWalletInstance(accountId);
     const normalizedTx = normalizeTransaction(transaction);
 
@@ -100,6 +149,9 @@ function normalizeTransaction(transaction) {
  */
 export async function signMessage(accountId, message) {
   try {
+    if (isMpcAccountId(accountId)) {
+      ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
+    }
     const wallet = getWalletInstance(accountId);
     const signature = await wallet.signMessage(message);
 
@@ -123,6 +175,9 @@ export async function signMessage(accountId, message) {
  */
 export async function signTypedData(accountId, domain, types, value) {
   try {
+    if (isMpcAccountId(accountId)) {
+      ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
+    }
     const wallet = getWalletInstance(accountId);
     const normalized = normalizeTypedData(domain, types, value);
     const signature = await wallet.signTypedData(

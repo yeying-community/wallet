@@ -10,7 +10,7 @@ import {
   createUserRejectedError,
   createError
 } from '../common/errors/index.js';
-import { getSelectedAccount, saveAuthorization, getAuthorization, deleteAuthorization, isAuthorized } from '../storage/index.js';
+import { getMpcWalletList, getSelectedAccount, saveAuthorization, getAuthorization, deleteAuthorization, isAuthorized } from '../storage/index.js';
 import { isAccountUnlocked, resetLockTimer } from './keyring.js';
 import { refreshPasswordCache } from './password-cache.js';
 import { sendEvent } from './connection.js';
@@ -56,6 +56,44 @@ function buildProfilePermission(fields) {
   };
 }
 
+function normalizeAddress(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function dedupeAddresses(addresses = []) {
+  const seen = new Set();
+  const result = [];
+  for (const address of addresses) {
+    const value = String(address || '').trim();
+    const key = normalizeAddress(value);
+    if (!value || seen.has(key)) continue;
+    seen.add(key);
+    result.push(value);
+  }
+  return result;
+}
+
+async function getAvailableAccountAddresses(selectedAccount = null) {
+  const addresses = [];
+  if (selectedAccount?.address) {
+    addresses.push(selectedAccount.address);
+  }
+  const mpcWallets = await getMpcWalletList();
+  for (const wallet of Array.isArray(mpcWallets) ? mpcWallets : []) {
+    if (String(wallet?.status || '').trim() === 'active' && wallet?.address) {
+      addresses.push(wallet.address);
+    }
+  }
+  return dedupeAddresses(addresses);
+}
+
+function filterAvailableAuthorizedAccounts(authorizedAccounts = [], availableAccounts = []) {
+  const available = new Map(availableAccounts.map((address) => [normalizeAddress(address), address]));
+  return dedupeAddresses(authorizedAccounts)
+    .map((address) => available.get(normalizeAddress(address)))
+    .filter(Boolean);
+}
+
 /**
  * 处理 eth_accounts
  * @returns {Promise<Array<string>>} 账户地址数组
@@ -77,7 +115,13 @@ export async function handleEthAccounts(origin) {
       return [];
     }
 
-    return [account.address];
+    const availableAccounts = await getAvailableAccountAddresses(account);
+    const connected = state.connectedSites.get(origin);
+    const stored = await getAuthorization(origin);
+    const authorizedAccounts = Array.isArray(connected?.accounts) && connected.accounts.length
+      ? connected.accounts
+      : (Array.isArray(stored?.accounts) && stored.accounts.length ? stored.accounts : [stored?.address]);
+    return filterAvailableAuthorizedAccounts(authorizedAccounts, availableAccounts);
 
   } catch (error) {
     console.error('❌ Handle eth_accounts failed:', error);
@@ -126,12 +170,14 @@ export async function handleEthRequestAccounts(origin, tabId, clientRequestId = 
         throw createWalletLockedError();
       }
 
+      const accounts = await getAvailableAccountAddresses(account);
       const address = account.address;
 
       // 如果已经连接过，直接返回
       if (state.connectedSites.has(origin)) {
         console.log('✅ Site already connected:', origin);
-        return [address];
+        const connected = state.connectedSites.get(origin);
+        return filterAvailableAuthorizedAccounts(connected?.accounts || [address], accounts);
       }
 
       const requestId = resumablePending?.requestId || `connect_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -147,7 +193,7 @@ export async function handleEthRequestAccounts(origin, tabId, clientRequestId = 
           expiresAt: Date.now() + TIMEOUTS.REQUEST,
           data: {
             origin,
-            accounts: [address]
+            accounts
           },
           timestamp: getTimestamp()
         });
@@ -169,13 +215,13 @@ export async function handleEthRequestAccounts(origin, tabId, clientRequestId = 
       }
 
       state.connectedSites.set(origin, {
-        accounts: [address],
+        accounts,
         chainId: state.currentChainId,
         connectedAt: getTimestamp()
       });
       updateConnectedSites();
 
-      saveAuthorization(origin, address).catch(err => {
+      saveAuthorization(origin, address, undefined, accounts).catch(err => {
         console.error('Failed to save authorization:', err);
       });
 
@@ -185,7 +231,7 @@ export async function handleEthRequestAccounts(origin, tabId, clientRequestId = 
       removePendingRequest(requestId, { activateNext: true });
 
       console.log('✅ Connection approved:', origin);
-      return [address];
+      return accounts;
 
     } catch (error) {
       console.error('❌ Handle eth_requestAccounts failed:', error);
@@ -211,7 +257,9 @@ export async function handleWalletGetPermissions(origin) {
   try {
     const stored = await getAuthorization(origin);
     const connected = state.connectedSites.get(origin);
-    const accounts = stored?.address
+    const accounts = Array.isArray(stored?.accounts) && stored.accounts.length
+      ? stored.accounts
+      : stored?.address
       ? [stored.address]
       : Array.isArray(connected?.accounts)
         ? connected.accounts

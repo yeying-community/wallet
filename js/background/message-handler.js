@@ -8,7 +8,7 @@ import { APPROVAL_PORT_NAME, ApprovalMessageType, WalletMessageType, NetworkMess
 import { sendResponse, sendError, registerConnection, unregisterConnection, checkSessionAndNotify } from './connection.js';
 import { routeRequest } from './request-router.js';
 import { unlockWallet, lockWallet, isAccountUnlocked } from './keyring.js';
-import { signMessage, signTransaction } from './signing.js';
+import { resolveMpcAccountIdByAddress, signMessage, signTransaction } from './signing.js';
 import { ethers } from '../../lib/ethers-6.16.esm.min.js';
 import {
   isWalletInitialized,
@@ -337,6 +337,8 @@ async function handleGetNetworkInfoMessage() {
 
 async function resolveAccountIdByAddress(address) {
   if (!address) return null;
+  const mpcAccountId = await resolveMpcAccountIdByAddress(address);
+  if (mpcAccountId) return mpcAccountId;
   const accounts = await getAccountList();
   const lowered = address.toLowerCase();
   const match = accounts.find(account => account?.address?.toLowerCase() === lowered);
