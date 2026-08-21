@@ -20,6 +20,8 @@ import {
   getMpcSession,
   saveMpcSession,
   getMpcSessionList,
+  getMpcSignRequest,
+  saveMpcSignRequest,
   getMpcMessage,
   saveMpcMessage,
   appendMpcAuditLog,
@@ -46,7 +48,7 @@ import {
   decryptEnvelope
 } from './mpc-crypto.js';
 import { createActionSignature } from './action-signature.js';
-import { handleMpcKeygenMessage, startMpcKeygen } from './mpc-tss-engine.js';
+import { handleMpcKeygenMessage, handleMpcSignMessage, startMpcKeygen } from './mpc-tss-engine.js';
 
 const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
 const DEFAULT_MPC_UCAN_RESOURCE = 'mpc';
@@ -898,6 +900,41 @@ class MpcService {
     return type === 'keygen' || type.startsWith('keygen.');
   }
 
+  _isSignMessage(message, payload) {
+    const type = String(message?.type || payload?.type || '').trim().toLowerCase();
+    return type === 'sign' || type.startsWith('sign.');
+  }
+
+  _resolveSignRequestId(message, payload) {
+    return String(
+      payload?.requestId
+      || payload?.signRequestId
+      || payload?.sign_request_id
+      || message?.requestId
+      || message?.signRequestId
+      || ''
+    ).trim();
+  }
+
+  async _handleSignEngineOutput({ signRequest, output }) {
+    const result = output && typeof output === 'object' ? output : {};
+    const signature = String(result.signature || result.signedPayload || '').trim();
+    const status = String(result.status || '').trim();
+    if (!signature && status !== 'completed') {
+      return result;
+    }
+    const next = {
+      ...signRequest,
+      status: 'completed',
+      signature,
+      result,
+      completedAt: getTimestamp(),
+      updatedAt: getTimestamp()
+    };
+    await saveMpcSignRequest(next);
+    return result;
+  }
+
   async processSessionMessages(options = {}) {
     await this.init();
     const sessionId = String(options.sessionId || '').trim();
@@ -935,28 +972,51 @@ class MpcService {
         sessionId,
         password: options.password
       });
-      if (!this._isKeygenMessage(message, payload)) {
+      const isKeygen = this._isKeygenMessage(message, payload);
+      const isSign = this._isSignMessage(message, payload);
+      if (!isKeygen && !isSign) {
         continue;
       }
       try {
-        const output = await handleMpcKeygenMessage({
-          session,
-          wallet,
-          participant,
-          participantId,
-          message,
-          payload,
-          participants: session.participants || [],
-          threshold: session.threshold,
-          curve: session.curve || wallet.curve || 'secp256k1'
-        });
-        await this._handleTssEngineOutput({
-          session,
-          wallet,
-          participantId,
-          output,
-          password: options.password
-        });
+        if (isKeygen) {
+          const output = await handleMpcKeygenMessage({
+            session,
+            wallet,
+            participant,
+            participantId,
+            message,
+            payload,
+            participants: session.participants || [],
+            threshold: session.threshold,
+            curve: session.curve || wallet.curve || 'secp256k1'
+          });
+          await this._handleTssEngineOutput({
+            session,
+            wallet,
+            participantId,
+            output,
+            password: options.password
+          });
+        } else {
+          const signRequestId = this._resolveSignRequestId(message, payload);
+          const signRequest = signRequestId ? await getMpcSignRequest(signRequestId) : null;
+          if (!signRequest) {
+            throw new Error('MPC_SIGN_REQUEST_NOT_FOUND');
+          }
+          const output = await handleMpcSignMessage({
+            session,
+            wallet,
+            participant,
+            participantId,
+            message,
+            payload,
+            signRequest,
+            participants: session.participants || [],
+            threshold: session.threshold,
+            curve: session.curve || wallet.curve || 'secp256k1'
+          });
+          await this._handleSignEngineOutput({ signRequest, output });
+        }
         const updated = {
           ...message,
           processedAt: getTimestamp(),

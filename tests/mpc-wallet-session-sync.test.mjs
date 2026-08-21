@@ -38,9 +38,11 @@ const { setMpcTssEngineForTests, resetMpcTssEngineForTests } = await import('../
 const { HandleGetWalletList } = await import('../js/background/operations/wallet.js');
 const {
   getMpcWallet,
+  getMpcSignRequest,
   getMpcKeyShare,
   saveAccount,
   saveMpcParticipant,
+  saveMpcSignRequest,
   saveMpcSession,
   saveMpcWallet,
   setSelectedAccountId
@@ -692,6 +694,119 @@ test('fetchSessionMessages 会把对端 keygen 消息交给 TSS 引擎处理', a
     mpcService._ensureCoordinatorToken = originalEnsure;
     mpcService._coordinator = originalCoordinator;
     mpcService.sendSessionMessage = originalSendSessionMessage;
+    resetMpcTssEngineForTests();
+  }
+});
+
+test('fetchSessionMessages 会把对端 sign 消息交给 TSS 引擎处理', async () => {
+  await saveAccount({
+    id: 'account-1',
+    walletId: 'wallet-1',
+    address: '0x1111111111111111111111111111111111111111',
+  });
+  await setSelectedAccountId('account-1');
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: '团队金库',
+    type: 'mpc',
+    status: 'active',
+    address: '0x9999999999999999999999999999999999999999',
+    publicKey: '03abcdef',
+    keygenSessionId: 'session-1',
+    curve: 'secp256k1',
+    threshold: 1,
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222',
+    ],
+    keyVersion: 1,
+    shareVersion: 1,
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcSession({
+    id: 'session-1',
+    name: '团队金库',
+    type: 'keygen',
+    walletId: 'mpc-wallet-1',
+    status: 'completed',
+    curve: 'secp256k1',
+    threshold: 1,
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222',
+    ],
+    keyVersion: 1,
+    shareVersion: 1,
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcParticipant({
+    id: '0x1111111111111111111111111111111111111111',
+    sessionId: 'session-1',
+    status: 'active',
+    signingPublicKey: '',
+    e2ePublicKey: '',
+  });
+  await saveMpcSignRequest({
+    id: 'sign-request-1',
+    walletId: 'mpc-wallet-1',
+    sessionId: 'session-1',
+    type: 'message',
+    status: 'pending',
+    payload: { message: 'hello' },
+    keyVersion: 1,
+    shareVersion: 1,
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    fetchMessages: async () => ({
+      messages: [{
+        id: 'message-1',
+        sessionId: 'session-1',
+        from: '0x2222222222222222222222222222222222222222',
+        to: '0x1111111111111111111111111111111111111111',
+        round: 1,
+        type: 'sign.round1',
+        payload: { requestId: 'sign-request-1', partial: 'p1' },
+        createdAt: 2000,
+      }],
+      nextCursor: 'message-1',
+    }),
+  };
+  setMpcTssEngineForTests({
+    handleSignMessage: async ({ message, payload, signRequest, participantId }) => {
+      assert.equal(message.id, 'message-1');
+      assert.deepEqual(payload, { requestId: 'sign-request-1', partial: 'p1' });
+      assert.equal(signRequest.id, 'sign-request-1');
+      assert.equal(participantId, '0x1111111111111111111111111111111111111111');
+      return {
+        status: 'completed',
+        signature: '0xmpcsig',
+      };
+    },
+  });
+
+  try {
+    const result = await mpcService.fetchSessionMessages('session-1');
+
+    assert.equal(result.messages.length, 1);
+    assert.equal(result.processed.length, 1);
+    assert.equal(result.processed[0].id, 'message-1');
+    assert.ok(result.processed[0].processedAt);
+    const signRequest = await getMpcSignRequest('sign-request-1');
+    assert.equal(signRequest.status, 'completed');
+    assert.equal(signRequest.signature, '0xmpcsig');
+    assert.ok(signRequest.completedAt);
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
     resetMpcTssEngineForTests();
   }
 });

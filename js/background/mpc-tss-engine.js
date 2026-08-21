@@ -15,6 +15,10 @@ class UnconfiguredMpcTssEngine {
     throw new Error('MPC_TSS_ENGINE_NOT_CONFIGURED');
   }
 
+  async handleSignMessage() {
+    throw new Error('MPC_TSS_ENGINE_NOT_CONFIGURED');
+  }
+
   async signTransaction() {
     throw new Error('MPC_TSS_ENGINE_NOT_CONFIGURED');
   }
@@ -60,6 +64,14 @@ export async function startMpcKeygen(input) {
 export async function handleMpcKeygenMessage(input) {
   try {
     return await engine.handleKeygenMessage(input);
+  } catch (error) {
+    normalizeEngineError(error);
+  }
+}
+
+export async function handleMpcSignMessage(input) {
+  try {
+    return await engine.handleSignMessage(input);
   } catch (error) {
     normalizeEngineError(error);
   }
