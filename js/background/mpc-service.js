@@ -944,6 +944,58 @@ class MpcService {
     return existing;
   }
 
+  async startWireSession(options = {}) {
+    await this.init();
+    const sessionId = String(options.sessionId || '').trim();
+    if (!sessionId) {
+      throw new Error('sessionId is required');
+    }
+    const session = options.session || await getMpcSession(sessionId);
+    const protocol = String(options.protocol || session?.type || 'keygen').trim();
+    const senderIndex = await this._resolveLocalParticipantIndex(session, options);
+    const adapter = this._getWireSessionAdapter({
+      sessionId,
+      recipientIndex: senderIndex,
+      protocol,
+      adapter: options.adapter
+    });
+    const participants = Array.isArray(options.parties)
+      ? options.parties
+      : this._normalizeParticipantIds(session?.participants || []).map((_participant, index) => index);
+    let started;
+    if (protocol === 'keygen') {
+      started = await adapter.startKeygen({
+        sessionId,
+        senderIndex,
+        parties: participants,
+        threshold: options.threshold ?? session?.threshold,
+        curve: options.curve || session?.curve || 'secp256k1'
+      });
+    } else if (protocol === 'sign') {
+      started = await adapter.startSign({
+        sessionId,
+        requestId: options.requestId || options.signRequestId || '',
+        senderIndex,
+        parties: participants,
+        payload: options.payload,
+        keyShareRef: options.keyShareRef
+      });
+    } else {
+      throw new Error('UNSUPPORTED_MPC_WIRE_PROTOCOL');
+    }
+    const cursorKey = this._buildWireSessionKey({ sessionId, recipientIndex: senderIndex, protocol });
+    if (!this._wireSessionCursors.has(cursorKey)) {
+      this._wireSessionCursors.set(cursorKey, 0);
+    }
+    return {
+      ...started,
+      sessionId,
+      senderIndex,
+      protocol,
+      cursorKey
+    };
+  }
+
   async tickWireSession(options = {}) {
     await this.init();
     const sessionId = String(options.sessionId || '').trim();

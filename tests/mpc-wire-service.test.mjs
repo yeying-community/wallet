@@ -163,3 +163,85 @@ test('tickWireSession polls wire messages, advances adapter, and stores sequence
     mpcService.sendWireMessage = originalSendWireMessage;
   }
 });
+
+test('startWireSession starts keygen and sign adapters through service transport', async () => {
+  const sent = [];
+  const originalSendWireMessage = mpcService.sendWireMessage;
+  mpcService.sendWireMessage = async (message) => {
+    sent.push(message);
+    return { message: { id: `sent-${sent.length}`, ...message } };
+  };
+
+  const adapter = new MpcTssStateMachineAdapter({
+    engine: {
+      async startKeygen(input) {
+        assert.equal(input.sessionId, 'session-1');
+        assert.equal(input.senderIndex, 1);
+        assert.deepEqual(input.parties, [0, 1]);
+        assert.equal(input.threshold, 1);
+        return {
+          senderIndex: input.senderIndex,
+          protocol: 'keygen',
+          outgoing: [{ payload: { Round1a: { keygen: true } } }]
+        };
+      },
+      async startSign(input) {
+        assert.equal(input.requestId, 'sign-request-1');
+        assert.deepEqual(input.payload, { digest: '0xabc' });
+        return {
+          senderIndex: input.senderIndex,
+          protocol: 'sign',
+          outgoing: [{ recipientIndex: 0, payload: { Round1a: { sign: true } } }]
+        };
+      },
+      async getOutgoingMessages({ state }) {
+        const outgoing = state.outgoing || [];
+        state.outgoing = [];
+        return outgoing;
+      }
+    },
+    transport: mpcService
+  });
+
+  try {
+    const keygen = await mpcService.startWireSession({
+      sessionId: 'session-1',
+      protocol: 'keygen',
+      recipientIndex: 1,
+      parties: [0, 1],
+      threshold: 1,
+      adapter
+    });
+    assert.equal(keygen.protocol, 'keygen');
+    assert.equal(keygen.senderIndex, 1);
+    assert.deepEqual(sent[0], {
+      sessionId: 'session-1',
+      protocol: 'keygen',
+      senderIndex: 1,
+      audience: 'all-parties',
+      payload: { Round1a: { keygen: true } },
+      sequence: 0
+    });
+
+    const sign = await mpcService.startWireSession({
+      sessionId: 'session-1',
+      protocol: 'sign',
+      recipientIndex: 1,
+      parties: [0, 1],
+      requestId: 'sign-request-1',
+      payload: { digest: '0xabc' },
+      adapter
+    });
+    assert.equal(sign.protocol, 'sign');
+    assert.deepEqual(sent[1], {
+      sessionId: 'session-1',
+      protocol: 'sign',
+      senderIndex: 1,
+      audience: { 'one-party': { recipient_index: 0 } },
+      payload: { Round1a: { sign: true } },
+      sequence: 0
+    });
+  } finally {
+    mpcService.sendWireMessage = originalSendWireMessage;
+  }
+});
