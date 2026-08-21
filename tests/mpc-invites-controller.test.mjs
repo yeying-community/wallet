@@ -6,6 +6,8 @@ import { MpcSettingsController } from '../js/controller/setting/mpc-settings-con
 function setup() {
   const { document, elements } = createDocument({
     mpcInvitesList: { tagName: 'div' },
+    mpcLogsList: { tagName: 'div' },
+    mpcLogsTotal: { tagName: 'div' },
     globalWaitingOverlay: { tagName: 'div', _classes: 'hidden' },
     globalToast: { tagName: 'div' },
   });
@@ -97,4 +99,30 @@ test('handleMpcInviteAccept 使用通知 payload 接受邀请', async () => {
     password: 'password123',
   });
   assert.equal(auditLoaded, true);
+});
+
+test('renderMpcLogsList 会展示 MPC 签名请求活动', async () => {
+  const elements = setup();
+  const controller = new MpcSettingsController({
+    wallet: {},
+    requestPassword: async () => 'password123',
+  });
+  controller.mpcSignRequests = [{
+    id: 'sign-request-1',
+    walletId: 'mpc-wallet-1',
+    sessionId: 'session-1',
+    payloadType: 'message',
+    payloadHash: '0x1234567890abcdef1234',
+    status: 'pending',
+    createdAt: '1787270000000',
+  }];
+  controller.mpcLogs = [];
+
+  controller.renderMpcLogsList();
+  controller.updateMpcLogsSummary();
+
+  assert.match(elements.mpcLogsList.innerHTML, /消息签名请求/);
+  assert.match(elements.mpcLogsList.innerHTML, /待处理/);
+  assert.match(elements.mpcLogsList.innerHTML, /0x12345678/);
+  assert.equal(elements.mpcLogsTotal.textContent, '1');
 });

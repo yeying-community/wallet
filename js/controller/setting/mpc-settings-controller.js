@@ -29,6 +29,7 @@ export class MpcSettingsController {
     this.mpcSettings = null;
     this.custodySettings = null;
     this.mpcLogs = [];
+    this.mpcSignRequests = [];
     this.mpcMessages = [];
     this.mpcMessageCursor = null;
     this.mpcMessagePollTimer = null;
@@ -1304,8 +1305,32 @@ export class MpcSettingsController {
     showPage('mpcLogsPage');
     await Promise.all([
       this.loadMpcInvites(false),
+      this.loadMpcSignRequests(false),
       this.loadMpcLogs()
     ]);
+  }
+
+  async loadMpcSignRequests(showToast = false) {
+    if (typeof this.wallet.listMpcSignRequests !== 'function') {
+      this.mpcSignRequests = [];
+      return;
+    }
+    try {
+      const result = await this.wallet.listMpcSignRequests({ pageSize: 20 });
+      if (!result?.success) {
+        throw new Error(result?.error || '加载失败');
+      }
+      this.mpcSignRequests = Array.isArray(result.items) ? result.items : [];
+      this.renderMpcLogsList();
+      this.updateMpcLogsSummary();
+      if (showToast) showSuccess('MPC 签名请求已刷新');
+    } catch (error) {
+      console.error('[MpcSettings] 加载 MPC 签名请求失败:', error);
+      this.mpcSignRequests = [];
+      this.renderMpcLogsList();
+      this.updateMpcLogsSummary();
+      if (showToast) showError('刷新失败: ' + error.message);
+    }
   }
 
   async loadMpcLogs() {
@@ -1362,17 +1387,58 @@ export class MpcSettingsController {
     return activity;
   }
 
+  formatMpcSignRequestActivity(request = {}) {
+    const status = String(request.status || '').toLowerCase();
+    const type = String(request.payloadType || request.type || '').toLowerCase();
+    const titleByType = {
+      message: '消息签名请求',
+      transaction: '交易签名请求',
+      typed_data: '结构化数据签名请求'
+    };
+    const statusText = status === 'completed'
+      ? '已完成'
+      : (status === 'failed' || status === 'rejected' ? '未完成' : '待处理');
+    const statusClass = status === 'completed'
+      ? 'info'
+      : (status === 'failed' || status === 'rejected' ? 'error' : 'warn');
+    const hash = request.payloadHash ? `摘要 ${this.shortenText(request.payloadHash, 10, 8)}` : '等待成员确认签名内容';
+    const chain = request.chainId ? ` · 链 ${request.chainId}` : '';
+    return {
+      title: titleByType[type] || 'MPC 签名请求',
+      detail: `${hash}${chain}`,
+      status: statusText,
+      statusClass
+    };
+  }
+
   renderMpcLogsList() {
     const container = document.getElementById('mpcLogsList');
     if (!container) return;
+    const signRequests = Array.isArray(this.mpcSignRequests) ? [...this.mpcSignRequests] : [];
     const entries = [...this.mpcLogs].reverse();
 
-    if (entries.length === 0) {
+    if (entries.length === 0 && signRequests.length === 0) {
       container.innerHTML = '<div class="empty-message">暂无多签活动</div>';
       return;
     }
 
-    container.innerHTML = entries.map(entry => {
+    const signRequestHtml = signRequests.map(request => {
+      const timeText = request?.completedAt || request?.createdAt
+        ? formatLocaleDateTime(request.completedAt || request.createdAt)
+        : '-';
+      const activity = this.formatMpcSignRequestActivity(request);
+      return `
+        <div class="sync-activity-item mpc-activity-item">
+          <div class="mpc-activity-header">
+            <div class="sync-activity-time">${escapeHtml(timeText)}</div>
+            <span class="sync-activity-tag level-${activity.statusClass}">${escapeHtml(activity.status)}</span>
+          </div>
+          <div class="mpc-activity-content">${escapeHtml(activity.title)}：${escapeHtml(activity.detail)}</div>
+        </div>
+      `;
+    }).join('');
+
+    const logHtml = entries.map(entry => {
       const timeText = entry?.time ? formatLocaleDateTime(entry.time) : '-';
       const activity = this.formatMpcActivity(entry);
 
@@ -1386,6 +1452,8 @@ export class MpcSettingsController {
         </div>
       `;
     }).join('');
+
+    container.innerHTML = `${signRequestHtml}${logHtml}`;
 
   }
 
@@ -1417,7 +1485,9 @@ export class MpcSettingsController {
       lastEl.textContent = latest?.time ? formatLocaleDateTime(latest.time) : '-';
     }
     if (totalEl) {
-      totalEl.textContent = String(Array.isArray(this.mpcLogs) ? this.mpcLogs.length : 0);
+      const logCount = Array.isArray(this.mpcLogs) ? this.mpcLogs.length : 0;
+      const requestCount = Array.isArray(this.mpcSignRequests) ? this.mpcSignRequests.length : 0;
+      totalEl.textContent = String(logCount + requestCount);
     }
     if (matchEl) {
       matchEl.textContent = String(Array.isArray(this.mpcLogFiltered) ? this.mpcLogFiltered.length : 0);
