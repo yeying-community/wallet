@@ -40,7 +40,7 @@ const {
   signTypedData
 } = await import('../js/background/signing.js');
 const { resetMpcTssEngineForTests, setMpcTssEngineForTests } = await import('../js/background/mpc-tss-engine.js');
-const { saveMpcWallet } = await import('../js/storage/index.js');
+const { getMpcSignRequests, saveMpcKeyShare, saveMpcWallet } = await import('../js/storage/index.js');
 
 test.beforeEach(async () => {
   await chrome.storage.local.clear();
@@ -92,6 +92,15 @@ test('active MPC 钱包在 TSS signer 接入前明确阻断签名', async () => 
     publicKey: '03abcdef',
     keygenSessionId: 'session-1',
   });
+  await saveMpcKeyShare({
+    id: 'share-1',
+    walletId: 'mpc-wallet-1',
+    sessionId: 'session-1',
+    participantId: '0x1111111111111111111111111111111111111111',
+    share: { secret: 'local-share' },
+    keyVersion: 1,
+    shareVersion: 1,
+  });
 
   await assert.rejects(
     () => signMessage(getMpcAccountId('mpc-wallet-1'), 'hello'),
@@ -124,12 +133,49 @@ test('MPC 签名入口会调用配置的 TSS engine', async () => {
     address: '0x1111111111111111111111111111111111111111',
     publicKey: '03abcdef',
     keygenSessionId: 'session-1',
+    keyVersion: 1,
+    shareVersion: 1,
+  });
+  await saveMpcKeyShare({
+    id: 'share-1',
+    walletId: 'mpc-wallet-1',
+    sessionId: 'session-1',
+    participantId: '0x1111111111111111111111111111111111111111',
+    share: { secret: 'local-share' },
+    keyVersion: 1,
+    shareVersion: 1,
   });
   setMpcTssEngineForTests({
-    signMessage: async ({ wallet, message }) => `mpc:${wallet.id}:${message}`,
+    signMessage: async ({ wallet, message, keyShare, request }) => {
+      assert.deepEqual(keyShare.share, { secret: 'local-share' });
+      assert.equal(request.walletId, 'mpc-wallet-1');
+      assert.equal(request.type, 'message');
+      return `mpc:${wallet.id}:${message}`;
+    },
   });
 
   const signature = await signMessage(getMpcAccountId('mpc-wallet-1'), 'hello');
 
   assert.equal(signature, 'mpc:mpc-wallet-1:hello');
+  const requests = Object.values(await getMpcSignRequests());
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].status, 'pending');
+  assert.deepEqual(requests[0].payload, { message: 'hello' });
+});
+
+test('active MPC 钱包缺少本地 key share 时不能签名', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'active',
+    address: '0x1111111111111111111111111111111111111111',
+    publicKey: '03abcdef',
+    keygenSessionId: 'session-1',
+  });
+
+  await assert.rejects(
+    () => signMessage(getMpcAccountId('mpc-wallet-1'), 'hello'),
+    /MPC_KEY_SHARE_NOT_FOUND/
+  );
 });

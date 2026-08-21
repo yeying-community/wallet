@@ -5,10 +5,19 @@
 
 import { getWalletInstance } from './keyring.js';
 import { state } from './state.js';
-import { getMpcWallet, getMpcWalletList, getNetworkByChainId, getNetworkConfigByKey } from '../storage/index.js';
+import {
+  getMpcKeyShares,
+  getMpcWallet,
+  getMpcWalletList,
+  getNetworkByChainId,
+  getNetworkConfigByKey,
+  saveMpcSignRequest
+} from '../storage/index.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
 import { ethers } from '../../lib/ethers-6.16.esm.min.js';
 import { signMpcMessage, signMpcTransaction, signMpcTypedData } from './mpc-tss-engine.js';
+import { getTimestamp } from '../common/utils/time-utils.js';
+import { generateId } from '../common/utils/index.js';
 
 export const MPC_ACCOUNT_ID_PREFIX = 'mpc:';
 
@@ -56,6 +65,38 @@ async function getMpcWalletForSigning(accountId) {
   return walletId ? await getMpcWallet(walletId) : null;
 }
 
+async function getLatestMpcKeyShare(walletId) {
+  const id = String(walletId || '').trim();
+  if (!id) return null;
+  const shares = Object.values(await getMpcKeyShares());
+  const matches = shares
+    .filter((share) => String(share?.walletId || '').trim() === id)
+    .sort((a, b) => Number(b?.shareVersion || 0) - Number(a?.shareVersion || 0));
+  return matches[0] || null;
+}
+
+async function createMpcSignContext(wallet, kind, payload) {
+  const keyShare = await getLatestMpcKeyShare(wallet.id);
+  if (!keyShare?.share) {
+    throw new Error('MPC_KEY_SHARE_NOT_FOUND');
+  }
+  const now = getTimestamp();
+  const request = {
+    id: generateId('mpc_sign'),
+    walletId: wallet.id,
+    type: kind,
+    status: 'pending',
+    payload,
+    keyVersion: Number(wallet.keyVersion || keyShare.keyVersion || 1),
+    shareVersion: Number(keyShare.shareVersion || wallet.shareVersion || 1),
+    chainId: state.currentChainId || '',
+    createdAt: now,
+    updatedAt: now
+  };
+  await saveMpcSignRequest(request);
+  return { keyShare, request };
+}
+
 /**
  * 签名交易
  * @param {string} accountId - 账户 ID
@@ -66,7 +107,14 @@ export async function signTransaction(accountId, transaction) {
   try {
     if (isMpcAccountId(accountId)) {
       const wallet = ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
-      return await signMpcTransaction({ wallet, transaction, chainId: state.currentChainId });
+      const context = await createMpcSignContext(wallet, 'transaction', { transaction });
+      return await signMpcTransaction({
+        wallet,
+        transaction,
+        chainId: state.currentChainId,
+        keyShare: context.keyShare,
+        request: context.request
+      });
     }
     const wallet = getWalletInstance(accountId);
     const normalizedTx = normalizeTransaction(transaction);
@@ -153,7 +201,14 @@ export async function signMessage(accountId, message) {
   try {
     if (isMpcAccountId(accountId)) {
       const wallet = ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
-      return await signMpcMessage({ wallet, message, chainId: state.currentChainId });
+      const context = await createMpcSignContext(wallet, 'message', { message });
+      return await signMpcMessage({
+        wallet,
+        message,
+        chainId: state.currentChainId,
+        keyShare: context.keyShare,
+        request: context.request
+      });
     }
     const wallet = getWalletInstance(accountId);
     const signature = await wallet.signMessage(message);
@@ -180,7 +235,16 @@ export async function signTypedData(accountId, domain, types, value) {
   try {
     if (isMpcAccountId(accountId)) {
       const wallet = ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
-      return await signMpcTypedData({ wallet, domain, types, value, chainId: state.currentChainId });
+      const context = await createMpcSignContext(wallet, 'typed_data', { domain, types, value });
+      return await signMpcTypedData({
+        wallet,
+        domain,
+        types,
+        value,
+        chainId: state.currentChainId,
+        keyShare: context.keyShare,
+        request: context.request
+      });
     }
     const wallet = getWalletInstance(accountId);
     const normalized = normalizeTypedData(domain, types, value);
