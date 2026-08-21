@@ -8,6 +8,7 @@ import { state } from './state.js';
 import { getMpcWallet, getMpcWalletList, getNetworkByChainId, getNetworkConfigByKey } from '../storage/index.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
 import { ethers } from '../../lib/ethers-6.16.esm.min.js';
+import { signMpcMessage, signMpcTransaction, signMpcTypedData } from './mpc-tss-engine.js';
 
 export const MPC_ACCOUNT_ID_PREFIX = 'mpc:';
 
@@ -36,7 +37,7 @@ function ensureMpcWalletCanSign(wallet) {
   if (String(wallet.status || '').trim() !== 'active' || !normalizeAddress(wallet.address)) {
     throw new Error('MPC_KEYGEN_NOT_COMPLETED');
   }
-  throw new Error('MPC_SIGNER_NOT_CONFIGURED');
+  return wallet;
 }
 
 export async function resolveMpcAccountIdByAddress(address) {
@@ -64,7 +65,8 @@ async function getMpcWalletForSigning(accountId) {
 export async function signTransaction(accountId, transaction) {
   try {
     if (isMpcAccountId(accountId)) {
-      ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
+      const wallet = ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
+      return await signMpcTransaction({ wallet, transaction, chainId: state.currentChainId });
     }
     const wallet = getWalletInstance(accountId);
     const normalizedTx = normalizeTransaction(transaction);
@@ -150,7 +152,8 @@ function normalizeTransaction(transaction) {
 export async function signMessage(accountId, message) {
   try {
     if (isMpcAccountId(accountId)) {
-      ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
+      const wallet = ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
+      return await signMpcMessage({ wallet, message, chainId: state.currentChainId });
     }
     const wallet = getWalletInstance(accountId);
     const signature = await wallet.signMessage(message);
@@ -176,7 +179,8 @@ export async function signMessage(accountId, message) {
 export async function signTypedData(accountId, domain, types, value) {
   try {
     if (isMpcAccountId(accountId)) {
-      ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
+      const wallet = ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
+      return await signMpcTypedData({ wallet, domain, types, value, chainId: state.currentChainId });
     }
     const wallet = getWalletInstance(accountId);
     const normalized = normalizeTypedData(domain, types, value);

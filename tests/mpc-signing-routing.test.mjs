@@ -39,10 +39,16 @@ const {
   signTransaction,
   signTypedData
 } = await import('../js/background/signing.js');
+const { resetMpcTssEngineForTests, setMpcTssEngineForTests } = await import('../js/background/mpc-tss-engine.js');
 const { saveMpcWallet } = await import('../js/storage/index.js');
 
 test.beforeEach(async () => {
   await chrome.storage.local.clear();
+  resetMpcTssEngineForTests();
+});
+
+test.afterEach(() => {
+  resetMpcTssEngineForTests();
 });
 
 test('active MPC 钱包地址会解析为 MPC signer id', async () => {
@@ -107,4 +113,23 @@ test('active MPC 钱包在 TSS signer 接入前明确阻断签名', async () => 
     ),
     /MPC_SIGNER_NOT_CONFIGURED/
   );
+});
+
+test('MPC 签名入口会调用配置的 TSS engine', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'active',
+    address: '0x1111111111111111111111111111111111111111',
+    publicKey: '03abcdef',
+    keygenSessionId: 'session-1',
+  });
+  setMpcTssEngineForTests({
+    signMessage: async ({ wallet, message }) => `mpc:${wallet.id}:${message}`,
+  });
+
+  const signature = await signMessage(getMpcAccountId('mpc-wallet-1'), 'hello');
+
+  assert.equal(signature, 'mpc:mpc-wallet-1:hello');
 });
