@@ -1267,7 +1267,7 @@ export class MpcSettingsController {
     try {
       showWaiting();
       const result = await this.wallet.acceptMpcInvite({
-        notificationUid: invite.notificationUid || invite.uid,
+        notificationUid: invite.notificationUid || '',
         sessionId: invite.payload?.sessionId || invite.subjectId,
         walletId: invite.payload?.walletId,
         payload: invite.payload || {},

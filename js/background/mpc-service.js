@@ -712,12 +712,20 @@ class MpcService {
       ttlHours: options.ttlHours,
       forceRefresh: options.forceRefresh
     });
-    const response = await this._coordinator.listNotifications({
-      unreadOnly: options.unreadOnly !== false,
-      source: 'mpc',
-      page: options.page || 1,
-      pageSize: options.pageSize || 20
-    });
+    let response;
+    try {
+      response = await this._coordinator.listMpcInvites({
+        page: options.page || 1,
+        pageSize: options.pageSize || 20
+      });
+    } catch (error) {
+      response = await this._coordinator.listNotifications({
+        unreadOnly: options.unreadOnly !== false,
+        source: 'mpc',
+        page: options.page || 1,
+        pageSize: options.pageSize || 20
+      });
+    }
     const items = Array.isArray(response?.items) ? response.items : [];
     const invites = items.filter((item) => String(item?.type || '') === 'mpc.keygen.invited');
     const visible = [];

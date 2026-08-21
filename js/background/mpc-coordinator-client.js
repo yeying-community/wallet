@@ -138,6 +138,13 @@ export class MpcCoordinatorClient {
     return this.request(`/api/v1/public/notifications?${params.toString()}`, { method: 'GET' });
   }
 
+  async listMpcInvites({ page = 1, pageSize = 20 } = {}) {
+    const params = new URLSearchParams();
+    params.set('page', String(page || 1));
+    params.set('pageSize', String(pageSize || 20));
+    return this.request(`/api/v1/public/mpc/invites?${params.toString()}`, { method: 'GET' });
+  }
+
   async markNotificationRead(notificationUid) {
     return this.request(`/api/v1/public/notifications/${encodeURIComponent(notificationUid)}/read`, {
       method: 'POST'
