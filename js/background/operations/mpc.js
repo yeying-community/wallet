@@ -455,6 +455,15 @@ export async function handleMpcJoinSession(options = {}) {
   }
 }
 
+export async function handleMpcStartKeygen(options = {}) {
+  try {
+    const result = await mpcService.startKeygenSession(options);
+    return { success: true, result };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to start keygen' };
+  }
+}
+
 export async function handleMpcSendSessionMessage(options = {}) {
   try {
     const result = await mpcService.sendSessionMessage(options);

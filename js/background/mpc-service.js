@@ -16,6 +16,7 @@ import {
   saveMpcParticipant,
   getMpcWallet,
   saveMpcWallet,
+  saveMpcKeyShare,
   getMpcSession,
   saveMpcSession,
   getMpcSessionList,
@@ -45,6 +46,7 @@ import {
   decryptEnvelope
 } from './mpc-crypto.js';
 import { createActionSignature } from './action-signature.js';
+import { startMpcKeygen } from './mpc-tss-engine.js';
 
 const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
 const DEFAULT_MPC_UCAN_RESOURCE = 'mpc';
@@ -68,6 +70,7 @@ class MpcService {
     this._streams = new Map();
     this._streamCursors = new Map();
     this._exportInFlight = false;
+    this._keygenStarts = new Set();
   }
 
   async init() {
@@ -265,7 +268,28 @@ class MpcService {
     await saveMpcSession(session);
     await this._syncSessionParticipants(session.id, joinedParticipants);
     await this._syncWalletFromSession(session, sessionInput);
+    await this._maybeStartKeygen(session).catch(() => {});
     return session;
+  }
+
+  async _maybeStartKeygen(session) {
+    const status = String(session?.status || '').trim().toLowerCase();
+    if (status !== 'ready') return;
+    const sessionId = String(session?.id || '').trim();
+    if (!sessionId || this._keygenStarts.has(sessionId)) return;
+    this._keygenStarts.add(sessionId);
+    try {
+      await this.startKeygenSession({ sessionId });
+    } catch (error) {
+      await this._appendAuditLog({
+        sessionId,
+        level: 'warn',
+        action: 'keygen-start-skipped',
+        message: error?.message || 'keygen start skipped'
+      });
+    } finally {
+      this._keygenStarts.delete(sessionId);
+    }
   }
 
   async syncWalletFromSession(sessionOrId) {
@@ -525,6 +549,136 @@ class MpcService {
     });
 
     return { participant: participantRecord, session, response };
+  }
+
+  async _resolveLocalParticipantId(session) {
+    const account = await getSelectedAccount();
+    const address = String(account?.address || '').trim();
+    if (!address) return '';
+    const participants = this._normalizeParticipantIds(session?.participants || []);
+    return participants.find((item) => item.toLowerCase() === address.toLowerCase()) || address;
+  }
+
+  async _handleTssEngineOutput({ session, wallet, participantId, output, password }) {
+    const result = output && typeof output === 'object' ? output : {};
+    const sessionId = String(session?.id || '').trim();
+    const walletId = String(wallet?.id || session?.walletId || '').trim();
+    const share = result.keyShare || result.share || null;
+    if (share && walletId && participantId) {
+      const shareVersion = Number(result.shareVersion ?? session?.shareVersion ?? wallet?.shareVersion ?? 1);
+      await saveMpcKeyShare({
+        id: result.shareId || `${walletId}:${participantId}:${shareVersion}`,
+        walletId,
+        sessionId,
+        participantId,
+        curve: result.curve || session?.curve || wallet?.curve || 'secp256k1',
+        publicKey: result.publicKey || result.groupPublicKey || '',
+        share,
+        keyVersion: Number(result.keyVersion ?? session?.keyVersion ?? wallet?.keyVersion ?? 1),
+        shareVersion,
+        createdAt: getTimestamp(),
+        updatedAt: getTimestamp()
+      });
+    }
+
+    const messages = Array.isArray(result.messages)
+      ? result.messages
+      : (Array.isArray(result.outboundMessages) ? result.outboundMessages : []);
+    for (const message of messages) {
+      await this.sendSessionMessage({
+        sessionId,
+        from: participantId,
+        to: message.to || message.receiver || '',
+        toParticipantId: message.toParticipantId || message.to || message.receiver || '',
+        round: Number.isFinite(message.round) ? message.round : (Number.isFinite(result.round) ? result.round : 0),
+        type: message.type || 'keygen',
+        seq: message.seq,
+        payload: message.payload ?? message,
+        password
+      });
+    }
+
+    const completed = result.completed || result.status === 'completed' || result.address || result.publicKey || result.groupPublicKey;
+    if (completed) {
+      const completedSession = {
+        ...session,
+        status: 'completed',
+        name: session?.name || wallet?.name || '',
+        keyVersion: result.keyVersion ?? session?.keyVersion,
+        shareVersion: result.shareVersion ?? session?.shareVersion,
+        result: {
+          address: result.address || result.walletAddress || '',
+          publicKey: result.publicKey || result.groupPublicKey || result.aggregatePublicKey || '',
+          groupPublicKey: result.groupPublicKey || result.publicKey || '',
+          chainCode: result.chainCode || '',
+          curve: result.curve || session?.curve || wallet?.curve,
+          keyVersion: result.keyVersion ?? session?.keyVersion,
+          shareVersion: result.shareVersion ?? session?.shareVersion,
+        }
+      };
+      await this._syncWalletFromSession(completedSession, completedSession);
+    }
+
+    return result;
+  }
+
+  async startKeygenSession(options = {}) {
+    await this.init();
+    const sessionId = String(options.sessionId || '').trim();
+    if (!sessionId) {
+      throw new Error('sessionId is required');
+    }
+    const alreadyStarting = this._keygenStarts.has(sessionId);
+    if (!alreadyStarting) {
+      this._keygenStarts.add(sessionId);
+    }
+    try {
+      const { session } = await this._refreshSessionFromCoordinator(sessionId);
+      if (!session) {
+        throw new Error('MPC_SESSION_NOT_FOUND');
+      }
+      const walletId = String(options.walletId || session.walletId || '').trim();
+      const wallet = walletId ? await getMpcWallet(walletId) : null;
+      if (!wallet) {
+        throw new Error('MPC_WALLET_NOT_FOUND');
+      }
+      const participantId = String(options.participantId || await this._resolveLocalParticipantId(session)).trim();
+      if (!participantId) {
+        throw new Error('MPC_PARTICIPANT_NOT_FOUND');
+      }
+      const localParticipant = await getMpcParticipant(sessionId, participantId);
+      if (!localParticipant) {
+        throw new Error('MPC_PARTICIPANT_NOT_JOINED');
+      }
+
+      const output = await startMpcKeygen({
+        session,
+        wallet,
+        participant: localParticipant,
+        participantId,
+        participants: session.participants || [],
+        threshold: session.threshold,
+        curve: session.curve || wallet.curve || 'secp256k1'
+      });
+      const handled = await this._handleTssEngineOutput({
+        session,
+        wallet,
+        participantId,
+        output,
+        password: options.password
+      });
+      await this._appendAuditLog({
+        sessionId,
+        level: 'info',
+        action: 'keygen-started',
+        message: '已启动 MPC 密钥生成'
+      });
+      return handled;
+    } finally {
+      if (!alreadyStarting) {
+        this._keygenStarts.delete(sessionId);
+      }
+    }
   }
 
   async cancelSession(options = {}) {
