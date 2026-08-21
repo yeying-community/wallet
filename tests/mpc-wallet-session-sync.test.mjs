@@ -700,6 +700,49 @@ test('fetchSessionMessages 会把对端 keygen 消息交给 TSS 引擎处理', a
   }
 });
 
+test('listSignRequests 使用协调器业务接口并同步本地签名请求', async () => {
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  const queries = [];
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    listSignRequests: async (query) => {
+      queries.push(query);
+      return {
+        items: [{
+          id: 'sign-request-1',
+          walletId: 'mpc-wallet-1',
+          sessionId: 'session-1',
+          payloadType: 'message',
+          payloadHash: 'hash-1',
+          status: 'pending',
+          createdAt: '1',
+        }],
+        page: { total: 1, page: 1, pageSize: 20 },
+      };
+    },
+  };
+
+  try {
+    const result = await mpcService.listSignRequests({
+      sessionId: 'session-1',
+      status: 'pending',
+    });
+
+    assert.equal(queries.length, 1);
+    assert.equal(queries[0].sessionId, 'session-1');
+    assert.equal(queries[0].status, 'pending');
+    assert.equal(result.items.length, 1);
+    const stored = await getMpcSignRequest('sign-request-1');
+    assert.equal(stored.status, 'pending');
+    assert.equal(stored.payloadType, 'message');
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+  }
+});
+
 test('fetchSessionMessages 会把对端 sign 消息交给 TSS 引擎处理', async () => {
   await saveAccount({
     id: 'account-1',

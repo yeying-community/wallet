@@ -110,6 +110,16 @@ export class MpcCoordinatorClient {
     });
   }
 
+  async listSignRequests({ sessionId = '', walletId = '', status = '', page = 1, pageSize = 20 } = {}) {
+    const params = new URLSearchParams();
+    if (sessionId) params.set('sessionId', String(sessionId));
+    if (walletId) params.set('walletId', String(walletId));
+    if (status) params.set('status', String(status));
+    params.set('page', String(page || 1));
+    params.set('pageSize', String(pageSize || 20));
+    return this.request(`/api/v1/public/mpc/sign-requests?${params.toString()}`, { method: 'GET' });
+  }
+
   async completeSignRequest(requestId, payload, signature = {}) {
     return this.request(`/api/v1/public/mpc/sign-requests/${requestId}/complete`, {
       method: 'POST',

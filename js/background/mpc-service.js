@@ -977,6 +977,34 @@ class MpcService {
     return result;
   }
 
+  async listSignRequests(options = {}) {
+    await this.init();
+    await this._ensureCoordinatorToken({ password: options.password });
+    const response = await this._coordinator.listSignRequests({
+      sessionId: String(options.sessionId || '').trim(),
+      walletId: String(options.walletId || '').trim(),
+      status: String(options.status || '').trim(),
+      page: options.page || 1,
+      pageSize: options.pageSize || 20
+    });
+    const items = Array.isArray(response?.items) ? response.items : (Array.isArray(response) ? response : []);
+    for (const item of items) {
+      if (!item?.id) continue;
+      await saveMpcSignRequest({
+        ...item,
+        updatedAt: item.updatedAt || getTimestamp()
+      });
+    }
+    return {
+      items,
+      page: response?.page || {
+        total: items.length,
+        page: Number(options.page || 1),
+        pageSize: Number(options.pageSize || 20)
+      }
+    };
+  }
+
   async processSessionMessages(options = {}) {
     await this.init();
     const sessionId = String(options.sessionId || '').trim();

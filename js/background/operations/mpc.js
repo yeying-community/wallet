@@ -492,6 +492,15 @@ export async function handleMpcFetchSessionMessages(options = {}) {
   }
 }
 
+export async function handleMpcListSignRequests(options = {}) {
+  try {
+    const result = await mpcService.listSignRequests(options);
+    return { success: true, ...result };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to list sign requests' };
+  }
+}
+
 export async function handleMpcGetSession(sessionId) {
   try {
     const session = await mpcService.getSession(sessionId);
