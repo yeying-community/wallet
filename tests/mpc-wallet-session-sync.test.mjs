@@ -587,3 +587,111 @@ test('startKeygenSession 调用 TSS 引擎并保存 share、发送消息、激�
     resetMpcTssEngineForTests();
   }
 });
+
+test('fetchSessionMessages 会把对端 keygen 消息交给 TSS 引擎处理', async () => {
+  await saveAccount({
+    id: 'account-1',
+    walletId: 'wallet-1',
+    address: '0x1111111111111111111111111111111111111111',
+  });
+  await setSelectedAccountId('account-1');
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: '团队金库',
+    type: 'mpc',
+    status: 'keygen_running',
+    keygenSessionId: 'session-1',
+    curve: 'secp256k1',
+    threshold: 1,
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222',
+    ],
+    keyVersion: 1,
+    shareVersion: 1,
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcSession({
+    id: 'session-1',
+    name: '团队金库',
+    type: 'keygen',
+    walletId: 'mpc-wallet-1',
+    status: 'rounds',
+    curve: 'secp256k1',
+    threshold: 1,
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222',
+    ],
+    keyVersion: 1,
+    shareVersion: 1,
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcParticipant({
+    id: '0x1111111111111111111111111111111111111111',
+    sessionId: 'session-1',
+    status: 'active',
+    signingPublicKey: '',
+    e2ePublicKey: '',
+  });
+
+  const sentMessages = [];
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  const originalSendSessionMessage = mpcService.sendSessionMessage;
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    fetchMessages: async () => ({
+      messages: [{
+        id: 'message-1',
+        sessionId: 'session-1',
+        from: '0x2222222222222222222222222222222222222222',
+        to: '0x1111111111111111111111111111111111111111',
+        round: 1,
+        type: 'keygen.round1',
+        payload: { commitment: 'c1' },
+        createdAt: 2000,
+      }],
+      nextCursor: 'message-1',
+    }),
+  };
+  mpcService.sendSessionMessage = async (message) => {
+    sentMessages.push(message);
+    return { message: { id: `sent-${sentMessages.length}`, ...message } };
+  };
+  setMpcTssEngineForTests({
+    handleKeygenMessage: async ({ message, payload, participantId }) => {
+      assert.equal(message.id, 'message-1');
+      assert.deepEqual(payload, { commitment: 'c1' });
+      assert.equal(participantId, '0x1111111111111111111111111111111111111111');
+      return {
+        messages: [{
+          toParticipantId: '0x2222222222222222222222222222222222222222',
+          round: 2,
+          type: 'keygen.round2',
+          payload: { response: 'r2' },
+        }],
+      };
+    },
+  });
+
+  try {
+    const result = await mpcService.fetchSessionMessages('session-1');
+
+    assert.equal(result.messages.length, 1);
+    assert.equal(result.processed.length, 1);
+    assert.equal(result.processed[0].id, 'message-1');
+    assert.ok(result.processed[0].processedAt);
+    assert.equal(sentMessages.length, 1);
+    assert.equal(sentMessages[0].type, 'keygen.round2');
+    assert.equal(sentMessages[0].toParticipantId, '0x2222222222222222222222222222222222222222');
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+    mpcService.sendSessionMessage = originalSendSessionMessage;
+    resetMpcTssEngineForTests();
+  }
+});

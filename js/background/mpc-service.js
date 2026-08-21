@@ -46,7 +46,7 @@ import {
   decryptEnvelope
 } from './mpc-crypto.js';
 import { createActionSignature } from './action-signature.js';
-import { startMpcKeygen } from './mpc-tss-engine.js';
+import { handleMpcKeygenMessage, startMpcKeygen } from './mpc-tss-engine.js';
 
 const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
 const DEFAULT_MPC_UCAN_RESOURCE = 'mpc';
@@ -871,11 +871,110 @@ class MpcService {
       const local = await getMpcSession(id);
       await this._syncSessionSnapshot(response.session, local || { id });
     }
+    const processed = options.process === false
+      ? []
+      : await this.processSessionMessages({ sessionId: id, messages: stored, password: options.password }).catch(() => []);
     return {
       messages: stored,
+      processed,
       cursor: response?.nextCursor || response?.cursor || null,
       hasMore: Boolean(response?.hasMore)
     };
+  }
+
+  async _resolveMessagePayload(message, options = {}) {
+    if (message?.payload !== undefined) return message.payload;
+    if (!message?.envelope) return null;
+    const decrypted = await this.decryptMessage({
+      message,
+      sessionId: message.sessionId || options.sessionId,
+      password: options.password
+    });
+    return decrypted.payload;
+  }
+
+  _isKeygenMessage(message, payload) {
+    const type = String(message?.type || payload?.type || '').trim().toLowerCase();
+    return type === 'keygen' || type.startsWith('keygen.');
+  }
+
+  async processSessionMessages(options = {}) {
+    await this.init();
+    const sessionId = String(options.sessionId || '').trim();
+    if (!sessionId) {
+      throw new Error('sessionId is required');
+    }
+    const session = await getMpcSession(sessionId);
+    if (!session) {
+      throw new Error('MPC_SESSION_NOT_FOUND');
+    }
+    const walletId = String(options.walletId || session.walletId || '').trim();
+    const wallet = walletId ? await getMpcWallet(walletId) : null;
+    if (!wallet) {
+      throw new Error('MPC_WALLET_NOT_FOUND');
+    }
+    const participantId = String(options.participantId || await this._resolveLocalParticipantId(session)).trim();
+    if (!participantId) {
+      throw new Error('MPC_PARTICIPANT_NOT_FOUND');
+    }
+    const participant = await getMpcParticipant(sessionId, participantId);
+    if (!participant) {
+      throw new Error('MPC_PARTICIPANT_NOT_JOINED');
+    }
+
+    const sourceMessages = Array.isArray(options.messages) ? options.messages : [];
+    const processed = [];
+    for (const rawMessage of sourceMessages) {
+      const messageId = String(rawMessage?.id || '').trim();
+      if (!messageId) continue;
+      const message = await getMpcMessage(messageId) || rawMessage;
+      if (message.processedAt || String(message.from || '').toLowerCase() === participantId.toLowerCase()) {
+        continue;
+      }
+      const payload = await this._resolveMessagePayload(message, {
+        sessionId,
+        password: options.password
+      });
+      if (!this._isKeygenMessage(message, payload)) {
+        continue;
+      }
+      try {
+        const output = await handleMpcKeygenMessage({
+          session,
+          wallet,
+          participant,
+          participantId,
+          message,
+          payload,
+          participants: session.participants || [],
+          threshold: session.threshold,
+          curve: session.curve || wallet.curve || 'secp256k1'
+        });
+        await this._handleTssEngineOutput({
+          session,
+          wallet,
+          participantId,
+          output,
+          password: options.password
+        });
+        const updated = {
+          ...message,
+          processedAt: getTimestamp(),
+          processedBy: participantId
+        };
+        await saveMpcMessage(updated);
+        processed.push(updated);
+      } catch (error) {
+        await this._appendAuditLog({
+          sessionId,
+          level: 'warn',
+          action: 'message-process-skipped',
+          message: error?.message || 'message process skipped',
+          metadata: { messageId }
+        });
+      }
+    }
+    return processed;
   }
 
   async getSession(sessionId) {
