@@ -1459,6 +1459,15 @@ class MpcService {
       }
     }
 
+    if ((eventType === 'sign-request' || eventType === 'sign-request-completed') && data?.id) {
+      const existing = await getMpcSignRequest(data.id);
+      await saveMpcSignRequest({
+        ...(existing || {}),
+        ...data,
+        updatedAt: getTimestamp()
+      });
+    }
+
     if (eventType === 'participant-joined') {
       await this._refreshSessionFromCoordinator(sessionId).catch(() => {});
     }
