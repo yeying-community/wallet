@@ -48,8 +48,15 @@ import {
   decryptEnvelope
 } from './mpc-crypto.js';
 import { createActionSignature } from './action-signature.js';
-import { handleMpcKeygenMessage, handleMpcSignMessage, startMpcKeygen } from './mpc-tss-engine.js';
+import {
+  MpcTssStateMachineAdapter,
+  getMpcTssEngine,
+  handleMpcKeygenMessage,
+  handleMpcSignMessage,
+  startMpcKeygen
+} from './mpc-tss-engine.js';
 import { createMpcWireMessage, inferMpcWireRound } from './mpc-wire-protocol.js';
+import { MpcWireSessionRunner } from './mpc-wire-session-runner.js';
 
 const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
 const DEFAULT_MPC_UCAN_RESOURCE = 'mpc';
@@ -74,6 +81,8 @@ class MpcService {
     this._streamCursors = new Map();
     this._exportInFlight = false;
     this._keygenStarts = new Set();
+    this._wireSessionCursors = new Map();
+    this._wireSessionAdapters = new Map();
   }
 
   async init() {
@@ -894,6 +903,95 @@ class MpcService {
       messages: savedMessages,
       nextCursor: response?.nextCursor,
       nextSequence: response?.nextSequence
+    };
+  }
+
+  _buildWireSessionKey({ sessionId, recipientIndex, protocol = '' } = {}) {
+    return [
+      String(sessionId || '').trim(),
+      String(recipientIndex ?? '').trim(),
+      String(protocol || '').trim()
+    ].join(':');
+  }
+
+  async _resolveLocalParticipantIndex(session, options = {}) {
+    if (options.recipientIndex !== undefined && options.recipientIndex !== null) {
+      const index = Number(options.recipientIndex);
+      if (Number.isInteger(index) && index >= 0) return index;
+    }
+    if (options.participantIndex !== undefined && options.participantIndex !== null) {
+      const index = Number(options.participantIndex);
+      if (Number.isInteger(index) && index >= 0) return index;
+    }
+    const participantId = String(options.participantId || await this._resolveLocalParticipantId(session)).trim();
+    const participants = this._normalizeParticipantIds(session?.participants || []);
+    const index = participants.findIndex((item) => item.toLowerCase() === participantId.toLowerCase());
+    if (index >= 0) return index;
+    throw new Error('MPC_PARTICIPANT_INDEX_NOT_FOUND');
+  }
+
+  _getWireSessionAdapter({ sessionId, recipientIndex, protocol = '', adapter } = {}) {
+    if (adapter) return adapter;
+    const key = this._buildWireSessionKey({ sessionId, recipientIndex, protocol });
+    let existing = this._wireSessionAdapters.get(key);
+    if (!existing) {
+      existing = new MpcTssStateMachineAdapter({
+        engine: getMpcTssEngine(),
+        transport: this
+      });
+      this._wireSessionAdapters.set(key, existing);
+    }
+    return existing;
+  }
+
+  async tickWireSession(options = {}) {
+    await this.init();
+    const sessionId = String(options.sessionId || '').trim();
+    if (!sessionId) {
+      throw new Error('sessionId is required');
+    }
+    const session = options.session || await getMpcSession(sessionId);
+    const recipientIndex = await this._resolveLocalParticipantIndex(session, options);
+    const protocol = String(options.protocol || session?.type || '').trim();
+    const cursorKey = this._buildWireSessionKey({ sessionId, recipientIndex, protocol });
+    const afterSequence = Number.isFinite(Number(options.afterSequence))
+      ? Number(options.afterSequence)
+      : (this._wireSessionCursors.get(cursorKey) || 0);
+    const adapter = this._getWireSessionAdapter({
+      sessionId,
+      recipientIndex,
+      protocol,
+      adapter: options.adapter
+    });
+    const runner = new MpcWireSessionRunner({
+      adapter,
+      transport: this,
+      sessionId,
+      recipientIndex,
+      afterSequence,
+      limit: options.limit
+    });
+    const poll = await runner.pollOnce({
+      limit: options.limit,
+      password: options.password
+    });
+    this._wireSessionCursors.set(cursorKey, poll.nextSequence);
+    let result = null;
+    if (typeof adapter.getResult === 'function') {
+      try {
+        result = await adapter.getResult({ sessionId });
+      } catch (error) {
+        if (String(error?.message || error || '') !== 'MPC_TSS_SESSION_NOT_STARTED') {
+          throw error;
+        }
+      }
+    }
+    return {
+      ...poll,
+      sessionId,
+      recipientIndex,
+      cursorKey,
+      result
     };
   }
 
