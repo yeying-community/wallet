@@ -103,6 +103,13 @@ export class MpcCoordinatorClient {
     });
   }
 
+  async createSignRequest(payload, signature = {}) {
+    return this.request('/api/v1/public/mpc/sign-requests', {
+      method: 'POST',
+      body: { ...payload, ...signature }
+    });
+  }
+
   async sendMessage(sessionId, message, signature = {}) {
     return this.request(`/api/v1/public/mpc/sessions/${sessionId}/messages`, {
       method: 'POST',
