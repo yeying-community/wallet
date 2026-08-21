@@ -59,8 +59,9 @@ test('MPC coordinator write requests include action signature fields', async () 
     await client.joinSession('session-1', { participantId: '0xabc' }, signature);
     await client.completeSignRequest('sign-request-1', { signature: '0xmpcsig' }, signature);
     await client.sendMessage('session-1', { id: 'message-1' }, signature);
+    await client.sendWireMessage('session-1', { protocol_version: 1, engine: 'cggmp24' }, signature);
 
-    assert.equal(requests.length, 4);
+    assert.equal(requests.length, 5);
     requests.forEach((request) => {
       assert.equal(request.options.headers.Authorization, 'Bearer ucan-token');
       assert.equal(request.body.requestId, 'action-1');
@@ -69,6 +70,35 @@ test('MPC coordinator write requests include action signature fields', async () 
     });
     assert.equal(requests[2].url, 'http://127.0.0.1:8100/api/v1/public/mpc/sign-requests/sign-request-1/complete');
     assert.deepEqual(requests[3].body.message, { id: 'message-1' });
+    assert.deepEqual(requests[4].body.message, { protocol_version: 1, engine: 'cggmp24' });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('MPC coordinator fetchMessages supports wire message cursors', async () => {
+  let requestedUrl = '';
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    requestedUrl = String(url);
+    return new Response(JSON.stringify({ code: 0, data: { messages: [], nextSequence: 8 } }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  try {
+    const client = new MpcCoordinatorClient({ endpoint: 'http://127.0.0.1:8100' });
+    const result = await client.fetchMessages('session-1', {
+      after: 4,
+      recipientIndex: 1,
+      limit: 20,
+    });
+
+    assert.equal(
+      requestedUrl,
+      'http://127.0.0.1:8100/api/v1/public/mpc/sessions/session-1/messages?after=4&recipientIndex=1&limit=20'
+    );
+    assert.deepEqual(result, { messages: [], nextSequence: 8 });
   } finally {
     globalThis.fetch = originalFetch;
   }

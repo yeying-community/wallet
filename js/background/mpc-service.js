@@ -49,6 +49,7 @@ import {
 } from './mpc-crypto.js';
 import { createActionSignature } from './action-signature.js';
 import { handleMpcKeygenMessage, handleMpcSignMessage, startMpcKeygen } from './mpc-tss-engine.js';
+import { createMpcWireMessage, inferMpcWireRound } from './mpc-wire-protocol.js';
 
 const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
 const DEFAULT_MPC_UCAN_RESOURCE = 'mpc';
@@ -811,6 +812,89 @@ class MpcService {
     }
 
     return { message };
+  }
+
+  async sendWireMessage(options = {}) {
+    await this.init();
+    await this._ensureCoordinatorToken({ password: options.password });
+    const sessionId = String(options.sessionId || '').trim();
+    if (!sessionId) {
+      throw new Error('sessionId is required');
+    }
+    const message = createMpcWireMessage({
+      sessionId,
+      protocol: options.protocol || 'sign',
+      senderIndex: options.senderIndex,
+      audience: options.audience || 'all-parties',
+      payload: options.payload,
+      sequence: options.sequence
+    });
+    const signature = await createActionSignature({
+      account: await getSelectedAccount(),
+      action: 'mpc_message_send',
+      payload: {
+        sessionId,
+        protocolVersion: message.protocol_version,
+        engine: message.engine,
+        envelopeSessionId: message.session_id,
+        protocol: message.protocol,
+        senderIndex: message.sender_index,
+        audience: message.audience,
+        messagePayload: message.payload,
+      },
+    });
+    const response = await this._coordinator.sendWireMessage(sessionId, message, signature);
+    const saved = {
+      id: response?.id || generateId('mpc_msg'),
+      sessionId,
+      from: String(response?.sender ?? message.sender_index),
+      to: String(response?.receiver ?? ''),
+      round: Number.isFinite(response?.round) ? response.round : inferMpcWireRound(message.payload),
+      type: response?.type || message.protocol,
+      seq: Number.isFinite(response?.seq) ? response.seq : Number(response?.envelope?.sequence || message.sequence || 0),
+      envelope: response?.envelope || message,
+      createdAt: response?.createdAt || getTimestamp()
+    };
+    await saveMpcMessage(saved);
+    return { message: saved, response };
+  }
+
+  async fetchWireMessages(sessionId, options = {}) {
+    await this.init();
+    await this._ensureCoordinatorToken({ password: options.password });
+    const normalizedSessionId = String(sessionId || options.sessionId || '').trim();
+    if (!normalizedSessionId) {
+      throw new Error('sessionId is required');
+    }
+    const response = await this._coordinator.fetchMessages(normalizedSessionId, {
+      after: options.after,
+      recipientIndex: options.recipientIndex,
+      limit: options.limit
+    });
+    const messages = Array.isArray(response?.messages)
+      ? response.messages
+      : (Array.isArray(response) ? response : []);
+    const savedMessages = [];
+    for (const item of messages) {
+      const saved = {
+        id: item?.id || generateId('mpc_msg'),
+        sessionId: normalizedSessionId,
+        from: String(item?.sender ?? item?.envelope?.sender_index ?? ''),
+        to: String(item?.receiver ?? ''),
+        round: Number.isFinite(item?.round) ? item.round : inferMpcWireRound(item?.envelope?.payload),
+        type: item?.type || item?.envelope?.protocol || 'message',
+        seq: Number.isFinite(item?.seq) ? item.seq : Number(item?.envelope?.sequence || 0),
+        envelope: item?.envelope || {},
+        createdAt: item?.createdAt || getTimestamp()
+      };
+      await saveMpcMessage(saved);
+      savedMessages.push(saved);
+    }
+    return {
+      messages: savedMessages,
+      nextCursor: response?.nextCursor,
+      nextSequence: response?.nextSequence
+    };
   }
 
   async decryptMessage(options = {}) {

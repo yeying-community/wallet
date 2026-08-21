@@ -134,10 +134,23 @@ export class MpcCoordinatorClient {
     });
   }
 
-  async fetchMessages(sessionId, { since, cursor, limit } = {}) {
+  async sendWireMessage(sessionId, message, signature = {}) {
+    return this.request(`/api/v1/public/mpc/sessions/${sessionId}/messages`, {
+      method: 'POST',
+      body: { message, ...signature }
+    });
+  }
+
+  async fetchMessages(sessionId, { since, cursor, limit, after, recipientIndex } = {}) {
     const params = new URLSearchParams();
     if (since !== undefined && since !== null) {
       params.set('since', String(since));
+    }
+    if (after !== undefined && after !== null) {
+      params.set('after', String(after));
+    }
+    if (recipientIndex !== undefined && recipientIndex !== null) {
+      params.set('recipientIndex', String(recipientIndex));
     }
     if (cursor !== undefined && cursor !== null) {
       params.set('cursor', String(cursor));
