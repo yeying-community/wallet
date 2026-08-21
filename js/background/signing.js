@@ -89,6 +89,7 @@ async function createMpcSignContext(wallet, kind, payload) {
   const request = {
     id: generateId('mpc_sign'),
     walletId: wallet.id,
+    sessionId: String(wallet.keygenSessionId || '').trim(),
     type: kind,
     status: 'pending',
     payload,
@@ -131,6 +132,53 @@ async function syncMpcSignRequest(wallet, request) {
   return await client.createSignRequest(payload, signature);
 }
 
+async function completeMpcSignRequest(wallet, request, output) {
+  const result = output && typeof output === 'object' ? output : {};
+  const signatureValue = String(result.signature || result.signedPayload || result.signedTransaction || '').trim();
+  if (!signatureValue) {
+    return output;
+  }
+  const now = getTimestamp();
+  await saveMpcSignRequest({
+    ...request,
+    status: 'completed',
+    signature: signatureValue,
+    result,
+    completedAt: now,
+    updatedAt: now
+  });
+
+  const token = String(await getUserSetting('mpcCoordinatorUcanToken', '') || '').trim();
+  if (!token) return output;
+  const endpoint = String(await getUserSetting('mpcCoordinatorEndpoint', DEFAULT_MPC_COORDINATOR_ENDPOINT) || '').trim();
+  const participantId = String((await getSelectedAccount())?.address || '').trim();
+  if (!endpoint || !request?.id || !participantId) return output;
+  const payload = {
+    requestId: request.id,
+    participantId,
+    signature: signatureValue,
+    result
+  };
+  const actionSignature = await createActionSignature({
+    account: await getSelectedAccount(),
+    action: 'mpc_sign_request_complete',
+    payload
+  });
+  const client = new MpcCoordinatorClient({
+    endpoint,
+    getToken: async () => token
+  });
+  const remote = await client.completeSignRequest(request.id, payload, actionSignature).catch(() => null);
+  if (remote) {
+    await saveMpcSignRequest({
+      ...request,
+      ...remote,
+      updatedAt: getTimestamp()
+    });
+  }
+  return output;
+}
+
 /**
  * 签名交易
  * @param {string} accountId - 账户 ID
@@ -142,13 +190,14 @@ export async function signTransaction(accountId, transaction) {
     if (isMpcAccountId(accountId)) {
       const wallet = ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
       const context = await createMpcSignContext(wallet, 'transaction', { transaction });
-      return await signMpcTransaction({
+      const signed = await signMpcTransaction({
         wallet,
         transaction,
         chainId: state.currentChainId,
         keyShare: context.keyShare,
         request: context.request
       });
+      return await completeMpcSignRequest(wallet, context.request, signed);
     }
     const wallet = getWalletInstance(accountId);
     const normalizedTx = normalizeTransaction(transaction);
@@ -236,13 +285,14 @@ export async function signMessage(accountId, message) {
     if (isMpcAccountId(accountId)) {
       const wallet = ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
       const context = await createMpcSignContext(wallet, 'message', { message });
-      return await signMpcMessage({
+      const signed = await signMpcMessage({
         wallet,
         message,
         chainId: state.currentChainId,
         keyShare: context.keyShare,
         request: context.request
       });
+      return await completeMpcSignRequest(wallet, context.request, signed);
     }
     const wallet = getWalletInstance(accountId);
     const signature = await wallet.signMessage(message);
@@ -270,7 +320,7 @@ export async function signTypedData(accountId, domain, types, value) {
     if (isMpcAccountId(accountId)) {
       const wallet = ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
       const context = await createMpcSignContext(wallet, 'typed_data', { domain, types, value });
-      return await signMpcTypedData({
+      const signed = await signMpcTypedData({
         wallet,
         domain,
         types,
@@ -279,6 +329,7 @@ export async function signTypedData(accountId, domain, types, value) {
         keyShare: context.keyShare,
         request: context.request
       });
+      return await completeMpcSignRequest(wallet, context.request, signed);
     }
     const wallet = getWalletInstance(accountId);
     const normalized = normalizeTypedData(domain, types, value);

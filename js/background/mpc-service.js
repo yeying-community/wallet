@@ -916,8 +916,29 @@ class MpcService {
     ).trim();
   }
 
-  async _handleSignEngineOutput({ signRequest, output }) {
+  async _handleSignEngineOutput({ session, participantId, signRequest, output, password }) {
     const result = output && typeof output === 'object' ? output : {};
+    const sessionId = String(session?.id || signRequest?.sessionId || '').trim();
+    const messages = Array.isArray(result.messages)
+      ? result.messages
+      : (Array.isArray(result.outboundMessages) ? result.outboundMessages : []);
+    for (const message of messages) {
+      const payload = message.payload && typeof message.payload === 'object'
+        ? { ...message.payload, requestId: signRequest.id }
+        : { requestId: signRequest.id, payload: message.payload ?? message };
+      await this.sendSessionMessage({
+        sessionId,
+        from: participantId,
+        to: message.to || message.receiver || '',
+        toParticipantId: message.toParticipantId || message.to || message.receiver || '',
+        round: Number.isFinite(message.round) ? message.round : (Number.isFinite(result.round) ? result.round : 0),
+        type: message.type || 'sign',
+        seq: message.seq,
+        payload,
+        password
+      });
+    }
+
     const signature = String(result.signature || result.signedPayload || '').trim();
     const status = String(result.status || '').trim();
     if (!signature && status !== 'completed') {
@@ -932,6 +953,27 @@ class MpcService {
       updatedAt: getTimestamp()
     };
     await saveMpcSignRequest(next);
+    if (signature && sessionId && participantId && typeof this._coordinator.completeSignRequest === 'function') {
+      const payload = {
+        requestId: signRequest.id,
+        participantId,
+        signature,
+        result
+      };
+      const actionSignature = await createActionSignature({
+        account: await getSelectedAccount(),
+        action: 'mpc_sign_request_complete',
+        payload
+      });
+      const response = await this._coordinator.completeSignRequest(signRequest.id, payload, actionSignature);
+      if (response) {
+        await saveMpcSignRequest({
+          ...next,
+          ...response,
+          updatedAt: getTimestamp()
+        });
+      }
+    }
     return result;
   }
 
@@ -1015,7 +1057,13 @@ class MpcService {
             threshold: session.threshold,
             curve: session.curve || wallet.curve || 'secp256k1'
           });
-          await this._handleSignEngineOutput({ signRequest, output });
+          await this._handleSignEngineOutput({
+            session,
+            participantId,
+            signRequest,
+            output,
+            password: options.password
+          });
         }
         const updated = {
           ...message,

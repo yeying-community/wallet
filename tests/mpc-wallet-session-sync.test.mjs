@@ -35,6 +35,7 @@ globalThis.chrome = {
 const { mpcService } = await import('../js/background/mpc-service.js');
 const { handleMpcAcceptInvite } = await import('../js/background/operations/mpc.js');
 const { setMpcTssEngineForTests, resetMpcTssEngineForTests } = await import('../js/background/mpc-tss-engine.js');
+const { state } = await import('../js/background/state.js');
 const { HandleGetWalletList } = await import('../js/background/operations/wallet.js');
 const {
   getMpcWallet,
@@ -50,6 +51,7 @@ const {
 
 test.beforeEach(async () => {
   await chrome.storage.local.clear();
+  state.keyring = null;
   resetMpcTssEngineForTests();
 });
 
@@ -705,6 +707,9 @@ test('fetchSessionMessages 会把对端 sign 消息交给 TSS 引擎处理', asy
     address: '0x1111111111111111111111111111111111111111',
   });
   await setSelectedAccountId('account-1');
+  state.keyring = new Map([
+    ['account-1', { signMessage: async (message) => `signed:${message}` }],
+  ]);
   await saveMpcWallet({
     id: 'mpc-wallet-1',
     name: '团队金库',
@@ -763,6 +768,9 @@ test('fetchSessionMessages 会把对端 sign 消息交给 TSS 引擎处理', asy
 
   const originalEnsure = mpcService._ensureCoordinatorToken;
   const originalCoordinator = mpcService._coordinator;
+  const originalSendSessionMessage = mpcService.sendSessionMessage;
+  const sentMessages = [];
+  const completedRequests = [];
   mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
   mpcService._coordinator = {
     setEndpoint() {},
@@ -779,6 +787,20 @@ test('fetchSessionMessages 会把对端 sign 消息交给 TSS 引擎处理', asy
       }],
       nextCursor: 'message-1',
     }),
+    completeSignRequest: async (requestId, payload, signature) => {
+      completedRequests.push({ requestId, payload, signature });
+      return {
+        id: requestId,
+        status: 'completed',
+        signature: payload.signature,
+        result: payload.result,
+        completedAt: '3000',
+      };
+    },
+  };
+  mpcService.sendSessionMessage = async (message) => {
+    sentMessages.push(message);
+    return { message: { id: `sent-${sentMessages.length}`, ...message } };
   };
   setMpcTssEngineForTests({
     handleSignMessage: async ({ message, payload, signRequest, participantId }) => {
@@ -787,6 +809,12 @@ test('fetchSessionMessages 会把对端 sign 消息交给 TSS 引擎处理', asy
       assert.equal(signRequest.id, 'sign-request-1');
       assert.equal(participantId, '0x1111111111111111111111111111111111111111');
       return {
+        messages: [{
+          toParticipantId: '0x2222222222222222222222222222222222222222',
+          round: 2,
+          type: 'sign.round2',
+          payload: { partial: 'p2' },
+        }],
         status: 'completed',
         signature: '0xmpcsig',
       };
@@ -800,6 +828,13 @@ test('fetchSessionMessages 会把对端 sign 消息交给 TSS 引擎处理', asy
     assert.equal(result.processed.length, 1);
     assert.equal(result.processed[0].id, 'message-1');
     assert.ok(result.processed[0].processedAt);
+    assert.equal(sentMessages.length, 1);
+    assert.equal(sentMessages[0].type, 'sign.round2');
+    assert.deepEqual(sentMessages[0].payload, { partial: 'p2', requestId: 'sign-request-1' });
+    assert.equal(completedRequests.length, 1);
+    assert.equal(completedRequests[0].requestId, 'sign-request-1');
+    assert.equal(completedRequests[0].payload.signature, '0xmpcsig');
+    assert.equal(completedRequests[0].signature.signature.startsWith('signed:'), true);
     const signRequest = await getMpcSignRequest('sign-request-1');
     assert.equal(signRequest.status, 'completed');
     assert.equal(signRequest.signature, '0xmpcsig');
@@ -807,6 +842,7 @@ test('fetchSessionMessages 会把对端 sign 消息交给 TSS 引擎处理', asy
   } finally {
     mpcService._ensureCoordinatorToken = originalEnsure;
     mpcService._coordinator = originalCoordinator;
+    mpcService.sendSessionMessage = originalSendSessionMessage;
     resetMpcTssEngineForTests();
   }
 });

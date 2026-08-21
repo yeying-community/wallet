@@ -57,16 +57,18 @@ test('MPC coordinator write requests include action signature fields', async () 
     const signature = { requestId: 'action-1', timestamp: '1786062000000', signature: '0xsig' };
     await client.createSession({ type: 'keygen' }, signature);
     await client.joinSession('session-1', { participantId: '0xabc' }, signature);
+    await client.completeSignRequest('sign-request-1', { signature: '0xmpcsig' }, signature);
     await client.sendMessage('session-1', { id: 'message-1' }, signature);
 
-    assert.equal(requests.length, 3);
+    assert.equal(requests.length, 4);
     requests.forEach((request) => {
       assert.equal(request.options.headers.Authorization, 'Bearer ucan-token');
       assert.equal(request.body.requestId, 'action-1');
       assert.equal(request.body.timestamp, '1786062000000');
       assert.equal(request.body.signature, '0xsig');
     });
-    assert.deepEqual(requests[2].body.message, { id: 'message-1' });
+    assert.equal(requests[2].url, 'http://127.0.0.1:8100/api/v1/public/mpc/sign-requests/sign-request-1/complete');
+    assert.deepEqual(requests[3].body.message, { id: 'message-1' });
   } finally {
     globalThis.fetch = originalFetch;
   }
