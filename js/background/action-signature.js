@@ -1,5 +1,5 @@
 import { generateId } from '../common/utils/index.js';
-import { signMessage } from './signing.js';
+import { state } from './state.js';
 
 const MESSAGE_PREFIX = 'YeYing Market';
 
@@ -37,6 +37,10 @@ export async function buildActionSignatureMessage({ action, actor, timestamp, re
 
 export async function createActionSignature({ account, action, payload }) {
   if (!account?.id || !account?.address) throw new Error('未找到当前账户');
+  const wallet = state.keyring?.get(account.id);
+  if (!wallet || typeof wallet.signMessage !== 'function') {
+    throw new Error('Wallet is locked');
+  }
   const requestId = generateId('action');
   const timestamp = String(Date.now());
   const message = await buildActionSignatureMessage({
@@ -49,6 +53,6 @@ export async function createActionSignature({ account, action, payload }) {
   return {
     requestId,
     timestamp,
-    signature: await signMessage(account.id, message),
+    signature: await wallet.signMessage(message),
   };
 }

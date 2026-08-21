@@ -9,8 +9,10 @@ import {
   getMpcKeyShares,
   getMpcWallet,
   getMpcWalletList,
+  getSelectedAccount,
   getNetworkByChainId,
   getNetworkConfigByKey,
+  getUserSetting,
   saveMpcSignRequest
 } from '../storage/index.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
@@ -18,8 +20,11 @@ import { ethers } from '../../lib/ethers-6.16.esm.min.js';
 import { signMpcMessage, signMpcTransaction, signMpcTypedData } from './mpc-tss-engine.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { generateId } from '../common/utils/index.js';
+import { buildActionPayloadHash, createActionSignature } from './action-signature.js';
+import { MpcCoordinatorClient } from './mpc-coordinator-client.js';
 
 export const MPC_ACCOUNT_ID_PREFIX = 'mpc:';
+const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
 
 export function getMpcAccountId(walletId) {
   const id = String(walletId || '').trim();
@@ -94,7 +99,36 @@ async function createMpcSignContext(wallet, kind, payload) {
     updatedAt: now
   };
   await saveMpcSignRequest(request);
-  return { keyShare, request };
+  const remoteRequest = await syncMpcSignRequest(wallet, request).catch(() => null);
+  return { keyShare, request: remoteRequest || request };
+}
+
+async function syncMpcSignRequest(wallet, request) {
+  const token = String(await getUserSetting('mpcCoordinatorUcanToken', '') || '').trim();
+  if (!token) return null;
+  const endpoint = String(await getUserSetting('mpcCoordinatorEndpoint', DEFAULT_MPC_COORDINATOR_ENDPOINT) || '').trim();
+  const sessionId = String(wallet?.keygenSessionId || '').trim();
+  if (!endpoint || !sessionId) return null;
+  const chainId = Number(request.chainId || 0);
+  const payloadHash = await buildActionPayloadHash(request.payload ?? null);
+  const payload = {
+    requestId: request.id,
+    walletId: wallet.id,
+    sessionId,
+    payloadType: request.type,
+    payloadHash,
+    chainId: Number.isFinite(chainId) ? chainId : 0
+  };
+  const signature = await createActionSignature({
+    account: await getSelectedAccount(),
+    action: 'mpc_sign_request_create',
+    payload
+  });
+  const client = new MpcCoordinatorClient({
+    endpoint,
+    getToken: async () => token
+  });
+  return await client.createSignRequest(payload, signature);
 }
 
 /**
