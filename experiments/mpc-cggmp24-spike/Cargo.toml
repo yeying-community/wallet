@@ -1,0 +1,18 @@
+[package]
+name = "mpc-cggmp24-spike"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+cggmp24 = { version = "0.7.0-alpha.3", default-features = false, features = ["std", "backend-num-bigint", "curve-secp256k1", "state-machine", "spof"] }
+cggmp24-keygen = "=0.7.0-alpha.3"
+getrandom = { version = "0.2", features = ["js"] }
+hex = "0.4"
+paillier-zk = "=0.7.0-alpha.3"
+rand = "0.8"
+round-based = { version = "0.4.1", features = ["sim"] }
+sha2 = "0.10"
+
+[patch.crates-io]
+core2 = { path = "vendor/core2-stub" }
