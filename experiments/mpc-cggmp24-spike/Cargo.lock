@@ -631,6 +631,8 @@ dependencies = [
  "paillier-zk",
  "rand",
  "round-based",
+ "serde",
+ "serde_json",
  "sha2",
 ]
 

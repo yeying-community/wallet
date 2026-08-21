@@ -2,7 +2,11 @@ use cggmp24::key_share::AnyKeyShare;
 use cggmp24::supported_curves::Secp256k1;
 use cggmp24::{signing, trusted_dealer, DataToSign, ExecutionId, KeyShare, Signature};
 use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+
+pub const ENGINE_ID: &str = "cggmp24";
+pub const PROTOCOL_VERSION: u32 = 1;
 
 #[derive(Clone)]
 pub struct SpikeSecurityLevel;
@@ -19,6 +23,89 @@ cggmp24::define_security_level!(SpikeSecurityLevel {
 
 pub type SecpKeyShare = KeyShare<Secp256k1, SpikeSecurityLevel>;
 pub type SecpSignature = Signature<Secp256k1>;
+pub type SecpSigningMessage = cggmp24::signing::msg::Msg<Secp256k1, Sha256>;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MpcProtocolKind {
+    Keygen,
+    AuxInfo,
+    Sign,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MpcMessageAudience {
+    AllParties,
+    OneParty { recipient_index: u16 },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(bound = "M: Serialize + for<'de2> Deserialize<'de2>")]
+pub struct MpcWireMessage<M> {
+    pub protocol_version: u32,
+    pub engine: String,
+    pub session_id: String,
+    pub protocol: MpcProtocolKind,
+    pub sequence: u64,
+    pub sender_index: u16,
+    pub audience: MpcMessageAudience,
+    pub payload: M,
+}
+
+impl<M> MpcWireMessage<M> {
+    pub fn sign_broadcast(
+        session_id: impl Into<String>,
+        sequence: u64,
+        sender_index: u16,
+        payload: M,
+    ) -> Self {
+        Self {
+            protocol_version: PROTOCOL_VERSION,
+            engine: ENGINE_ID.to_string(),
+            session_id: session_id.into(),
+            protocol: MpcProtocolKind::Sign,
+            sequence,
+            sender_index,
+            audience: MpcMessageAudience::AllParties,
+            payload,
+        }
+    }
+
+    pub fn sign_p2p(
+        session_id: impl Into<String>,
+        sequence: u64,
+        sender_index: u16,
+        recipient_index: u16,
+        payload: M,
+    ) -> Self {
+        Self {
+            protocol_version: PROTOCOL_VERSION,
+            engine: ENGINE_ID.to_string(),
+            session_id: session_id.into(),
+            protocol: MpcProtocolKind::Sign,
+            sequence,
+            sender_index,
+            audience: MpcMessageAudience::OneParty { recipient_index },
+            payload,
+        }
+    }
+}
+
+pub fn signing_message_round(message: &SecpSigningMessage) -> &'static str {
+    match message {
+        SecpSigningMessage::Round1a(_) => "round1a",
+        SecpSigningMessage::Round1b(_) => "round1b",
+        SecpSigningMessage::Round2(_) => "round2",
+        SecpSigningMessage::Round3(_) => "round3",
+        SecpSigningMessage::Round4(_) => "round4",
+        SecpSigningMessage::ReliabilityCheck(_) => "reliability-check",
+    }
+}
+
+pub fn wire_message_round(message: &MpcWireMessage<SecpSigningMessage>) -> &'static str {
+    signing_message_round(&message.payload)
+}
 
 pub fn trusted_dealer_2_of_2() -> Vec<SecpKeyShare> {
     trusted_dealer::builder::<Secp256k1, SpikeSecurityLevel>(2)
@@ -70,6 +157,34 @@ pub fn serialize_signature_hex(signature: &SecpSignature) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wire_message_envelope_serializes_stable_protocol_fields() {
+        let envelope = MpcWireMessage::sign_p2p(
+            "session-1",
+            7,
+            0,
+            1,
+            serde_json::json!({
+                "round": "round1b",
+                "ciphertext": "opaque-cggmp24-message"
+            }),
+        );
+
+        let encoded = serde_json::to_string(&envelope).expect("wire envelope should serialize");
+        let decoded: MpcWireMessage<serde_json::Value> =
+            serde_json::from_str(&encoded).expect("wire envelope should deserialize");
+
+        assert_eq!(decoded.protocol_version, PROTOCOL_VERSION);
+        assert_eq!(decoded.engine, ENGINE_ID);
+        assert_eq!(decoded.session_id, "session-1");
+        assert_eq!(decoded.protocol, MpcProtocolKind::Sign);
+        assert_eq!(
+            decoded.audience,
+            MpcMessageAudience::OneParty { recipient_index: 1 }
+        );
+        assert_eq!(decoded.payload["round"], "round1b");
+    }
 
     #[test]
     #[ignore = "Runs real CGGMP24 auxiliary-data/signing work and takes several minutes locally."]
