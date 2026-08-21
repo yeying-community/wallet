@@ -241,7 +241,8 @@ class MpcService {
       updatedAt: getTimestamp(),
       expiresAt: input.expiresAt || fallback.expiresAt || '',
       keyVersion: Number.isFinite(input.keyVersion) ? input.keyVersion : fallback.keyVersion,
-      shareVersion: Number.isFinite(input.shareVersion) ? input.shareVersion : fallback.shareVersion
+      shareVersion: Number.isFinite(input.shareVersion) ? input.shareVersion : fallback.shareVersion,
+      result: input.result || fallback.result || null
     };
   }
 
@@ -600,23 +601,42 @@ class MpcService {
 
     const completed = result.completed || result.status === 'completed' || result.address || result.publicKey || result.groupPublicKey;
     if (completed) {
+      const keygenResult = {
+        address: result.address || result.walletAddress || '',
+        publicKey: result.publicKey || result.groupPublicKey || result.aggregatePublicKey || '',
+        groupPublicKey: result.groupPublicKey || result.publicKey || '',
+        chainCode: result.chainCode || '',
+        curve: result.curve || session?.curve || wallet?.curve,
+        keyVersion: result.keyVersion ?? session?.keyVersion,
+        shareVersion: result.shareVersion ?? session?.shareVersion,
+      };
       const completedSession = {
         ...session,
         status: 'completed',
         name: session?.name || wallet?.name || '',
-        keyVersion: result.keyVersion ?? session?.keyVersion,
-        shareVersion: result.shareVersion ?? session?.shareVersion,
-        result: {
-          address: result.address || result.walletAddress || '',
-          publicKey: result.publicKey || result.groupPublicKey || result.aggregatePublicKey || '',
-          groupPublicKey: result.groupPublicKey || result.publicKey || '',
-          chainCode: result.chainCode || '',
-          curve: result.curve || session?.curve || wallet?.curve,
-          keyVersion: result.keyVersion ?? session?.keyVersion,
-          shareVersion: result.shareVersion ?? session?.shareVersion,
-        }
+        keyVersion: keygenResult.keyVersion,
+        shareVersion: keygenResult.shareVersion,
+        result: keygenResult
       };
       await this._syncWalletFromSession(completedSession, completedSession);
+      if (keygenResult.address && keygenResult.publicKey && typeof this._coordinator.completeSession === 'function') {
+        const signature = await createActionSignature({
+          account: await getSelectedAccount(),
+          action: 'mpc_keygen_complete',
+          payload: {
+            sessionId,
+            participantId,
+            result: keygenResult
+          }
+        });
+        const response = await this._coordinator.completeSession(sessionId, {
+          participantId,
+          result: keygenResult
+        }, signature);
+        if (response) {
+          await this._syncSessionSnapshot(response, completedSession);
+        }
+      }
     }
 
     return result;
