@@ -54,6 +54,23 @@ Check browser-target compilation:
 PATH="$HOME/.cargo/bin:$PATH" cargo check --target wasm32-unknown-unknown
 ```
 
+From the wallet repository root, the same check is available as:
+
+```sh
+npm run mpc:wasm:check
+```
+
+Build the experimental WASM package after installing the matching
+`wasm-bindgen` CLI:
+
+```sh
+cargo install wasm-bindgen-cli --version 0.2.126
+npm run mpc:wasm:build
+```
+
+The generated files are written to `experiments/mpc-cggmp24-spike/pkg`. This is
+still an experimental artifact; it is not bundled into the extension UI yet.
+
 Run the slow real signing simulation manually:
 
 ```sh
