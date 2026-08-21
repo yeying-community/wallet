@@ -76,9 +76,22 @@ export class MpcCoordinatorClient {
   }
 
   async createSession(payload, signature = {}) {
+    const walletName = String(payload?.name || payload?.walletName || payload?.metadata?.walletName || '').trim();
+    const body = walletName
+      ? {
+        ...payload,
+        name: payload.name || walletName,
+        walletName,
+        metadata: {
+          ...(payload.metadata || {}),
+          walletName,
+          name: payload.metadata?.name || walletName
+        }
+      }
+      : payload;
     return this.request('/api/v1/public/mpc/sessions', {
       method: 'POST',
-      body: { ...payload, ...signature }
+      body: { ...body, ...signature }
     });
   }
 

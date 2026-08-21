@@ -115,6 +115,8 @@ test('MPC create session request preserves wallet name for invite payloads', asy
       signature: '0xsig',
     });
     assert.equal(requestBody.name, '团队金库');
+    assert.equal(requestBody.walletName, '团队金库');
+    assert.deepEqual(requestBody.metadata, { walletName: '团队金库', name: '团队金库' });
     assert.equal(requestBody.walletId, 'wallet-1');
   } finally {
     globalThis.fetch = originalFetch;

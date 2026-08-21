@@ -411,9 +411,12 @@ class MpcService {
       forceRefresh: options.forceRefresh
     });
     const type = String(options.type || 'keygen').toLowerCase();
+    const walletName = String(options.name || options.walletName || '').trim() || undefined;
     const payload = {
       type,
-      name: String(options.name || options.walletName || '').trim() || undefined,
+      name: walletName,
+      walletName,
+      metadata: walletName ? { walletName, name: walletName } : undefined,
       walletId: options.walletId || null,
       threshold: options.threshold ?? null,
       participants: Array.isArray(options.participants) ? options.participants : [],
