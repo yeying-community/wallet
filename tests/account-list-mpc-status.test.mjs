@@ -31,6 +31,49 @@ test('账户管理按三行结构展示待 Keygen 的 MPC 钱包', () => {
   }
 });
 
+test('账户管理把 ready 的 MPC 钱包展示为等待密钥生成', () => {
+  const { document, elements } = createDocument({ walletList: { tagName: 'div' } });
+  globalThis.document = document;
+  try {
+    const controller = new AccountListController({ wallet: {} });
+    controller.renderWalletList([{
+      id: 'mpc-1',
+      name: 'mpc10',
+      type: 'mpc',
+      status: 'keygen_ready',
+      threshold: 1,
+      participants: ['0x1', '0x2'],
+      accounts: [],
+    }]);
+
+    assert.match(elements.walletList.innerHTML, /门限 1 \/ 2 · 等待密钥生成/);
+    assert.doesNotMatch(elements.walletList.innerHTML, /等待参与者完成密钥生成/);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test('账户管理把 rounds 的 MPC 钱包展示为密钥生成中', () => {
+  const { document, elements } = createDocument({ walletList: { tagName: 'div' } });
+  globalThis.document = document;
+  try {
+    const controller = new AccountListController({ wallet: {} });
+    controller.renderWalletList([{
+      id: 'mpc-1',
+      name: 'mpc10',
+      type: 'mpc',
+      status: 'keygen_running',
+      threshold: 1,
+      participants: ['0x1', '0x2'],
+      accounts: [],
+    }]);
+
+    assert.match(elements.walletList.innerHTML, /门限 1 \/ 2 · 密钥生成中/);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
 test('账户管理把待处理 MPC 邀请展示为可接受的钱包卡片', () => {
   const { document, elements } = createDocument({ walletList: { tagName: 'div' } });
   globalThis.document = document;

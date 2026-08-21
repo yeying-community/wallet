@@ -51,6 +51,8 @@ const DEFAULT_MPC_UCAN_RESOURCE = 'mpc';
 const DEFAULT_MPC_UCAN_ACTION = 'coordinate';
 const DEFAULT_MPC_UCAN_TTL_HOURS = 24;
 const MPC_SESSION_ACTIVE_STATUSES = new Set(['active', 'completed', 'complete', 'succeeded', 'success']);
+const MPC_SESSION_READY_STATUSES = new Set(['ready']);
+const MPC_SESSION_RUNNING_STATUSES = new Set(['rounds', 'running', 'in_progress', 'in-progress']);
 const MPC_SESSION_FAILED_STATUSES = new Set(['failed', 'error']);
 const INVALID_MPC_WALLET_NAMES = new Set(['MPC 钱包创建邀请', 'MPC 钱包邀请']);
 
@@ -311,6 +313,12 @@ class MpcService {
 
     if (MPC_SESSION_ACTIVE_STATUSES.has(status) && next.status !== 'active') {
       next.status = 'active';
+      changed = true;
+    } else if (MPC_SESSION_READY_STATUSES.has(status) && next.status !== 'keygen_ready') {
+      next.status = 'keygen_ready';
+      changed = true;
+    } else if (MPC_SESSION_RUNNING_STATUSES.has(status) && next.status !== 'keygen_running') {
+      next.status = 'keygen_running';
       changed = true;
     } else if (MPC_SESSION_FAILED_STATUSES.has(status) && next.status !== 'failed') {
       next.status = 'failed';

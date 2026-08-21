@@ -60,6 +60,20 @@ import { getValue, setValue } from '../../storage/storage-base.js';
 
 const MIN_PASSWORD_LENGTH = 8;
 const INVALID_MPC_WALLET_NAMES = new Set(['', 'MPC 钱包创建邀请', 'MPC 钱包邀请', '名称缺失']);
+const MPC_SESSION_WALLET_STATUS = {
+  ready: 'keygen_ready',
+  rounds: 'keygen_running',
+  running: 'keygen_running',
+  in_progress: 'keygen_running',
+  'in-progress': 'keygen_running',
+  completed: 'active',
+  complete: 'active',
+  succeeded: 'active',
+  success: 'active',
+  active: 'active',
+  failed: 'failed',
+  error: 'failed',
+};
 
 function isInvalidMpcWalletName(name) {
   return INVALID_MPC_WALLET_NAMES.has(String(name || '').trim());
@@ -80,19 +94,28 @@ async function repairMpcWalletNamesFromLocalSessions(mpcWallets = []) {
 
   const repaired = [];
   for (const wallet of Array.isArray(mpcWallets) ? mpcWallets : []) {
-    if (!wallet?.id || !isInvalidMpcWalletName(wallet.name)) {
+    if (!wallet?.id) {
       repaired.push(wallet);
       continue;
     }
     const sessionId = String(wallet.keygenSessionId || wallet.sessionId || '').trim();
     const session = (sessionId && sessionsById.get(sessionId)) || sessionsByWalletId.get(String(wallet.id || '').trim());
     const name = String(session?.name || '').trim();
-    if (isInvalidMpcWalletName(name)) {
-      repaired.push(wallet);
-      continue;
+    const next = { ...wallet };
+    let changed = false;
+    if (isInvalidMpcWalletName(next.name) && !isInvalidMpcWalletName(name) && next.name !== name) {
+      next.name = name;
+      changed = true;
     }
-    const next = { ...wallet, name, updatedAt: getTimestamp() };
-    await saveMpcWallet(next);
+    const mappedStatus = MPC_SESSION_WALLET_STATUS[String(session?.status || '').trim().toLowerCase()];
+    if (mappedStatus && next.status !== mappedStatus) {
+      next.status = mappedStatus;
+      changed = true;
+    }
+    if (changed) {
+      next.updatedAt = getTimestamp();
+      await saveMpcWallet(next);
+    }
     repaired.push(next);
   }
   return repaired;

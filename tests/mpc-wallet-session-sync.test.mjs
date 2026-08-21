@@ -137,6 +137,64 @@ test('session 同步会把被邀请者本地 MPC 钱包收敛到共同记录', a
   assert.equal(wallet.shareVersion, 5);
 });
 
+test('ready session 会把本地 MPC 钱包状态收敛为等待密钥生成', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: '团队金库',
+    type: 'mpc',
+    status: 'keygen_pending',
+    keygenSessionId: 'session-1',
+    threshold: 1,
+    participants: ['0x1', '0x2'],
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+
+  await mpcService.syncWalletFromSession({
+    id: 'session-1',
+    name: '团队金库',
+    type: 'keygen',
+    walletId: 'mpc-wallet-1',
+    status: 'ready',
+    threshold: 1,
+    participants: ['0x1', '0x2'],
+  });
+
+  const wallet = await getMpcWallet('mpc-wallet-1');
+  assert.equal(wallet.status, 'keygen_ready');
+  assert.equal(wallet.address || '', '');
+});
+
+test('钱包列表会用本地 ready session 修复 MPC 钱包状态', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'keygen_pending',
+    keygenSessionId: 'session-1',
+    threshold: 1,
+    participants: ['0x1', '0x2'],
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcSession({
+    id: 'session-1',
+    name: 'mpc10',
+    type: 'keygen',
+    walletId: 'mpc-wallet-1',
+    status: 'ready',
+    threshold: 1,
+    participants: ['0x1', '0x2'],
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+
+  const result = await HandleGetWalletList();
+
+  assert.equal(result.success, true);
+  assert.equal(result.wallets.find((wallet) => wallet.id === 'mpc-wallet-1')?.status, 'keygen_ready');
+});
+
 test('session 数字字段缺失时不会把本地值误同步为 0', async () => {
   await saveMpcWallet({
     id: 'mpc-wallet-1',
