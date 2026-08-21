@@ -37,6 +37,8 @@ import {
   WalletStorageKeys,
   clearAllData,
   getMpcWalletList,
+  getMpcSessionList,
+  saveMpcWallet,
   clearTransactionsByAddress,
   ensureDefaultNetworks,
   saveSelectedNetworkName,
@@ -57,6 +59,44 @@ import { IdentityStorageKeys } from '../../storage/storage-keys.js';
 import { getValue, setValue } from '../../storage/storage-base.js';
 
 const MIN_PASSWORD_LENGTH = 8;
+const INVALID_MPC_WALLET_NAMES = new Set(['', 'MPC 钱包创建邀请', 'MPC 钱包邀请', '名称缺失']);
+
+function isInvalidMpcWalletName(name) {
+  return INVALID_MPC_WALLET_NAMES.has(String(name || '').trim());
+}
+
+async function repairMpcWalletNamesFromLocalSessions(mpcWallets = []) {
+  const sessions = await getMpcSessionList();
+  const sessionsById = new Map();
+  const sessionsByWalletId = new Map();
+  for (const session of Array.isArray(sessions) ? sessions : []) {
+    const name = String(session?.name || '').trim();
+    if (isInvalidMpcWalletName(name)) continue;
+    const sessionId = String(session?.id || session?.sessionId || '').trim();
+    const walletId = String(session?.walletId || '').trim();
+    if (sessionId && !sessionsById.has(sessionId)) sessionsById.set(sessionId, session);
+    if (walletId && !sessionsByWalletId.has(walletId)) sessionsByWalletId.set(walletId, session);
+  }
+
+  const repaired = [];
+  for (const wallet of Array.isArray(mpcWallets) ? mpcWallets : []) {
+    if (!wallet?.id || !isInvalidMpcWalletName(wallet.name)) {
+      repaired.push(wallet);
+      continue;
+    }
+    const sessionId = String(wallet.keygenSessionId || wallet.sessionId || '').trim();
+    const session = (sessionId && sessionsById.get(sessionId)) || sessionsByWalletId.get(String(wallet.id || '').trim());
+    const name = String(session?.name || '').trim();
+    if (isInvalidMpcWalletName(name)) {
+      repaired.push(wallet);
+      continue;
+    }
+    const next = { ...wallet, name, updatedAt: getTimestamp() };
+    await saveMpcWallet(next);
+    repaired.push(next);
+  }
+  return repaired;
+}
 
 async function rememberUnlockedAccount(account, password) {
   if (!account?.id || !password) {
@@ -80,7 +120,7 @@ async function rememberUnlockedAccount(account, password) {
 export async function isWalletInitialized() {
   try {
     const wallets = await getWallets();
-    const mpcWallets = await getMpcWalletList();
+    const mpcWallets = await repairMpcWalletNamesFromLocalSessions(await getMpcWalletList());
     const obj = wallets || {};
     const hasHdWallet = Object.keys(obj).length > 0;
     const hasMpcWallet = Array.isArray(mpcWallets) && mpcWallets.length > 0;
@@ -100,7 +140,7 @@ export async function HandleGetWalletList() {
     const accounts = await getAccountList();
     const selectedAccountId = await getSelectedAccountId();
     const walletsData = await getWallets();
-    const mpcWallets = await getMpcWalletList();
+    const mpcWallets = await repairMpcWalletNamesFromLocalSessions(await getMpcWalletList());
 
     // 按 walletId 分组
     const walletMap = new Map();

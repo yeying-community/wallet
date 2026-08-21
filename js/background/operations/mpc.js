@@ -402,12 +402,13 @@ export async function handleMpcAcceptInvite(options = {}) {
     }
     await mpcService.startEventStream(sessionId).catch(() => null);
 
+    const walletName = resolveMpcWalletName(payload);
     const existingWallet = await getMpcWallet(walletId);
     if (!existingWallet) {
       const now = getTimestamp();
       await saveMpcWallet({
         id: walletId,
-        name: resolveMpcWalletName(payload),
+        name: walletName,
         type: 'mpc',
         status: 'keygen_pending',
         keygenSessionId: sessionId,
@@ -419,6 +420,12 @@ export async function handleMpcAcceptInvite(options = {}) {
         shareVersion: Number(payload.shareVersion || 1),
         createdAt: now,
         updatedAt: now
+      });
+    } else if (String(existingWallet.name || '').trim() !== walletName) {
+      await saveMpcWallet({
+        ...existingWallet,
+        name: walletName,
+        updatedAt: getTimestamp()
       });
     }
     await mpcService.syncWalletFromSession(joinResult.session || sessionId).catch(() => null);

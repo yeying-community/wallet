@@ -33,7 +33,16 @@ globalThis.chrome = {
 };
 
 const { mpcService } = await import('../js/background/mpc-service.js');
-const { getMpcWallet, saveMpcParticipant, saveMpcSession, saveMpcWallet } = await import('../js/storage/index.js');
+const { handleMpcAcceptInvite } = await import('../js/background/operations/mpc.js');
+const { HandleGetWalletList } = await import('../js/background/operations/wallet.js');
+const {
+  getMpcWallet,
+  saveAccount,
+  saveMpcParticipant,
+  saveMpcSession,
+  saveMpcWallet,
+  setSelectedAccountId
+} = await import('../js/storage/index.js');
 
 test.beforeEach(async () => {
   await chrome.storage.local.clear();
@@ -302,4 +311,110 @@ test('listInvites 用 session 详情补齐邀请中的 MPC 钱包名称', async 
     mpcService._ensureCoordinatorToken = originalEnsure;
     mpcService._coordinator = originalCoordinator;
   }
+});
+
+test('接受邀请会用协议 name 修复已有本地 MPC 钱包名称', async () => {
+  await saveAccount({
+    id: 'account-1',
+    walletId: 'wallet-1',
+    address: '0x5c7bf91c493126314bb821c123dee889ffca3932',
+  });
+  await setSelectedAccountId('account-1');
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: '名称缺失',
+    type: 'mpc',
+    status: 'keygen_pending',
+    keygenSessionId: 'session-1',
+    threshold: 1,
+    participants: [
+      '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    ],
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+
+  const originalJoinSession = mpcService.joinSession;
+  const originalStartEventStream = mpcService.startEventStream;
+  const originalSyncWalletFromSession = mpcService.syncWalletFromSession;
+  const originalMarkInviteRead = mpcService.markInviteRead;
+  mpcService.joinSession = async () => ({
+    session: {
+      id: 'session-1',
+      name: 'mpc10',
+      type: 'keygen',
+      walletId: 'mpc-wallet-1',
+      status: 'created',
+      threshold: 1,
+      participants: [
+        '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+        '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+      ],
+    },
+    response: {},
+  });
+  mpcService.startEventStream = async () => ({ started: true });
+  mpcService.syncWalletFromSession = async () => null;
+  mpcService.markInviteRead = async () => null;
+
+  try {
+    const result = await handleMpcAcceptInvite({
+      notificationUid: 'notification-1',
+      sessionId: 'session-1',
+      walletId: 'mpc-wallet-1',
+      payload: {
+        sessionId: 'session-1',
+        walletId: 'mpc-wallet-1',
+        name: 'mpc10',
+        threshold: 1,
+        participants: [
+          '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+          '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+        ],
+      },
+      password: 'password123',
+    });
+
+    assert.equal(result.success, true);
+    const wallet = await getMpcWallet('mpc-wallet-1');
+    assert.equal(wallet.name, 'mpc10');
+  } finally {
+    mpcService.joinSession = originalJoinSession;
+    mpcService.startEventStream = originalStartEventStream;
+    mpcService.syncWalletFromSession = originalSyncWalletFromSession;
+    mpcService.markInviteRead = originalMarkInviteRead;
+  }
+});
+
+test('钱包列表会用本地 session name 修复已有 MPC 钱包名称', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: '名称缺失',
+    type: 'mpc',
+    status: 'keygen_pending',
+    keygenSessionId: 'session-1',
+    threshold: 1,
+    participants: ['0x1', '0x2'],
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcSession({
+    id: 'session-1',
+    name: 'mpc10',
+    type: 'keygen',
+    walletId: 'mpc-wallet-1',
+    status: 'created',
+    threshold: 1,
+    participants: ['0x1', '0x2'],
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+
+  const result = await HandleGetWalletList();
+
+  assert.equal(result.success, true);
+  assert.equal(result.wallets.find((wallet) => wallet.id === 'mpc-wallet-1')?.name, 'mpc10');
+  const wallet = await getMpcWallet('mpc-wallet-1');
+  assert.equal(wallet.name, 'mpc10');
 });
