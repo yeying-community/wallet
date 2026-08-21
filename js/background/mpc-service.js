@@ -52,7 +52,7 @@ const DEFAULT_MPC_UCAN_ACTION = 'coordinate';
 const DEFAULT_MPC_UCAN_TTL_HOURS = 24;
 const MPC_SESSION_ACTIVE_STATUSES = new Set(['active', 'completed', 'complete', 'succeeded', 'success']);
 const MPC_SESSION_FAILED_STATUSES = new Set(['failed', 'error']);
-const GENERIC_MPC_INVITE_TITLES = new Set(['MPC 钱包创建邀请', 'MPC 钱包邀请']);
+const INVALID_MPC_WALLET_NAMES = new Set(['MPC 钱包创建邀请', 'MPC 钱包邀请']);
 
 class MpcService {
   constructor() {
@@ -209,18 +209,12 @@ class MpcService {
   }
 
   _resolveWalletName(source = {}, fallback = '') {
-    const candidates = [
-      source?.name,
-      source?.walletName,
-      source?.wallet?.name,
-      source?.metadata?.walletName,
-      source?.metadata?.name,
-      fallback
-    ];
-    return String(candidates.find(value => {
-      const text = String(value || '').trim();
-      return text && !GENERIC_MPC_INVITE_TITLES.has(text);
-    }) || '').trim();
+    const name = String(source?.name || '').trim();
+    if (name && !INVALID_MPC_WALLET_NAMES.has(name)) {
+      return name;
+    }
+    const fallbackName = String(fallback || '').trim();
+    return INVALID_MPC_WALLET_NAMES.has(fallbackName) ? '' : fallbackName;
   }
 
   _buildSessionRecord(input = {}, fallback = {}) {
@@ -411,12 +405,10 @@ class MpcService {
       forceRefresh: options.forceRefresh
     });
     const type = String(options.type || 'keygen').toLowerCase();
-    const walletName = String(options.name || options.walletName || '').trim() || undefined;
+    const walletName = String(options.name || '').trim() || undefined;
     const payload = {
       type,
       name: walletName,
-      walletName,
-      metadata: walletName ? { walletName, name: walletName } : undefined,
       walletId: options.walletId || null,
       threshold: options.threshold ?? null,
       participants: Array.isArray(options.participants) ? options.participants : [],
@@ -734,15 +726,6 @@ class MpcService {
       const walletId = String(item?.payload?.walletId || '').trim();
       if (walletId && await getMpcWallet(walletId)) {
         continue;
-      }
-      if (sessionId) {
-        const participants = Array.isArray(item?.payload?.participants)
-          ? item.payload.participants.map(participant => String(participant || '').trim()).filter(Boolean)
-          : [];
-        const joined = await Promise.all(participants.map(participantId => getMpcParticipant(sessionId, participantId)));
-        if (joined.some(Boolean)) {
-          continue;
-        }
       }
       let session = null;
       if (sessionId) {

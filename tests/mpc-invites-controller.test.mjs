@@ -32,6 +32,7 @@ test('loadMpcInvites 渲染待处理 MPC 邀请', async () => {
           title: 'MPC 钱包创建邀请',
           subjectId: 'session-1',
           payload: {
+            name: '团队金库',
             sessionId: 'session-1',
             walletId: 'wallet-1',
             threshold: 2,
@@ -49,6 +50,7 @@ test('loadMpcInvites 渲染待处理 MPC 邀请', async () => {
   assert.equal(controller.mpcInvites.length, 1);
   assert.match(elements.mpcInvitesList.innerHTML, /data-mpc-invite-accept/);
   assert.match(elements.mpcInvitesList.innerHTML, /mpc-invite-item/);
+  assert.match(elements.mpcInvitesList.innerHTML, /团队金库/);
 });
 
 test('handleMpcInviteAccept 使用通知 payload 接受邀请', async () => {
@@ -73,6 +75,7 @@ test('handleMpcInviteAccept 使用通知 payload 接受邀请', async () => {
     notificationUid: 'notification-1',
     subjectId: 'session-1',
     payload: {
+      name: '团队金库',
       sessionId: 'session-1',
       walletId: 'wallet-1',
       participants: ['0x111', '0x222'],
@@ -86,6 +89,7 @@ test('handleMpcInviteAccept 使用通知 payload 接受邀请', async () => {
     sessionId: 'session-1',
     walletId: 'wallet-1',
     payload: {
+      name: '团队金库',
       sessionId: 'session-1',
       walletId: 'wallet-1',
       participants: ['0x111', '0x222'],

@@ -469,19 +469,9 @@ export class AccountListController {
 
   getMpcInviteWalletName(invite) {
     const payload = invite?.payload || {};
-    const candidates = [
-      payload.name,
-      payload.walletName,
-      payload.wallet?.name,
-      payload.metadata?.walletName,
-      payload.metadata?.name,
-      invite?.title
-    ];
-    const value = String(candidates.find(value => {
-      const text = String(value || '').trim();
-      return text && text !== 'MPC 钱包创建邀请' && text !== 'MPC 钱包邀请';
-    }) || '').trim();
-    return value || 'MPC 钱包邀请';
+    const invalidNames = new Set(['MPC 钱包创建邀请', 'MPC 钱包邀请']);
+    const name = String(payload.name || invite?.session?.name || '').trim();
+    return name && !invalidNames.has(name) ? name : '名称缺失';
   }
 
   getMpcWalletStatusText(wallet) {

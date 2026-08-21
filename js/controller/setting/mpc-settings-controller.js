@@ -1223,9 +1223,10 @@ export class MpcSettingsController {
       const participants = Array.isArray(payload.participants) ? payload.participants.length : '-';
       const inviter = payload.inviter || item?.actor || '';
       const createdAt = item?.createdAt ? formatLocaleDateTime(item.createdAt) : '';
+      const walletName = this.getMpcInviteWalletName(item);
       return `
         <div class="mpc-invite-item">
-          <div class="mpc-invite-title">${escapeHtml(item?.title || 'MPC 钱包创建邀请')}</div>
+          <div class="mpc-invite-title">${escapeHtml(walletName)}</div>
           <div class="mpc-invite-meta">
             <span>会话：${escapeHtml(this.shortenText(sessionId))}</span>
             <span>钱包：${escapeHtml(this.shortenText(walletId))}</span>
@@ -1242,6 +1243,13 @@ export class MpcSettingsController {
         </div>
       `;
     }).join('');
+  }
+
+  getMpcInviteWalletName(invite) {
+    const payload = invite?.payload || {};
+    const invalidNames = new Set(['MPC 钱包创建邀请', 'MPC 钱包邀请']);
+    const name = String(payload.name || invite?.session?.name || '').trim();
+    return name && !invalidNames.has(name) ? name : '名称缺失';
   }
 
   async handleMpcInviteAccept(notificationUid) {

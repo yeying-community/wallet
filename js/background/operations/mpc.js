@@ -29,22 +29,15 @@ const DEFAULT_MPC_UCAN_ACTION = 'coordinate';
 const MPC_AUTH_SCHEMES = new Set(['ucan']);
 const MPC_E2E_SUITES = new Set(['x25519-aes-gcm']);
 const MPC_REFRESH_POLICIES = new Set(['manual']);
-const GENERIC_MPC_INVITE_TITLES = new Set(['MPC 钱包创建邀请', 'MPC 钱包邀请']);
+const INVALID_MPC_WALLET_NAMES = new Set(['MPC 钱包创建邀请', 'MPC 钱包邀请']);
 
-export function resolveMpcWalletName(source = {}, fallback = 'MPC Wallet') {
+export function resolveMpcWalletName(source = {}) {
   const payload = source?.payload && typeof source.payload === 'object' ? source.payload : source;
-  const candidates = [
-    payload?.name,
-    payload?.walletName,
-    payload?.wallet?.name,
-    payload?.metadata?.walletName,
-    payload?.metadata?.name
-  ];
-  const value = String(candidates.find(item => {
-    const text = String(item || '').trim();
-    return text && !GENERIC_MPC_INVITE_TITLES.has(text);
-  }) || fallback).trim();
-  return value && !GENERIC_MPC_INVITE_TITLES.has(value) ? value : fallback;
+  const name = String(payload?.name || '').trim();
+  if (!name || INVALID_MPC_WALLET_NAMES.has(name)) {
+    throw new Error('MPC 钱包名称缺失');
+  }
+  return name;
 }
 
 /**
@@ -54,7 +47,10 @@ export function resolveMpcWalletName(source = {}, fallback = 'MPC Wallet') {
  */
 export async function handleCreateMpcWallet(options = {}) {
   try {
-    const name = String(options.name || 'MPC Wallet').trim() || 'MPC Wallet';
+    const name = String(options.name || '').trim();
+    if (!name || INVALID_MPC_WALLET_NAMES.has(name)) {
+      throw new Error('请输入 MPC 钱包名称');
+    }
     const walletId = generateId('mpc_wallet');
     const currentAccount = await getSelectedAccount() || (await getAccountList())[0] || null;
     const selfAddress = String(currentAccount?.address || '').trim();

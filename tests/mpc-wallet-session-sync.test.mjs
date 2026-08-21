@@ -220,7 +220,7 @@ test('listInvites 过滤本地已接受的 MPC 邀请', async () => {
   }
 });
 
-test('listInvites 过滤本地已加入参与者的 MPC 邀请', async () => {
+test('listInvites 不因本地 participant 记录隐藏缺失钱包的 MPC 邀请', async () => {
   const originalEnsure = mpcService._ensureCoordinatorToken;
   const originalCoordinator = mpcService._coordinator;
   mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
@@ -234,6 +234,7 @@ test('listInvites 过滤本地已加入参与者的 MPC 邀请', async () => {
         payload: {
           sessionId: 'session-1',
           walletId: 'mpc-wallet-1',
+          name: '团队金库',
           participants: ['0x1', '0x2'],
         },
       }],
@@ -254,7 +255,8 @@ test('listInvites 过滤本地已加入参与者的 MPC 邀请', async () => {
 
     const result = await mpcService.listInvites({ unreadOnly: true });
 
-    assert.deepEqual(result.items, []);
+    assert.equal(result.items.length, 1);
+    assert.equal(result.items[0].payload.name, '团队金库');
   } finally {
     mpcService._ensureCoordinatorToken = originalEnsure;
     mpcService._coordinator = originalCoordinator;

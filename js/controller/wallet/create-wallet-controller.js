@@ -13,10 +13,11 @@ import { DEFAULT_MPC_COORDINATOR_ENDPOINT } from '../setting/settings-utils.js';
 const CREATE_WALLET_DRAFT_KEY = 'createWalletDraft';
 
 export class CreateWalletController {
-  constructor({ wallet, onCreated, onReturnToAccounts }) {
+  constructor({ wallet, onCreated, onReturnToAccounts, promptPassword }) {
     this.wallet = wallet;
     this.onCreated = onCreated;
     this.onReturnToAccounts = onReturnToAccounts;
+    this.promptPassword = promptPassword;
     this.mpcContacts = [];
     this.selectedMpcParticipants = [];
     this.currentMpcAccount = null;
@@ -81,18 +82,52 @@ export class CreateWalletController {
   }
 
   async handleCreateWallet() {
-    const name = document.getElementById('setWalletName')?.value.trim() || '主钱包';
-    const password = document.getElementById('newPassword')?.value;
+    const rawName = String(document.getElementById('setWalletName')?.value || '').trim();
     const confirmPassword = document.getElementById('confirmPassword')?.value;
     const origin = getPageOrigin('setPasswordPage', 'welcome');
     const useExistingPassword = origin === 'accounts';
     const walletType = this.getCreateWalletType();
+    const isMpc = walletType === 'mpc';
+    const name = isMpc ? rawName : (rawName || '主钱包');
 
-    if (origin !== 'accounts' && walletType === 'mpc') {
+    if (origin !== 'accounts' && isMpc) {
       showError('请先创建 HD 钱包，再添加 MPC 钱包');
       return;
     }
 
+    if (isMpc && !name) {
+      showError('请输入 MPC 钱包名称');
+      return;
+    }
+
+    if (useExistingPassword && isMpc) {
+      const canCreate = await this.validateMpcCreateForm();
+      if (!canCreate) return;
+      if (!this.promptPassword) {
+        showError('请输入钱包密码');
+        return;
+      }
+      const password = await this.promptPassword({
+        title: '创建钱包',
+        confirmText: '创建钱包',
+        placeholder: '输入钱包密码',
+        onConfirm: async (value) => {
+          if (!value || value.length < 8) {
+            throw new Error('密码至少需要8位字符');
+          }
+          await this.verifyExistingPassword(value);
+        }
+      });
+      if (!password) return;
+      try {
+        await this.handleCreateMpcWallet({ name, password });
+      } catch (error) {
+        showError('创建失败: ' + error.message);
+      }
+      return;
+    }
+
+    const password = document.getElementById('newPassword')?.value;
     if (!password) {
       showError(useExistingPassword ? '请输入当前密码' : '请输入密码');
       return;
@@ -120,7 +155,7 @@ export class CreateWalletController {
         await this.verifyExistingPassword(password);
       }
 
-      if (walletType === 'mpc') {
+      if (isMpc) {
         await this.handleCreateMpcWallet({
           name,
           password
@@ -209,7 +244,13 @@ export class CreateWalletController {
     const mpcFields = document.getElementById('mpcCreateWalletFields');
     const resultEl = document.getElementById('mpcCreateWalletResult');
     const setPasswordBtn = document.getElementById('setPasswordBtn');
+    const hint = document.getElementById('setPasswordHint');
+    const passwordLabel = document.getElementById('setPasswordLabel');
+    const passwordInput = document.getElementById('newPassword');
+    const passwordGroup = passwordInput?.closest?.('.form-group');
+    const confirmGroup = document.getElementById('confirmPasswordGroup');
     const isAccounts = origin === 'accounts';
+    const usePasswordPrompt = isAccounts && normalized === 'mpc';
     if (group) {
       group.classList.toggle('hidden', !isAccounts);
     }
@@ -219,8 +260,24 @@ export class CreateWalletController {
     if (resultEl) {
       resultEl.classList.toggle('hidden', normalized !== 'mpc');
     }
+    if (hint && isAccounts) {
+      hint.textContent = usePasswordPrompt ? '请填写钱包名称和参与方' : '请输入当前钱包密码';
+    }
+    if (passwordLabel && isAccounts && !usePasswordPrompt) {
+      passwordLabel.textContent = '当前密码';
+    }
+    if (passwordInput && isAccounts) {
+      passwordInput.value = usePasswordPrompt ? '' : passwordInput.value;
+      passwordInput.placeholder = '输入当前密码';
+    }
+    if (passwordGroup && isAccounts) {
+      passwordGroup.classList.toggle('hidden', usePasswordPrompt);
+    }
+    if (confirmGroup && isAccounts) {
+      confirmGroup.classList.add('hidden');
+    }
     if (setPasswordBtn && isAccounts) {
-      setPasswordBtn.textContent = normalized === 'mpc' ? '创建 MPC 钱包' : '创建钱包';
+      setPasswordBtn.textContent = '创建钱包';
     }
     this.updateWalletTypeMenu(normalized);
     if (origin === 'accounts' && getCurrentPage() === 'setPasswordPage') {
@@ -610,6 +667,42 @@ export class CreateWalletController {
     trigger.setAttribute('aria-expanded', 'false');
   }
 
+  async validateMpcCreateForm() {
+    const thresholdInput = document.getElementById('mpcCreateThresholdInput');
+    const currentAddress =
+      String(this.currentMpcAccount?.address || '').trim() ||
+      String((await this.wallet.getCurrentAccount())?.address || '').trim();
+    const participants = this.dedupeAddresses([
+      currentAddress,
+      ...this.selectedMpcParticipants,
+    ]);
+    const threshold = Number(thresholdInput?.value || 0);
+
+    if (!currentAddress) {
+      showError('未找到当前账户');
+      return false;
+    }
+    if (!this.selectedMpcParticipants.length) {
+      showError('请先选择联系人');
+      return false;
+    }
+    if (!Number.isFinite(threshold) || threshold <= 0) {
+      showError('门限必须大于 0');
+      return false;
+    }
+    if (threshold > participants.length) {
+      showError('门限不能大于参与者数量');
+      return false;
+    }
+    try {
+      this.readMpcCreateAdvancedOptions();
+    } catch (error) {
+      showError(error?.message || '协调器地址格式不正确');
+      return false;
+    }
+    return true;
+  }
+
   async handleCreateMpcWallet({ name, password }) {
     const thresholdInput = document.getElementById('mpcCreateThresholdInput');
     const curveSelect = document.getElementById('mpcCreateCurveSelect');
@@ -626,6 +719,10 @@ export class CreateWalletController {
     const curve = String(curveSelect?.value || 'secp256k1').trim();
     const advancedOptions = this.readMpcCreateAdvancedOptions();
 
+    if (!String(name || '').trim()) {
+      showError('请输入 MPC 钱包名称');
+      return;
+    }
     if (!currentAddress) {
       showError('未找到当前账户');
       return;

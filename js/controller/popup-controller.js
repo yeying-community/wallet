@@ -134,6 +134,7 @@ export class PopupController {
         await this.accountListController?.loadWalletList();
       },
       onReturnToAccounts: async () => this.openAccountsPage(),
+      promptPassword: (options) => this.accountModalsController.promptPassword(options),
     });
   }
 
