@@ -118,6 +118,7 @@ async function syncMpcSignRequest(wallet, request) {
     sessionId,
     payloadType: request.type,
     payloadHash,
+    payload: request.payload ?? {},
     chainId: Number.isFinite(chainId) ? chainId : 0
   };
   const signature = await createActionSignature({

@@ -238,6 +238,7 @@ test('MPC 签名前会同步远端 sign request 并传给 TSS engine', async () 
         initiator: '0x1111111111111111111111111111111111111111',
         payloadType: body.payloadType,
         payloadHash: body.payloadHash,
+        payload: body.payload,
         chainId: body.chainId,
         status: 'pending',
         approvals: [],
@@ -264,6 +265,7 @@ test('MPC 签名前会同步远端 sign request 并传给 TSS engine', async () 
     assert.equal(requests[0].body.walletId, 'mpc-wallet-1');
     assert.equal(requests[0].body.sessionId, 'session-1');
     assert.equal(requests[0].body.payloadType, 'message');
+    assert.deepEqual(requests[0].body.payload, { message: 'hello' });
     assert.ok(requests[0].body.payloadHash);
     assert.ok(requests[0].body.requestId);
     assert.ok(requests[0].body.signature.startsWith('signed:'));
