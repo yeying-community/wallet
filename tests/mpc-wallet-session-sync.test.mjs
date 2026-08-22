@@ -573,6 +573,70 @@ test('取消旧 MPC 创建遇到远端不可取消时会清理本地未完成记
   }
 });
 
+test('被邀请方取消未完成 MPC 创建遇到远端 Forbidden 时会清理本地记录', async () => {
+  await saveAccount({
+    id: 'account-invitee',
+    walletId: 'wallet-invitee',
+    address: '0x2222222222222222222222222222222222222222',
+  });
+  await setSelectedAccountId('account-invitee');
+  state.keyring = new Map([
+    ['account-invitee', { signMessage: async (message) => `signed:${message}` }],
+  ]);
+  await saveMpcWallet({
+    id: 'mpc-wallet-invitee',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'keygen_running',
+    keygenSessionId: 'session-forbidden',
+    threshold: 1,
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222',
+    ],
+  });
+  await saveMpcSession({
+    id: 'session-forbidden',
+    type: 'keygen',
+    walletId: 'mpc-wallet-invitee',
+    status: 'running',
+    threshold: 1,
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222',
+    ],
+  });
+
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    cancelSession: async () => {
+      const error = new Error('Forbidden');
+      error.status = 403;
+      throw error;
+    },
+  };
+
+  try {
+    const result = await handleMpcCancelSession({
+      walletId: 'mpc-wallet-invitee',
+      sessionId: 'session-forbidden',
+      password: 'password123',
+    });
+
+    assert.equal(result.success, true);
+    assert.equal(result.remoteCancelled, false);
+    assert.match(result.warning, /已移除本地未完成 MPC 钱包记录/);
+    assert.equal(await getMpcWallet('mpc-wallet-invitee'), null);
+    assert.equal(await getMpcSession('session-forbidden'), null);
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+  }
+});
+
 test('已生成地址的 MPC 钱包不能通过取消创建入口移除', async () => {
   await saveMpcWallet({
     id: 'mpc-wallet-active',

@@ -32,9 +32,14 @@ const MPC_E2E_SUITES = new Set(['x25519-aes-gcm']);
 const MPC_REFRESH_POLICIES = new Set(['manual']);
 const INVALID_MPC_WALLET_NAMES = new Set(['MPC 钱包创建邀请', 'MPC 钱包邀请']);
 
-function isRemoteSessionNotCancellableError(error) {
+function isRemoteSessionCleanupBlockedError(error) {
   const message = String(error?.message || error || '').trim();
-  return message === 'Session is not cancellable' || message === 'SESSION_NOT_CANCELLABLE';
+  const code = String(error?.code || error?.status || error?.statusCode || '').trim();
+  return message === 'Session is not cancellable'
+    || message === 'SESSION_NOT_CANCELLABLE'
+    || message === 'Forbidden'
+    || code === '403'
+    || code === 'FORBIDDEN';
 }
 
 function isMpcWalletCreated(wallet) {
@@ -369,7 +374,7 @@ export async function handleMpcCancelSession(options = {}) {
         password: options.password
       });
     } catch (error) {
-      if (!isRemoteSessionNotCancellableError(error)) {
+      if (!isRemoteSessionCleanupBlockedError(error)) {
         throw error;
       }
       remoteCancelled = false;
