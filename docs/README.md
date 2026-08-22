@@ -55,7 +55,7 @@ App --> Resource : UCAN / scoped credential
 | --- | --- | --- |
 | [SIWE 协议说明](./SIWE协议说明.md) | 规范与实现指南 | 地址控制证明和登录声明，不承载完整能力授权 |
 | [UCAN 协议说明](./UCAN协议说明.md) | 规范与项目约定 | 能力委托、能力衰减和请求级授权 |
-| [通行证登录方案](./通行证登录方案.md) | 当前目标方案 | Passkey 作为钱包身份认证器、无插件登录和 Router 等 Web3 应用接入 |
+| [钱包身份认证器方案](./钱包身份认证器方案.md) | 当前目标方案 | Passkey/通行证作为钱包身份认证器、无插件登录和 Router 等 Web3 应用接入 |
 | [钱包身份协议与数据模型](./钱包身份协议与数据模型.md) | 实施前设计基线 | Wallet identity、多链账户关联、控制器、验证凭证与 DApp presentation |
 | [钱包身份 V1 跨仓库契约](./钱包身份V1跨仓库契约.md) | V1 实现契约 | 身份文档、账户 proof、JWT-VC、JWKS、撤销与 presentation API |
 
