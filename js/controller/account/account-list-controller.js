@@ -275,6 +275,9 @@ export class AccountListController {
     const normalizedWallets = Array.isArray(wallets) ? wallets : [];
     const invites = Array.isArray(pendingMpcInvites) ? pendingMpcInvites : [];
     this.pendingMpcInvites = invites;
+    this.mpcWalletsById = new Map(
+      normalizedWallets.filter(wallet => wallet?.type === 'mpc' && wallet?.id).map(wallet => [wallet.id, wallet])
+    );
 
     if (normalizedWallets.length === 0 && invites.length === 0) {
       container.innerHTML = `
@@ -290,9 +293,6 @@ export class AccountListController {
       return;
     }
 
-    this.mpcWalletsById = new Map(
-      normalizedWallets.filter(wallet => wallet?.type === 'mpc' && wallet?.id).map(wallet => [wallet.id, wallet])
-    );
     const inviteCards = invites.map(invite => this.renderPendingMpcInviteCard(invite)).join('');
     const walletCards = normalizedWallets.map(wallet => {
       const type = wallet.type || 'hd';
@@ -659,6 +659,7 @@ export class AccountListController {
         throw new Error(result?.error || '取消 MPC 创建失败');
       }
       this.closeMpcWalletDetail();
+      await this.loadWalletList();
       await this.onWalletUpdated?.();
       showSuccess('MPC 钱包创建已取消');
     } catch (error) {

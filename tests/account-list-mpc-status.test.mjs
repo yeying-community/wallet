@@ -293,10 +293,16 @@ test('取消未完成 MPC 钱包创建会调用取消会话并刷新列表', asy
   elements.cancelMpcWalletCreationBtn.closest = () => elements.mpcWalletDetailFooter;
   globalThis.document = document;
   let cancelled = null;
+  let walletListLoads = 0;
   let refreshed = 0;
   try {
     const controller = new AccountListController({
       wallet: {
+        getWalletList: async () => {
+          walletListLoads += 1;
+          return [];
+        },
+        listMpcInvites: async () => ({ success: true, items: [] }),
         getMpcSessions: async () => ({ success: true, sessions: [] }),
         cancelMpcSession: async (input) => {
           cancelled = input;
@@ -329,8 +335,11 @@ test('取消未完成 MPC 钱包创建会调用取消会话并刷新列表', asy
       sessionId: 'session-keygen-1',
       password: 'password123',
     });
+    assert.equal(walletListLoads, 1);
     assert.equal(refreshed, 1);
     assert.equal(elements.mpcWalletDetailModal.classList.contains('hidden'), true);
+    assert.match(elements.walletList.innerHTML, /暂无钱包/);
+    assert.equal(controller.mpcWalletsById.has('mpc-1'), false);
   } finally {
     delete globalThis.document;
   }
