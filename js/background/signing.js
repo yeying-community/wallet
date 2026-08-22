@@ -17,7 +17,7 @@ import {
 } from '../storage/index.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
 import { ethers } from '../../lib/ethers-6.16.esm.min.js';
-import { signMpcMessage, signMpcTransaction, signMpcTypedData } from './mpc-tss-engine.js';
+import { mpcService } from './mpc-service.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { generateId } from '../common/utils/index.js';
 import { buildActionPayloadHash, createActionSignature } from './action-signature.js';
@@ -80,11 +80,63 @@ async function getLatestMpcKeyShare(walletId) {
   return matches[0] || null;
 }
 
+function normalizeMpcSigningPayload(kind, payload) {
+  if (kind === 'message') {
+    return {
+      ...payload,
+      messageHex: ethers.hexlify(ethers.toUtf8Bytes(String(payload?.message ?? '')))
+    };
+  }
+  if (kind === 'transaction') {
+    const normalized = normalizeTransaction(payload?.transaction || {});
+    const unsignedSerialized = ethers.Transaction.from(normalized).unsignedSerialized;
+    return {
+      ...payload,
+      transaction: normalized,
+      unsignedTransaction: unsignedSerialized,
+      messageHex: unsignedSerialized
+    };
+  }
+  if (kind === 'typed_data') {
+    const normalized = normalizeTypedData(payload?.domain, payload?.types, payload?.value);
+    const typedDataHash = ethers.TypedDataEncoder.hash(
+      normalized.domain,
+      normalized.types,
+      normalized.value
+    );
+    return {
+      ...normalized,
+      typedDataHash,
+      messageHex: typedDataHash
+    };
+  }
+  return payload;
+}
+
+function getMpcParticipantIndex(keyShare) {
+  const index = Number(keyShare?.participantIndex);
+  if (Number.isInteger(index) && index >= 0) return index;
+  const shareIndex = Number(keyShare?.share?.i ?? keyShare?.share?.participant_index);
+  if (Number.isInteger(shareIndex) && shareIndex > 0) {
+    return shareIndex - 1;
+  }
+  return 0;
+}
+
+function getMpcParties(wallet) {
+  const participants = Array.isArray(wallet?.participants) ? wallet.participants : [];
+  return participants.length ? participants.map((_participant, index) => index) : [0, 1];
+}
+
 async function createMpcSignContext(wallet, kind, payload) {
   const keyShare = await getLatestMpcKeyShare(wallet.id);
   if (!keyShare?.share) {
     throw new Error('MPC_KEY_SHARE_NOT_FOUND');
   }
+  if (!keyShare.completeKeyShare) {
+    throw new Error('MPC_COMPLETE_KEY_SHARE_NOT_FOUND');
+  }
+  const signingPayload = normalizeMpcSigningPayload(kind, payload);
   const now = getTimestamp();
   const request = {
     id: generateId('mpc_sign'),
@@ -92,7 +144,7 @@ async function createMpcSignContext(wallet, kind, payload) {
     sessionId: String(wallet.keygenSessionId || '').trim(),
     type: kind,
     status: 'pending',
-    payload,
+    payload: signingPayload,
     keyVersion: Number(wallet.keyVersion || keyShare.keyVersion || 1),
     shareVersion: Number(keyShare.shareVersion || wallet.shareVersion || 1),
     chainId: state.currentChainId || '',
@@ -101,7 +153,20 @@ async function createMpcSignContext(wallet, kind, payload) {
   };
   await saveMpcSignRequest(request);
   const remoteRequest = await syncMpcSignRequest(wallet, request).catch(() => null);
-  return { keyShare, request: remoteRequest || request };
+  if (remoteRequest && typeof remoteRequest === 'object') {
+    const mergedRequest = {
+      ...request,
+      ...remoteRequest,
+      id: request.id,
+      remoteId: remoteRequest.id && remoteRequest.id !== request.id ? remoteRequest.id : request.remoteId,
+      type: request.type,
+      payload: remoteRequest.payload || request.payload,
+      updatedAt: getTimestamp()
+    };
+    await saveMpcSignRequest(mergedRequest);
+    return { keyShare, request: mergedRequest };
+  }
+  return { keyShare, request };
 }
 
 async function syncMpcSignRequest(wallet, request) {
@@ -114,6 +179,7 @@ async function syncMpcSignRequest(wallet, request) {
   const payloadHash = await buildActionPayloadHash(request.payload ?? null);
   const payload = {
     requestId: request.id,
+    signRequestId: request.id,
     walletId: wallet.id,
     sessionId,
     payloadType: request.type,
@@ -133,51 +199,53 @@ async function syncMpcSignRequest(wallet, request) {
   return await client.createSignRequest(payload, signature);
 }
 
-async function completeMpcSignRequest(wallet, request, output) {
-  const result = output && typeof output === 'object' ? output : {};
-  const signatureValue = String(result.signature || result.signedPayload || result.signedTransaction || '').trim();
-  if (!signatureValue) {
-    return output;
-  }
-  const now = getTimestamp();
-  await saveMpcSignRequest({
-    ...request,
-    status: 'completed',
-    signature: signatureValue,
-    result,
-    completedAt: now,
-    updatedAt: now
-  });
+function createPendingMpcSignError(request) {
+  const error = new Error('MPC_SIGNING_PENDING');
+  error.code = 'MPC_SIGNING_PENDING';
+  error.requestId = request?.id || '';
+  error.signRequest = request || null;
+  return error;
+}
 
-  const token = String(await getUserSetting('mpcCoordinatorUcanToken', '') || '').trim();
-  if (!token) return output;
-  const endpoint = String(await getUserSetting('mpcCoordinatorEndpoint', DEFAULT_MPC_COORDINATOR_ENDPOINT) || '').trim();
-  const participantId = String((await getSelectedAccount())?.address || '').trim();
-  if (!endpoint || !request?.id || !participantId) return output;
-  const payload = {
-    requestId: request.id,
-    participantId,
-    signature: signatureValue,
-    result
-  };
-  const actionSignature = await createActionSignature({
-    account: await getSelectedAccount(),
-    action: 'mpc_sign_request_complete',
-    payload
-  });
-  const client = new MpcCoordinatorClient({
-    endpoint,
-    getToken: async () => token
-  });
-  const remote = await client.completeSignRequest(request.id, payload, actionSignature).catch(() => null);
-  if (remote) {
-    await saveMpcSignRequest({
-      ...request,
-      ...remote,
-      updatedAt: getTimestamp()
-    });
+async function startMpcWireSigning(wallet, context) {
+  const sessionId = String(context.request?.sessionId || wallet.keygenSessionId || '').trim();
+  if (!sessionId) {
+    throw new Error('MPC_SESSION_NOT_FOUND');
   }
-  return output;
+  const participantIndex = getMpcParticipantIndex(context.keyShare);
+  try {
+    await mpcService.startWireSession({
+      sessionId,
+      protocol: 'sign',
+      requestId: context.request.id,
+      recipientIndex: participantIndex,
+      parties: getMpcParties(wallet),
+      payload: context.request.payload,
+      keyShareRef: context.keyShare
+    });
+    const tick = await mpcService.tickWireSession({
+      sessionId,
+      protocol: 'sign',
+      requestId: context.request.id,
+      participantId: context.keyShare.participantId,
+      recipientIndex: participantIndex
+    });
+    const signature = String(
+      tick?.handledResult?.signRequest?.signature
+      || tick?.result?.signatureHex
+      || (typeof tick?.result?.signature === 'string' ? tick.result.signature : '')
+      || ''
+    ).trim();
+    if (signature) {
+      return signature;
+    }
+    throw createPendingMpcSignError(context.request);
+  } catch (error) {
+    if (String(error?.message || error || '') === 'MPC_TSS_ENGINE_NOT_CONFIGURED') {
+      throw new Error('MPC_SIGNER_NOT_CONFIGURED');
+    }
+    throw error;
+  }
 }
 
 /**
@@ -191,14 +259,7 @@ export async function signTransaction(accountId, transaction) {
     if (isMpcAccountId(accountId)) {
       const wallet = ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
       const context = await createMpcSignContext(wallet, 'transaction', { transaction });
-      const signed = await signMpcTransaction({
-        wallet,
-        transaction,
-        chainId: state.currentChainId,
-        keyShare: context.keyShare,
-        request: context.request
-      });
-      return await completeMpcSignRequest(wallet, context.request, signed);
+      return await startMpcWireSigning(wallet, context);
     }
     const wallet = getWalletInstance(accountId);
     const normalizedTx = normalizeTransaction(transaction);
@@ -286,14 +347,7 @@ export async function signMessage(accountId, message) {
     if (isMpcAccountId(accountId)) {
       const wallet = ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
       const context = await createMpcSignContext(wallet, 'message', { message });
-      const signed = await signMpcMessage({
-        wallet,
-        message,
-        chainId: state.currentChainId,
-        keyShare: context.keyShare,
-        request: context.request
-      });
-      return await completeMpcSignRequest(wallet, context.request, signed);
+      return await startMpcWireSigning(wallet, context);
     }
     const wallet = getWalletInstance(accountId);
     const signature = await wallet.signMessage(message);
@@ -321,16 +375,7 @@ export async function signTypedData(accountId, domain, types, value) {
     if (isMpcAccountId(accountId)) {
       const wallet = ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
       const context = await createMpcSignContext(wallet, 'typed_data', { domain, types, value });
-      const signed = await signMpcTypedData({
-        wallet,
-        domain,
-        types,
-        value,
-        chainId: state.currentChainId,
-        keyShare: context.keyShare,
-        request: context.request
-      });
-      return await completeMpcSignRequest(wallet, context.request, signed);
+      return await startMpcWireSigning(wallet, context);
     }
     const wallet = getWalletInstance(accountId);
     const normalized = normalizeTypedData(domain, types, value);
