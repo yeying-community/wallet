@@ -33,7 +33,7 @@ globalThis.chrome = {
 };
 
 const { mpcService } = await import('../js/background/mpc-service.js');
-const { handleMpcAcceptInvite, handleMpcCancelSession } = await import('../js/background/operations/mpc.js');
+const { handleMpcAcceptInvite, handleMpcCancelSession, handleMpcDismissInvite } = await import('../js/background/operations/mpc.js');
 const { setMpcTssEngineForTests, resetMpcTssEngineForTests } = await import('../js/background/mpc-tss-engine.js');
 const { state } = await import('../js/background/state.js');
 const { HandleGetWalletList } = await import('../js/background/operations/wallet.js');
@@ -295,6 +295,60 @@ test('listInvites 过滤本地已接受的 MPC 邀请', async () => {
   }
 });
 
+test('listInvites 过滤本地已移除的未接受 MPC 邀请', async () => {
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  const marked = [];
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    listNotifications: async () => ({
+      items: [{
+        uid: 'item-1',
+        type: 'mpc.keygen.invited',
+        notificationUid: 'notification-1',
+        subjectId: 'session-1',
+        payload: {
+          sessionId: 'session-1',
+          walletId: 'mpc-wallet-1',
+          name: '团队金库',
+          participants: ['0x1', '0x2'],
+        },
+      }],
+    }),
+    getSession: async () => ({
+      id: 'session-1',
+      type: 'keygen',
+      walletId: 'mpc-wallet-1',
+      status: 'created',
+    }),
+    markNotificationRead: async (notificationUid) => {
+      marked.push(notificationUid);
+      return { success: true };
+    },
+  };
+  try {
+    const dismissed = await handleMpcDismissInvite({
+      uid: 'item-1',
+      notificationUid: 'notification-1',
+      subjectId: 'session-1',
+      payload: {
+        sessionId: 'session-1',
+        walletId: 'mpc-wallet-1',
+      },
+    });
+    assert.equal(dismissed.success, true);
+    assert.deepEqual(marked, ['notification-1']);
+
+    const result = await mpcService.listInvites({ unreadOnly: true });
+
+    assert.deepEqual(result.items, []);
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+  }
+});
+
 test('listInvites 不因本地 participant 记录隐藏缺失钱包的 MPC 邀请', async () => {
   const originalEnsure = mpcService._ensureCoordinatorToken;
   const originalCoordinator = mpcService._coordinator;
@@ -467,7 +521,7 @@ test('取消旧 MPC 创建遇到远端不可取消时会清理本地未完成记
     id: 'mpc-wallet-stale',
     name: 'mpc10',
     type: 'mpc',
-    status: 'keygen_pending',
+    status: 'keygen_running',
     keygenSessionId: '868d2738-d7fe-4ae2-82f3-135f5454aad9',
     threshold: 1,
     participants: [
@@ -517,6 +571,38 @@ test('取消旧 MPC 创建遇到远端不可取消时会清理本地未完成记
     mpcService._ensureCoordinatorToken = originalEnsure;
     mpcService._coordinator = originalCoordinator;
   }
+});
+
+test('已生成地址的 MPC 钱包不能通过取消创建入口移除', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-active',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'keygen_running',
+    address: '0x1111111111111111111111111111111111111111',
+    keygenSessionId: 'session-active',
+    threshold: 1,
+    participants: ['0x1', '0x2'],
+  });
+  await saveMpcSession({
+    id: 'session-active',
+    type: 'keygen',
+    walletId: 'mpc-wallet-active',
+    status: 'running',
+    threshold: 1,
+    participants: ['0x1', '0x2'],
+  });
+
+  const result = await handleMpcCancelSession({
+    walletId: 'mpc-wallet-active',
+    sessionId: 'session-active',
+    password: 'password123',
+  });
+
+  assert.equal(result.success, false);
+  assert.match(result.error, /已创建成功/);
+  assert.notEqual(await getMpcWallet('mpc-wallet-active'), null);
+  assert.notEqual(await getMpcSession('session-active'), null);
 });
 
 test('钱包列表会用本地 session name 修复已有 MPC 钱包名称', async () => {

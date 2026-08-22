@@ -721,6 +721,15 @@ export class WalletDomain extends BaseDomain {
   }
 
   /**
+   * 本地忽略未接受的 MPC 邀请
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async dismissMpcInvite(options = {}) {
+    return await this._sendMessage(WalletMessageType.MPC_DISMISS_INVITE, options);
+  }
+
+  /**
    * 接受 MPC 邀请并加入会话
    * @param {Object} options
    * @returns {Promise<Object>}

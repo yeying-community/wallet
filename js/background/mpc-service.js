@@ -65,6 +65,7 @@ const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
 const DEFAULT_MPC_UCAN_RESOURCE = 'mpc';
 const DEFAULT_MPC_UCAN_ACTION = 'coordinate';
 const DEFAULT_MPC_UCAN_TTL_HOURS = 24;
+const MPC_IGNORED_INVITES_SETTING = 'mpcIgnoredInviteIds';
 const MPC_SESSION_ACTIVE_STATUSES = new Set(['active', 'completed', 'complete', 'succeeded', 'success']);
 const MPC_SESSION_READY_STATUSES = new Set(['ready']);
 const MPC_SESSION_RUNNING_STATUSES = new Set(['rounds', 'running', 'in_progress', 'in-progress']);
@@ -1978,11 +1979,21 @@ class MpcService {
       });
     }
     const items = Array.isArray(response?.items) ? response.items : [];
+    const ignoredInviteSetting = await getUserSetting(MPC_IGNORED_INVITES_SETTING, []);
+    const ignoredInviteIds = new Set(
+      (Array.isArray(ignoredInviteSetting) ? ignoredInviteSetting : [])
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+    );
     const invites = items.filter((item) => String(item?.type || '') === 'mpc.keygen.invited');
     const visible = [];
     for (const item of invites) {
       const sessionId = String(item?.payload?.sessionId || item?.subjectId || '').trim();
       const walletId = String(item?.payload?.walletId || '').trim();
+      const notificationUid = String(item?.notificationUid || item?.uid || '').trim();
+      if ([notificationUid, sessionId, walletId].some((id) => id && ignoredInviteIds.has(id))) {
+        continue;
+      }
       if (walletId && await getMpcWallet(walletId)) {
         continue;
       }

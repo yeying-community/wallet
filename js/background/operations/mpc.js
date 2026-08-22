@@ -26,6 +26,7 @@ const DEFAULT_MPC_REFRESH_POLICY = 'manual';
 const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
 const DEFAULT_MPC_UCAN_RESOURCE = 'mpc';
 const DEFAULT_MPC_UCAN_ACTION = 'coordinate';
+const MPC_IGNORED_INVITES_SETTING = 'mpcIgnoredInviteIds';
 const MPC_AUTH_SCHEMES = new Set(['ucan']);
 const MPC_E2E_SUITES = new Set(['x25519-aes-gcm']);
 const MPC_REFRESH_POLICIES = new Set(['manual']);
@@ -34,6 +35,30 @@ const INVALID_MPC_WALLET_NAMES = new Set(['MPC 钱包创建邀请', 'MPC 钱包�
 function isRemoteSessionNotCancellableError(error) {
   const message = String(error?.message || error || '').trim();
   return message === 'Session is not cancellable' || message === 'SESSION_NOT_CANCELLABLE';
+}
+
+function isMpcWalletCreated(wallet) {
+  return String(wallet?.status || '').trim() === 'active' || Boolean(String(wallet?.address || '').trim());
+}
+
+function normalizeIgnoredInviteIds(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function getInviteIgnoreIds(source = {}) {
+  const payload = source?.payload && typeof source.payload === 'object' ? source.payload : source;
+  return [
+    source?.notificationUid,
+    source?.uid,
+    source?.subjectId,
+    payload?.sessionId,
+    payload?.walletId,
+    source?.sessionId,
+    source?.walletId
+  ].map((item) => String(item || '').trim()).filter(Boolean);
 }
 
 export function resolveMpcWalletName(source = {}) {
@@ -333,8 +358,8 @@ export async function handleMpcCancelSession(options = {}) {
     if (!wallet) {
       throw new Error('MPC 钱包不存在');
     }
-    if (wallet.status && wallet.status !== 'keygen_pending') {
-      throw new Error('只有未完成的 MPC 钱包创建可以取消');
+    if (isMpcWalletCreated(wallet)) {
+      throw new Error('已创建成功的 MPC 钱包不能通过该入口移除');
     }
     let result = null;
     let remoteCancelled = true;
@@ -362,6 +387,31 @@ export async function handleMpcCancelSession(options = {}) {
     };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to cancel MPC session' };
+  }
+}
+
+export async function handleMpcDismissInvite(options = {}) {
+  try {
+    const ids = getInviteIgnoreIds(options);
+    if (!ids.length) {
+      throw new Error('invite id is required');
+    }
+    const current = normalizeIgnoredInviteIds(await getUserSetting(MPC_IGNORED_INVITES_SETTING, []));
+    const next = Array.from(new Set([...current, ...ids]));
+    await updateUserSettings({ [MPC_IGNORED_INVITES_SETTING]: next });
+
+    const notificationUid = String(options?.notificationUid || options?.uid || '').trim();
+    if (notificationUid) {
+      await mpcService.markInviteRead(notificationUid).catch(() => null);
+    }
+
+    return {
+      success: true,
+      ignoredIds: next,
+      dismissedIds: ids
+    };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to dismiss MPC invite' };
   }
 }
 

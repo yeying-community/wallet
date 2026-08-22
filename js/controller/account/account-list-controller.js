@@ -24,6 +24,7 @@ export class AccountListController {
     this.promptPassword = promptPassword;
     this.mpcWalletsById = new Map();
     this.activeMpcWalletId = '';
+    this.activeMpcInviteId = '';
     this.pendingMpcInvites = [];
   }
 
@@ -457,6 +458,11 @@ export class AccountListController {
         </div>
         <div class="mpc-wallet-actions">
           <button
+            class="mpc-wallet-action-btn mpc-invite-dismiss-btn"
+            data-mpc-invite-dismiss="${escapeHtml(notificationUid)}"
+            type="button"
+          >移除</button>
+          <button
             class="mpc-wallet-action-btn mpc-invite-accept-btn primary"
             data-mpc-invite-accept="${escapeHtml(notificationUid)}"
             type="button"
@@ -513,6 +519,7 @@ export class AccountListController {
       createdAt: invite.createdAt || invite.session?.createdAt || ''
     }] : [];
     this.activeMpcWalletId = '';
+    this.activeMpcInviteId = notificationUid;
     this.renderMpcWalletDetail(wallet, sessions);
     document.getElementById('mpcWalletDetailModal')?.classList.remove('hidden');
   }
@@ -534,7 +541,12 @@ export class AccountListController {
 
   closeMpcWalletDetail() {
     this.activeMpcWalletId = '';
+    this.activeMpcInviteId = '';
     document.getElementById('mpcWalletDetailModal')?.classList.add('hidden');
+  }
+
+  isMpcWalletCreated(wallet) {
+    return String(wallet?.status || '').trim() === 'active' || Boolean(String(wallet?.address || '').trim());
   }
 
   async refreshMpcWalletDetail() {
@@ -580,7 +592,7 @@ export class AccountListController {
     const cancelBtn = document.getElementById('cancelMpcWalletCreationBtn');
     const footer = cancelBtn?.closest('.modal-footer');
     if (cancelBtn) {
-      const canCancel = wallet?.status === 'keygen_pending';
+      const canCancel = !this.isMpcWalletCreated(wallet);
       cancelBtn.classList.toggle('hidden', !canCancel);
       footer?.classList.toggle('hidden', !canCancel);
     }
@@ -609,11 +621,15 @@ export class AccountListController {
   }
 
   async handleCancelMpcWalletCreation() {
+    if (this.activeMpcInviteId) {
+      await this.handleMpcInviteDismiss(this.activeMpcInviteId);
+      return;
+    }
     const walletId = this.activeMpcWalletId;
     const wallet = this.mpcWalletsById.get(walletId);
     if (!wallet) return;
-    if (wallet.status !== 'keygen_pending') {
-      showError('只有未完成的 MPC 钱包创建可以取消');
+    if (this.isMpcWalletCreated(wallet)) {
+      showError('已创建成功的 MPC 钱包不能通过该入口移除');
       return;
     }
     const sessionId = String(wallet.keygenSessionId || '').trim();
@@ -690,6 +706,40 @@ export class AccountListController {
     } catch (error) {
       console.error('[AccountListController] 接受 MPC 邀请失败:', error);
       showError('接受失败: ' + (error?.message || '未知错误'));
+    } finally {
+      hideWaiting();
+    }
+  }
+
+  async handleMpcInviteDismiss(notificationUid) {
+    const invite = this.pendingMpcInvites.find((item) =>
+      String(item?.notificationUid || item?.uid || '') === String(notificationUid || '')
+    );
+    if (!invite) {
+      showError('未找到邀请');
+      return;
+    }
+    if (typeof this.wallet.dismissMpcInvite !== 'function') {
+      showError('当前版本不支持移除 MPC 邀请');
+      return;
+    }
+    try {
+      showWaiting();
+      const result = await this.wallet.dismissMpcInvite({
+        notificationUid: invite.notificationUid || invite.uid || '',
+        uid: invite.uid || '',
+        subjectId: invite.subjectId || '',
+        sessionId: invite.payload?.sessionId || invite.subjectId || '',
+        walletId: invite.payload?.walletId || '',
+        payload: invite.payload || {}
+      });
+      if (!result?.success) throw new Error(result?.error || '移除邀请失败');
+      this.closeMpcWalletDetail();
+      await this.loadWalletList();
+      await this.onWalletUpdated?.();
+      showSuccess('MPC 钱包创建已移除');
+    } catch (error) {
+      showError('移除失败: ' + (error?.message || '未知错误'));
     } finally {
       hideWaiting();
     }
@@ -785,6 +835,13 @@ export class AccountListController {
       btn.addEventListener('click', (event) => {
         event.stopPropagation();
         void this.handleMpcInviteAccept(btn.dataset.mpcInviteAccept || '');
+      });
+    });
+
+    container.querySelectorAll('.mpc-invite-dismiss-btn').forEach(btn => {
+      btn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        void this.handleMpcInviteDismiss(btn.dataset.mpcInviteDismiss || '');
       });
     });
 

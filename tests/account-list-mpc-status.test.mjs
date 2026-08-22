@@ -99,6 +99,7 @@ test('账户管理把待处理 MPC 邀请展示为可接受的钱包卡片', () 
     assert.match(elements.walletList.innerHTML, /接受邀请/);
     assert.match(elements.walletList.innerHTML, /mpc-invite-detail-btn/);
     assert.match(elements.walletList.innerHTML, /查看 MPC 钱包详情/);
+    assert.match(elements.walletList.innerHTML, /data-mpc-invite-dismiss="notification-1"/);
     assert.match(elements.walletList.innerHTML, /data-mpc-invite-accept="notification-1"/);
     assert.doesNotMatch(elements.walletList.innerHTML, /暂无钱包/);
   } finally {
@@ -143,6 +144,8 @@ test('待接受 MPC 邀请详情图标打开邀请详情', () => {
     assert.equal(elements.mpcWalletDetailStatus.textContent, '待接受邀请');
     assert.equal(elements.mpcWalletDetailThreshold.textContent, '2 / 2');
     assert.equal(elements.mpcWalletDetailParticipants.textContent, '0x1, 0x2');
+    assert.equal(elements.cancelMpcWalletCreationBtn.classList.contains('hidden'), false);
+    assert.equal(elements.mpcWalletDetailFooter.classList.contains('hidden'), false);
     assert.match(elements.mpcWalletDetailSessions.innerHTML, /61705018-13b2-43e9-ab09-2698b64759f6/);
   } finally {
     delete globalThis.document;
@@ -309,13 +312,15 @@ test('取消未完成 MPC 钱包创建会调用取消会话并刷新列表', asy
       id: 'mpc-1',
       name: '家庭金库',
       type: 'mpc',
-      status: 'keygen_pending',
+      status: 'keygen_running',
       keygenSessionId: 'session-keygen-1',
       threshold: 2,
       participants: ['0x1', '0x2', '0x3'],
       accounts: [],
     }]);
     await controller.openMpcWalletDetail('mpc-1');
+    assert.equal(elements.cancelMpcWalletCreationBtn.classList.contains('hidden'), false);
+    assert.equal(elements.mpcWalletDetailFooter.classList.contains('hidden'), false);
 
     await controller.handleCancelMpcWalletCreation();
 
@@ -325,6 +330,71 @@ test('取消未完成 MPC 钱包创建会调用取消会话并刷新列表', asy
       password: 'password123',
     });
     assert.equal(refreshed, 1);
+    assert.equal(elements.mpcWalletDetailModal.classList.contains('hidden'), true);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test('移除未接受 MPC 邀请会忽略邀请并刷新列表', async () => {
+  const { document, elements } = createDocument({
+    walletList: { tagName: 'div' },
+    mpcWalletDetailModal: { tagName: 'div' },
+    globalWaitingOverlay: { tagName: 'div', _classes: 'hidden' },
+    globalToast: { tagName: 'div' },
+  });
+  globalThis.document = document;
+  let dismissed = null;
+  let walletListLoads = 0;
+  let outerRefreshes = 0;
+  try {
+    const controller = new AccountListController({
+      wallet: {
+        getWalletList: async () => {
+          walletListLoads += 1;
+          return [];
+        },
+        listMpcInvites: async () => ({ success: true, items: [] }),
+        dismissMpcInvite: async (input) => {
+          dismissed = input;
+          return { success: true };
+        },
+      },
+      onWalletUpdated: async () => {
+        outerRefreshes += 1;
+      },
+    });
+    controller.pendingMpcInvites = [{
+      uid: 'item-1',
+      notificationUid: 'notification-1',
+      subjectId: 'session-1',
+      payload: {
+        name: '团队金库',
+        walletId: 'mpc-wallet-1',
+        sessionId: 'session-1',
+        participants: ['a', 'b'],
+      },
+    }];
+    controller.activeMpcInviteId = 'notification-1';
+
+    await controller.handleMpcInviteDismiss('notification-1');
+
+    assert.deepEqual(dismissed, {
+      notificationUid: 'notification-1',
+      uid: 'item-1',
+      subjectId: 'session-1',
+      sessionId: 'session-1',
+      walletId: 'mpc-wallet-1',
+      payload: {
+        name: '团队金库',
+        walletId: 'mpc-wallet-1',
+        sessionId: 'session-1',
+        participants: ['a', 'b'],
+      },
+    });
+    assert.equal(walletListLoads, 1);
+    assert.equal(outerRefreshes, 1);
+    assert.equal(controller.activeMpcInviteId, '');
     assert.equal(elements.mpcWalletDetailModal.classList.contains('hidden'), true);
   } finally {
     delete globalThis.document;
