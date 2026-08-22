@@ -885,6 +885,91 @@ class MpcService {
     return { session: nextSession, wallet: nextWallet, keyShare: shareRecord };
   }
 
+  async _handleWireSignResult({ session, participantId, requestId, result } = {}) {
+    const output = result && typeof result === 'object' ? result : {};
+    const status = String(output.status || '').trim().toLowerCase();
+    if (status !== 'completed') {
+      return null;
+    }
+
+    const signRequestId = String(
+      requestId
+      || output.requestId
+      || output.signRequestId
+      || output.sign_request_id
+      || ''
+    ).trim();
+    if (!signRequestId) {
+      return null;
+    }
+
+    const signRequest = await getMpcSignRequest(signRequestId);
+    if (!signRequest) {
+      throw new Error('MPC_SIGN_REQUEST_NOT_FOUND');
+    }
+
+    const signatureHex = typeof output.signatureHex === 'string'
+      ? output.signatureHex.trim()
+      : (typeof output.signature_hex === 'string' ? output.signature_hex.trim() : '');
+    const signature = signatureHex
+      || (typeof output.signature === 'string' ? output.signature.trim() : '')
+      || (typeof output.signedPayload === 'string' ? output.signedPayload.trim() : '')
+      || (typeof output.signedTransaction === 'string' ? output.signedTransaction.trim() : '');
+    if (!signature) {
+      return null;
+    }
+
+    const sessionId = String(session?.id || signRequest.sessionId || '').trim();
+    const localParticipantId = String(participantId || '').trim();
+    const now = getTimestamp();
+    const next = {
+      ...signRequest,
+      status: 'completed',
+      signature,
+      signatureHex: signatureHex || signRequest.signatureHex,
+      result: output,
+      completedAt: signRequest.completedAt || now,
+      updatedAt: now
+    };
+    await saveMpcSignRequest(next);
+
+    if (sessionId && localParticipantId && typeof this._coordinator.completeSignRequest === 'function') {
+      const payload = {
+        requestId: signRequestId,
+        participantId: localParticipantId,
+        signature,
+        signatureHex: signatureHex || undefined,
+        result: output
+      };
+      const actionSignature = await createActionSignature({
+        account: await getSelectedAccount(),
+        action: 'mpc_sign_request_complete',
+        payload
+      });
+      const response = await this._coordinator.completeSignRequest(signRequestId, payload, actionSignature);
+      if (response) {
+        await saveMpcSignRequest({
+          ...next,
+          ...response,
+          signature: response.signature || next.signature,
+          signatureHex: response.signatureHex || next.signatureHex,
+          result: response.result || next.result,
+          updatedAt: getTimestamp()
+        });
+      }
+    }
+
+    await this._appendAuditLog({
+      sessionId,
+      level: 'info',
+      action: 'wire-sign-completed',
+      message: 'MPC wire sign 已完成，本地签名请求已保存',
+      metadata: { requestId: signRequestId }
+    });
+
+    return { signRequest: await getMpcSignRequest(signRequestId) };
+  }
+
   async startKeygenSession(options = {}) {
     await this.init();
     const sessionId = String(options.sessionId || '').trim();
@@ -1297,6 +1382,14 @@ class MpcService {
         wallet,
         participantId,
         participantIndex: recipientIndex,
+        result
+      });
+    } else if (protocol === 'sign' && result?.status === 'completed') {
+      const participantId = String(options.participantId || await this._resolveLocalParticipantId(session)).trim();
+      handledResult = await this._handleWireSignResult({
+        session,
+        participantId,
+        requestId: options.requestId || options.signRequestId,
         result
       });
     }

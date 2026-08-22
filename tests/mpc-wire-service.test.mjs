@@ -44,9 +44,11 @@ const {
   getMpcKeyShare,
   getMpcMessage,
   getMpcSession,
+  getMpcSignRequest,
   getMpcWallet,
   saveMpcKeyShare,
   saveMpcSession,
+  saveMpcSignRequest,
   saveMpcWallet
 } = await import('../js/storage/index.js');
 
@@ -525,6 +527,84 @@ test('tickWireSession persists completed cggmp24 aux-info result without marking
     mpcService._ensureCoordinatorToken = originalEnsure;
     mpcService._coordinator = originalCoordinator;
     resetMpcTssEngineForTests();
+  }
+});
+
+test('tickWireSession persists completed cggmp24 sign result to local sign request', async () => {
+  await saveMpcSession({
+    id: 'session-sign-1',
+    type: 'keygen',
+    walletId: 'mpc-wallet-sign-1',
+    status: 'keygen_completed',
+    threshold: 1,
+    curve: 'secp256k1',
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222'
+    ],
+    keyVersion: 1,
+    shareVersion: 1,
+    createdAt: 1,
+    updatedAt: 1
+  });
+  await saveMpcSignRequest({
+    id: 'sign-request-wire-1',
+    walletId: 'mpc-wallet-sign-1',
+    sessionId: 'session-sign-1',
+    type: 'message',
+    status: 'pending',
+    payload: { messageHex: '0x68656c6c6f' },
+    keyVersion: 1,
+    shareVersion: 1,
+    createdAt: 1,
+    updatedAt: 1
+  });
+
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    fetchMessages: async () => ({ messages: [], nextSequence: 0 })
+  };
+
+  const adapter = {
+    async getResult() {
+      return {
+        status: 'completed',
+        requestId: 'sign-request-wire-1',
+        signature: { r: 'r1', s: 's1' },
+        signatureHex: `0x${'11'.repeat(64)}`,
+        recoveryId: 0
+      };
+    },
+    async receiveMessage() {},
+    async advance() {
+      return { messages: [] };
+    }
+  };
+
+  try {
+    const result = await mpcService.tickWireSession({
+      sessionId: 'session-sign-1',
+      protocol: 'sign',
+      requestId: 'sign-request-wire-1',
+      participantId: '0x2222222222222222222222222222222222222222',
+      recipientIndex: 1,
+      adapter
+    });
+
+    assert.equal(result.result.status, 'completed');
+    assert.equal(result.handledResult.signRequest.status, 'completed');
+    const signRequest = await getMpcSignRequest('sign-request-wire-1');
+    assert.equal(signRequest.status, 'completed');
+    assert.equal(signRequest.signature, `0x${'11'.repeat(64)}`);
+    assert.equal(signRequest.signatureHex, `0x${'11'.repeat(64)}`);
+    assert.deepEqual(signRequest.result.signature, { r: 'r1', s: 's1' });
+    assert.ok(signRequest.completedAt);
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
   }
 });
 
