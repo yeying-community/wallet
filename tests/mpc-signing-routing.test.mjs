@@ -41,6 +41,7 @@ const {
 } = await import('../js/background/signing.js');
 const { resetMpcTssEngineForTests, setMpcTssEngineForTests } = await import('../js/background/mpc-tss-engine.js');
 const { mpcService } = await import('../js/background/mpc-service.js');
+const { createMpcWireMessage } = await import('../js/background/mpc-wire-protocol.js');
 const {
   getMpcSignRequest,
   getMpcSignRequests,
@@ -236,6 +237,116 @@ test('MPC 签名入口会启动 wire sign 状态机', async () => {
     message: 'hello',
     messageHex: '0x68656c6c6f'
   });
+});
+
+test('MPC 签名入口会继续推进 wire sign 并返回后续轮次完成的签名', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'active',
+    address: '0x1111111111111111111111111111111111111111',
+    publicKey: '03abcdef',
+    keygenSessionId: 'session-1',
+    keyVersion: 1,
+    shareVersion: 1,
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222'
+    ],
+  });
+  await saveMpcKeyShare({
+    id: 'share-1',
+    walletId: 'mpc-wallet-1',
+    sessionId: 'session-1',
+    participantId: '0x1111111111111111111111111111111111111111',
+    participantIndex: 0,
+    share: { secret: 'local-share' },
+    completeKeyShare: { secret: 'complete-local-share' },
+    keyVersion: 1,
+    shareVersion: 1,
+  });
+
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  const fetchQueries = [];
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    fetchMessages: async (_sessionId, query) => {
+      fetchQueries.push(query);
+      if (Number(query.after || 0) > 0) {
+        return { messages: [], nextSequence: query.after };
+      }
+      return {
+        messages: [{
+          id: 'wire-sign-1',
+          sessionId: 'session-1',
+          sender: '1',
+          receiver: '0',
+          round: 1,
+          type: 'sign',
+          seq: 1,
+          envelope: createMpcWireMessage({
+            sessionId: 'session-1',
+            protocol: 'sign',
+            senderIndex: 1,
+            audience: { oneParty: { recipientIndex: 0 } },
+            payload: { Round1: { from: 1 } },
+            sequence: 1
+          }),
+          createdAt: '1'
+        }],
+        nextSequence: 1
+      };
+    }
+  };
+  let getResultCalls = 0;
+  setMpcTssEngineForTests({
+    async startSign(input) {
+      return {
+        sessionId: input.sessionId,
+        requestId: input.requestId,
+        senderIndex: input.senderIndex,
+        protocol: 'sign',
+        result: { status: 'waiting' }
+      };
+    },
+    async receiveMessage({ state }) {
+      return { ...state, received: true };
+    },
+    async advance({ state }) {
+      return state;
+    },
+    async getOutgoingMessages() {
+      return [];
+    },
+    async getResult({ state }) {
+      getResultCalls += 1;
+      if (state.received && getResultCalls > 1) {
+        return {
+          status: 'completed',
+          requestId: state.requestId,
+          signatureHex: '0xmpcsig-round2'
+        };
+      }
+      return { status: 'waiting' };
+    }
+  });
+
+  try {
+    const signature = await signMessage(getMpcAccountId('mpc-wallet-1'), 'hello');
+
+    assert.equal(signature, '0xmpcsig-round2');
+    assert.equal(fetchQueries.length, 2);
+    const requests = Object.values(await getMpcSignRequests());
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].status, 'completed');
+    assert.equal(requests[0].signature, '0xmpcsig-round2');
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+  }
 });
 
 test('active MPC 钱包缺少本地 key share 时不能签名', async () => {

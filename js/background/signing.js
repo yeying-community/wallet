@@ -7,6 +7,7 @@ import { getWalletInstance } from './keyring.js';
 import { state } from './state.js';
 import {
   getMpcKeyShares,
+  getMpcSignRequest,
   getMpcWallet,
   getMpcWalletList,
   getSelectedAccount,
@@ -207,6 +208,17 @@ function createPendingMpcSignError(request) {
   return error;
 }
 
+function extractMpcSignature(source) {
+  return String(
+    source?.signRequest?.signature
+    || source?.signature
+    || source?.signatureHex
+    || (typeof source?.result?.signature === 'string' ? source.result.signature : '')
+    || (typeof source?.result?.signatureHex === 'string' ? source.result.signatureHex : '')
+    || ''
+  ).trim();
+}
+
 async function startMpcWireSigning(wallet, context) {
   const sessionId = String(context.request?.sessionId || wallet.keygenSessionId || '').trim();
   if (!sessionId) {
@@ -223,21 +235,25 @@ async function startMpcWireSigning(wallet, context) {
       payload: context.request.payload,
       keyShareRef: context.keyShare
     });
-    const tick = await mpcService.tickWireSession({
-      sessionId,
-      protocol: 'sign',
-      requestId: context.request.id,
-      participantId: context.keyShare.participantId,
-      recipientIndex: participantIndex
-    });
-    const signature = String(
-      tick?.handledResult?.signRequest?.signature
-      || tick?.result?.signatureHex
-      || (typeof tick?.result?.signature === 'string' ? tick.result.signature : '')
-      || ''
-    ).trim();
-    if (signature) {
-      return signature;
+    const maxTicks = 5;
+    for (let attempt = 0; attempt < maxTicks; attempt += 1) {
+      const tick = await mpcService.tickWireSession({
+        sessionId,
+        protocol: 'sign',
+        requestId: context.request.id,
+        participantId: context.keyShare.participantId,
+        recipientIndex: participantIndex
+      });
+      const signature = extractMpcSignature(tick?.handledResult)
+        || extractMpcSignature(tick?.result)
+        || extractMpcSignature(await getMpcSignRequest(context.request.id));
+      if (signature) {
+        return signature;
+      }
+      const madeProgress = (tick?.messages?.length || 0) > 0 || (tick?.outputs?.length || 0) > 0;
+      if (!madeProgress) {
+        break;
+      }
     }
     throw createPendingMpcSignError(context.request);
   } catch (error) {
