@@ -480,6 +480,7 @@ export class AccountListController {
       keygen_pending: '等待密钥生成',
       keygen_ready: '等待密钥生成',
       keygen_running: '密钥生成中',
+      keygen_completed: '密钥生成完成，签名待启用',
       active: '可用',
       failed: '密钥生成失败',
     };
@@ -567,6 +568,7 @@ export class AccountListController {
       keygen_pending: '等待参与者完成密钥生成',
       keygen_ready: '等待密钥生成',
       keygen_running: '密钥生成中',
+      keygen_completed: '密钥生成完成，签名待启用',
       active: '可用',
       failed: '密钥生成失败',
     };

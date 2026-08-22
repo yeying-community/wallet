@@ -66,6 +66,7 @@ const MPC_SESSION_WALLET_STATUS = {
   running: 'keygen_running',
   in_progress: 'keygen_running',
   'in-progress': 'keygen_running',
+  keygen_completed: 'keygen_completed',
   completed: 'active',
   complete: 'active',
   succeeded: 'active',
