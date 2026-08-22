@@ -65,9 +65,6 @@ export class ApprovalController {
       case 'sign':
         this.bindSignEvents();
         break;
-      case 'passport':
-        this.bindPassportEvents();
-        break;
       case 'identity':
         this.bindIdentityEvents();
         break;
@@ -428,31 +425,6 @@ export class ApprovalController {
     } catch (error) {
       this.isProcessing = false;
       showError('签名失败: ' + error.message);
-    }
-  }
-
-  bindPassportEvents() {
-    const approveBtn = document.getElementById('approvePassport');
-    const rejectBtn = document.getElementById('rejectPassport');
-
-    if (approveBtn) {
-      this.addDomListener(approveBtn, 'click', () => this.approvePassport());
-    }
-    if (rejectBtn) {
-      this.addDomListener(rejectBtn, 'click', () => this.reject());
-    }
-  }
-
-  async approvePassport() {
-    if (this.isProcessing) return;
-    this.isProcessing = true;
-
-    try {
-      await this.sendResponse({ approved: true });
-      this.closeWindow();
-    } catch (error) {
-      this.isProcessing = false;
-      showError('授权失败: ' + error.message);
     }
   }
 
