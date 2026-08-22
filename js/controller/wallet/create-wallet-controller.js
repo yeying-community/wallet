@@ -11,6 +11,7 @@ import {
 import { DEFAULT_MPC_COORDINATOR_ENDPOINT } from '../setting/settings-utils.js';
 
 const CREATE_WALLET_DRAFT_KEY = 'createWalletDraft';
+const GENERATED_WALLET_NAME_PATTERN = /^(hd|mpc)-\d{4}$/;
 
 export class CreateWalletController {
   constructor({ wallet, onCreated, onReturnToAccounts, promptPassword }) {
@@ -71,9 +72,9 @@ export class CreateWalletController {
       });
     }
 
-    const confirmInput = document.getElementById('confirmPassword');
-    if (confirmInput) {
-      confirmInput.addEventListener('keypress', async (e) => {
+    const nameInput = document.getElementById('setWalletName');
+    if (nameInput) {
+      nameInput.addEventListener('keypress', async (e) => {
         if (e.key === 'Enter') {
           await this.handleCreateWallet();
         }
@@ -83,12 +84,11 @@ export class CreateWalletController {
 
   async handleCreateWallet() {
     const rawName = String(document.getElementById('setWalletName')?.value || '').trim();
-    const confirmPassword = document.getElementById('confirmPassword')?.value;
     const origin = getPageOrigin('setPasswordPage', 'welcome');
     const useExistingPassword = origin === 'accounts';
     const walletType = this.getCreateWalletType();
     const isMpc = walletType === 'mpc';
-    const name = isMpc ? rawName : (rawName || '主钱包');
+    const name = rawName || this.generateDefaultWalletName(walletType);
 
     if (origin !== 'accounts' && isMpc) {
       showError('请先创建 HD 钱包，再添加 MPC 钱包');
@@ -100,61 +100,31 @@ export class CreateWalletController {
       return;
     }
 
-    if (useExistingPassword && isMpc) {
+    if (isMpc) {
       const canCreate = await this.validateMpcCreateForm();
       if (!canCreate) return;
-      if (!this.promptPassword) {
-        showError('请输入钱包密码');
-        return;
-      }
-      const password = await this.promptPassword({
-        title: '创建钱包',
-        confirmText: '创建钱包',
-        placeholder: '输入钱包密码',
-        onConfirm: async (value) => {
-          if (!value || value.length < 8) {
-            throw new Error('密码至少需要8位字符');
-          }
+    }
+
+    if (!this.promptPassword) {
+      showError(useExistingPassword ? '请输入当前钱包密码' : '请设置钱包密码');
+      return;
+    }
+    const password = await this.promptPassword({
+      title: '创建钱包',
+      confirmText: '创建钱包',
+      placeholder: useExistingPassword ? '输入当前钱包密码' : '至少8位字符',
+      onConfirm: async (value) => {
+        if (!value || value.length < 8) {
+          throw new Error('密码至少需要8位字符');
+        }
+        if (useExistingPassword) {
           await this.verifyExistingPassword(value);
         }
-      });
-      if (!password) return;
-      try {
-        await this.handleCreateMpcWallet({ name, password });
-      } catch (error) {
-        showError('创建失败: ' + error.message);
       }
-      return;
-    }
-
-    const password = document.getElementById('newPassword')?.value;
-    if (!password) {
-      showError(useExistingPassword ? '请输入当前密码' : '请输入密码');
-      return;
-    }
-
-    if (password.length < 8) {
-      showError('密码至少需要8位字符');
-      return;
-    }
-
-    if (!useExistingPassword) {
-      if (!confirmPassword) {
-        showError('请再次输入密码');
-        return;
-      }
-
-      if (password !== confirmPassword) {
-        showError('两次密码不一致');
-        return;
-      }
-    }
+    });
+    if (!password) return;
 
     try {
-      if (useExistingPassword) {
-        await this.verifyExistingPassword(password);
-      }
-
       if (isMpc) {
         await this.handleCreateMpcWallet({
           name,
@@ -205,7 +175,7 @@ export class CreateWalletController {
     const mpcAdvancedOptions = document.querySelector('.mpc-advanced-options');
     const mpcResult = document.getElementById('mpcCreateWalletResult');
 
-    if (nameInput) nameInput.value = '主钱包';
+    if (nameInput) nameInput.value = this.generateDefaultWalletName('hd');
     if (passwordInput) passwordInput.value = '';
     if (confirmInput) confirmInput.value = '';
     if (walletTypeSelect) walletTypeSelect.value = 'hd';
@@ -220,7 +190,7 @@ export class CreateWalletController {
     this.selectedMpcParticipants = [];
     this.currentMpcAccount = null;
     this.renderMpcParticipantSelection();
-    window.refreshWalletSelects?.();
+    globalThis.window?.refreshWalletSelects?.();
     this.applyCreateWalletType('hd', getPageOrigin('setPasswordPage', 'welcome'));
   }
 
@@ -238,6 +208,28 @@ export class CreateWalletController {
     return value === 'mpc' ? 'mpc' : 'hd';
   }
 
+  generateDefaultWalletName(type = 'hd') {
+    const prefix = String(type || '').toLowerCase() === 'mpc' ? 'mpc' : 'hd';
+    const suffix = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+    return `${prefix}-${suffix}`;
+  }
+
+  shouldReplaceWalletNameForType(name, type) {
+    const normalized = String(type || '').toLowerCase() === 'mpc' ? 'mpc' : 'hd';
+    const current = String(name || '').trim();
+    if (!current || current === '主钱包') return true;
+    if (!GENERATED_WALLET_NAME_PATTERN.test(current)) return false;
+    return !current.startsWith(`${normalized}-`);
+  }
+
+  ensureDefaultWalletName(type = this.getCreateWalletType()) {
+    const input = document.getElementById('setWalletName');
+    if (!input) return;
+    if (this.shouldReplaceWalletNameForType(input.value, type)) {
+      input.value = this.generateDefaultWalletName(type);
+    }
+  }
+
   applyCreateWalletType(type, origin) {
     const normalized = String(type || 'hd').toLowerCase() === 'mpc' ? 'mpc' : 'hd';
     const group = document.getElementById('createWalletTypeGroup');
@@ -250,7 +242,7 @@ export class CreateWalletController {
     const passwordGroup = passwordInput?.closest?.('.form-group');
     const confirmGroup = document.getElementById('confirmPasswordGroup');
     const isAccounts = origin === 'accounts';
-    const usePasswordPrompt = isAccounts && normalized === 'mpc';
+    this.ensureDefaultWalletName(normalized);
     if (group) {
       group.classList.toggle('hidden', !isAccounts);
     }
@@ -260,20 +252,20 @@ export class CreateWalletController {
     if (resultEl) {
       resultEl.classList.toggle('hidden', normalized !== 'mpc');
     }
-    if (hint && isAccounts) {
-      hint.textContent = usePasswordPrompt ? '请填写钱包名称和参与方' : '请输入当前钱包密码';
+    if (hint) {
+      hint.textContent = normalized === 'mpc' ? '请填写钱包名称和参与方' : '请填写钱包名称';
     }
-    if (passwordLabel && isAccounts && !usePasswordPrompt) {
-      passwordLabel.textContent = '当前密码';
+    if (passwordLabel) {
+      passwordLabel.textContent = isAccounts ? '当前密码' : '密码';
     }
-    if (passwordInput && isAccounts) {
-      passwordInput.value = usePasswordPrompt ? '' : passwordInput.value;
-      passwordInput.placeholder = '输入当前密码';
+    if (passwordInput) {
+      passwordInput.value = '';
+      passwordInput.placeholder = isAccounts ? '输入当前密码' : '至少8位字符';
     }
-    if (passwordGroup && isAccounts) {
-      passwordGroup.classList.toggle('hidden', usePasswordPrompt);
+    if (passwordGroup) {
+      passwordGroup.classList.add('hidden');
     }
-    if (confirmGroup && isAccounts) {
+    if (confirmGroup) {
       confirmGroup.classList.add('hidden');
     }
     if (setPasswordBtn && isAccounts) {
@@ -624,7 +616,7 @@ export class CreateWalletController {
       const element = document.getElementById(id);
       if (element && value !== undefined && value !== null) element.value = String(value);
     };
-    setValue('setWalletName', draft.name || '主钱包');
+    setValue('setWalletName', draft.name || this.generateDefaultWalletName(draft.walletType));
     setValue('mpcCreateThresholdInput', draft.threshold || '');
     setValue('mpcCreateCurveSelect', draft.curve || 'secp256k1');
     setValue('mpcCreateCoordinatorEndpointInput', draft.coordinatorEndpoint || '');

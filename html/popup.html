@@ -448,7 +448,7 @@
           <h2>夜莺钱包</h2>
         </div>
         <div class="create-wallet-body">
-          <p class="info-text" id="setPasswordHint">请设置一个密码来保护您的钱包</p>
+          <p class="info-text" id="setPasswordHint">请填写钱包名称</p>
 
           <!-- 钱包名称输入 -->
           <div class="form-group">
@@ -457,7 +457,7 @@
               type="text"
               id="setWalletName"
               placeholder="例如：我的主钱包"
-              value="主钱包"
+              value=""
             />
           </div>
 
@@ -538,12 +538,12 @@
             <p class="settings-hint">创建后将自动生成 Keygen 会话，其他成员使用会话 ID 加入。</p>
           </div>
 
-          <div class="form-group">
+          <div class="form-group hidden">
             <label id="setPasswordLabel">密码</label>
             <input type="password" id="newPassword" placeholder="至少8位字符" />
           </div>
 
-          <div class="form-group" id="confirmPasswordGroup">
+          <div class="form-group hidden" id="confirmPasswordGroup">
             <label id="confirmPasswordLabel">确认密码</label>
             <input
               type="password"

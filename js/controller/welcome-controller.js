@@ -174,13 +174,14 @@ export class WelcomeController {
     const confirmLabel = document.getElementById('confirmPasswordLabel');
     const confirmGroup = document.getElementById('confirmPasswordGroup');
     const passwordInput = document.getElementById('newPassword');
+    const passwordGroup = passwordInput?.closest?.('.form-group');
     const walletTypeGroup = document.getElementById('createWalletTypeGroup');
     const walletTypeSelect = document.getElementById('createWalletTypeSelect');
     const mpcFields = document.getElementById('mpcCreateWalletFields');
     const mpcResult = document.getElementById('mpcCreateWalletResult');
 
     if (hint) {
-      hint.textContent = '请设置一个密码来保护您的钱包';
+      hint.textContent = '请填写钱包名称';
     }
     if (passwordLabel) {
       passwordLabel.textContent = '密码';
@@ -189,10 +190,14 @@ export class WelcomeController {
       confirmLabel.textContent = '确认密码';
     }
     if (confirmGroup) {
-      confirmGroup.classList.remove('hidden');
+      confirmGroup.classList.add('hidden');
     }
     if (passwordInput) {
+      passwordInput.value = '';
       passwordInput.placeholder = '至少8位字符';
+    }
+    if (passwordGroup) {
+      passwordGroup.classList.add('hidden');
     }
     if (walletTypeGroup) {
       walletTypeGroup.classList.add('hidden');
@@ -230,7 +235,7 @@ export class WelcomeController {
     const mpcFields = document.getElementById('mpcCreateWalletFields');
     const mpcResult = document.getElementById('mpcCreateWalletResult');
 
-    if (nameInput) nameInput.value = '主钱包';
+    if (nameInput) nameInput.value = `hd-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
     if (passwordInput) passwordInput.value = '';
     if (confirmInput) confirmInput.value = '';
     if (walletTypeSelect) walletTypeSelect.value = 'hd';
