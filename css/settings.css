@@ -255,9 +255,59 @@
   word-break: break-word;
 }
 
-.identity-detail-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 18px; }
+.identity-detail-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; margin-top: 18px; }
 .wallet-identity-details .detail-label,
 .wallet-identity-details .detail-value { font-size: 13px; font-weight: 400; color: #374151; }
+
+.identity-passkey-section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.identity-passkey-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.identity-passkey-header h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: #111827;
+}
+
+.identity-passkey-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.identity-passkey-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.identity-passkey-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  word-break: break-word;
+}
+
+.identity-passkey-meta {
+  margin-top: 3px;
+  font-size: 12px;
+  color: #6b7280;
+  word-break: break-word;
+}
 
 .settings-section-danger {
   border: 1px solid #fed7d7;

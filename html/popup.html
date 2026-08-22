@@ -922,18 +922,18 @@
         </div>
 
         <div class="settings-body">
-          <div class="settings-section" id="passportSettingsSection">
+          <div class="settings-section" id="walletIdentitySettingsSection">
             <div class="wallet-identity-heading">
               <h3>🪪 钱包身份</h3>
               <span id="walletIdentityStatusIcon" class="wallet-identity-status pending" role="img" aria-label="待验证" title="待验证"></span>
             </div>
             <p class="wallet-identity-description">创建一次钱包身份并完成验证后，后续 Web3 应用可在你的授权下复用用户名和邮箱等资料，减少重复验证，让登录和使用更顺畅。</p>
-            <p id="passportStatusText" class="settings-hint"></p>
+            <p id="walletIdentityStatusText" class="settings-hint"></p>
             <div class="settings-row">
-              <button id="passportIdentityBtn" class="btn btn-primary btn-small btn-block">验证</button>
+              <button id="walletIdentityVerifyBtn" class="btn btn-primary btn-small btn-block">验证</button>
               <button id="viewWalletIdentityBtn" class="btn btn-secondary btn-small btn-block hidden" type="button">查看详情</button>
             </div>
-            <p id="passportEmailStatusText" class="settings-hint"></p>
+            <p id="walletIdentityEmailStatusText" class="settings-hint"></p>
           </div>
           <!-- 账户安全 -->
           <div class="settings-section">
@@ -1156,7 +1156,17 @@
           <div class="detail-row"><span class="detail-label">钱包地址</span><span class="detail-value" id="walletIdentityDetailAddressPage">-</span></div>
           <div class="detail-row"><span class="detail-label">身份 DID</span><span class="detail-value" id="walletIdentityDetailDidPage">-</span></div>
           <div class="detail-row"><span class="detail-label">身份服务</span><span class="detail-value" id="walletIdentityDetailEndpointPage">-</span></div>
-          <div class="settings-row identity-detail-actions"><button id="changeWalletIdentityPageBtn" class="btn btn-primary">变更资料</button><button id="unlinkWalletIdentityBtn" class="btn btn-danger">解除验证</button></div>
+          <div class="identity-passkey-section">
+            <div class="identity-passkey-header">
+              <div>
+                <h3>通行证</h3>
+                <p id="walletIdentityPasskeyStatusPage" class="settings-hint">用于无钱包插件登录和高风险确认，可选启用。</p>
+              </div>
+              <button id="refreshWalletIdentityPasskeysBtn" class="btn btn-secondary btn-small" type="button">刷新</button>
+            </div>
+            <div id="walletIdentityPasskeyListPage" class="identity-passkey-list"></div>
+          </div>
+          <div class="settings-row identity-detail-actions"><button id="registerWalletIdentityPasskeyBtn" class="btn btn-primary">注册通行证</button><button id="changeWalletIdentityPageBtn" class="btn btn-secondary">变更资料</button><button id="clearWalletIdentityVerificationBtn" class="btn btn-danger">解除验证</button></div>
         </div>
       </div>
 
@@ -1177,12 +1187,12 @@
           </div>
         </div>
       </div>
-      <div id="walletIdentityUnlinkModal" class="modal hidden">
+      <div id="walletIdentityClearVerificationModal" class="modal hidden">
         <div class="modal-overlay"></div>
         <div class="modal-content">
-          <div class="modal-header"><h3>解除钱包身份验证</h3><button class="btn-close" id="closeWalletIdentityUnlinkModal" type="button">✕</button></div>
+          <div class="modal-header"><h3>解除钱包身份验证</h3><button class="btn-close" id="closeWalletIdentityClearVerificationModal" type="button">✕</button></div>
           <div class="modal-body"><p class="settings-card-description">解除后，此验证服务签发的通行证和未完成授权将被撤销。钱包地址和本地身份资料不会被删除。</p></div>
-          <div class="modal-footer"><button id="confirmWalletIdentityUnlinkBtn" class="btn btn-danger">确认解除</button><button id="cancelWalletIdentityUnlinkBtn" class="btn btn-secondary">取消</button></div>
+          <div class="modal-footer"><button id="confirmWalletIdentityClearVerificationBtn" class="btn btn-danger">确认解除</button><button id="cancelWalletIdentityClearVerificationBtn" class="btn btn-secondary">取消</button></div>
         </div>
       </div>
 
@@ -1251,21 +1261,15 @@
           <div class="page-actions"></div>
         </div>
         <p class="settings-hint">查看这台设备参与的多签钱包创建、邀请和会话状态。</p>
-        <div class="mpc-invite-panel">
-          <div class="mpc-invite-header">
-            <span>待处理邀请</span>
-            <button id="mpcInvitesRefreshBtn" class="settings-heading-icon-btn" type="button" aria-label="刷新待处理邀请" title="刷新待处理邀请">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
-                <path d="M21 3v6h-6"></path>
-              </svg>
-            </button>
-          </div>
-          <div id="mpcInvitesList" class="mpc-invite-list">
-            <div class="mpc-invite-empty">暂无待处理邀请</div>
-          </div>
+        <div class="sync-activity-header">
+          <h3 class="sync-log-title">最近活动</h3>
+          <button id="mpcInvitesRefreshBtn" class="settings-heading-icon-btn" type="button" aria-label="刷新多签活动" title="刷新多签活动">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+              <path d="M21 3v6h-6"></path>
+            </svg>
+          </button>
         </div>
-        <h3 class="sync-log-title">最近活动</h3>
         <div id="mpcLogsList" class="sync-activity-list sync-log-list">
           <div class="empty-message">暂无多签活动</div>
         </div>
