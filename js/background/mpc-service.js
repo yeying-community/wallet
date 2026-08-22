@@ -764,6 +764,70 @@ class MpcService {
     return { session: nextSession, wallet: nextWallet, keyShare: shareRecord };
   }
 
+  async _startAuxInfoAfterWireKeygen({ session, wallet, participantId, participantIndex, password } = {}) {
+    const sessionId = String(session?.id || '').trim();
+    const walletId = String(wallet?.id || session?.walletId || '').trim();
+    const localParticipantId = String(participantId || '').trim();
+    if (!sessionId || !walletId || !localParticipantId) {
+      return null;
+    }
+    if (String(session?.auxInfoStatus || wallet?.auxInfoStatus || '').trim() === 'completed') {
+      return null;
+    }
+    if (String(session?.auxInfoStatus || wallet?.auxInfoStatus || '').trim() === 'running') {
+      return null;
+    }
+    const shareVersion = Number(session?.shareVersion ?? wallet?.shareVersion ?? 1);
+    const shareId = `${walletId}:${localParticipantId}:${shareVersion}`;
+    const keyShare = await getMpcKeyShare(shareId);
+    if (!keyShare?.share || keyShare?.completeKeyShare) {
+      return null;
+    }
+
+    try {
+      const started = await this.startWireSession({
+        sessionId,
+        protocol: 'aux-info',
+        participantId: localParticipantId,
+        recipientIndex: participantIndex,
+        curve: session?.curve || wallet?.curve || 'secp256k1',
+        password
+      });
+      const now = getTimestamp();
+      const nextSession = {
+        ...session,
+        auxInfoStatus: 'running',
+        updatedAt: now
+      };
+      const nextWallet = {
+        ...wallet,
+        auxInfoStatus: 'running',
+        updatedAt: now
+      };
+      await saveMpcSession(nextSession);
+      await saveMpcWallet(nextWallet);
+      await this._appendAuditLog({
+        sessionId,
+        level: 'info',
+        action: 'wire-aux-info-started',
+        message: 'MPC wire aux-info 已自动启动'
+      });
+      return {
+        session: nextSession,
+        wallet: nextWallet,
+        started
+      };
+    } catch (error) {
+      await this._appendAuditLog({
+        sessionId,
+        level: 'warn',
+        action: 'wire-aux-info-start-skipped',
+        message: error?.message || 'MPC wire aux-info start skipped'
+      });
+      return null;
+    }
+  }
+
   async _handleWireAuxInfoResult({ session, wallet, participantId, participantIndex, result } = {}) {
     const output = result && typeof result === 'object' ? result : {};
     const status = String(output.status || '').trim().toLowerCase();
@@ -1394,6 +1458,21 @@ class MpcService {
         participantIndex: recipientIndex,
         result
       });
+      if (handledResult?.session && handledResult?.wallet) {
+        const auxInfoResult = await this._startAuxInfoAfterWireKeygen({
+          session: handledResult.session,
+          wallet: handledResult.wallet,
+          participantId,
+          participantIndex: recipientIndex,
+          password: options.password
+        });
+        if (auxInfoResult) {
+          handledResult = {
+            ...handledResult,
+            auxInfo: auxInfoResult
+          };
+        }
+      }
     } else if (protocol === 'aux-info' && result?.status === 'completed') {
       const participantId = String(options.participantId || await this._resolveLocalParticipantId(session)).trim();
       const walletId = String(options.walletId || session?.walletId || '').trim();

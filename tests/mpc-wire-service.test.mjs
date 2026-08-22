@@ -386,6 +386,121 @@ test('tickWireSession persists completed cggmp24 wire keygen result without mark
   }
 });
 
+test('tickWireSession starts aux-info wire session after cggmp24 keygen completes', async () => {
+  await saveMpcSession({
+    id: 'session-auto-aux',
+    type: 'keygen',
+    name: 'mpc-auto',
+    walletId: 'mpc-wallet-auto-aux',
+    status: 'running',
+    threshold: 1,
+    curve: 'secp256k1',
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222'
+    ],
+    keyVersion: 1,
+    shareVersion: 1,
+    createdAt: 1,
+    updatedAt: 1
+  });
+  await saveMpcWallet({
+    id: 'mpc-wallet-auto-aux',
+    name: 'mpc-auto',
+    type: 'mpc',
+    status: 'keygen_running',
+    keygenSessionId: 'session-auto-aux',
+    threshold: 1,
+    curve: 'secp256k1',
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222'
+    ],
+    createdAt: 1,
+    updatedAt: 1
+  });
+
+  const sent = [];
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  const originalSendWireMessage = mpcService.sendWireMessage;
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    fetchMessages: async () => ({ messages: [], nextSequence: 0 })
+  };
+  mpcService.sendWireMessage = async (message) => {
+    sent.push(message);
+    return { message: { id: `auto-aux-${sent.length}`, ...message } };
+  };
+  setMpcTssEngineForTests({
+    async startAuxInfo(input) {
+      assert.equal(input.sessionId, 'session-auto-aux');
+      assert.equal(input.senderIndex, 1);
+      assert.deepEqual(input.parties, [0, 1]);
+      return {
+        sessionId: input.sessionId,
+        senderIndex: input.senderIndex,
+        protocol: 'aux-info',
+        outgoing: [{ audience: 'all-parties', payload: { Round1: { aux: true } } }]
+      };
+    },
+    async getOutgoingMessages({ state }) {
+      const outgoing = state.outgoing || [];
+      state.outgoing = [];
+      return outgoing;
+    }
+  });
+
+  const keygenAdapter = {
+    async getResult() {
+      return {
+        status: 'completed',
+        keyShare: { shared_public_key: '03abcdef', i: 1 },
+        share: { shared_public_key: '03abcdef', i: 1 },
+        address: '0x2222222222222222222222222222222222222222',
+        walletAddress: '0x2222222222222222222222222222222222222222',
+        curve: 'secp256k1',
+        threshold: 1
+      };
+    },
+    async receiveMessage() {},
+    async advance() {
+      return { messages: [] };
+    }
+  };
+
+  try {
+    const result = await mpcService.tickWireSession({
+      sessionId: 'session-auto-aux',
+      protocol: 'keygen',
+      participantId: '0x2222222222222222222222222222222222222222',
+      recipientIndex: 1,
+      adapter: keygenAdapter
+    });
+
+    assert.equal(result.handledResult.wallet.status, 'keygen_completed');
+    assert.ok(result.handledResult.auxInfo);
+    assert.deepEqual(sent[0], {
+      sessionId: 'session-auto-aux',
+      protocol: 'aux-info',
+      senderIndex: 1,
+      audience: 'all-parties',
+      payload: { Round1: { aux: true } },
+      sequence: 0
+    });
+    const session = await getMpcSession('session-auto-aux');
+    assert.equal(session.auxInfoStatus, 'running');
+    const wallet = await getMpcWallet('mpc-wallet-auto-aux');
+    assert.equal(wallet.auxInfoStatus, 'running');
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+    mpcService.sendWireMessage = originalSendWireMessage;
+    resetMpcTssEngineForTests();
+  }
+});
+
 test('tickWireSession persists completed cggmp24 aux-info result and marks wallet signable', async () => {
   await saveMpcSession({
     id: 'session-aux-1',
