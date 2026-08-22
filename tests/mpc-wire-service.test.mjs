@@ -34,6 +34,7 @@ globalThis.chrome = {
 
 const { mpcService } = await import('../js/background/mpc-service.js');
 const { MpcTssStateMachineAdapter } = await import('../js/background/mpc-tss-engine.js');
+const { Cggmp24WasmEngine } = await import('../js/background/mpc-cggmp24-wasm-engine.js');
 const { createMpcWireMessage } = await import('../js/background/mpc-wire-protocol.js');
 const { getMpcMessage } = await import('../js/storage/index.js');
 
@@ -243,5 +244,184 @@ test('startWireSession starts keygen and sign adapters through service transport
     });
   } finally {
     mpcService.sendWireMessage = originalSendWireMessage;
+  }
+});
+
+test('service wire sessions can drive two cggmp24 keygen participants through the message log', async () => {
+  class FakeKeygenSession {
+    constructor(sessionId, senderIndex, partyCount, threshold) {
+      this.sessionId = sessionId;
+      this.senderIndex = senderIndex;
+      this.partyCount = partyCount;
+      this.threshold = threshold;
+      this.inbox = [];
+      this.completed = false;
+      this.outgoing = [{
+        audience: 'all-parties',
+        payload: { Round1: { from: senderIndex } }
+      }];
+      this.result = null;
+    }
+
+    advanceJson() {
+      if (!this.completed && this.inbox.length > 0) {
+        const last = this.inbox[this.inbox.length - 1];
+        this.outgoing.push({
+          audience: { 'one-party': { recipient_index: last.sender_index } },
+          payload: { Round2Uni: { from: this.senderIndex, to: last.sender_index } }
+        });
+        this.completed = true;
+        this.result = {
+          shared_public_key: '03shared',
+          participant_index: this.senderIndex,
+          party_count: this.partyCount,
+          threshold: this.threshold
+        };
+      }
+      return JSON.stringify({
+        status: this.completed ? 'completed' : 'waiting',
+        outgoing: this.outgoing,
+        result: this.result,
+        error: null
+      });
+    }
+
+    receiveWireMessageJson(json) {
+      const message = JSON.parse(json);
+      if (!this.completed) {
+        this.inbox.push(message);
+      }
+      return JSON.stringify({
+        status: this.completed ? 'completed' : 'running',
+        outgoing: this.outgoing,
+        result: this.result,
+        error: null
+      });
+    }
+
+    drainOutgoingJson() {
+      const outgoing = this.outgoing;
+      this.outgoing = [];
+      return JSON.stringify(outgoing);
+    }
+
+    resultJson() {
+      return JSON.stringify(this.result);
+    }
+  }
+
+  function makeEngine() {
+    return new Cggmp24WasmEngine({
+      wasm: {
+        Cggmp24ThresholdKeygenSession: FakeKeygenSession,
+        cggmp24EngineMetadataJson: () => JSON.stringify({ engine: 'cggmp24' }),
+        normalizeWireMessageJson: (json) => json,
+        normalizeSigningPayloadJson: (json) => json,
+        normalizeThresholdKeygenPayloadJson: (json) => json,
+      },
+    });
+  }
+
+  let sequence = 0;
+  const log = [];
+  const originalSendWireMessage = mpcService.sendWireMessage;
+  const originalFetchWireMessages = mpcService.fetchWireMessages;
+  mpcService.sendWireMessage = async (input) => {
+    sequence += 1;
+    const envelope = createMpcWireMessage({ ...input, sequence });
+    const receiver = envelope.audience === 'all-parties'
+      ? ''
+      : String(envelope.audience['one-party'].recipient_index);
+    const message = {
+      id: `wire-${sequence}`,
+      sessionId: envelope.session_id,
+      sender: String(envelope.sender_index),
+      receiver,
+      round: sequence,
+      type: envelope.protocol,
+      seq: sequence,
+      envelope,
+      createdAt: String(sequence)
+    };
+    log.push(message);
+    return { message, response: message };
+  };
+  mpcService.fetchWireMessages = async (sessionId, { after = 0, recipientIndex, limit = 50 } = {}) => {
+    const recipient = String(recipientIndex);
+    const messages = log
+      .filter((message) => {
+        if (message.sessionId !== sessionId) return false;
+        if (message.seq <= Number(after || 0)) return false;
+        if (message.receiver) return message.receiver === recipient;
+        return message.sender !== recipient;
+      })
+      .slice(0, Number(limit || 50));
+    const last = messages[messages.length - 1];
+    return {
+      messages,
+      nextSequence: last?.seq ?? Number(after || 0)
+    };
+  };
+
+  const party0 = new MpcTssStateMachineAdapter({
+    engine: makeEngine(),
+    transport: mpcService
+  });
+  const party1 = new MpcTssStateMachineAdapter({
+    engine: makeEngine(),
+    transport: mpcService
+  });
+
+  try {
+    await mpcService.startWireSession({
+      sessionId: 'session-keygen',
+      protocol: 'keygen',
+      recipientIndex: 0,
+      parties: [0, 1],
+      threshold: 2,
+      adapter: party0
+    });
+    await mpcService.startWireSession({
+      sessionId: 'session-keygen',
+      protocol: 'keygen',
+      recipientIndex: 1,
+      parties: [0, 1],
+      threshold: 2,
+      adapter: party1
+    });
+
+    let result0 = null;
+    let result1 = null;
+    for (let i = 0; i < 8; i += 1) {
+      result0 = (await mpcService.tickWireSession({
+        sessionId: 'session-keygen',
+        recipientIndex: 0,
+        protocol: 'keygen',
+        adapter: party0,
+        limit: 1
+      })).result;
+      result1 = (await mpcService.tickWireSession({
+        sessionId: 'session-keygen',
+        recipientIndex: 1,
+        protocol: 'keygen',
+        adapter: party1,
+        limit: 1
+      })).result;
+      if (result0?.status === 'completed' && result1?.status === 'completed') {
+        break;
+      }
+    }
+
+    assert.equal(result0?.status, 'completed');
+    assert.equal(result1?.status, 'completed');
+    assert.equal(result0.keyShare.shared_public_key, '03shared');
+    assert.equal(result1.keyShare.shared_public_key, '03shared');
+    assert.equal(result0.keyShare.participant_index, 0);
+    assert.equal(result1.keyShare.participant_index, 1);
+    assert.ok(log.some((message) => message.receiver === '0'));
+    assert.ok(log.some((message) => message.receiver === '1'));
+  } finally {
+    mpcService.sendWireMessage = originalSendWireMessage;
+    mpcService.fetchWireMessages = originalFetchWireMessages;
   }
 });
