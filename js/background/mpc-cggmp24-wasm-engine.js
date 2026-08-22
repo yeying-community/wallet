@@ -4,6 +4,7 @@ const REQUIRED_WASM_EXPORTS = [
   'normalizeWireMessageJson',
   'normalizeSigningPayloadJson',
   'normalizeThresholdKeygenPayloadJson',
+  'coreKeySharePublicMaterialJson',
 ];
 
 function requireFunction(target, name) {
@@ -51,6 +52,11 @@ export class Cggmp24WasmEngine {
   normalizeThresholdKeygenPayload(payload) {
     const normalized = requireFunction(this._wasm, 'normalizeThresholdKeygenPayloadJson')(stringifyJson(payload));
     return parseJson(normalized, {});
+  }
+
+  coreKeySharePublicMaterial(keyShare) {
+    const material = requireFunction(this._wasm, 'coreKeySharePublicMaterialJson')(stringifyJson(keyShare));
+    return parseJson(material, {});
   }
 
   async startKeygen({ sessionId, senderIndex, parties, threshold, curve = 'secp256k1' } = {}) {
@@ -139,11 +145,20 @@ export class Cggmp24WasmEngine {
     if (!result) {
       return null;
     }
+    const material = this.coreKeySharePublicMaterial(result);
+    const publicKey = String(material.compressedPublicKeyHex || '').trim();
+    const uncompressedPublicKey = String(material.uncompressedPublicKeyHex || '').trim();
+    const address = String(material.ethereumAddress || '').trim();
     return {
       status: 'completed',
       keyShare: result,
       share: result,
-      curve: sessionState.curve,
+      publicKey,
+      groupPublicKey: publicKey,
+      uncompressedPublicKey,
+      address,
+      walletAddress: address,
+      curve: material.curve || sessionState.curve,
       threshold: sessionState.threshold
     };
   }

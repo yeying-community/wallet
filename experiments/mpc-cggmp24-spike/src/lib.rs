@@ -6,6 +6,7 @@ use round_based::state_machine::{ProceedResult, StateMachine};
 use round_based::{Incoming, MessageDestination, MessageType};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+use sha3::{Digest, Keccak256};
 use wasm_bindgen::prelude::*;
 
 pub const ENGINE_ID: &str = "cggmp24";
@@ -192,8 +193,36 @@ pub struct WasmAdvanceResult {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoreKeySharePublicMaterial {
+    pub curve: String,
+    pub compressed_public_key_hex: String,
+    pub uncompressed_public_key_hex: String,
+    pub ethereum_address: String,
+}
+
 fn to_js_error(error: impl core::fmt::Display) -> JsValue {
     JsValue::from_str(&error.to_string())
+}
+
+fn core_key_share_public_material(
+    share: &SecpCoreKeyShare,
+) -> Result<CoreKeySharePublicMaterial, JsValue> {
+    let compressed = share.shared_public_key.to_bytes(true);
+    let uncompressed = share.shared_public_key.to_bytes(false);
+    let uncompressed_bytes = uncompressed.as_ref();
+    if uncompressed_bytes.len() != 65 || uncompressed_bytes.first() != Some(&0x04) {
+        return Err(JsValue::from_str("MPC_CGGMP24_INVALID_PUBLIC_KEY_ENCODING"));
+    }
+    let hash = Keccak256::digest(&uncompressed_bytes[1..]);
+    let address = &hash[hash.len() - 20..];
+    Ok(CoreKeySharePublicMaterial {
+        curve: "secp256k1".to_string(),
+        compressed_public_key_hex: hex::encode(compressed.as_ref()),
+        uncompressed_public_key_hex: hex::encode(uncompressed_bytes),
+        ethereum_address: format!("0x{}", hex::encode(address)),
+    })
 }
 
 #[wasm_bindgen(js_name = cggmp24EngineMetadataJson)]
@@ -214,6 +243,7 @@ pub fn cggmp24_engine_metadata_json() -> Result<String, JsValue> {
             "advance".to_string(),
             "getOutgoingMessages".to_string(),
             "getResult".to_string(),
+            "coreKeySharePublicMaterial".to_string(),
         ],
     })
     .map_err(to_js_error)
@@ -242,6 +272,13 @@ pub fn normalize_signing_payload_json(json: &str) -> Result<String, JsValue> {
 pub fn normalize_threshold_keygen_payload_json(json: &str) -> Result<String, JsValue> {
     let message: SecpThresholdKeygenMessage = serde_json::from_str(json).map_err(to_js_error)?;
     serde_json::to_string(&message).map_err(to_js_error)
+}
+
+#[wasm_bindgen(js_name = coreKeySharePublicMaterialJson)]
+pub fn core_key_share_public_material_json(json: &str) -> Result<String, JsValue> {
+    let share: SecpCoreKeyShare = serde_json::from_str(json).map_err(to_js_error)?;
+    let material = core_key_share_public_material(&share)?;
+    serde_json::to_string(&material).map_err(to_js_error)
 }
 
 #[wasm_bindgen]
@@ -600,6 +637,27 @@ mod tests {
             result1["shared_public_key"],
             "parties should derive the same shared public key"
         );
+        let material0: CoreKeySharePublicMaterial = serde_json::from_str(
+            &core_key_share_public_material_json(
+                &serde_json::to_string(&result0).expect("party0 result should serialize"),
+            )
+            .expect("party0 public material should export"),
+        )
+        .expect("party0 public material should deserialize");
+        let material1: CoreKeySharePublicMaterial = serde_json::from_str(
+            &core_key_share_public_material_json(
+                &serde_json::to_string(&result1).expect("party1 result should serialize"),
+            )
+            .expect("party1 public material should export"),
+        )
+        .expect("party1 public material should deserialize");
+        assert_eq!(material0.curve, "secp256k1");
+        assert_eq!(material0.compressed_public_key_hex.len(), 66);
+        assert_eq!(material0.uncompressed_public_key_hex.len(), 130);
+        assert!(material0.uncompressed_public_key_hex.starts_with("04"));
+        assert!(material0.ethereum_address.starts_with("0x"));
+        assert_eq!(material0.ethereum_address.len(), 42);
+        assert_eq!(material0, material1);
     }
 
     #[test]

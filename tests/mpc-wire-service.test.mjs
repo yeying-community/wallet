@@ -302,6 +302,9 @@ test('tickWireSession persists completed cggmp24 wire keygen result without mark
         status: 'completed',
         keyShare: { shared_public_key: '03abcdef', i: 1 },
         share: { shared_public_key: '03abcdef', i: 1 },
+        address: '0x2222222222222222222222222222222222222222',
+        walletAddress: '0x2222222222222222222222222222222222222222',
+        uncompressedPublicKey: `04${'22'.repeat(64)}`,
         curve: 'secp256k1',
         threshold: 1
       };
@@ -326,18 +329,21 @@ test('tickWireSession persists completed cggmp24 wire keygen result without mark
     const share = await getMpcKeyShare('mpc-wallet-1:0x2222222222222222222222222222222222222222:1');
     assert.deepEqual(share.share, { shared_public_key: '03abcdef', i: 1 });
     assert.equal(share.publicKey, '03abcdef');
+    assert.equal(share.address, '0x2222222222222222222222222222222222222222');
+    assert.equal(share.uncompressedPublicKey, `04${'22'.repeat(64)}`);
     assert.equal(share.engine, 'cggmp24');
     assert.equal(share.signingStatus, 'unavailable');
 
     const session = await getMpcSession('session-1');
     assert.equal(session.status, 'keygen_completed');
     assert.equal(session.result.publicKey, '03abcdef');
+    assert.equal(session.result.address, '0x2222222222222222222222222222222222222222');
     assert.equal(session.result.signingUnavailableReason, 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED');
 
     const wallet = await getMpcWallet('mpc-wallet-1');
     assert.equal(wallet.status, 'keygen_completed');
     assert.equal(wallet.publicKey, '03abcdef');
-    assert.equal(wallet.address || '', '');
+    assert.equal(wallet.address, '0x2222222222222222222222222222222222222222');
     assert.equal(wallet.signingStatus, 'unavailable');
   } finally {
     mpcService._ensureCoordinatorToken = originalEnsure;
@@ -416,6 +422,12 @@ test('service wire sessions can drive two cggmp24 keygen participants through th
         normalizeWireMessageJson: (json) => json,
         normalizeSigningPayloadJson: (json) => json,
         normalizeThresholdKeygenPayloadJson: (json) => json,
+        coreKeySharePublicMaterialJson: () => JSON.stringify({
+          curve: 'secp256k1',
+          compressedPublicKeyHex: '03shared',
+          uncompressedPublicKeyHex: `04${'33'.repeat(64)}`,
+          ethereumAddress: '0x3333333333333333333333333333333333333333',
+        }),
       },
     });
   }
@@ -514,6 +526,8 @@ test('service wire sessions can drive two cggmp24 keygen participants through th
     assert.equal(result1?.status, 'completed');
     assert.equal(result0.keyShare.shared_public_key, '03shared');
     assert.equal(result1.keyShare.shared_public_key, '03shared');
+    assert.equal(result0.address, '0x3333333333333333333333333333333333333333');
+    assert.equal(result1.address, '0x3333333333333333333333333333333333333333');
     assert.equal(result0.keyShare.participant_index, 0);
     assert.equal(result1.keyShare.participant_index, 1);
     assert.ok(log.some((message) => message.receiver === '0'));

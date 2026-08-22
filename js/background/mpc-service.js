@@ -680,6 +680,8 @@ class MpcService {
       || share.sharedPublicKey
       || ''
     ).trim();
+    const address = String(output.address || output.walletAddress || output.accountAddress || '').trim();
+    const uncompressedPublicKey = String(output.uncompressedPublicKey || output.uncompressedPublicKeyHex || '').trim();
     const now = getTimestamp();
     const shareRecord = {
       id: output.shareId || `${walletId}:${localParticipantId}:${shareVersion}`,
@@ -689,6 +691,8 @@ class MpcService {
       participantIndex: Number.isInteger(participantIndex) ? participantIndex : undefined,
       curve: output.curve || session?.curve || wallet?.curve || 'secp256k1',
       publicKey,
+      uncompressedPublicKey,
+      address,
       share,
       keyVersion,
       shareVersion,
@@ -707,8 +711,10 @@ class MpcService {
     const completedResult = {
       ...(session?.result && typeof session.result === 'object' ? session.result : {}),
       status: 'keygen_completed',
+      address,
       publicKey,
       groupPublicKey: publicKey,
+      uncompressedPublicKey,
       curve: shareRecord.curve,
       keyVersion,
       shareVersion,
@@ -734,7 +740,9 @@ class MpcService {
       status: 'keygen_completed',
       keygenSessionId: sessionId,
       curve: shareRecord.curve,
+      address: address || wallet?.address || '',
       publicKey: publicKey || wallet?.publicKey || '',
+      uncompressedPublicKey: uncompressedPublicKey || wallet?.uncompressedPublicKey || '',
       keyVersion,
       shareVersion,
       participants: this._normalizeParticipantIds(session?.participants || wallet?.participants || []),

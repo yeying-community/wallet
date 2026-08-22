@@ -46,6 +46,15 @@ test('Cggmp24WasmEngine exposes metadata and JSON normalization exports', () => 
         calls.push(['keygen', JSON.parse(json)]);
         return json;
       },
+      coreKeySharePublicMaterialJson: (json) => {
+        calls.push(['material', JSON.parse(json)]);
+        return JSON.stringify({
+          curve: 'secp256k1',
+          compressedPublicKeyHex: '03abcdef',
+          uncompressedPublicKeyHex: `04${'11'.repeat(64)}`,
+          ethereumAddress: '0x1111111111111111111111111111111111111111',
+        });
+      },
     },
   });
 
@@ -58,7 +67,13 @@ test('Cggmp24WasmEngine exposes metadata and JSON normalization exports', () => 
   assert.deepEqual(engine.normalizeWireMessage({ engine: 'cggmp24' }), { engine: 'cggmp24' });
   assert.deepEqual(engine.normalizeSigningPayload({ Round1a: {} }), { Round1a: {} });
   assert.deepEqual(engine.normalizeThresholdKeygenPayload({ Round1: {} }), { Round1: {} });
-  assert.deepEqual(calls.map(([name]) => name), ['wire', 'sign', 'keygen']);
+  assert.deepEqual(engine.coreKeySharePublicMaterial({ shared_public_key: '03abcdef' }), {
+    curve: 'secp256k1',
+    compressedPublicKeyHex: '03abcdef',
+    uncompressedPublicKeyHex: `04${'11'.repeat(64)}`,
+    ethereumAddress: '0x1111111111111111111111111111111111111111',
+  });
+  assert.deepEqual(calls.map(([name]) => name), ['wire', 'sign', 'keygen', 'material']);
 });
 
 test('installCggmp24WasmEngine installs the loaded engine through the TSS boundary', async () => {
@@ -73,6 +88,12 @@ test('installCggmp24WasmEngine installs the loaded engine through the TSS bounda
       normalizeWireMessageJson: (json) => json,
       normalizeSigningPayloadJson: (json) => json,
       normalizeThresholdKeygenPayloadJson: (json) => json,
+      coreKeySharePublicMaterialJson: () => JSON.stringify({
+        curve: 'secp256k1',
+        compressedPublicKeyHex: '03abcdef',
+        uncompressedPublicKeyHex: `04${'11'.repeat(64)}`,
+        ethereumAddress: '0x1111111111111111111111111111111111111111',
+      }),
     },
   });
 
@@ -145,6 +166,15 @@ test('Cggmp24WasmEngine drives threshold keygen sessions through the TSS adapter
       normalizeWireMessageJson: (json) => json,
       normalizeSigningPayloadJson: (json) => json,
       normalizeThresholdKeygenPayloadJson: (json) => json,
+      coreKeySharePublicMaterialJson: (json) => {
+        calls.push(['material', JSON.parse(json)]);
+        return JSON.stringify({
+          curve: 'secp256k1',
+          compressedPublicKeyHex: '03abcdef',
+          uncompressedPublicKeyHex: `04${'22'.repeat(64)}`,
+          ethereumAddress: '0x2222222222222222222222222222222222222222',
+        });
+      },
     },
   });
   const adapter = new MpcTssStateMachineAdapter({
@@ -201,6 +231,11 @@ test('Cggmp24WasmEngine drives threshold keygen sessions through the TSS adapter
     status: 'completed',
     keyShare: { shared_public_key: '03abcdef', i: 1 },
     share: { shared_public_key: '03abcdef', i: 1 },
+    publicKey: '03abcdef',
+    groupPublicKey: '03abcdef',
+    uncompressedPublicKey: `04${'22'.repeat(64)}`,
+    address: '0x2222222222222222222222222222222222222222',
+    walletAddress: '0x2222222222222222222222222222222222222222',
     curve: 'secp256k1',
     threshold: 2,
   });
