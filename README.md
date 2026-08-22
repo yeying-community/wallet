@@ -16,7 +16,7 @@
 - [Web3 应用集成手册](./docs/web3应用集成手册.md)
 - [SIWE 协议说明与使用指南](./docs/SIWE协议说明.md)
 - [UCAN 协议说明与使用指南（Chat / Router / WebDAV 模板）](./docs/UCAN协议说明.md)
-- [钱包身份认证器方案（Passkey / Wallet / Node）](./docs/钱包身份认证器方案.md)
+- [钱包身份方案（DID / Passkey / WebAuthn / Node）](./docs/钱包身份方案.md)
 - [钱包存储方案](./docs/钱包存储方案.md)
 - [MPC 门限钱包方案](./docs/MPC门限钱包方案.md)
 
