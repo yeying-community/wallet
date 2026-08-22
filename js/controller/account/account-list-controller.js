@@ -118,11 +118,6 @@ export class AccountListController {
 
   preparePasswordFormForExistingWallet() {
     const hint = document.getElementById('setPasswordHint');
-    const passwordLabel = document.getElementById('setPasswordLabel');
-    const confirmGroup = document.getElementById('confirmPasswordGroup');
-    const passwordInput = document.getElementById('newPassword');
-    const passwordGroup = passwordInput?.closest?.('.form-group');
-    const confirmInput = document.getElementById('confirmPassword');
     const walletTypeGroup = document.getElementById('createWalletTypeGroup');
     const walletTypeSelect = document.getElementById('createWalletTypeSelect');
     const mpcFields = document.getElementById('mpcCreateWalletFields');
@@ -131,22 +126,6 @@ export class AccountListController {
 
     if (hint) {
       hint.textContent = '请填写钱包名称';
-    }
-    if (passwordLabel) {
-      passwordLabel.textContent = '当前密码';
-    }
-    if (confirmGroup) {
-      confirmGroup.classList.add('hidden');
-    }
-    if (passwordInput) {
-      passwordInput.value = '';
-      passwordInput.placeholder = '输入当前密码';
-    }
-    if (passwordGroup) {
-      passwordGroup.classList.add('hidden');
-    }
-    if (confirmInput) {
-      confirmInput.value = '';
     }
     if (walletTypeGroup) {
       walletTypeGroup.classList.remove('hidden');

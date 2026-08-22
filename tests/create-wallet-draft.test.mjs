@@ -9,8 +9,6 @@ function setup() {
     setPasswordPage: { tagName: 'div', _classes: 'page', dataset: { origin: 'accounts' } },
     accountsPage: { tagName: 'div', _classes: 'page hidden' },
     setWalletName: { tagName: 'input', value: '家庭钱包' },
-    newPassword: { tagName: 'input', value: 'must-not-persist' },
-    confirmPassword: { tagName: 'input', value: 'must-not-persist' },
     createWalletTypeSelect: { tagName: 'select', value: 'mpc' },
     mpcCreateThresholdInput: { tagName: 'input', value: '2' },
     mpcCreateCurveSelect: { tagName: 'select', value: 'secp256k1' },
@@ -37,7 +35,6 @@ test('MPC 创建草稿保留非敏感表单，不包含密码', () => {
   assert.equal(draft.name, '家庭钱包');
   assert.equal(draft.threshold, '2');
   assert.deepEqual(draft.participants, ['0x1111111111111111111111111111111111111111']);
-  assert.doesNotMatch(JSON.stringify(draft), /must-not-persist/);
   assert.equal('password' in draft, false);
   assert.equal('ucanToken' in draft, false);
 });
@@ -90,8 +87,6 @@ test('创建 HD 钱包使用独立密码框，不读取创建页面密码输入'
     setPasswordPage: { tagName: 'div', _classes: 'page', dataset: { origin: 'welcome' } },
     walletPage: { tagName: 'div', _classes: 'page hidden' },
     setWalletName: { tagName: 'input', value: 'hd-1235' },
-    newPassword: { tagName: 'input', value: 'must-not-use' },
-    confirmPassword: { tagName: 'input', value: 'must-not-use' },
     createWalletTypeSelect: { tagName: 'select', value: 'hd' },
     mpcCreateThresholdInput: { tagName: 'input', value: '' },
     mpcCreateCurveSelect: { tagName: 'select', value: 'secp256k1' },

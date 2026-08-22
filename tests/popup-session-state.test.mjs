@@ -46,19 +46,19 @@ test('恢复字段时忽略非当前页面字段和敏感字段', () => {
   const { document, elements } = createDocument({
     networkNameInput: { tagName: 'input', value: '' },
     networkRpcInput: { tagName: 'input', value: '' },
-    newPassword: { tagName: 'input', value: '' },
+    ignoredField: { tagName: 'input', value: '' },
   });
   applyPopupSessionFields({
     pageId: 'networkFormPage',
     fields: {
       networkNameInput: 'Solana RPC',
       networkRpcInput: 'https://rpc.example',
-      newPassword: 'must-not-restore',
+      ignoredField: 'must-not-restore',
     },
   }, document);
   assert.equal(elements.networkNameInput.value, 'Solana RPC');
   assert.equal(elements.networkRpcInput.value, 'https://rpc.example');
-  assert.equal(elements.newPassword.value, '');
+  assert.equal(elements.ignoredField.value, '');
 });
 
 test('过期页面状态被删除，锁定时可显式清除', async () => {

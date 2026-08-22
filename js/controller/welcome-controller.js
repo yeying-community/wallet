@@ -170,11 +170,6 @@ export class WelcomeController {
 
   preparePasswordFormForNewWallet() {
     const hint = document.getElementById('setPasswordHint');
-    const passwordLabel = document.getElementById('setPasswordLabel');
-    const confirmLabel = document.getElementById('confirmPasswordLabel');
-    const confirmGroup = document.getElementById('confirmPasswordGroup');
-    const passwordInput = document.getElementById('newPassword');
-    const passwordGroup = passwordInput?.closest?.('.form-group');
     const walletTypeGroup = document.getElementById('createWalletTypeGroup');
     const walletTypeSelect = document.getElementById('createWalletTypeSelect');
     const mpcFields = document.getElementById('mpcCreateWalletFields');
@@ -182,22 +177,6 @@ export class WelcomeController {
 
     if (hint) {
       hint.textContent = '请填写钱包名称';
-    }
-    if (passwordLabel) {
-      passwordLabel.textContent = '密码';
-    }
-    if (confirmLabel) {
-      confirmLabel.textContent = '确认密码';
-    }
-    if (confirmGroup) {
-      confirmGroup.classList.add('hidden');
-    }
-    if (passwordInput) {
-      passwordInput.value = '';
-      passwordInput.placeholder = '至少8位字符';
-    }
-    if (passwordGroup) {
-      passwordGroup.classList.add('hidden');
     }
     if (walletTypeGroup) {
       walletTypeGroup.classList.add('hidden');
@@ -229,15 +208,11 @@ export class WelcomeController {
 
   resetCreateWalletForm() {
     const nameInput = document.getElementById('setWalletName');
-    const passwordInput = document.getElementById('newPassword');
-    const confirmInput = document.getElementById('confirmPassword');
     const walletTypeSelect = document.getElementById('createWalletTypeSelect');
     const mpcFields = document.getElementById('mpcCreateWalletFields');
     const mpcResult = document.getElementById('mpcCreateWalletResult');
 
     if (nameInput) nameInput.value = `hd-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
-    if (passwordInput) passwordInput.value = '';
-    if (confirmInput) confirmInput.value = '';
     if (walletTypeSelect) walletTypeSelect.value = 'hd';
     if (mpcFields) mpcFields.classList.add('hidden');
     if (mpcResult) {

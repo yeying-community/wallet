@@ -166,8 +166,6 @@ export class CreateWalletController {
   resetForm() {
     void this.clearDraft();
     const nameInput = document.getElementById('setWalletName');
-    const passwordInput = document.getElementById('newPassword');
-    const confirmInput = document.getElementById('confirmPassword');
     const walletTypeSelect = document.getElementById('createWalletTypeSelect');
     const mpcThresholdInput = document.getElementById('mpcCreateThresholdInput');
     const mpcCurveSelect = document.getElementById('mpcCreateCurveSelect');
@@ -176,8 +174,6 @@ export class CreateWalletController {
     const mpcResult = document.getElementById('mpcCreateWalletResult');
 
     if (nameInput) nameInput.value = this.generateDefaultWalletName('hd');
-    if (passwordInput) passwordInput.value = '';
-    if (confirmInput) confirmInput.value = '';
     if (walletTypeSelect) walletTypeSelect.value = 'hd';
     if (mpcThresholdInput) mpcThresholdInput.value = '';
     if (mpcCurveSelect) mpcCurveSelect.value = 'secp256k1';
@@ -237,10 +233,6 @@ export class CreateWalletController {
     const resultEl = document.getElementById('mpcCreateWalletResult');
     const setPasswordBtn = document.getElementById('setPasswordBtn');
     const hint = document.getElementById('setPasswordHint');
-    const passwordLabel = document.getElementById('setPasswordLabel');
-    const passwordInput = document.getElementById('newPassword');
-    const passwordGroup = passwordInput?.closest?.('.form-group');
-    const confirmGroup = document.getElementById('confirmPasswordGroup');
     const isAccounts = origin === 'accounts';
     this.ensureDefaultWalletName(normalized);
     if (group) {
@@ -254,19 +246,6 @@ export class CreateWalletController {
     }
     if (hint) {
       hint.textContent = normalized === 'mpc' ? '请填写钱包名称和参与方' : '请填写钱包名称';
-    }
-    if (passwordLabel) {
-      passwordLabel.textContent = isAccounts ? '当前密码' : '密码';
-    }
-    if (passwordInput) {
-      passwordInput.value = '';
-      passwordInput.placeholder = isAccounts ? '输入当前密码' : '至少8位字符';
-    }
-    if (passwordGroup) {
-      passwordGroup.classList.add('hidden');
-    }
-    if (confirmGroup) {
-      confirmGroup.classList.add('hidden');
     }
     if (setPasswordBtn && isAccounts) {
       setPasswordBtn.textContent = '创建钱包';
