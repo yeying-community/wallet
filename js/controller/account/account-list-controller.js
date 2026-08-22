@@ -445,7 +445,7 @@ export class AccountListController {
             class="mpc-wallet-action-btn mpc-invite-dismiss-btn"
             data-mpc-invite-dismiss="${escapeHtml(notificationUid)}"
             type="button"
-          >移除</button>
+          >拒绝邀请</button>
           <button
             class="mpc-wallet-action-btn mpc-invite-accept-btn primary"
             data-mpc-invite-accept="${escapeHtml(notificationUid)}"
@@ -705,7 +705,7 @@ export class AccountListController {
       return;
     }
     if (typeof this.wallet.dismissMpcInvite !== 'function') {
-      showError('当前版本不支持移除 MPC 邀请');
+      showError('当前版本不支持拒绝 MPC 邀请');
       return;
     }
     try {
@@ -718,13 +718,13 @@ export class AccountListController {
         walletId: invite.payload?.walletId || '',
         payload: invite.payload || {}
       });
-      if (!result?.success) throw new Error(result?.error || '移除邀请失败');
+      if (!result?.success) throw new Error(result?.error || '拒绝邀请失败');
       this.closeMpcWalletDetail();
       await this.loadWalletList();
       await this.onWalletUpdated?.();
-      showSuccess('MPC 钱包创建已移除');
+      showSuccess('已拒绝 MPC 钱包邀请');
     } catch (error) {
-      showError('移除失败: ' + (error?.message || '未知错误'));
+      showError('拒绝失败: ' + (error?.message || '未知错误'));
     } finally {
       hideWaiting();
     }

@@ -97,6 +97,7 @@ test('账户管理把待处理 MPC 邀请展示为可接受的钱包卡片', () 
     assert.match(elements.walletList.innerHTML, /团队金库/);
     assert.match(elements.walletList.innerHTML, /待接受邀请/);
     assert.match(elements.walletList.innerHTML, /接受邀请/);
+    assert.match(elements.walletList.innerHTML, /拒绝邀请/);
     assert.match(elements.walletList.innerHTML, /mpc-invite-detail-btn/);
     assert.match(elements.walletList.innerHTML, /查看 MPC 钱包详情/);
     assert.match(elements.walletList.innerHTML, /data-mpc-invite-dismiss="notification-1"/);
@@ -345,7 +346,7 @@ test('取消未完成 MPC 钱包创建会调用取消会话并刷新列表', asy
   }
 });
 
-test('移除未接受 MPC 邀请会忽略邀请并刷新列表', async () => {
+test('拒绝未接受 MPC 邀请会忽略邀请并刷新列表', async () => {
   const { document, elements } = createDocument({
     walletList: { tagName: 'div' },
     mpcWalletDetailModal: { tagName: 'div' },
