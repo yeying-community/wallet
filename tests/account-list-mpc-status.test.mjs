@@ -74,6 +74,32 @@ test('账户管理把 rounds 的 MPC 钱包展示为密钥生成中', () => {
   }
 });
 
+test('账户管理把 MPC 钱包地址缩短展示', () => {
+  const { document, elements } = createDocument({ walletList: { tagName: 'div' } });
+  globalThis.document = document;
+  try {
+    const controller = new AccountListController({ wallet: {} });
+    controller.renderWalletList([{
+      id: 'mpc-1',
+      name: 'mpc10',
+      type: 'mpc',
+      status: 'active',
+      address: '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      threshold: 2,
+      participants: ['0x1', '0x2'],
+      accounts: [],
+    }]);
+
+    assert.match(elements.walletList.innerHTML, /<div class="account-address">0x084A\.\.\.E630<\/div>/);
+    assert.doesNotMatch(
+      elements.walletList.innerHTML,
+      /<div class="account-address">0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630<\/div>/
+    );
+  } finally {
+    delete globalThis.document;
+  }
+});
+
 test('账户管理把待处理 MPC 邀请展示为可接受的钱包卡片', () => {
   const { document, elements } = createDocument({ walletList: { tagName: 'div' } });
   globalThis.document = document;

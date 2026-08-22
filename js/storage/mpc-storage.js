@@ -288,6 +288,76 @@ export async function getMpcSessionList() {
   }
 }
 
+// ==================== Wire States ====================
+
+function buildWireStateStorageKey({ sessionId, participantIndex, protocol, requestId = '' } = {}) {
+  const normalizedSessionId = String(sessionId || '').trim();
+  const normalizedParticipantIndex = String(participantIndex ?? '').trim();
+  const normalizedProtocol = String(protocol || '').trim();
+  const normalizedRequestId = String(requestId || '').trim();
+  if (!normalizedSessionId || !normalizedParticipantIndex || !normalizedProtocol) {
+    return '';
+  }
+  return [normalizedSessionId, normalizedParticipantIndex, normalizedProtocol, normalizedRequestId].join(':');
+}
+
+export async function getMpcWireStates() {
+  try {
+    return await getMap(MpcStorageKeys.MPC_WIRE_STATES);
+  } catch (error) {
+    logError('mpc-storage-get-wire-states', error);
+    return {};
+  }
+}
+
+export async function getMpcWireState(keyOrInput) {
+  try {
+    const key = typeof keyOrInput === 'string' ? keyOrInput : buildWireStateStorageKey(keyOrInput);
+    if (!key) return null;
+    return await getMapItem(MpcStorageKeys.MPC_WIRE_STATES, key);
+  } catch (error) {
+    logError('mpc-storage-get-wire-state', error);
+    return null;
+  }
+}
+
+export async function saveMpcWireState(record) {
+  try {
+    const key = record?.id || buildWireStateStorageKey(record);
+    if (!record || !key) {
+      throw new Error('Invalid MPC wire state');
+    }
+    await setMapItem(MpcStorageKeys.MPC_WIRE_STATES, key, { ...record, id: key });
+  } catch (error) {
+    logError('mpc-storage-save-wire-state', error);
+    throw error;
+  }
+}
+
+export async function deleteMpcWireState(keyOrInput) {
+  try {
+    const key = typeof keyOrInput === 'string' ? keyOrInput : buildWireStateStorageKey(keyOrInput);
+    if (!key) return;
+    await deleteMapItem(MpcStorageKeys.MPC_WIRE_STATES, key);
+  } catch (error) {
+    logError('mpc-storage-delete-wire-state', error);
+    throw error;
+  }
+}
+
+export async function getMpcWireStateList(sessionId = '') {
+  try {
+    const states = await getMpcWireStates();
+    const list = Object.values(states);
+    const normalizedSessionId = String(sessionId || '').trim();
+    if (!normalizedSessionId) return list;
+    return list.filter(item => String(item?.sessionId || '').trim() === normalizedSessionId);
+  } catch (error) {
+    logError('mpc-storage-get-wire-state-list', error);
+    return [];
+  }
+}
+
 // ==================== Sign Requests ====================
 
 export async function getMpcSignRequests() {

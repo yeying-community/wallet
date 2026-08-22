@@ -13,6 +13,7 @@ import { normalizeChainId } from '../common/chain/index.js';
 import { normalizePopupBounds } from './window-utils.js';
 import { backupSyncService } from './sync-service.js';
 import { mpcService } from './mpc-service.js';
+import { ensureCggmp24RuntimeInstalled } from './mpc-cggmp24-runtime.js';
 import { ensureApprovalStateHydrated } from './approval-flow.js';
 import { diagnostics } from './diagnostics.js';
 
@@ -35,6 +36,9 @@ async function init() {
     await ensureApprovalStateHydrated();
     await updateKeepAlive();
     await backupSyncService.init();
+    await ensureCggmp24RuntimeInstalled().catch((error) => {
+      console.warn('[MPC] cggmp24 WASM runtime not available:', error?.message || error);
+    });
     await mpcService.init();
     const seededNetworks = await ensureDefaultNetworks(NETWORKS);
 

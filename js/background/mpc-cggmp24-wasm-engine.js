@@ -18,6 +18,13 @@ function requireFunction(target, name) {
   return target[name].bind(target);
 }
 
+function requireExport(target, name) {
+  if (!target || typeof target[name] !== 'function') {
+    throw new Error('MPC_CGGMP24_WASM_NOT_LOADED');
+  }
+  return target[name];
+}
+
 function parseJson(value, fallback = null) {
   if (value == null || value === '') return fallback;
   if (typeof value === 'object') return value;
@@ -26,6 +33,27 @@ function parseJson(value, fallback = null) {
 
 function stringifyJson(value) {
   return typeof value === 'string' ? value : JSON.stringify(value ?? {});
+}
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value ?? null));
+}
+
+function generateSeedHex() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function createSessionWithSeed(Session, args, seedHex) {
+  if (typeof Session.newWithSeed === 'function') {
+    return Session.newWithSeed(...args, seedHex);
+  }
+  return new Session(...args);
+}
+
+function supportsSeededSession(Session) {
+  return typeof Session?.newWithSeed === 'function';
 }
 
 export class Cggmp24WasmEngine {
@@ -93,23 +121,28 @@ export class Cggmp24WasmEngine {
     if (!Number.isInteger(partyCount) || partyCount <= 0) {
       throw new Error('INVALID_MPC_PARTICIPANT_COUNT');
     }
-    if (!Number.isInteger(normalizedThreshold) || normalizedThreshold <= 0 || normalizedThreshold > partyCount) {
+    if (!Number.isInteger(normalizedThreshold) || normalizedThreshold < 2 || normalizedThreshold > partyCount) {
       throw new Error('INVALID_MPC_THRESHOLD');
     }
-    const Session = requireFunction(this._wasm, 'Cggmp24ThresholdKeygenSession');
-    const wasmSession = new Session(
-      normalizedSessionId,
-      normalizedSenderIndex,
-      partyCount,
-      normalizedThreshold
+    const Session = requireExport(this._wasm, 'Cggmp24ThresholdKeygenSession');
+    const seedHex = generateSeedHex();
+    const seeded = supportsSeededSession(Session);
+    const wasmSession = createSessionWithSeed(
+      Session,
+      [normalizedSessionId, normalizedSenderIndex, partyCount, normalizedThreshold],
+      seedHex
     );
     const state = {
       protocol: 'keygen',
       sessionId: normalizedSessionId,
       senderIndex: normalizedSenderIndex,
       parties: Array.isArray(parties) ? [...parties] : [],
+      partyCount,
       threshold: normalizedThreshold,
       curve,
+      seedHex,
+      seeded,
+      processedMessages: [],
       wasmSession
     };
     this._sessions.set(normalizedSessionId, state);
@@ -144,23 +177,33 @@ export class Cggmp24WasmEngine {
     if (!messageHex) {
       throw new Error('MPC_CGGMP24_SIGNING_MESSAGE_HEX_REQUIRED');
     }
-    const Session = requireFunction(this._wasm, 'Cggmp24SigningSession');
-    const wasmSession = new Session(
-      normalizedSessionId,
-      String(requestId || ''),
-      normalizedSenderIndex,
-      stringifyJson(normalizedParties),
-      stringifyJson(keyShare),
-      messageHex
+    const Session = requireExport(this._wasm, 'Cggmp24SigningSession');
+    const normalizedRequestId = String(requestId || '');
+    const seedHex = generateSeedHex();
+    const seeded = supportsSeededSession(Session);
+    const wasmSession = createSessionWithSeed(
+      Session,
+      [
+        normalizedSessionId,
+        normalizedRequestId,
+        normalizedSenderIndex,
+        stringifyJson(normalizedParties),
+        stringifyJson(keyShare),
+        messageHex
+      ],
+      seedHex
     );
     const state = {
       protocol: 'sign',
       sessionId: normalizedSessionId,
-      requestId: String(requestId || ''),
+      requestId: normalizedRequestId,
       senderIndex: normalizedSenderIndex,
       parties: normalizedParties,
-      payload,
-      keyShareRef,
+      payload: cloneJson(payload),
+      keyShareRef: cloneJson(keyShareRef),
+      seedHex,
+      seeded,
+      processedMessages: [],
       wasmSession
     };
     this._sessions.set(normalizedSessionId, state);
@@ -184,18 +227,24 @@ export class Cggmp24WasmEngine {
     if (!Number.isInteger(partyCount) || partyCount <= 0) {
       throw new Error('INVALID_MPC_PARTICIPANT_COUNT');
     }
-    const Session = requireFunction(this._wasm, 'Cggmp24AuxInfoSession');
-    const wasmSession = new Session(
-      normalizedSessionId,
-      normalizedSenderIndex,
-      partyCount
+    const Session = requireExport(this._wasm, 'Cggmp24AuxInfoSession');
+    const seedHex = generateSeedHex();
+    const seeded = supportsSeededSession(Session);
+    const wasmSession = createSessionWithSeed(
+      Session,
+      [normalizedSessionId, normalizedSenderIndex, partyCount],
+      seedHex
     );
     const state = {
       protocol: 'aux-info',
       sessionId: normalizedSessionId,
       senderIndex: normalizedSenderIndex,
       parties: Array.isArray(parties) ? [...parties] : [],
+      partyCount,
       curve,
+      seedHex,
+      seeded,
+      processedMessages: [],
       wasmSession
     };
     this._sessions.set(normalizedSessionId, state);
@@ -208,7 +257,12 @@ export class Cggmp24WasmEngine {
     if (!['keygen', 'aux-info', 'sign'].includes(sessionState.protocol)) {
       throw new Error('MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED');
     }
-    sessionState.wasmSession.receiveWireMessageJson(stringifyJson(message));
+    const wireMessage = cloneJson(message);
+    sessionState.wasmSession.receiveWireMessageJson(stringifyJson(wireMessage));
+    sessionState.processedMessages = Array.isArray(sessionState.processedMessages)
+      ? sessionState.processedMessages
+      : [];
+    sessionState.processedMessages.push(wireMessage);
     return sessionState;
   }
 
@@ -218,6 +272,9 @@ export class Cggmp24WasmEngine {
       throw new Error('MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED');
     }
     sessionState.lastAdvance = parseJson(sessionState.wasmSession.advanceJson(maxSteps), {});
+    if (sessionState.lastAdvance?.error) {
+      throw new Error(String(sessionState.lastAdvance.error));
+    }
     return sessionState;
   }
 
@@ -277,6 +334,52 @@ export class Cggmp24WasmEngine {
     };
   }
 
+  async exportState({ sessionId, state } = {}) {
+    const sessionState = this._resolveSessionState(sessionId, state);
+    const {
+      wasmSession,
+      lastAdvance,
+      ...persistable
+    } = sessionState;
+    return {
+      ...cloneJson(persistable),
+      engine: 'cggmp24',
+      version: 1,
+      persistable: Boolean(sessionState.seedHex && sessionState.seeded),
+      requiresEngineImport: true,
+      updatedAt: Date.now()
+    };
+  }
+
+  async importState(snapshot) {
+    if (!snapshot || snapshot.engine !== 'cggmp24') {
+      throw new Error('MPC_CGGMP24_INVALID_STATE_SNAPSHOT');
+    }
+    if (!snapshot.seedHex) {
+      throw new Error('MPC_CGGMP24_STATE_SEED_REQUIRED');
+    }
+    if (!snapshot.seeded) {
+      throw new Error('MPC_CGGMP24_STATE_SEEDED_SESSION_REQUIRED');
+    }
+    const state = this._createStateFromSnapshot(snapshot);
+    this._sessions.set(state.sessionId, state);
+
+    await this.advance({ sessionId: state.sessionId, state });
+    state.wasmSession.drainOutgoingJson();
+
+    const processedMessages = Array.isArray(snapshot.processedMessages)
+      ? cloneJson(snapshot.processedMessages)
+      : [];
+    state.processedMessages = [];
+    for (const message of processedMessages) {
+      state.wasmSession.receiveWireMessageJson(stringifyJson(message));
+      await this.advance({ sessionId: state.sessionId, state });
+      state.wasmSession.drainOutgoingJson();
+    }
+    state.processedMessages = processedMessages;
+    return state;
+  }
+
   _resolveSessionState(sessionId, state) {
     const normalizedSessionId = String(sessionId || state?.sessionId || '').trim();
     if (!normalizedSessionId) {
@@ -287,6 +390,104 @@ export class Cggmp24WasmEngine {
       throw new Error('MPC_TSS_SESSION_NOT_STARTED');
     }
     return sessionState;
+  }
+
+  _createStateFromSnapshot(snapshot) {
+    const protocol = String(snapshot.protocol || '').trim();
+    const sessionId = String(snapshot.sessionId || '').trim();
+    const senderIndex = Number(snapshot.senderIndex);
+    if (!sessionId) {
+      throw new Error('MPC_SESSION_ID_REQUIRED');
+    }
+    if (!Number.isInteger(senderIndex) || senderIndex < 0) {
+      throw new Error('INVALID_MPC_PARTICIPANT_INDEX');
+    }
+    if (protocol === 'keygen') {
+      const Session = requireExport(this._wasm, 'Cggmp24ThresholdKeygenSession');
+      if (!supportsSeededSession(Session)) {
+        throw new Error('MPC_CGGMP24_STATE_SEEDED_SESSION_REQUIRED');
+      }
+      const partyCount = Number(snapshot.partyCount || snapshot.parties?.length || 0);
+      const threshold = Number(snapshot.threshold);
+      const wasmSession = createSessionWithSeed(
+        Session,
+        [sessionId, senderIndex, partyCount, threshold],
+        snapshot.seedHex
+      );
+      return {
+        ...cloneJson(snapshot),
+        protocol,
+        sessionId,
+        senderIndex,
+        partyCount,
+        threshold,
+        processedMessages: [],
+        wasmSession
+      };
+    }
+    if (protocol === 'aux-info') {
+      const Session = requireExport(this._wasm, 'Cggmp24AuxInfoSession');
+      if (!supportsSeededSession(Session)) {
+        throw new Error('MPC_CGGMP24_STATE_SEEDED_SESSION_REQUIRED');
+      }
+      const partyCount = Number(snapshot.partyCount || snapshot.parties?.length || 0);
+      const wasmSession = createSessionWithSeed(
+        Session,
+        [sessionId, senderIndex, partyCount],
+        snapshot.seedHex
+      );
+      return {
+        ...cloneJson(snapshot),
+        protocol,
+        sessionId,
+        senderIndex,
+        partyCount,
+        processedMessages: [],
+        wasmSession
+      };
+    }
+    if (protocol === 'sign') {
+      const Session = requireExport(this._wasm, 'Cggmp24SigningSession');
+      if (!supportsSeededSession(Session)) {
+        throw new Error('MPC_CGGMP24_STATE_SEEDED_SESSION_REQUIRED');
+      }
+      const requestId = String(snapshot.requestId || '');
+      const parties = Array.isArray(snapshot.parties) ? snapshot.parties.map((item) => Number(item)) : [];
+      const keyShare = snapshot.keyShareRef?.completeKeyShare
+        || snapshot.keyShareRef?.keyShare
+        || snapshot.keyShareRef?.share
+        || null;
+      const messageHex = String(
+        snapshot.payload?.messageHex
+        || snapshot.payload?.dataHex
+        || snapshot.payload?.transactionHash
+        || snapshot.payload?.hash
+        || ''
+      ).trim();
+      const wasmSession = createSessionWithSeed(
+        Session,
+        [
+          sessionId,
+          requestId,
+          senderIndex,
+          stringifyJson(parties),
+          stringifyJson(keyShare),
+          messageHex
+        ],
+        snapshot.seedHex
+      );
+      return {
+        ...cloneJson(snapshot),
+        protocol,
+        sessionId,
+        requestId,
+        senderIndex,
+        parties,
+        processedMessages: [],
+        wasmSession
+      };
+    }
+    throw new Error('MPC_CGGMP24_UNKNOWN_PROTOCOL');
   }
 }
 

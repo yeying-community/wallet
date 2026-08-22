@@ -16,9 +16,13 @@ function requireFunction(target, name) {
 }
 
 export class MpcTssStateMachineAdapter {
-  constructor({ engine: wasmEngine, transport } = {}) {
+  constructor({ engine: wasmEngine, transport, stateStore, protocol = '', senderIndex = null, requestId = '' } = {}) {
     this._engine = wasmEngine || null;
     this._transport = transport || null;
+    this._stateStore = stateStore || null;
+    this._protocol = String(protocol || '').trim();
+    this._senderIndex = senderIndex;
+    this._requestId = String(requestId || '').trim();
     this._sessions = new Map();
   }
 
@@ -63,7 +67,7 @@ export class MpcTssStateMachineAdapter {
     if (!normalizedSessionId) {
       throw new Error('MPC_SESSION_ID_REQUIRED');
     }
-    const state = this._sessions.get(normalizedSessionId);
+    const state = await this._getSessionState(normalizedSessionId);
     if (!state) {
       throw new Error('MPC_TSS_SESSION_NOT_STARTED');
     }
@@ -74,7 +78,7 @@ export class MpcTssStateMachineAdapter {
       state,
       message: wireMessage
     });
-    this._sessions.set(normalizedSessionId, nextState || state);
+    await this._setSessionState(normalizedSessionId, nextState || state);
     return await this.advance({ sessionId: normalizedSessionId });
   }
 
@@ -83,19 +87,19 @@ export class MpcTssStateMachineAdapter {
     if (!normalizedSessionId) {
       throw new Error('MPC_SESSION_ID_REQUIRED');
     }
-    const state = this._sessions.get(normalizedSessionId);
+    const state = await this._getSessionState(normalizedSessionId);
     if (!state) {
       throw new Error('MPC_TSS_SESSION_NOT_STARTED');
     }
     const advance = requireFunction(this._engine, 'advance');
     const nextState = await advance({ sessionId: normalizedSessionId, state });
-    this._sessions.set(normalizedSessionId, nextState || state);
+    await this._setSessionState(normalizedSessionId, nextState || state);
     return await this._flushOutgoing({ sessionId: normalizedSessionId, state: nextState || state });
   }
 
   async getResult({ sessionId } = {}) {
     const normalizedSessionId = String(sessionId || '').trim();
-    const state = this._sessions.get(normalizedSessionId);
+    const state = await this._getSessionState(normalizedSessionId);
     if (!state) {
       throw new Error('MPC_TSS_SESSION_NOT_STARTED');
     }
@@ -113,8 +117,75 @@ export class MpcTssStateMachineAdapter {
       protocol,
       senderIndex
     };
-    this._sessions.set(normalizedSessionId, nextState);
+    await this._setSessionState(normalizedSessionId, nextState);
     return await this._flushOutgoing({ sessionId: normalizedSessionId, state: nextState });
+  }
+
+  async _getSessionState(sessionId) {
+    const normalizedSessionId = String(sessionId || '').trim();
+    if (!normalizedSessionId) return null;
+    const cached = this._sessions.get(normalizedSessionId);
+    if (cached) return cached;
+    if (!this._stateStore || typeof this._stateStore.load !== 'function') {
+      return null;
+    }
+    const record = await this._stateStore.load({
+      sessionId: normalizedSessionId,
+      protocol: this._protocol,
+      senderIndex: this._senderIndex,
+      requestId: this._requestId
+    });
+    const snapshot = record?.snapshot;
+    if (!snapshot) return null;
+    if (snapshot.persistable === false) {
+      throw new Error(snapshot.reason || 'MPC_TSS_STATE_NOT_PERSISTABLE');
+    }
+    let state = snapshot;
+    if (this._engine && typeof this._engine.importState === 'function') {
+      state = await this._engine.importState(snapshot);
+    } else if (snapshot?.requiresEngineImport) {
+      throw new Error('MPC_TSS_STATE_RESTORE_UNSUPPORTED');
+    }
+    this._sessions.set(normalizedSessionId, state);
+    return state;
+  }
+
+  async _setSessionState(sessionId, state) {
+    const normalizedSessionId = String(sessionId || '').trim();
+    if (!normalizedSessionId) {
+      throw new Error('MPC_SESSION_ID_REQUIRED');
+    }
+    this._sessions.set(normalizedSessionId, state);
+    if (!this._stateStore || typeof this._stateStore.save !== 'function') {
+      return;
+    }
+    const snapshot = await this._exportPersistableState(normalizedSessionId, state);
+    await this._stateStore.save({
+      sessionId: normalizedSessionId,
+      protocol: state?.protocol || this._protocol,
+      senderIndex: state?.senderIndex ?? this._senderIndex,
+      requestId: state?.requestId || this._requestId,
+      snapshot
+    });
+  }
+
+  async _exportPersistableState(sessionId, state) {
+    if (this._engine && typeof this._engine.exportState === 'function') {
+      return await this._engine.exportState({ sessionId, state });
+    }
+    if (state?.wasmSession) {
+      return {
+        requiresEngineImport: true,
+        persistable: false,
+        reason: 'MPC_TSS_STATE_NOT_PERSISTABLE',
+        protocol: state.protocol,
+        sessionId,
+        senderIndex: state.senderIndex,
+        requestId: state.requestId || '',
+        updatedAt: Date.now()
+      };
+    }
+    return JSON.parse(JSON.stringify(state || {}));
   }
 
   async _flushOutgoing({ sessionId, state }) {

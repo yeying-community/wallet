@@ -1,7 +1,8 @@
 use cggmp24::key_share::AnyKeyShare;
 use cggmp24::supported_curves::Secp256k1;
 use cggmp24::{aux_info_gen, signing, trusted_dealer, DataToSign, ExecutionId, KeyShare, Signature};
-use rand::rngs::OsRng;
+use rand::rngs::{OsRng, StdRng};
+use rand::SeedableRng;
 use round_based::state_machine::{ProceedResult, StateMachine};
 use round_based::{Incoming, MessageDestination, MessageType};
 use serde::{Deserialize, Serialize};
@@ -11,6 +12,15 @@ use wasm_bindgen::prelude::*;
 
 pub const ENGINE_ID: &str = "cggmp24";
 pub const PROTOCOL_VERSION: u32 = 1;
+
+fn rng_from_seed_hex(seed_hex: &str) -> Result<StdRng, JsValue> {
+    let trimmed = seed_hex.trim().strip_prefix("0x").unwrap_or(seed_hex.trim());
+    let bytes = hex::decode(trimmed).map_err(to_js_error)?;
+    let seed: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| JsValue::from_str("MPC_CGGMP24_INVALID_SEED"))?;
+    Ok(StdRng::from_seed(seed))
+}
 
 #[derive(Clone)]
 pub struct SpikeSecurityLevel;
@@ -376,13 +386,54 @@ impl Cggmp24ThresholdKeygenSession {
         if party_count == 0 || sender_index >= party_count {
             return Err(JsValue::from_str("INVALID_MPC_PARTICIPANT_INDEX"));
         }
-        if threshold == 0 || threshold > party_count {
+        if threshold < 2 || threshold > party_count {
             return Err(JsValue::from_str("INVALID_MPC_THRESHOLD"));
         }
 
         let eid_bytes = format!("{}:keygen:0", session_id).into_bytes();
         let eid_bytes: &'static [u8] = Box::leak(eid_bytes.into_boxed_slice());
         let rng: &'static mut OsRng = Box::leak(Box::new(OsRng));
+        let state = cggmp24_keygen::KeygenBuilder::<
+            Secp256k1,
+            SpikeSecurityLevel,
+            Sha256,
+        >::new(cggmp24_keygen::ExecutionId::new(eid_bytes), sender_index, party_count)
+        .set_threshold(threshold)
+        .enforce_reliable_broadcast(false)
+        .into_state_machine(rng);
+
+        Ok(Cggmp24ThresholdKeygenSession {
+            session_id,
+            sender_index,
+            state: Some(Box::new(state)),
+            outgoing: Vec::new(),
+            result: None,
+            status: "running".to_string(),
+            error: None,
+        })
+    }
+
+    #[wasm_bindgen(js_name = newWithSeed)]
+    pub fn new_with_seed(
+        session_id: String,
+        sender_index: u16,
+        party_count: u16,
+        threshold: u16,
+        seed_hex: String,
+    ) -> Result<Cggmp24ThresholdKeygenSession, JsValue> {
+        if session_id.trim().is_empty() {
+            return Err(JsValue::from_str("MPC_SESSION_ID_REQUIRED"));
+        }
+        if party_count == 0 || sender_index >= party_count {
+            return Err(JsValue::from_str("INVALID_MPC_PARTICIPANT_INDEX"));
+        }
+        if threshold < 2 || threshold > party_count {
+            return Err(JsValue::from_str("INVALID_MPC_THRESHOLD"));
+        }
+
+        let eid_bytes = format!("{}:keygen:0", session_id).into_bytes();
+        let eid_bytes: &'static [u8] = Box::leak(eid_bytes.into_boxed_slice());
+        let rng: &'static mut StdRng = Box::leak(Box::new(rng_from_seed_hex(&seed_hex)?));
         let state = cggmp24_keygen::KeygenBuilder::<
             Secp256k1,
             SpikeSecurityLevel,
@@ -585,6 +636,45 @@ impl Cggmp24AuxInfoSession {
         })
     }
 
+    #[wasm_bindgen(js_name = newWithSeed)]
+    pub fn new_with_seed(
+        session_id: String,
+        sender_index: u16,
+        party_count: u16,
+        seed_hex: String,
+    ) -> Result<Cggmp24AuxInfoSession, JsValue> {
+        if session_id.trim().is_empty() {
+            return Err(JsValue::from_str("MPC_SESSION_ID_REQUIRED"));
+        }
+        if party_count == 0 || sender_index >= party_count {
+            return Err(JsValue::from_str("INVALID_MPC_PARTICIPANT_INDEX"));
+        }
+
+        let eid_bytes = format!("{}:aux-info:0", session_id).into_bytes();
+        let eid_bytes: &'static [u8] = Box::leak(eid_bytes.into_boxed_slice());
+        let rng: &'static mut StdRng = Box::leak(Box::new(rng_from_seed_hex(&seed_hex)?));
+        let pregenerated =
+            cggmp24::key_refresh::PregeneratedPrimes::<SpikeSecurityLevel>::generate(rng);
+        let state = aux_info_gen::<SpikeSecurityLevel>(
+            ExecutionId::new(eid_bytes),
+            sender_index,
+            party_count,
+            pregenerated,
+        )
+        .set_digest::<Sha256>()
+        .into_state_machine(rng);
+
+        Ok(Cggmp24AuxInfoSession {
+            session_id,
+            sender_index,
+            state: Some(Box::new(state)),
+            outgoing: Vec::new(),
+            result: None,
+            status: "running".to_string(),
+            error: None,
+        })
+    }
+
     #[wasm_bindgen(js_name = advanceJson)]
     pub fn advance_json(&mut self, max_steps: u32) -> Result<String, JsValue> {
         let steps = max_steps.max(1).min(1000);
@@ -758,6 +848,55 @@ impl Cggmp24SigningSession {
         let message_to_sign: &'static DataToSign<Secp256k1> =
             Box::leak(Box::new(DataToSign::<Secp256k1>::digest::<Sha256>(&message)));
         let rng: &'static mut OsRng = Box::leak(Box::new(OsRng));
+        let state = signing(
+            ExecutionId::new(eid_bytes),
+            sender_index,
+            parties,
+            key_share,
+        )
+        .set_digest::<Sha256>()
+        .enforce_reliable_broadcast(false)
+        .sign_sync(rng, message_to_sign);
+
+        Ok(Cggmp24SigningSession {
+            session_id,
+            sender_index,
+            state: Some(Box::new(state)),
+            outgoing: Vec::new(),
+            result: None,
+            status: "running".to_string(),
+            error: None,
+        })
+    }
+
+    #[wasm_bindgen(js_name = newWithSeed)]
+    pub fn new_with_seed(
+        session_id: String,
+        request_id: String,
+        sender_index: u16,
+        parties_json: String,
+        key_share_json: String,
+        message_hex: String,
+        seed_hex: String,
+    ) -> Result<Cggmp24SigningSession, JsValue> {
+        if session_id.trim().is_empty() {
+            return Err(JsValue::from_str("MPC_SESSION_ID_REQUIRED"));
+        }
+        let parties: Vec<u16> = serde_json::from_str(&parties_json).map_err(to_js_error)?;
+        if parties.is_empty() || usize::from(sender_index) >= parties.len() {
+            return Err(JsValue::from_str("INVALID_MPC_PARTICIPANT_INDEX"));
+        }
+        let key_share: SecpKeyShare = serde_json::from_str(&key_share_json).map_err(to_js_error)?;
+        let message_hex = message_hex.trim().strip_prefix("0x").unwrap_or(message_hex.trim());
+        let message = hex::decode(message_hex).map_err(to_js_error)?;
+
+        let eid_bytes = format!("{}:sign:{}:0", session_id, request_id).into_bytes();
+        let eid_bytes: &'static [u8] = Box::leak(eid_bytes.into_boxed_slice());
+        let parties: &'static [u16] = Box::leak(parties.into_boxed_slice());
+        let key_share: &'static SecpKeyShare = Box::leak(Box::new(key_share));
+        let message_to_sign: &'static DataToSign<Secp256k1> =
+            Box::leak(Box::new(DataToSign::<Secp256k1>::digest::<Sha256>(&message)));
+        let rng: &'static mut StdRng = Box::leak(Box::new(rng_from_seed_hex(&seed_hex)?));
         let state = signing(
             ExecutionId::new(eid_bytes),
             sender_index,

@@ -55,6 +55,43 @@ test('loadMpcInvites 渲染待处理 MPC 邀请', async () => {
   assert.match(elements.mpcInvitesList.innerHTML, /团队金库/);
 });
 
+test('loadMpcInvites 在活动页无邀请列表时仍更新邀请状态', async () => {
+  const { document } = createDocument({
+    mpcLogsList: { tagName: 'div' },
+    mpcSettingsInviteHint: { tagName: 'p', _classes: 'hidden' },
+    mpcSettingsActivityBtn: { tagName: 'button', _classes: 'btn-secondary' },
+    globalWaitingOverlay: { tagName: 'div', _classes: 'hidden' },
+    globalToast: { tagName: 'div' },
+  });
+  globalThis.document = document;
+  globalThis.window = {
+    refreshWalletSelects: () => {},
+  };
+  const controller = new MpcSettingsController({
+    wallet: {
+      listMpcInvites: async () => ({
+        success: true,
+        items: [{
+          notificationUid: 'notification-1',
+          subjectId: 'session-1',
+          payload: {
+            name: '团队金库',
+            sessionId: 'session-1',
+            walletId: 'wallet-1',
+          },
+        }],
+      }),
+    },
+    requestPassword: async () => 'password123',
+  });
+
+  await controller.loadMpcInvites(false);
+
+  assert.equal(controller.mpcInvites.length, 1);
+  assert.equal(document.getElementById('mpcSettingsInviteHint').classList.contains('hidden'), false);
+  assert.match(document.getElementById('mpcSettingsInviteHint').textContent, /1 个待处理邀请/);
+});
+
 test('handleMpcInviteAccept 使用通知 payload 接受邀请', async () => {
   setup();
   let accepted = null;

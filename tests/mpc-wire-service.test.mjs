@@ -45,10 +45,12 @@ const {
   getMpcMessage,
   getMpcSession,
   getMpcSignRequest,
+  getMpcWireState,
   getMpcWallet,
   saveMpcKeyShare,
   saveMpcSession,
   saveMpcSignRequest,
+  saveMpcWireState,
   saveMpcWallet
 } = await import('../js/storage/index.js');
 
@@ -56,7 +58,110 @@ test.beforeEach(async () => {
   await chrome.storage.local.clear();
   mpcService._wireSessionCursors.clear();
   mpcService._wireSessionAdapters.clear();
+  for (const pump of mpcService._wireSessionPumps.values()) {
+    pump.stop?.();
+  }
+  mpcService._wireSessionPumps.clear();
   resetMpcTssEngineForTests();
+});
+
+test('MpcTssStateMachineAdapter persists and restores wire session state', async () => {
+  const stateStore = {
+    load: async ({ sessionId, protocol, senderIndex, requestId = '' }) => {
+      return await getMpcWireState({
+        sessionId,
+        protocol,
+        participantIndex: senderIndex,
+        requestId
+      });
+    },
+    save: async ({ sessionId, protocol, senderIndex, requestId = '', snapshot }) => {
+      await saveMpcWireState({
+        sessionId,
+        protocol,
+        participantIndex: senderIndex,
+        requestId,
+        snapshot,
+        updatedAt: 1
+      });
+    }
+  };
+  const received = [];
+  const engine = {
+    async startKeygen(input) {
+      return {
+        sessionId: input.sessionId,
+        protocol: 'keygen',
+        senderIndex: input.senderIndex,
+        parties: input.parties,
+        threshold: input.threshold,
+        counter: 1,
+        outgoing: []
+      };
+    },
+    async receiveMessage({ state, message }) {
+      received.push(message);
+      return {
+        ...state,
+        counter: Number(state.counter || 0) + 1,
+        result: { status: 'waiting' }
+      };
+    },
+    async advance({ state }) {
+      return state;
+    },
+    async getOutgoingMessages({ state }) {
+      const outgoing = state.outgoing || [];
+      state.outgoing = [];
+      return outgoing;
+    },
+    async getResult({ state }) {
+      return state.result || null;
+    }
+  };
+  const firstAdapter = new MpcTssStateMachineAdapter({
+    engine,
+    stateStore,
+    protocol: 'keygen',
+    senderIndex: 1
+  });
+  await firstAdapter.startKeygen({
+    sessionId: 'session-restore',
+    senderIndex: 1,
+    parties: [0, 1],
+    threshold: 1
+  });
+  const saved = await getMpcWireState({
+    sessionId: 'session-restore',
+    protocol: 'keygen',
+    participantIndex: 1
+  });
+  assert.equal(saved.snapshot.counter, 1);
+
+  const restoredAdapter = new MpcTssStateMachineAdapter({
+    engine,
+    stateStore,
+    protocol: 'keygen',
+    senderIndex: 1
+  });
+  await restoredAdapter.receiveMessage({
+    sessionId: 'session-restore',
+    message: createMpcWireMessage({
+      sessionId: 'session-restore',
+      protocol: 'keygen',
+      senderIndex: 0,
+      audience: { oneParty: { recipientIndex: 1 } },
+      payload: { Round1: { from: 0 } },
+      sequence: 2
+    })
+  });
+  const updated = await getMpcWireState({
+    sessionId: 'session-restore',
+    protocol: 'keygen',
+    participantIndex: 1
+  });
+  assert.equal(received.length, 1);
+  assert.equal(updated.snapshot.counter, 2);
 });
 
 test('tickWireSession polls wire messages, advances adapter, and stores sequence cursor', async () => {
@@ -286,6 +391,42 @@ test('startWireSession starts keygen and sign adapters through service transport
     });
   } finally {
     mpcService.sendWireMessage = originalSendWireMessage;
+  }
+});
+
+test('wire session pump keeps ticking until protocol state completes', async () => {
+  const originalTickWireSession = mpcService.tickWireSession;
+  const ticks = [];
+  mpcService.tickWireSession = async (options) => {
+    ticks.push(options);
+    return ticks.length >= 3
+      ? { messages: [], outputs: [], handledResult: { wallet: { status: 'keygen_completed' } } }
+      : { messages: [{ id: `message-${ticks.length}` }], outputs: [] };
+  };
+
+  try {
+    const started = mpcService._startWireSessionPump({
+      sessionId: 'session-pump',
+      protocol: 'keygen',
+      recipientIndex: 1,
+      intervalMs: 1,
+      maxTicks: 5,
+      maxIdleTicks: 5
+    });
+    assert.equal(started.started, true);
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    assert.equal(ticks.length, 3);
+    assert.equal(ticks[0].sessionId, 'session-pump');
+    assert.equal(ticks[0].protocol, 'keygen');
+    assert.equal(ticks[0].recipientIndex, 1);
+  } finally {
+    mpcService.tickWireSession = originalTickWireSession;
+    for (const pump of mpcService._wireSessionPumps.values()) {
+      pump.stop?.();
+    }
+    mpcService._wireSessionPumps.clear();
   }
 });
 

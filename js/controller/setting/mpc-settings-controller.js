@@ -95,7 +95,7 @@ export class MpcSettingsController {
     const mpcInvitesRefreshBtn = document.getElementById('mpcInvitesRefreshBtn');
     if (mpcInvitesRefreshBtn) {
       mpcInvitesRefreshBtn.addEventListener('click', async () => {
-        await this.loadMpcInvites(true);
+        await this.refreshMpcActivity();
       });
     }
     const mpcInvitesList = document.getElementById('mpcInvitesList');
@@ -734,8 +734,8 @@ export class MpcSettingsController {
       showError('请填写参与者列表');
       return;
     }
-    if (!Number.isFinite(threshold) || threshold <= 0) {
-      showError('门限必须大于 0');
+    if (!Number.isFinite(threshold) || threshold < 2) {
+      showError('门限必须至少为 2');
       return;
     }
     if (threshold > participants.length) {
@@ -1150,7 +1150,7 @@ export class MpcSettingsController {
 
   async loadMpcInvites(showToast = false) {
     const listEl = document.getElementById('mpcInvitesList');
-    if (!listEl || typeof this.wallet.listMpcInvites !== 'function') {
+    if (typeof this.wallet.listMpcInvites !== 'function') {
       return;
     }
     try {
@@ -1159,13 +1159,13 @@ export class MpcSettingsController {
         throw new Error(result?.error || '加载失败');
       }
       this.mpcInvites = Array.isArray(result.items) ? result.items : [];
-      this.renderMpcInvites(this.mpcInvites);
+      if (listEl) this.renderMpcInvites(this.mpcInvites);
       this.renderMpcInviteSummary();
       if (showToast) showSuccess('MPC 邀请已刷新');
     } catch (error) {
       console.error('[MpcSettings] 加载 MPC 邀请失败:', error);
       this.mpcInvites = [];
-      this.renderMpcInvites([], this.getMpcInviteLoadErrorMessage(error));
+      if (listEl) this.renderMpcInvites([], this.getMpcInviteLoadErrorMessage(error));
       this.renderMpcInviteSummary(error);
       if (showToast) showError('刷新失败: ' + error.message);
     }
@@ -1308,6 +1308,19 @@ export class MpcSettingsController {
       this.loadMpcSignRequests(false),
       this.loadMpcLogs()
     ]);
+  }
+
+  async refreshMpcActivity() {
+    try {
+      await Promise.all([
+        this.loadMpcInvites(false),
+        this.loadMpcSignRequests(false),
+        this.loadMpcLogs()
+      ]);
+      showSuccess('多签活动已刷新');
+    } catch (error) {
+      showError('刷新失败: ' + (error?.message || '未知错误'));
+    }
   }
 
   async loadMpcSignRequests(showToast = false) {

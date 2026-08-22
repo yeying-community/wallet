@@ -281,6 +281,149 @@ test('Cggmp24WasmEngine drives threshold keygen sessions through the TSS adapter
   });
 });
 
+test('Cggmp24WasmEngine rejects threshold below cggmp24 minimum', async () => {
+  const engine = new Cggmp24WasmEngine({
+    wasm: {
+      Cggmp24ThresholdKeygenSession: class {},
+      Cggmp24AuxInfoSession: class {},
+      Cggmp24SigningSession: class {},
+      cggmp24EngineMetadataJson: () => JSON.stringify({ engine: 'cggmp24' }),
+      normalizeWireMessageJson: (json) => json,
+      normalizeSigningPayloadJson: (json) => json,
+      normalizeThresholdKeygenPayloadJson: (json) => json,
+      normalizeAuxInfoPayloadJson: (json) => json,
+      coreKeySharePublicMaterialJson: () => JSON.stringify({}),
+      combineKeyShareJson: () => JSON.stringify({ status: 'completed' }),
+    },
+  });
+
+  await assert.rejects(
+    () => engine.startKeygen({
+      sessionId: 'session-threshold-1',
+      senderIndex: 0,
+      parties: [0, 1],
+      threshold: 1,
+    }),
+    /INVALID_MPC_THRESHOLD/
+  );
+});
+
+test('Cggmp24WasmEngine exports and imports seeded keygen state with replayed messages', async () => {
+  const calls = [];
+  class SeededKeygenSession {
+    constructor(sessionId, senderIndex, partyCount, threshold, seedHex = '') {
+      this.sessionId = sessionId;
+      this.senderIndex = senderIndex;
+      this.partyCount = partyCount;
+      this.threshold = threshold;
+      this.seedHex = seedHex;
+      this.outgoing = [{ audience: 'all-parties', payload: { Round1: { from: senderIndex, seedHex } } }];
+      this.result = null;
+    }
+
+    static newWithSeed(sessionId, senderIndex, partyCount, threshold, seedHex) {
+      calls.push(['newWithSeed', sessionId, senderIndex, partyCount, threshold, seedHex]);
+      return new SeededKeygenSession(sessionId, senderIndex, partyCount, threshold, seedHex);
+    }
+
+    advanceJson() {
+      if (this.seenMessage) {
+        this.outgoing.push({
+          audience: { 'one-party': { recipient_index: this.seenMessage.sender_index } },
+          payload: { Round2Uni: { from: this.senderIndex, seedHex: this.seedHex } },
+        });
+        this.result = { shared_public_key: '03abcdef', i: this.senderIndex };
+      }
+      return JSON.stringify({ status: this.result ? 'completed' : 'waiting' });
+    }
+
+    receiveWireMessageJson(json) {
+      this.seenMessage = JSON.parse(json);
+      calls.push(['receive', this.seenMessage.sequence]);
+      return JSON.stringify({ status: 'running' });
+    }
+
+    drainOutgoingJson() {
+      const outgoing = this.outgoing;
+      this.outgoing = [];
+      return JSON.stringify(outgoing);
+    }
+
+    resultJson() {
+      return JSON.stringify(this.result);
+    }
+  }
+
+  const wasm = {
+    Cggmp24ThresholdKeygenSession: SeededKeygenSession,
+    Cggmp24AuxInfoSession: class {},
+    Cggmp24SigningSession: class {},
+    cggmp24EngineMetadataJson: () => JSON.stringify({ engine: 'cggmp24' }),
+    normalizeWireMessageJson: (json) => json,
+    normalizeSigningPayloadJson: (json) => json,
+    normalizeThresholdKeygenPayloadJson: (json) => json,
+    normalizeAuxInfoPayloadJson: (json) => json,
+    coreKeySharePublicMaterialJson: () => JSON.stringify({
+      curve: 'secp256k1',
+      compressedPublicKeyHex: '03abcdef',
+      uncompressedPublicKeyHex: `04${'22'.repeat(64)}`,
+      ethereumAddress: '0x2222222222222222222222222222222222222222',
+    }),
+    combineKeyShareJson: () => JSON.stringify({ status: 'completed' }),
+  };
+  const firstEngine = new Cggmp24WasmEngine({ wasm });
+  const started = await firstEngine.startKeygen({
+    sessionId: 'session-seeded',
+    senderIndex: 1,
+    parties: [0, 1],
+    threshold: 2,
+  });
+  const firstOutgoing = await firstEngine.getOutgoingMessages({ sessionId: 'session-seeded', state: started });
+  assert.equal(firstOutgoing.length, 1);
+
+  await firstEngine.receiveMessage({
+    sessionId: 'session-seeded',
+    state: started,
+    message: {
+      protocol_version: 1,
+      engine: 'cggmp24',
+      session_id: 'session-seeded',
+      protocol: 'keygen',
+      sequence: 7,
+      sender_index: 0,
+      audience: 'all-parties',
+      payload: { Round1: { from: 0 } },
+    },
+  });
+  await firstEngine.advance({ sessionId: 'session-seeded', state: started });
+
+  const snapshot = await firstEngine.exportState({ sessionId: 'session-seeded', state: started });
+  assert.equal(snapshot.engine, 'cggmp24');
+  assert.equal(snapshot.persistable, true);
+  assert.match(snapshot.seedHex, /^[0-9a-f]{64}$/);
+  assert.equal(snapshot.processedMessages.length, 1);
+  assert.equal(snapshot.processedMessages[0].sequence, 7);
+
+  const restoredEngine = new Cggmp24WasmEngine({ wasm });
+  const restored = await restoredEngine.importState(snapshot);
+  assert.equal(restored.seedHex, snapshot.seedHex);
+  assert.equal(restored.processedMessages.length, 1);
+  assert.deepEqual(await restoredEngine.getOutgoingMessages({ sessionId: 'session-seeded', state: restored }), []);
+  assert.deepEqual(await restoredEngine.getResult({ sessionId: 'session-seeded', state: restored }), {
+    status: 'completed',
+    keyShare: { shared_public_key: '03abcdef', i: 1 },
+    share: { shared_public_key: '03abcdef', i: 1 },
+    publicKey: '03abcdef',
+    groupPublicKey: '03abcdef',
+    uncompressedPublicKey: `04${'22'.repeat(64)}`,
+    address: '0x2222222222222222222222222222222222222222',
+    walletAddress: '0x2222222222222222222222222222222222222222',
+    curve: 'secp256k1',
+    threshold: 2,
+  });
+  assert.equal(calls.filter(([name]) => name === 'newWithSeed').length, 2);
+});
+
 test('Cggmp24WasmEngine drives aux-info sessions through the TSS adapter contract', async () => {
   class FakeAuxInfoSession {
     constructor(sessionId, senderIndex, partyCount) {

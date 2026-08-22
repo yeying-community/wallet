@@ -31,6 +31,7 @@ const MPC_AUTH_SCHEMES = new Set(['ucan']);
 const MPC_E2E_SUITES = new Set(['x25519-aes-gcm']);
 const MPC_REFRESH_POLICIES = new Set(['manual']);
 const INVALID_MPC_WALLET_NAMES = new Set(['MPC 钱包创建邀请', 'MPC 钱包邀请']);
+const MPC_KEYGEN_STARTABLE_SESSION_STATUSES = new Set(['ready', 'running', 'rounds', 'in_progress', 'in-progress']);
 
 function isRemoteSessionCleanupBlockedError(error) {
   const message = String(error?.message || error || '').trim();
@@ -48,6 +49,10 @@ function isRemoteSessionCleanupBlockedError(error) {
 
 function isMpcWalletCreated(wallet) {
   return String(wallet?.status || '').trim() === 'active' || Boolean(String(wallet?.address || '').trim());
+}
+
+function isKeygenStartableSession(session) {
+  return MPC_KEYGEN_STARTABLE_SESSION_STATUSES.has(String(session?.status || '').trim().toLowerCase());
 }
 
 function normalizeIgnoredInviteIds(value) {
@@ -113,8 +118,8 @@ export async function handleCreateMpcWallet(options = {}) {
     if (!participants.length) {
       throw new Error('参与者不能为空');
     }
-    if (!Number.isFinite(threshold) || threshold <= 0) {
-      throw new Error('门限必须大于 0');
+    if (!Number.isFinite(threshold) || threshold < 2) {
+      throw new Error('门限必须至少为 2');
     }
     if (threshold > participants.length) {
       throw new Error('门限不能大于参与者数量');
@@ -182,6 +187,12 @@ export async function handleCreateMpcWallet(options = {}) {
 
     await saveMpcWallet(wallet);
     await mpcService.syncWalletFromSession(sessionResult.session || wallet.keygenSessionId).catch(() => null);
+    if (isKeygenStartableSession(sessionResult.session)) {
+      await mpcService.startKeygenSession({
+        sessionId: wallet.keygenSessionId,
+        password: options.password
+      }).catch(() => null);
+    }
 
     return {
       success: true,
@@ -504,6 +515,12 @@ export async function handleMpcAcceptInvite(options = {}) {
       });
     }
     await mpcService.syncWalletFromSession(joinResult.session || sessionId).catch(() => null);
+    if (isKeygenStartableSession(joinResult.session)) {
+      await mpcService.startKeygenSession({
+        sessionId,
+        password: options.password
+      }).catch(() => null);
+    }
 
     if (notificationUid) {
       await mpcService.markInviteRead(notificationUid).catch(() => null);

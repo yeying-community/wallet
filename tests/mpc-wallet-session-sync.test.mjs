@@ -42,7 +42,9 @@ const {
   getMpcSession,
   getMpcSignRequest,
   getMpcKeyShare,
+  getMpcParticipant,
   saveAccount,
+  saveMpcKeyShare,
   saveMpcParticipant,
   saveMpcSignRequest,
   saveMpcSession,
@@ -53,6 +55,10 @@ const {
 test.beforeEach(async () => {
   await chrome.storage.local.clear();
   state.keyring = null;
+  for (const pump of mpcService._wireSessionPumps.values()) {
+    pump.stop?.();
+  }
+  mpcService._wireSessionPumps.clear();
   resetMpcTssEngineForTests();
 });
 
@@ -171,6 +177,102 @@ test('ready session 会把本地 MPC 钱包状态收敛为等待密钥生成', a
   const wallet = await getMpcWallet('mpc-wallet-1');
   assert.equal(wallet.status, 'keygen_ready');
   assert.equal(wallet.address || '', '');
+});
+
+test('rounds session 不会把已有地址的钱包降级回密钥生成中', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: '团队金库',
+    type: 'mpc',
+    status: 'keygen_running',
+    address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093',
+    publicKey: '03abcdef',
+    keygenSessionId: 'session-1',
+    threshold: 2,
+    participants: ['0x1', '0x2'],
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+
+  await mpcService.syncWalletFromSession({
+    id: 'session-1',
+    name: '团队金库',
+    type: 'keygen',
+    walletId: 'mpc-wallet-1',
+    status: 'rounds',
+    threshold: 2,
+    participants: ['0x1', '0x2'],
+  });
+
+  const wallet = await getMpcWallet('mpc-wallet-1');
+  assert.equal(wallet.status, 'keygen_completed');
+  assert.equal(wallet.address, '0xfd608b60f57f1cade5006faaca5f8df812a0e093');
+});
+
+test('本地已完成 keygen 的钱包同步后会自动继续 aux-info 启用签名', async () => {
+  await saveAccount({
+    id: 'account-1',
+    walletId: 'wallet-1',
+    address: '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+  });
+  await setSelectedAccountId('account-1');
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: '团队金库',
+    type: 'mpc',
+    status: 'keygen_running',
+    address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093',
+    publicKey: '03abcdef',
+    keygenSessionId: 'session-1',
+    threshold: 2,
+    participants: [
+      '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    ],
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcKeyShare({
+    id: 'mpc-wallet-1:0x5c7bf91C493126314bb821C123Dee889FFCa3932:1',
+    walletId: 'mpc-wallet-1',
+    sessionId: 'session-1',
+    participantId: '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    participantIndex: 1,
+    curve: 'secp256k1',
+    publicKey: '03abcdef',
+    address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093',
+    share: { fixture: true },
+    keyVersion: 1,
+    shareVersion: 1,
+  });
+
+  const originalStartAuxInfo = mpcService._startAuxInfoAfterWireKeygen;
+  let auxInfoInput = null;
+  mpcService._startAuxInfoAfterWireKeygen = async (input) => {
+    auxInfoInput = input;
+    return { started: true };
+  };
+  try {
+    await mpcService.syncWalletFromSession({
+      id: 'session-1',
+      name: '团队金库',
+      type: 'keygen',
+      walletId: 'mpc-wallet-1',
+      status: 'rounds',
+      threshold: 2,
+    });
+
+    const wallet = await getMpcWallet('mpc-wallet-1');
+    assert.equal(wallet.status, 'keygen_completed');
+    assert.equal(auxInfoInput?.participantId, '0x5c7bf91C493126314bb821C123Dee889FFCa3932');
+    assert.equal(auxInfoInput?.participantIndex, 1);
+    assert.deepEqual(auxInfoInput?.session?.participants, [
+      '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    ]);
+  } finally {
+    mpcService._startAuxInfoAfterWireKeygen = originalStartAuxInfo;
+  }
 });
 
 test('钱包列表会用本地 ready session 修复 MPC 钱包状态', async () => {
@@ -507,6 +609,73 @@ test('接受邀请会用协议 name 修复已有本地 MPC 钱包名称', async 
   }
 });
 
+test('接受邀请在本地钱包保存后启动 ready keygen', async () => {
+  await saveAccount({
+    id: 'account-1',
+    walletId: 'wallet-1',
+    address: '0x5c7bf91c493126314bb821c123dee889ffca3932',
+  });
+  await setSelectedAccountId('account-1');
+
+  const originalJoinSession = mpcService.joinSession;
+  const originalStartEventStream = mpcService.startEventStream;
+  const originalSyncWalletFromSession = mpcService.syncWalletFromSession;
+  const originalStartKeygenSession = mpcService.startKeygenSession;
+  const originalMarkInviteRead = mpcService.markInviteRead;
+  let startedAfterWalletSave = false;
+  mpcService.joinSession = async () => ({
+    session: {
+      id: 'session-ready',
+      name: 'mpc10',
+      type: 'keygen',
+      walletId: 'mpc-wallet-ready',
+      status: 'ready',
+      threshold: 1,
+      participants: [
+        '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+        '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+      ],
+    },
+    response: {},
+  });
+  mpcService.startEventStream = async () => ({ started: true });
+  mpcService.syncWalletFromSession = async () => null;
+  mpcService.startKeygenSession = async ({ sessionId }) => {
+    const wallet = await getMpcWallet('mpc-wallet-ready');
+    startedAfterWalletSave = sessionId === 'session-ready' && Boolean(wallet);
+    return { started: true };
+  };
+  mpcService.markInviteRead = async () => null;
+
+  try {
+    const result = await handleMpcAcceptInvite({
+      notificationUid: 'notification-ready',
+      sessionId: 'session-ready',
+      walletId: 'mpc-wallet-ready',
+      payload: {
+        sessionId: 'session-ready',
+        walletId: 'mpc-wallet-ready',
+        name: 'mpc10',
+        threshold: 1,
+        participants: [
+          '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+          '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+        ],
+      },
+      password: 'password123',
+    });
+
+    assert.equal(result.success, true);
+    assert.equal(startedAfterWalletSave, true);
+  } finally {
+    mpcService.joinSession = originalJoinSession;
+    mpcService.startEventStream = originalStartEventStream;
+    mpcService.syncWalletFromSession = originalSyncWalletFromSession;
+    mpcService.startKeygenSession = originalStartKeygenSession;
+    mpcService.markInviteRead = originalMarkInviteRead;
+  }
+});
+
 test('取消旧 MPC 创建遇到远端不可取消时会清理本地未完成记录', async () => {
   await saveAccount({
     id: 'account-1',
@@ -727,6 +896,92 @@ test('已生成地址的 MPC 钱包不能通过取消创建入口移除', async 
   assert.notEqual(await getMpcSession('session-active'), null);
 });
 
+test('创建 MPC session 后会把创建方登记为 coordinator participant', async () => {
+  const actor = '0x1111111111111111111111111111111111111111';
+  const invited = '0x2222222222222222222222222222222222222222';
+  await saveAccount({
+    id: 'account-1',
+    walletId: 'wallet-1',
+    address: actor,
+  });
+  await setSelectedAccountId('account-1');
+  state.keyring = new Map([
+    ['account-1', { signMessage: async (message) => `signed:${message}` }],
+  ]);
+
+  const joinCalls = [];
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    createSession: async () => ({
+      id: 'session-creator-join',
+      name: 'mpc-4531',
+      type: 'keygen',
+      walletId: 'mpc-wallet-1',
+      threshold: 1,
+      participants: [actor, invited],
+      status: 'created',
+      round: 0,
+      curve: 'secp256k1',
+      keyVersion: 0,
+      shareVersion: 0,
+    }),
+    joinSession: async (sessionId, payload) => {
+      joinCalls.push({ sessionId, payload });
+      return {
+        id: sessionId,
+        name: 'mpc-4531',
+        type: 'keygen',
+        walletId: 'mpc-wallet-1',
+        threshold: 1,
+        participants: [actor, invited],
+        status: 'ready',
+        round: 0,
+        curve: 'secp256k1',
+        keyVersion: 0,
+        shareVersion: 0,
+        joinedParticipants: [{
+          participantId: actor,
+          deviceId: payload.deviceId,
+          identity: payload.identity,
+          e2ePublicKey: payload.e2ePublicKey,
+          signingPublicKey: payload.signingPublicKey,
+          status: 'active',
+          joinedAt: '1',
+        }],
+      };
+    },
+  };
+
+  try {
+    const result = await mpcService.createSession({
+      type: 'keygen',
+      name: 'mpc-4531',
+      walletId: 'mpc-wallet-1',
+      threshold: 1,
+      participants: [actor, invited],
+      curve: 'secp256k1',
+      password: 'password123',
+    });
+
+    assert.equal(result.session.id, 'session-creator-join');
+    assert.equal(joinCalls.length, 1);
+    assert.equal(joinCalls[0].sessionId, 'session-creator-join');
+    assert.equal(joinCalls[0].payload.participantId, actor);
+    assert.equal(joinCalls[0].payload.identity, `did:pkh:eth:${actor.toLowerCase()}`);
+    assert.match(joinCalls[0].payload.e2ePublicKey, /^x25519:/);
+    assert.match(joinCalls[0].payload.signingPublicKey, /^ed25519:/);
+    const localParticipant = await getMpcParticipant('session-creator-join', actor);
+    assert.equal(localParticipant.id, actor);
+    assert.equal(localParticipant.deviceId, joinCalls[0].payload.deviceId);
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+  }
+});
+
 test('钱包列表会用本地 session name 修复已有 MPC 钱包名称', async () => {
   await saveMpcWallet({
     id: 'mpc-wallet-1',
@@ -759,13 +1014,56 @@ test('钱包列表会用本地 session name 修复已有 MPC 钱包名称', asyn
   assert.equal(wallet.name, 'mpc10');
 });
 
-test('startKeygenSession 调用 TSS 引擎并保存 share、发送消息、激活钱包', async () => {
+test('钱包列表会自动同步未完成 MPC 钱包的远端 session 状态', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'keygen_pending',
+    keygenSessionId: 'session-1',
+    threshold: 1,
+    participants: ['0x1', '0x2'],
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+
+  const originalGetSessions = mpcService.getSessions;
+  mpcService.getSessions = async (walletId) => {
+    assert.equal(walletId, 'mpc-wallet-1');
+    const nextWallet = {
+      id: 'mpc-wallet-1',
+      name: 'mpc10',
+      type: 'mpc',
+      status: 'keygen_running',
+      keygenSessionId: 'session-1',
+      threshold: 1,
+      participants: ['0x1', '0x2'],
+      updatedAt: 2000,
+    };
+    await saveMpcWallet(nextWallet);
+    return { wallet: nextWallet, sessions: [{ id: 'session-1', status: 'rounds' }] };
+  };
+
+  try {
+    const result = await HandleGetWalletList();
+
+    assert.equal(result.success, true);
+    assert.equal(result.wallets.find((wallet) => wallet.id === 'mpc-wallet-1')?.status, 'keygen_running');
+  } finally {
+    mpcService.getSessions = originalGetSessions;
+  }
+});
+
+test('startKeygenSession 启动 wire keygen 并推进本地钱包状态', async () => {
   await saveAccount({
     id: 'account-1',
     walletId: 'wallet-1',
     address: '0x1111111111111111111111111111111111111111',
   });
   await setSelectedAccountId('account-1');
+  state.keyring = new Map([
+    ['account-1', { signMessage: async (message) => `signed:${message}` }],
+  ]);
   await saveMpcWallet({
     id: 'mpc-wallet-1',
     name: '团队金库',
@@ -792,9 +1090,11 @@ test('startKeygenSession 调用 TSS 引擎并保存 share、发送消息、激�
   });
 
   const sentMessages = [];
+  const joinCalls = [];
   const originalEnsure = mpcService._ensureCoordinatorToken;
   const originalCoordinator = mpcService._coordinator;
-  const originalSendSessionMessage = mpcService.sendSessionMessage;
+  const originalSendWireMessage = mpcService.sendWireMessage;
+  const originalFetchWireMessages = mpcService.fetchWireMessages;
   mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
   mpcService._coordinator = {
     setEndpoint() {},
@@ -813,56 +1113,76 @@ test('startKeygenSession 调用 TSS 引擎并保存 share、发送消息、激�
       keyVersion: 1,
       shareVersion: 1,
     }),
-    sendMessage: async () => ({ ok: true }),
+    joinSession: async (sessionId, payload) => {
+      joinCalls.push({ sessionId, payload });
+      return { ok: true };
+    },
   };
-  mpcService.sendSessionMessage = async (message) => {
+  mpcService.sendWireMessage = async (message) => {
     sentMessages.push(message);
-    return { message: { id: `sent-${sentMessages.length}`, ...message } };
+    return {
+      message: {
+        id: `sent-${sentMessages.length}`,
+        sessionId: message.sessionId,
+        from: String(message.senderIndex),
+        to: '',
+        type: message.protocol,
+        seq: sentMessages.length,
+        envelope: message,
+        createdAt: String(sentMessages.length),
+      },
+    };
   };
+  mpcService.fetchWireMessages = async () => ({ messages: [], nextSequence: 0 });
   setMpcTssEngineForTests({
     startKeygen: async (input) => {
-      assert.equal(input.session.id, 'session-1');
-      assert.equal(input.wallet.id, 'mpc-wallet-1');
-      assert.equal(input.participantId, '0x1111111111111111111111111111111111111111');
+      assert.equal(input.sessionId, 'session-1');
+      assert.equal(input.senderIndex, 0);
+      assert.deepEqual(input.parties, [0, 1]);
       return {
-        keyShare: { secret: 'local-share' },
-        shareVersion: 2,
-        keyVersion: 2,
-        messages: [{
-          toParticipantId: '0x2222222222222222222222222222222222222222',
-          round: 1,
-          type: 'keygen.round1',
-          payload: { commitment: 'c1' },
+        protocol: 'keygen',
+        senderIndex: input.senderIndex,
+        outgoing: [{
+          protocol: 'keygen',
+          senderIndex: input.senderIndex,
+          recipientIndex: 1,
+          payload: { Round1: { from: input.senderIndex } },
         }],
-        completed: true,
-        address: '0x9999999999999999999999999999999999999999',
-        publicKey: '03abcdef',
       };
     },
+    getOutgoingMessages: async ({ state }) => {
+      const outgoing = state.outgoing || [];
+      state.outgoing = [];
+      return outgoing;
+    },
+    advance: async ({ state }) => state,
+    receiveMessage: async ({ state }) => state,
+    getResult: async () => null,
   });
 
   try {
     const result = await mpcService.startKeygenSession({ sessionId: 'session-1' });
 
-    assert.equal(result.completed, true);
-    const share = await getMpcKeyShare('mpc-wallet-1:0x1111111111111111111111111111111111111111:2');
-    assert.deepEqual(share.share, { secret: 'local-share' });
-    assert.equal(share.publicKey, '03abcdef');
+    assert.equal(result.started.protocol, 'keygen');
+    assert.equal(result.participantIndex, 0);
+    assert.equal(result.tickCount, 1);
+    assert.equal(joinCalls.length, 1);
+    assert.equal(joinCalls[0].sessionId, 'session-1');
+    assert.equal(joinCalls[0].payload.participantId, '0x1111111111111111111111111111111111111111');
     assert.equal(sentMessages.length, 1);
     assert.equal(sentMessages[0].sessionId, 'session-1');
-    assert.equal(sentMessages[0].toParticipantId, '0x2222222222222222222222222222222222222222');
-    assert.equal(sentMessages[0].type, 'keygen.round1');
+    assert.equal(sentMessages[0].protocol, 'keygen');
+    assert.equal(sentMessages[0].senderIndex, 0);
     const wallet = await getMpcWallet('mpc-wallet-1');
     assert.equal(wallet.name, '团队金库');
-    assert.equal(wallet.status, 'active');
-    assert.equal(wallet.address, '0x9999999999999999999999999999999999999999');
-    assert.equal(wallet.publicKey, '03abcdef');
-    assert.equal(wallet.keyVersion, 2);
-    assert.equal(wallet.shareVersion, 2);
+    assert.equal(wallet.status, 'keygen_running');
+    const session = await getMpcSession('session-1');
+    assert.equal(session.status, 'running');
   } finally {
     mpcService._ensureCoordinatorToken = originalEnsure;
     mpcService._coordinator = originalCoordinator;
-    mpcService.sendSessionMessage = originalSendSessionMessage;
+    mpcService.sendWireMessage = originalSendWireMessage;
+    mpcService.fetchWireMessages = originalFetchWireMessages;
     resetMpcTssEngineForTests();
   }
 });

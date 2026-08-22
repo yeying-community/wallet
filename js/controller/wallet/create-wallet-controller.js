@@ -616,10 +616,12 @@ export class CreateWalletController {
     const thresholdInput = document.getElementById('mpcCreateThresholdInput');
     if (!thresholdInput) return;
     const current = Number(thresholdInput.value || 0);
-    if (Number.isFinite(current) && current > 0) return;
     const total = (hasSelf ? 1 : 0) + Number(selectedCount || 0);
     if (total <= 0) return;
-    thresholdInput.value = String(total <= 2 ? total : Math.ceil(total / 2));
+    const defaultThreshold = total <= 2 ? total : Math.ceil(total / 2);
+    const minThreshold = Math.min(2, total);
+    if (Number.isFinite(current) && current >= minThreshold && current <= total) return;
+    thresholdInput.value = String(Math.max(minThreshold, defaultThreshold));
   }
 
   openMpcParticipantsMenu() {
@@ -657,8 +659,8 @@ export class CreateWalletController {
       showError('请先选择联系人');
       return false;
     }
-    if (!Number.isFinite(threshold) || threshold <= 0) {
-      showError('门限必须大于 0');
+    if (!Number.isFinite(threshold) || threshold < 2) {
+      showError('门限必须至少为 2');
       return false;
     }
     if (threshold > participants.length) {
@@ -702,8 +704,8 @@ export class CreateWalletController {
       showError('请先选择联系人');
       return;
     }
-    if (!Number.isFinite(threshold) || threshold <= 0) {
-      showError('门限必须大于 0');
+    if (!Number.isFinite(threshold) || threshold < 2) {
+      showError('门限必须至少为 2');
       return;
     }
     if (threshold > participants.length) {

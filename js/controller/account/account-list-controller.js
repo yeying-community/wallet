@@ -296,7 +296,7 @@ export class AccountListController {
             <div class="account-avatar mpc-wallet-avatar" ${mpcAddress ? `data-address="${escapeHtml(mpcAddress)}"` : ''}>MPC</div>
             <div class="account-details">
               <div class="account-name">${escapeHtml(walletName)}</div>
-              <div class="account-address">${mpcAddress ? escapeHtml(mpcAddress) : escapeHtml(mpcStatus)}</div>
+              <div class="account-address">${mpcAddress ? escapeHtml(shortenAddress(mpcAddress)) : escapeHtml(mpcStatus)}</div>
             </div>
           </div>
         ` : accounts.length ? accounts.map(account => `
@@ -470,7 +470,8 @@ export class AccountListController {
       keygen_pending: '等待密钥生成',
       keygen_ready: '等待密钥生成',
       keygen_running: '密钥生成中',
-      keygen_completed: '密钥生成完成，签名待启用',
+      keygen_interrupted: '创建中断',
+      keygen_completed: '密钥生成完成，签名启用中',
       active: '可用',
       failed: '密钥生成失败',
     };
@@ -564,7 +565,8 @@ export class AccountListController {
       keygen_pending: '等待参与者完成密钥生成',
       keygen_ready: '等待密钥生成',
       keygen_running: '密钥生成中',
-      keygen_completed: '密钥生成完成，签名待启用',
+      keygen_interrupted: '创建中断，可移除后重新创建',
+      keygen_completed: '密钥生成完成，签名启用中',
       active: '可用',
       failed: '密钥生成失败',
     };

@@ -82,6 +82,16 @@ test('创建钱包默认名称使用钱包类型和4位随机数字', () => {
   assert.match(mpcName, /^mpc-\d{4}$/);
 });
 
+test('MPC 创建门限默认值会修正旧草稿中的 1-of-2', () => {
+  const elements = setup();
+  const controller = new CreateWalletController({ wallet: {}, onCreated: null });
+  elements.mpcCreateThresholdInput.value = '1';
+
+  controller.updateMpcThresholdDefault(true, 1);
+
+  assert.equal(elements.mpcCreateThresholdInput.value, '2');
+});
+
 test('创建 HD 钱包使用独立密码框，不读取创建页面密码输入', async () => {
   const { document, elements } = createDocument({
     setPasswordPage: { tagName: 'div', _classes: 'page', dataset: { origin: 'welcome' } },
