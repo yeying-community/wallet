@@ -8,6 +8,7 @@ import {
 import {
   getMpcTssEngine,
   installMpcTssEngine,
+  MpcTssStateMachineAdapter,
   resetMpcTssEngineForTests,
 } from '../js/background/mpc-tss-engine.js';
 
@@ -32,6 +33,7 @@ test('Cggmp24WasmEngine exposes metadata and JSON normalization exports', () => 
         protocolVersion: 1,
         curve: 'secp256k1',
       }),
+      Cggmp24ThresholdKeygenSession: class {},
       normalizeWireMessageJson: (json) => {
         calls.push(['wire', JSON.parse(json)]);
         return json;
@@ -67,6 +69,7 @@ test('installCggmp24WasmEngine installs the loaded engine through the TSS bounda
         engine: 'cggmp24',
         protocolVersion: 1,
       }),
+      Cggmp24ThresholdKeygenSession: class {},
       normalizeWireMessageJson: (json) => json,
       normalizeSigningPayloadJson: (json) => json,
       normalizeThresholdKeygenPayloadJson: (json) => json,
@@ -82,4 +85,123 @@ test('installCggmp24WasmEngine installs the loaded engine through the TSS bounda
     () => getMpcTssEngine().startSign(),
     /MPC_CGGMP24_STATE_MACHINE_NOT_IMPLEMENTED/
   );
+});
+
+test('Cggmp24WasmEngine drives threshold keygen sessions through the TSS adapter contract', async () => {
+  const calls = [];
+  class FakeKeygenSession {
+    constructor(sessionId, senderIndex, partyCount, threshold) {
+      calls.push(['constructor', sessionId, senderIndex, partyCount, threshold]);
+      this.sessionId = sessionId;
+      this.senderIndex = senderIndex;
+      this.outgoing = [{ audience: 'all-parties', payload: { Round1: { from: senderIndex } } }];
+      this.result = null;
+    }
+
+    advanceJson(maxSteps) {
+      calls.push(['advance', maxSteps]);
+      if (this.seenMessage) {
+        this.outgoing.push({
+          audience: { 'one-party': { recipient_index: this.seenMessage.sender_index } },
+          payload: { Round2Uni: { from: this.senderIndex } },
+        });
+        this.result = { shared_public_key: '03abcdef', i: this.senderIndex };
+      }
+      return JSON.stringify({
+        status: this.result ? 'completed' : 'waiting',
+        outgoing: this.outgoing,
+        result: this.result,
+        error: null,
+      });
+    }
+
+    receiveWireMessageJson(json) {
+      this.seenMessage = JSON.parse(json);
+      calls.push(['receive', this.seenMessage.payload]);
+      return JSON.stringify({
+        status: 'running',
+        outgoing: this.outgoing,
+        result: this.result,
+        error: null,
+      });
+    }
+
+    drainOutgoingJson() {
+      const outgoing = this.outgoing;
+      this.outgoing = [];
+      return JSON.stringify(outgoing);
+    }
+
+    resultJson() {
+      return JSON.stringify(this.result);
+    }
+  }
+
+  const sent = [];
+  const engine = new Cggmp24WasmEngine({
+    wasm: {
+      Cggmp24ThresholdKeygenSession: FakeKeygenSession,
+      cggmp24EngineMetadataJson: () => JSON.stringify({ engine: 'cggmp24' }),
+      normalizeWireMessageJson: (json) => json,
+      normalizeSigningPayloadJson: (json) => json,
+      normalizeThresholdKeygenPayloadJson: (json) => json,
+    },
+  });
+  const adapter = new MpcTssStateMachineAdapter({
+    engine,
+    transport: {
+      async sendWireMessage(message) {
+        sent.push(message);
+        return { message };
+      },
+    },
+  });
+
+  await adapter.startKeygen({
+    sessionId: 'session-1',
+    senderIndex: 1,
+    parties: [0, 1],
+    threshold: 2,
+    curve: 'secp256k1',
+  });
+
+  assert.deepEqual(calls[0], ['constructor', 'session-1', 1, 2, 2]);
+  assert.deepEqual(sent[0], {
+    sessionId: 'session-1',
+    protocol: 'keygen',
+    senderIndex: 1,
+    audience: 'all-parties',
+    payload: { Round1: { from: 1 } },
+    sequence: 0,
+  });
+
+  await adapter.receiveMessage({
+    sessionId: 'session-1',
+    message: {
+      protocol_version: 1,
+      engine: 'cggmp24',
+      session_id: 'session-1',
+      protocol: 'keygen',
+      sequence: 7,
+      sender_index: 0,
+      audience: 'all-parties',
+      payload: { Round1: { from: 0 } },
+    },
+  });
+
+  assert.deepEqual(sent[1], {
+    sessionId: 'session-1',
+    protocol: 'keygen',
+    senderIndex: 1,
+    audience: { 'one-party': { recipient_index: 0 } },
+    payload: { Round2Uni: { from: 1 } },
+    sequence: 0,
+  });
+  assert.deepEqual(await adapter.getResult({ sessionId: 'session-1' }), {
+    status: 'completed',
+    keyShare: { shared_public_key: '03abcdef', i: 1 },
+    share: { shared_public_key: '03abcdef', i: 1 },
+    curve: 'secp256k1',
+    threshold: 2,
+  });
 });
