@@ -596,6 +596,7 @@ test('service wire sessions can drive two cggmp24 keygen participants through th
       wasm: {
         Cggmp24ThresholdKeygenSession: FakeKeygenSession,
         Cggmp24AuxInfoSession: class {},
+        Cggmp24SigningSession: class {},
         cggmp24EngineMetadataJson: () => JSON.stringify({ engine: 'cggmp24' }),
         normalizeWireMessageJson: (json) => json,
         normalizeSigningPayloadJson: (json) => json,

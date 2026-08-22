@@ -45,6 +45,12 @@ type SecpAuxInfoState = Box<
         Msg = SecpAuxInfoMessage,
     >,
 >;
+type SecpSigningState = Box<
+    dyn StateMachine<
+        Output = Result<SecpSignature, cggmp24::SigningError>,
+        Msg = SecpSigningMessage,
+    >,
+>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -688,6 +694,205 @@ impl Cggmp24AuxInfoSession {
 impl Cggmp24AuxInfoSession {
     fn outgoing_to_json(
         message: round_based::Outgoing<SecpAuxInfoMessage>,
+    ) -> Result<WasmOutgoingMessage, JsValue> {
+        let audience = match message.recipient {
+            MessageDestination::AllParties => MpcMessageAudience::AllParties,
+            MessageDestination::OneParty(recipient_index) => {
+                MpcMessageAudience::OneParty { recipient_index }
+            }
+        };
+        Ok(WasmOutgoingMessage {
+            audience,
+            payload: serde_json::to_value(message.msg).map_err(to_js_error)?,
+        })
+    }
+
+    fn snapshot_json(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&WasmAdvanceResult {
+            status: self.status.clone(),
+            outgoing: self.outgoing.clone(),
+            result: self.result.clone(),
+            error: self.error.clone(),
+        })
+        .map_err(to_js_error)
+    }
+}
+
+#[wasm_bindgen]
+pub struct Cggmp24SigningSession {
+    session_id: String,
+    sender_index: u16,
+    state: Option<SecpSigningState>,
+    outgoing: Vec<WasmOutgoingMessage>,
+    result: Option<serde_json::Value>,
+    status: String,
+    error: Option<String>,
+}
+
+#[wasm_bindgen]
+impl Cggmp24SigningSession {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        session_id: String,
+        request_id: String,
+        sender_index: u16,
+        parties_json: String,
+        key_share_json: String,
+        message_hex: String,
+    ) -> Result<Cggmp24SigningSession, JsValue> {
+        if session_id.trim().is_empty() {
+            return Err(JsValue::from_str("MPC_SESSION_ID_REQUIRED"));
+        }
+        let parties: Vec<u16> = serde_json::from_str(&parties_json).map_err(to_js_error)?;
+        if parties.is_empty() || usize::from(sender_index) >= parties.len() {
+            return Err(JsValue::from_str("INVALID_MPC_PARTICIPANT_INDEX"));
+        }
+        let key_share: SecpKeyShare = serde_json::from_str(&key_share_json).map_err(to_js_error)?;
+        let message_hex = message_hex.trim().strip_prefix("0x").unwrap_or(message_hex.trim());
+        let message = hex::decode(message_hex).map_err(to_js_error)?;
+
+        let eid_bytes = format!("{}:sign:{}:0", session_id, request_id).into_bytes();
+        let eid_bytes: &'static [u8] = Box::leak(eid_bytes.into_boxed_slice());
+        let parties: &'static [u16] = Box::leak(parties.into_boxed_slice());
+        let key_share: &'static SecpKeyShare = Box::leak(Box::new(key_share));
+        let message_to_sign: &'static DataToSign<Secp256k1> =
+            Box::leak(Box::new(DataToSign::<Secp256k1>::digest::<Sha256>(&message)));
+        let rng: &'static mut OsRng = Box::leak(Box::new(OsRng));
+        let state = signing(
+            ExecutionId::new(eid_bytes),
+            sender_index,
+            parties,
+            key_share,
+        )
+        .set_digest::<Sha256>()
+        .enforce_reliable_broadcast(false)
+        .sign_sync(rng, message_to_sign);
+
+        Ok(Cggmp24SigningSession {
+            session_id,
+            sender_index,
+            state: Some(Box::new(state)),
+            outgoing: Vec::new(),
+            result: None,
+            status: "running".to_string(),
+            error: None,
+        })
+    }
+
+    #[wasm_bindgen(js_name = advanceJson)]
+    pub fn advance_json(&mut self, max_steps: u32) -> Result<String, JsValue> {
+        let steps = max_steps.max(1).min(1000);
+        for _ in 0..steps {
+            if self.result.is_some() || self.error.is_some() {
+                break;
+            }
+            let state = self
+                .state
+                .as_mut()
+                .ok_or_else(|| JsValue::from_str("MPC_SIGNING_STATE_NOT_STARTED"))?;
+            match state.proceed() {
+                ProceedResult::SendMsg(message) => {
+                    self.outgoing.push(Self::outgoing_to_json(message)?);
+                    self.status = "running".to_string();
+                }
+                ProceedResult::NeedsOneMoreMessage => {
+                    self.status = "waiting".to_string();
+                    break;
+                }
+                ProceedResult::Output(Ok(signature)) => {
+                    let mut bytes = vec![0u8; SecpSignature::serialized_len()];
+                    signature.write_to_slice(&mut bytes);
+                    self.result = Some(serde_json::json!({
+                        "signature": signature,
+                        "signatureHex": format!("0x{}", hex::encode(bytes)),
+                    }));
+                    self.status = "completed".to_string();
+                    break;
+                }
+                ProceedResult::Output(Err(error)) => {
+                    self.error = Some(error.to_string());
+                    self.status = "error".to_string();
+                    break;
+                }
+                ProceedResult::Yielded => {
+                    self.status = "running".to_string();
+                }
+                ProceedResult::Error(error) => {
+                    self.error = Some(format!("{error:?}"));
+                    self.status = "error".to_string();
+                    break;
+                }
+            }
+        }
+        self.snapshot_json()
+    }
+
+    #[wasm_bindgen(js_name = receiveWireMessageJson)]
+    pub fn receive_wire_message_json(&mut self, json: &str) -> Result<String, JsValue> {
+        let wire: MpcWireMessage<serde_json::Value> =
+            serde_json::from_str(json).map_err(to_js_error)?;
+        if wire.protocol_version != PROTOCOL_VERSION {
+            return Err(JsValue::from_str("MPC_WIRE_PROTOCOL_VERSION_UNSUPPORTED"));
+        }
+        if wire.engine != ENGINE_ID {
+            return Err(JsValue::from_str("MPC_WIRE_ENGINE_UNSUPPORTED"));
+        }
+        if wire.session_id != self.session_id {
+            return Err(JsValue::from_str("MPC_WIRE_SESSION_MISMATCH"));
+        }
+        if wire.protocol != MpcProtocolKind::Sign {
+            return Err(JsValue::from_str("MPC_WIRE_PROTOCOL_MISMATCH"));
+        }
+        if wire.sender_index == self.sender_index {
+            return Err(JsValue::from_str("MPC_WIRE_SELF_MESSAGE_REJECTED"));
+        }
+        let message: SecpSigningMessage = serde_json::from_value(wire.payload).map_err(to_js_error)?;
+        let msg_type = match wire.audience {
+            MpcMessageAudience::AllParties => MessageType::Broadcast,
+            MpcMessageAudience::OneParty { recipient_index } => {
+                if recipient_index != self.sender_index {
+                    return Err(JsValue::from_str("MPC_WIRE_RECIPIENT_MISMATCH"));
+                }
+                MessageType::P2P
+            }
+        };
+        let incoming = Incoming {
+            id: wire.sequence,
+            sender: wire.sender_index,
+            msg_type,
+            msg: message,
+        };
+        let state = self
+            .state
+            .as_mut()
+            .ok_or_else(|| JsValue::from_str("MPC_SIGNING_STATE_NOT_STARTED"))?;
+        state
+            .received_msg(incoming)
+            .map_err(|_| JsValue::from_str("MPC_SIGNING_UNEXPECTED_MESSAGE"))?;
+        self.status = "running".to_string();
+        self.snapshot_json()
+    }
+
+    #[wasm_bindgen(js_name = drainOutgoingJson)]
+    pub fn drain_outgoing_json(&mut self) -> Result<String, JsValue> {
+        let outgoing = core::mem::take(&mut self.outgoing);
+        serde_json::to_string(&outgoing).map_err(to_js_error)
+    }
+
+    #[wasm_bindgen(js_name = resultJson)]
+    pub fn result_json(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.result).map_err(to_js_error)
+    }
+
+    #[wasm_bindgen(js_name = status)]
+    pub fn status(&self) -> String {
+        self.status.clone()
+    }
+}
+
+impl Cggmp24SigningSession {
+    fn outgoing_to_json(
+        message: round_based::Outgoing<SecpSigningMessage>,
     ) -> Result<WasmOutgoingMessage, JsValue> {
         let audience = match message.recipient {
             MessageDestination::AllParties => MpcMessageAudience::AllParties,
