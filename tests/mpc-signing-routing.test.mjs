@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { ethers } from '../lib/ethers-6.16.esm.min.js';
 
 const store = {};
 globalThis.chrome = {
@@ -364,6 +365,91 @@ test('active MPC 钱包缺少本地 key share 时不能签名', async () => {
     () => signMessage(getMpcAccountId('mpc-wallet-1'), 'hello'),
     /MPC_KEY_SHARE_NOT_FOUND/
   );
+});
+
+test('MPC 交易签名会签 unsignedHash 并组装 signed transaction', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'active',
+    address: '0x1111111111111111111111111111111111111111',
+    publicKey: '03abcdef',
+    keygenSessionId: 'session-1',
+    keyVersion: 1,
+    shareVersion: 1,
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222'
+    ],
+  });
+  await saveMpcKeyShare({
+    id: 'share-1',
+    walletId: 'mpc-wallet-1',
+    sessionId: 'session-1',
+    participantId: '0x1111111111111111111111111111111111111111',
+    participantIndex: 0,
+    share: { secret: 'local-share' },
+    completeKeyShare: { secret: 'complete-local-share' },
+    keyVersion: 1,
+    shareVersion: 1,
+  });
+  const transaction = {
+    to: '0x2222222222222222222222222222222222222222',
+    value: '0x0',
+    nonce: 0,
+    gasLimit: '0x5208',
+    gasPrice: '0x1',
+    chainId: 1,
+  };
+  const unsigned = ethers.Transaction.from(transaction);
+  setMpcTssEngineForTests({
+    async startSign(input) {
+      assert.equal(input.payload.messageHex, unsigned.unsignedHash);
+      assert.equal(input.payload.transactionHash, unsigned.unsignedHash);
+      assert.equal(input.payload.unsignedTransaction, unsigned.unsignedSerialized);
+      return {
+        sessionId: input.sessionId,
+        requestId: input.requestId,
+        senderIndex: input.senderIndex,
+        protocol: 'sign',
+        result: {
+          status: 'completed',
+          requestId: input.requestId,
+          signature: {
+            r: `0x${'11'.repeat(32)}`,
+            s: `0x${'22'.repeat(32)}`
+          },
+          recoveryId: 0
+        }
+      };
+    },
+    async receiveMessage({ state }) {
+      return state;
+    },
+    async advance({ state }) {
+      return state;
+    },
+    async getOutgoingMessages() {
+      return [];
+    },
+    async getResult({ state }) {
+      return state.result;
+    }
+  });
+
+  const signed = await withLocalWireMessagePoll(
+    () => signTransaction(getMpcAccountId('mpc-wallet-1'), transaction)
+  );
+
+  assert.match(signed, /^0x/);
+  const parsed = ethers.Transaction.from(signed);
+  assert.equal(parsed.unsignedHash, unsigned.unsignedHash);
+  assert.equal(parsed.signature.r, `0x${'11'.repeat(32)}`);
+  assert.equal(parsed.signature.s, `0x${'22'.repeat(32)}`);
+  assert.equal(parsed.signature.v, 27);
+  const requests = Object.values(await getMpcSignRequests());
+  assert.equal(requests[0].status, 'completed');
 });
 
 test('MPC 签名前会同步远端 sign request 并传给 TSS engine', async () => {

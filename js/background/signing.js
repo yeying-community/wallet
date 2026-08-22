@@ -90,12 +90,13 @@ function normalizeMpcSigningPayload(kind, payload) {
   }
   if (kind === 'transaction') {
     const normalized = normalizeTransaction(payload?.transaction || {});
-    const unsignedSerialized = ethers.Transaction.from(normalized).unsignedSerialized;
+    const unsignedTx = ethers.Transaction.from(normalized);
     return {
       ...payload,
       transaction: normalized,
-      unsignedTransaction: unsignedSerialized,
-      messageHex: unsignedSerialized
+      unsignedTransaction: unsignedTx.unsignedSerialized,
+      transactionHash: unsignedTx.unsignedHash,
+      messageHex: unsignedTx.unsignedHash
     };
   }
   if (kind === 'typed_data') {
@@ -211,12 +212,56 @@ function createPendingMpcSignError(request) {
 function extractMpcSignature(source) {
   return String(
     source?.signRequest?.signature
-    || source?.signature
+    || (typeof source?.signature === 'string' ? source.signature : '')
     || source?.signatureHex
     || (typeof source?.result?.signature === 'string' ? source.result.signature : '')
     || (typeof source?.result?.signatureHex === 'string' ? source.result.signatureHex : '')
     || ''
   ).trim();
+}
+
+function normalizeMpcSignatureParts(source) {
+  const result = source?.signRequest?.result || source?.result || source || {};
+  const signature = result?.signature && typeof result.signature === 'object'
+    ? result.signature
+    : (source?.signature && typeof source.signature === 'object' ? source.signature : null);
+  const signatureHex = String(
+    source?.signRequest?.signatureHex
+    || source?.signRequest?.signature
+    || source?.signatureHex
+    || (typeof source?.signature === 'string' ? source.signature : '')
+    || result?.signatureHex
+    || (typeof result?.signature === 'string' ? result.signature : '')
+    || ''
+  ).trim();
+  if (signatureHex && /^0x[0-9a-fA-F]{130}$/.test(signatureHex)) {
+    return ethers.Signature.from(signatureHex);
+  }
+  const r = String(signature?.r || result?.r || '').trim();
+  const s = String(signature?.s || result?.s || '').trim();
+  if (!r || !s) {
+    return null;
+  }
+  const recovery = signature?.recoveryId ?? signature?.recid ?? signature?.v ?? result?.recoveryId ?? result?.recid ?? result?.v;
+  const recoveryNumber = Number(recovery);
+  const v = Number.isInteger(recoveryNumber)
+    ? (recoveryNumber >= 27 ? recoveryNumber : recoveryNumber + 27)
+    : 27;
+  return ethers.Signature.from({ r, s, v });
+}
+
+function buildMpcSignedTransaction(context, signatureSource) {
+  const txPayload = context?.request?.payload || {};
+  if (context?.request?.type !== 'transaction' && !txPayload.transaction) {
+    return '';
+  }
+  const signature = normalizeMpcSignatureParts(signatureSource);
+  if (!signature) {
+    return '';
+  }
+  const tx = ethers.Transaction.from(txPayload.transaction || {});
+  tx.signature = signature;
+  return tx.serialized;
 }
 
 async function startMpcWireSigning(wallet, context) {
@@ -244,6 +289,15 @@ async function startMpcWireSigning(wallet, context) {
         participantId: context.keyShare.participantId,
         recipientIndex: participantIndex
       });
+      if (context.request?.type === 'transaction') {
+        const completedRequest = await getMpcSignRequest(context.request.id);
+        const signedTransaction = buildMpcSignedTransaction(context, tick?.handledResult)
+          || buildMpcSignedTransaction(context, tick?.result)
+          || buildMpcSignedTransaction(context, completedRequest);
+        if (signedTransaction) {
+          return signedTransaction;
+        }
+      }
       const signature = extractMpcSignature(tick?.handledResult)
         || extractMpcSignature(tick?.result)
         || extractMpcSignature(await getMpcSignRequest(context.request.id));

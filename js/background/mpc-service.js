@@ -910,9 +910,23 @@ class MpcService {
       throw new Error('MPC_SIGN_REQUEST_NOT_FOUND');
     }
 
+    const objectSignatureHex = (() => {
+      const signatureObject = output.signature && typeof output.signature === 'object' ? output.signature : null;
+      if (!signatureObject) return '';
+      const r = String(signatureObject.r || '').trim();
+      const s = String(signatureObject.s || '').trim();
+      if (!/^0x[0-9a-fA-F]{64}$/.test(r) || !/^0x[0-9a-fA-F]{64}$/.test(s)) {
+        return '';
+      }
+      const recovery = Number(signatureObject.recoveryId ?? signatureObject.recid ?? signatureObject.v ?? output.recoveryId ?? output.recid ?? output.v ?? 0);
+      const v = Number.isInteger(recovery)
+        ? (recovery >= 27 ? recovery : recovery + 27)
+        : 27;
+      return `${r}${s.slice(2)}${v.toString(16).padStart(2, '0')}`;
+    })();
     const signatureHex = typeof output.signatureHex === 'string'
       ? output.signatureHex.trim()
-      : (typeof output.signature_hex === 'string' ? output.signature_hex.trim() : '');
+      : (typeof output.signature_hex === 'string' ? output.signature_hex.trim() : objectSignatureHex);
     const signature = signatureHex
       || (typeof output.signature === 'string' ? output.signature.trim() : '')
       || (typeof output.signedPayload === 'string' ? output.signedPayload.trim() : '')
