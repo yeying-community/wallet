@@ -33,12 +33,13 @@ globalThis.chrome = {
 };
 
 const { mpcService } = await import('../js/background/mpc-service.js');
-const { handleMpcAcceptInvite } = await import('../js/background/operations/mpc.js');
+const { handleMpcAcceptInvite, handleMpcCancelSession } = await import('../js/background/operations/mpc.js');
 const { setMpcTssEngineForTests, resetMpcTssEngineForTests } = await import('../js/background/mpc-tss-engine.js');
 const { state } = await import('../js/background/state.js');
 const { HandleGetWalletList } = await import('../js/background/operations/wallet.js');
 const {
   getMpcWallet,
+  getMpcSession,
   getMpcSignRequest,
   getMpcKeyShare,
   saveAccount,
@@ -449,6 +450,72 @@ test('接受邀请会用协议 name 修复已有本地 MPC 钱包名称', async 
     mpcService.startEventStream = originalStartEventStream;
     mpcService.syncWalletFromSession = originalSyncWalletFromSession;
     mpcService.markInviteRead = originalMarkInviteRead;
+  }
+});
+
+test('取消旧 MPC 创建遇到远端不可取消时会清理本地未完成记录', async () => {
+  await saveAccount({
+    id: 'account-1',
+    walletId: 'wallet-1',
+    address: '0x1111111111111111111111111111111111111111',
+  });
+  await setSelectedAccountId('account-1');
+  state.keyring = new Map([
+    ['account-1', { signMessage: async (message) => `signed:${message}` }],
+  ]);
+  await saveMpcWallet({
+    id: 'mpc-wallet-stale',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'keygen_pending',
+    keygenSessionId: '868d2738-d7fe-4ae2-82f3-135f5454aad9',
+    threshold: 1,
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222',
+    ],
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcSession({
+    id: '868d2738-d7fe-4ae2-82f3-135f5454aad9',
+    type: 'keygen',
+    walletId: 'mpc-wallet-stale',
+    status: 'running',
+    threshold: 1,
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222',
+    ],
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    cancelSession: async () => {
+      throw new Error('Session is not cancellable');
+    },
+  };
+
+  try {
+    const result = await handleMpcCancelSession({
+      walletId: 'mpc-wallet-stale',
+      sessionId: '868d2738-d7fe-4ae2-82f3-135f5454aad9',
+      password: 'password123',
+    });
+
+    assert.equal(result.success, true);
+    assert.equal(result.remoteCancelled, false);
+    assert.match(result.warning, /已移除本地未完成 MPC 钱包记录/);
+    assert.equal(await getMpcWallet('mpc-wallet-stale'), null);
+    assert.equal(await getMpcSession('868d2738-d7fe-4ae2-82f3-135f5454aad9'), null);
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
   }
 });
 

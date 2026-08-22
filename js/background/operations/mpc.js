@@ -31,6 +31,11 @@ const MPC_E2E_SUITES = new Set(['x25519-aes-gcm']);
 const MPC_REFRESH_POLICIES = new Set(['manual']);
 const INVALID_MPC_WALLET_NAMES = new Set(['MPC 钱包创建邀请', 'MPC 钱包邀请']);
 
+function isRemoteSessionNotCancellableError(error) {
+  const message = String(error?.message || error || '').trim();
+  return message === 'Session is not cancellable' || message === 'SESSION_NOT_CANCELLABLE';
+}
+
 export function resolveMpcWalletName(source = {}) {
   const payload = source?.payload && typeof source.payload === 'object' ? source.payload : source;
   const name = String(payload?.name || '').trim();
@@ -331,18 +336,29 @@ export async function handleMpcCancelSession(options = {}) {
     if (wallet.status && wallet.status !== 'keygen_pending') {
       throw new Error('只有未完成的 MPC 钱包创建可以取消');
     }
-    const result = await mpcService.cancelSession({
-      sessionId,
-      password: options.password
-    });
+    let result = null;
+    let remoteCancelled = true;
+    try {
+      result = await mpcService.cancelSession({
+        sessionId,
+        password: options.password
+      });
+    } catch (error) {
+      if (!isRemoteSessionNotCancellableError(error)) {
+        throw error;
+      }
+      remoteCancelled = false;
+    }
     await deleteMpcSession(sessionId);
     await deleteMpcWallet(walletId);
     return {
       success: true,
-      session: result.session,
-      response: result.response,
+      session: result?.session || null,
+      response: result?.response || null,
       walletId,
-      sessionId
+      sessionId,
+      remoteCancelled,
+      warning: remoteCancelled ? '' : '远端会话当前不可取消，已移除本地未完成 MPC 钱包记录'
     };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to cancel MPC session' };
