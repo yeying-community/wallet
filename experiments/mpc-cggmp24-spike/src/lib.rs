@@ -2,6 +2,8 @@ use cggmp24::key_share::AnyKeyShare;
 use cggmp24::supported_curves::Secp256k1;
 use cggmp24::{signing, trusted_dealer, DataToSign, ExecutionId, KeyShare, Signature};
 use rand::rngs::OsRng;
+use round_based::state_machine::{ProceedResult, StateMachine};
+use round_based::{Incoming, MessageDestination, MessageType};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use wasm_bindgen::prelude::*;
@@ -23,10 +25,17 @@ cggmp24::define_security_level!(SpikeSecurityLevel {
 });
 
 pub type SecpKeyShare = KeyShare<Secp256k1, SpikeSecurityLevel>;
+pub type SecpCoreKeyShare = cggmp24_keygen::key_share::CoreKeyShare<Secp256k1>;
 pub type SecpSignature = Signature<Secp256k1>;
 pub type SecpSigningMessage = cggmp24::signing::msg::Msg<Secp256k1, Sha256>;
 pub type SecpThresholdKeygenMessage =
     cggmp24_keygen::ThresholdMsg<Secp256k1, SpikeSecurityLevel, Sha256>;
+type SecpThresholdKeygenState = Box<
+    dyn StateMachine<
+        Output = Result<SecpCoreKeyShare, cggmp24_keygen::KeygenError>,
+        Msg = SecpThresholdKeygenMessage,
+    >,
+>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -167,6 +176,22 @@ pub struct WasmEngineMetadata {
     pub state_machine_api: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WasmOutgoingMessage {
+    pub audience: MpcMessageAudience,
+    pub payload: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WasmAdvanceResult {
+    pub status: String,
+    pub outgoing: Vec<WasmOutgoingMessage>,
+    pub result: Option<serde_json::Value>,
+    pub error: Option<String>,
+}
+
 fn to_js_error(error: impl core::fmt::Display) -> JsValue {
     JsValue::from_str(&error.to_string())
 }
@@ -219,9 +244,238 @@ pub fn normalize_threshold_keygen_payload_json(json: &str) -> Result<String, JsV
     serde_json::to_string(&message).map_err(to_js_error)
 }
 
+#[wasm_bindgen]
+pub struct Cggmp24ThresholdKeygenSession {
+    session_id: String,
+    sender_index: u16,
+    state: Option<SecpThresholdKeygenState>,
+    outgoing: Vec<WasmOutgoingMessage>,
+    result: Option<serde_json::Value>,
+    status: String,
+    error: Option<String>,
+}
+
+#[wasm_bindgen]
+impl Cggmp24ThresholdKeygenSession {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        session_id: String,
+        sender_index: u16,
+        party_count: u16,
+        threshold: u16,
+    ) -> Result<Cggmp24ThresholdKeygenSession, JsValue> {
+        if session_id.trim().is_empty() {
+            return Err(JsValue::from_str("MPC_SESSION_ID_REQUIRED"));
+        }
+        if party_count == 0 || sender_index >= party_count {
+            return Err(JsValue::from_str("INVALID_MPC_PARTICIPANT_INDEX"));
+        }
+        if threshold == 0 || threshold > party_count {
+            return Err(JsValue::from_str("INVALID_MPC_THRESHOLD"));
+        }
+
+        let eid_bytes = format!("{}:keygen:0", session_id).into_bytes();
+        let eid_bytes: &'static [u8] = Box::leak(eid_bytes.into_boxed_slice());
+        let rng: &'static mut OsRng = Box::leak(Box::new(OsRng));
+        let state = cggmp24_keygen::KeygenBuilder::<
+            Secp256k1,
+            SpikeSecurityLevel,
+            Sha256,
+        >::new(cggmp24_keygen::ExecutionId::new(eid_bytes), sender_index, party_count)
+        .set_threshold(threshold)
+        .enforce_reliable_broadcast(false)
+        .into_state_machine(rng);
+
+        Ok(Cggmp24ThresholdKeygenSession {
+            session_id,
+            sender_index,
+            state: Some(Box::new(state)),
+            outgoing: Vec::new(),
+            result: None,
+            status: "running".to_string(),
+            error: None,
+        })
+    }
+
+    #[wasm_bindgen(js_name = advanceJson)]
+    pub fn advance_json(&mut self, max_steps: u32) -> Result<String, JsValue> {
+        let steps = max_steps.max(1).min(1000);
+        for _ in 0..steps {
+            if self.result.is_some() || self.error.is_some() {
+                break;
+            }
+            let state = self
+                .state
+                .as_mut()
+                .ok_or_else(|| JsValue::from_str("MPC_KEYGEN_STATE_NOT_STARTED"))?;
+            match state.proceed() {
+                ProceedResult::SendMsg(message) => {
+                    self.outgoing.push(Self::outgoing_to_json(message)?);
+                    self.status = "running".to_string();
+                }
+                ProceedResult::NeedsOneMoreMessage => {
+                    self.status = "waiting".to_string();
+                    break;
+                }
+                ProceedResult::Output(Ok(share)) => {
+                    self.result = Some(serde_json::to_value(share).map_err(to_js_error)?);
+                    self.status = "completed".to_string();
+                    break;
+                }
+                ProceedResult::Output(Err(error)) => {
+                    self.error = Some(error.to_string());
+                    self.status = "error".to_string();
+                    break;
+                }
+                ProceedResult::Yielded => {
+                    self.status = "running".to_string();
+                }
+                ProceedResult::Error(error) => {
+                    self.error = Some(format!("{error:?}"));
+                    self.status = "error".to_string();
+                    break;
+                }
+            }
+        }
+        self.snapshot_json()
+    }
+
+    #[wasm_bindgen(js_name = receiveWireMessageJson)]
+    pub fn receive_wire_message_json(&mut self, json: &str) -> Result<String, JsValue> {
+        let wire: MpcWireMessage<serde_json::Value> =
+            serde_json::from_str(json).map_err(to_js_error)?;
+        if wire.protocol_version != PROTOCOL_VERSION {
+            return Err(JsValue::from_str("MPC_WIRE_PROTOCOL_VERSION_UNSUPPORTED"));
+        }
+        if wire.engine != ENGINE_ID {
+            return Err(JsValue::from_str("MPC_WIRE_ENGINE_UNSUPPORTED"));
+        }
+        if wire.session_id != self.session_id {
+            return Err(JsValue::from_str("MPC_WIRE_SESSION_MISMATCH"));
+        }
+        if wire.sender_index == self.sender_index {
+            return Err(JsValue::from_str("MPC_WIRE_SELF_MESSAGE_REJECTED"));
+        }
+        let message: SecpThresholdKeygenMessage =
+            serde_json::from_value(wire.payload).map_err(to_js_error)?;
+        let msg_type = match wire.audience {
+            MpcMessageAudience::AllParties => MessageType::Broadcast,
+            MpcMessageAudience::OneParty { recipient_index } => {
+                if recipient_index != self.sender_index {
+                    return Err(JsValue::from_str("MPC_WIRE_RECIPIENT_MISMATCH"));
+                }
+                MessageType::P2P
+            }
+        };
+        let incoming = Incoming {
+            id: wire.sequence,
+            sender: wire.sender_index,
+            msg_type,
+            msg: message,
+        };
+        let state = self
+            .state
+            .as_mut()
+            .ok_or_else(|| JsValue::from_str("MPC_KEYGEN_STATE_NOT_STARTED"))?;
+        state
+            .received_msg(incoming)
+            .map_err(|_| JsValue::from_str("MPC_KEYGEN_UNEXPECTED_MESSAGE"))?;
+        self.status = "running".to_string();
+        self.snapshot_json()
+    }
+
+    #[wasm_bindgen(js_name = drainOutgoingJson)]
+    pub fn drain_outgoing_json(&mut self) -> Result<String, JsValue> {
+        let outgoing = core::mem::take(&mut self.outgoing);
+        serde_json::to_string(&outgoing).map_err(to_js_error)
+    }
+
+    #[wasm_bindgen(js_name = resultJson)]
+    pub fn result_json(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.result).map_err(to_js_error)
+    }
+
+    #[wasm_bindgen(js_name = status)]
+    pub fn status(&self) -> String {
+        self.status.clone()
+    }
+}
+
+impl Cggmp24ThresholdKeygenSession {
+    fn outgoing_to_json(
+        message: round_based::Outgoing<SecpThresholdKeygenMessage>,
+    ) -> Result<WasmOutgoingMessage, JsValue> {
+        let audience = match message.recipient {
+            MessageDestination::AllParties => MpcMessageAudience::AllParties,
+            MessageDestination::OneParty(recipient_index) => {
+                MpcMessageAudience::OneParty { recipient_index }
+            }
+        };
+        Ok(WasmOutgoingMessage {
+            audience,
+            payload: serde_json::to_value(message.msg).map_err(to_js_error)?,
+        })
+    }
+
+    fn snapshot_json(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&WasmAdvanceResult {
+            status: self.status.clone(),
+            outgoing: self.outgoing.clone(),
+            result: self.result.clone(),
+            error: self.error.clone(),
+        })
+        .map_err(to_js_error)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::VecDeque;
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct TestAdvanceResult {
+        status: String,
+        outgoing: Vec<WasmOutgoingMessage>,
+        result: Option<serde_json::Value>,
+        error: Option<String>,
+    }
+
+    fn parse_advance(json: String) -> TestAdvanceResult {
+        serde_json::from_str(&json).expect("advance result should deserialize")
+    }
+
+    fn make_wire(
+        session_id: &str,
+        sequence: u64,
+        sender_index: u16,
+        outgoing: WasmOutgoingMessage,
+    ) -> MpcWireMessage<serde_json::Value> {
+        MpcWireMessage {
+            protocol_version: PROTOCOL_VERSION,
+            engine: ENGINE_ID.to_string(),
+            session_id: session_id.to_string(),
+            protocol: MpcProtocolKind::Keygen,
+            sequence,
+            sender_index,
+            audience: outgoing.audience,
+            payload: outgoing.payload,
+        }
+    }
+
+    fn enqueue_outgoing(
+        queue: &mut VecDeque<MpcWireMessage<serde_json::Value>>,
+        session_id: &str,
+        sequence: &mut u64,
+        sender_index: u16,
+        outgoing: Vec<WasmOutgoingMessage>,
+    ) {
+        for message in outgoing {
+            *sequence += 1;
+            queue.push_back(make_wire(session_id, *sequence, sender_index, message));
+        }
+    }
 
     #[test]
     fn wire_message_envelope_serializes_stable_protocol_fields() {
@@ -249,6 +503,103 @@ mod tests {
             MpcMessageAudience::OneParty { recipient_index: 1 }
         );
         assert_eq!(decoded.payload["round"], "round1b");
+    }
+
+    #[test]
+    fn threshold_keygen_state_machine_completes_2_of_2() {
+        let session_id = "session-keygen-smoke";
+        let mut party0 = Cggmp24ThresholdKeygenSession::new(session_id.to_string(), 0, 2, 2)
+            .expect("party0 should start");
+        let mut party1 = Cggmp24ThresholdKeygenSession::new(session_id.to_string(), 1, 2, 2)
+            .expect("party1 should start");
+        let mut sequence = 0;
+        let mut queue = VecDeque::new();
+
+        let first0 = parse_advance(party0.advance_json(100).expect("party0 should advance"));
+        let first1 = parse_advance(party1.advance_json(100).expect("party1 should advance"));
+        assert_eq!(first0.status, "waiting");
+        assert_eq!(first1.status, "waiting");
+        assert!(first0.result.is_none());
+        assert!(first1.result.is_none());
+        enqueue_outgoing(&mut queue, session_id, &mut sequence, 0, first0.outgoing);
+        enqueue_outgoing(&mut queue, session_id, &mut sequence, 1, first1.outgoing);
+
+        for _ in 0..200 {
+            if party0.status() == "completed" && party1.status() == "completed" {
+                break;
+            }
+            let Some(wire) = queue.pop_front() else {
+                let tick0 = parse_advance(party0.advance_json(100).expect("party0 tick"));
+                let tick1 = parse_advance(party1.advance_json(100).expect("party1 tick"));
+                assert!(tick0.error.is_none(), "party0 error: {:?}", tick0.error);
+                assert!(tick1.error.is_none(), "party1 error: {:?}", tick1.error);
+                enqueue_outgoing(&mut queue, session_id, &mut sequence, 0, tick0.outgoing);
+                enqueue_outgoing(&mut queue, session_id, &mut sequence, 1, tick1.outgoing);
+                continue;
+            };
+            let encoded = serde_json::to_string(&wire).expect("wire should serialize");
+            match wire.audience {
+                MpcMessageAudience::AllParties => {
+                    if wire.sender_index != 0 {
+                        let result = parse_advance(
+                            party0
+                                .receive_wire_message_json(&encoded)
+                                .expect("party0 should receive broadcast"),
+                        );
+                        assert!(result.error.is_none(), "party0 receive error: {:?}", result.error);
+                        let tick = parse_advance(party0.advance_json(100).expect("party0 tick"));
+                        enqueue_outgoing(&mut queue, session_id, &mut sequence, 0, tick.outgoing);
+                    }
+                    if wire.sender_index != 1 {
+                        let result = parse_advance(
+                            party1
+                                .receive_wire_message_json(&encoded)
+                                .expect("party1 should receive broadcast"),
+                        );
+                        assert!(result.error.is_none(), "party1 receive error: {:?}", result.error);
+                        let tick = parse_advance(party1.advance_json(100).expect("party1 tick"));
+                        enqueue_outgoing(&mut queue, session_id, &mut sequence, 1, tick.outgoing);
+                    }
+                }
+                MpcMessageAudience::OneParty { recipient_index: 0 } => {
+                    let result = parse_advance(
+                        party0
+                            .receive_wire_message_json(&encoded)
+                            .expect("party0 should receive p2p"),
+                    );
+                    assert!(result.error.is_none(), "party0 receive error: {:?}", result.error);
+                    let tick = parse_advance(party0.advance_json(100).expect("party0 tick"));
+                    enqueue_outgoing(&mut queue, session_id, &mut sequence, 0, tick.outgoing);
+                }
+                MpcMessageAudience::OneParty { recipient_index: 1 } => {
+                    let result = parse_advance(
+                        party1
+                            .receive_wire_message_json(&encoded)
+                            .expect("party1 should receive p2p"),
+                    );
+                    assert!(result.error.is_none(), "party1 receive error: {:?}", result.error);
+                    let tick = parse_advance(party1.advance_json(100).expect("party1 tick"));
+                    enqueue_outgoing(&mut queue, session_id, &mut sequence, 1, tick.outgoing);
+                }
+                MpcMessageAudience::OneParty { recipient_index } => {
+                    panic!("unexpected recipient {recipient_index}");
+                }
+            }
+        }
+
+        assert_eq!(party0.status(), "completed");
+        assert_eq!(party1.status(), "completed");
+        let result0: serde_json::Value =
+            serde_json::from_str(&party0.result_json().expect("party0 result json")).unwrap();
+        let result1: serde_json::Value =
+            serde_json::from_str(&party1.result_json().expect("party1 result json")).unwrap();
+        assert!(result0.is_object());
+        assert!(result1.is_object());
+        assert_eq!(
+            result0["shared_public_key"],
+            result1["shared_public_key"],
+            "parties should derive the same shared public key"
+        );
     }
 
     #[test]
