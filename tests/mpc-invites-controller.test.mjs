@@ -126,3 +126,40 @@ test('renderMpcLogsList 会展示 MPC 签名请求活动', async () => {
   assert.match(elements.mpcLogsList.innerHTML, /0x12345678/);
   assert.equal(elements.mpcLogsTotal.textContent, '1');
 });
+
+test('loadMpcSignRequests 刷新前会推进待处理 MPC 签名请求', async () => {
+  setup();
+  const calls = [];
+  const controller = new MpcSettingsController({
+    wallet: {
+      processPendingMpcSignRequests: async (options) => {
+        calls.push(['process', options]);
+        return { success: true, processed: [], count: 0 };
+      },
+      listMpcSignRequests: async (options) => {
+        calls.push(['list', options]);
+        return {
+          success: true,
+          items: [{
+            id: 'sign-request-1',
+            walletId: 'mpc-wallet-1',
+            sessionId: 'session-1',
+            payloadType: 'message',
+            payloadHash: '0x1234',
+            status: 'completed',
+            createdAt: '1787270000000',
+          }],
+        };
+      },
+    },
+    requestPassword: async () => 'password123',
+  });
+
+  await controller.loadMpcSignRequests(false);
+
+  assert.deepEqual(calls, [
+    ['process', { pageSize: 20 }],
+    ['list', { pageSize: 20 }],
+  ]);
+  assert.equal(controller.mpcSignRequests.length, 1);
+});

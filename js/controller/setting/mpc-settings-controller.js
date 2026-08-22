@@ -1316,6 +1316,11 @@ export class MpcSettingsController {
       return;
     }
     try {
+      if (typeof this.wallet.processPendingMpcSignRequests === 'function') {
+        await this.wallet.processPendingMpcSignRequests({ pageSize: 20 }).catch((error) => {
+          console.warn('[MpcSettings] 推进待处理 MPC 签名请求失败:', error);
+        });
+      }
       const result = await this.wallet.listMpcSignRequests({ pageSize: 20 });
       if (!result?.success) {
         throw new Error(result?.error || '加载失败');

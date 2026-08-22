@@ -744,49 +744,65 @@ test('listSignRequests 使用协调器业务接口并同步本地签名请求', 
 });
 
 test('stream sign request 事件会同步本地签名请求', async () => {
-  await mpcService._handleStreamEvent('session-1', {
-    id: 'event-1',
-    type: 'sign-request',
-    data: {
+  const originalProcessPending = mpcService.processPendingWireSignRequests;
+  const processed = [];
+  mpcService.processPendingWireSignRequests = async (options) => {
+    processed.push(options);
+    return { processed: [], count: 0 };
+  };
+  try {
+    await mpcService._handleStreamEvent('session-1', {
+      id: 'event-1',
       type: 'sign-request',
-      sessionId: 'session-1',
       data: {
-        id: 'sign-request-1',
-        walletId: 'mpc-wallet-1',
+        type: 'sign-request',
         sessionId: 'session-1',
-        payloadType: 'message',
-        payloadHash: 'hash-1',
-        status: 'pending',
-        createdAt: '1',
+        data: {
+          id: 'sign-request-1',
+          walletId: 'mpc-wallet-1',
+          sessionId: 'session-1',
+          payloadType: 'message',
+          payloadHash: 'hash-1',
+          status: 'pending',
+          createdAt: '1',
+        },
+        timestamp: 2000,
       },
-      timestamp: 2000,
-    },
-  });
+    });
 
-  let stored = await getMpcSignRequest('sign-request-1');
-  assert.equal(stored.status, 'pending');
-  assert.equal(stored.payloadHash, 'hash-1');
-
-  await mpcService._handleStreamEvent('session-1', {
-    id: 'event-2',
-    type: 'sign-request-completed',
-    data: {
-      type: 'sign-request-completed',
+    let stored = await getMpcSignRequest('sign-request-1');
+    assert.equal(stored.status, 'pending');
+    assert.equal(stored.payloadHash, 'hash-1');
+    assert.deepEqual(processed, [{
+      syncRemote: false,
       sessionId: 'session-1',
-      data: {
-        id: 'sign-request-1',
-        status: 'completed',
-        signature: '0xmpcsig',
-        completedAt: '2',
-      },
-      timestamp: 3000,
-    },
-  });
+      requestId: 'sign-request-1',
+    }]);
 
-  stored = await getMpcSignRequest('sign-request-1');
-  assert.equal(stored.status, 'completed');
-  assert.equal(stored.signature, '0xmpcsig');
-  assert.equal(stored.walletId, 'mpc-wallet-1');
+    await mpcService._handleStreamEvent('session-1', {
+      id: 'event-2',
+      type: 'sign-request-completed',
+      data: {
+        type: 'sign-request-completed',
+        sessionId: 'session-1',
+        data: {
+          id: 'sign-request-1',
+          status: 'completed',
+          signature: '0xmpcsig',
+          completedAt: '2',
+        },
+        timestamp: 3000,
+      },
+    });
+
+    stored = await getMpcSignRequest('sign-request-1');
+    assert.equal(stored.status, 'completed');
+    assert.equal(stored.signature, '0xmpcsig');
+    assert.equal(stored.walletId, 'mpc-wallet-1');
+    assert.equal(processed.length, 1);
+  } finally {
+    mpcService.processPendingWireSignRequests = originalProcessPending;
+  }
 });
 
 test('fetchSessionMessages 会把对端 sign 消息交给 TSS 引擎处理', async () => {

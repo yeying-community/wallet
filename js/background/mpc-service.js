@@ -2187,6 +2187,19 @@ class MpcService {
         ...data,
         updatedAt: getTimestamp()
       });
+      if (eventType === 'sign-request' && String(data.status || '').trim().toLowerCase() === 'pending') {
+        await this.processPendingWireSignRequests({
+          syncRemote: false,
+          sessionId,
+          requestId: data.id
+        }).catch((error) => this._appendAuditLog({
+          sessionId,
+          level: 'warn',
+          action: 'sign-request-process-skipped',
+          message: error?.message || 'MPC sign request processing skipped',
+          metadata: { requestId: data.id }
+        }));
+      }
     }
 
     if (eventType === 'participant-joined') {
