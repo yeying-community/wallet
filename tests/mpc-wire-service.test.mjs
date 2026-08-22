@@ -41,6 +41,7 @@ const {
   getMpcMessage,
   getMpcSession,
   getMpcWallet,
+  saveMpcKeyShare,
   saveMpcSession,
   saveMpcWallet
 } = await import('../js/storage/index.js');
@@ -371,6 +372,124 @@ test('tickWireSession persists completed cggmp24 wire keygen result without mark
     assert.equal(wallet.status, 'keygen_completed');
     assert.equal(wallet.publicKey, '03abcdef');
     assert.equal(wallet.address, '0x2222222222222222222222222222222222222222');
+    assert.equal(wallet.signingStatus, 'unavailable');
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+  }
+});
+
+test('tickWireSession persists completed cggmp24 aux-info result without marking wallet signable', async () => {
+  await saveMpcSession({
+    id: 'session-aux-1',
+    type: 'keygen',
+    name: 'mpc10',
+    walletId: 'mpc-wallet-aux-1',
+    status: 'keygen_completed',
+    threshold: 1,
+    curve: 'secp256k1',
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222'
+    ],
+    keyVersion: 1,
+    shareVersion: 1,
+    result: {
+      status: 'keygen_completed',
+      publicKey: '03abcdef',
+      address: '0x3333333333333333333333333333333333333333',
+      signingStatus: 'unavailable',
+      signingUnavailableReason: 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED'
+    },
+    createdAt: 1,
+    updatedAt: 1
+  });
+  await saveMpcWallet({
+    id: 'mpc-wallet-aux-1',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'keygen_completed',
+    keygenSessionId: 'session-aux-1',
+    threshold: 1,
+    curve: 'secp256k1',
+    address: '0x3333333333333333333333333333333333333333',
+    publicKey: '03abcdef',
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222'
+    ],
+    signingStatus: 'unavailable',
+    signingUnavailableReason: 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED',
+    createdAt: 1,
+    updatedAt: 1
+  });
+  await saveMpcKeyShare({
+    id: 'mpc-wallet-aux-1:0x2222222222222222222222222222222222222222:1',
+    walletId: 'mpc-wallet-aux-1',
+    sessionId: 'session-aux-1',
+    participantId: '0x2222222222222222222222222222222222222222',
+    participantIndex: 1,
+    curve: 'secp256k1',
+    publicKey: '03abcdef',
+    address: '0x3333333333333333333333333333333333333333',
+    share: { shared_public_key: '03abcdef', i: 1 },
+    keyVersion: 1,
+    shareVersion: 1,
+    engine: 'cggmp24',
+    signingStatus: 'unavailable',
+    signingUnavailableReason: 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED',
+    createdAt: 1,
+    updatedAt: 1
+  });
+
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    fetchMessages: async () => ({ messages: [], nextSequence: 0 })
+  };
+
+  const adapter = {
+    async getResult() {
+      return {
+        status: 'completed',
+        auxInfo: { paillier: 'aux-1', rid: 'rid-1' },
+        curve: 'secp256k1'
+      };
+    },
+    async receiveMessage() {},
+    async advance() {
+      return { messages: [] };
+    }
+  };
+
+  try {
+    const result = await mpcService.tickWireSession({
+      sessionId: 'session-aux-1',
+      protocol: 'aux-info',
+      participantId: '0x2222222222222222222222222222222222222222',
+      recipientIndex: 1,
+      adapter
+    });
+
+    assert.equal(result.result.status, 'completed');
+    assert.equal(result.handledResult.wallet.status, 'keygen_completed');
+    const share = await getMpcKeyShare('mpc-wallet-aux-1:0x2222222222222222222222222222222222222222:1');
+    assert.deepEqual(share.auxInfo, { paillier: 'aux-1', rid: 'rid-1' });
+    assert.equal(share.auxInfoStatus, 'completed');
+    assert.equal(share.signingStatus, 'unavailable');
+
+    const session = await getMpcSession('session-aux-1');
+    assert.equal(session.status, 'keygen_completed');
+    assert.equal(session.auxInfoStatus, 'completed');
+    assert.equal(session.result.auxInfoStatus, 'completed');
+    assert.equal(session.result.signingUnavailableReason, 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED');
+
+    const wallet = await getMpcWallet('mpc-wallet-aux-1');
+    assert.equal(wallet.status, 'keygen_completed');
+    assert.equal(wallet.address, '0x3333333333333333333333333333333333333333');
+    assert.equal(wallet.auxInfoStatus, 'completed');
     assert.equal(wallet.signingStatus, 'unavailable');
   } finally {
     mpcService._ensureCoordinatorToken = originalEnsure;

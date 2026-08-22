@@ -762,6 +762,101 @@ class MpcService {
     return { session: nextSession, wallet: nextWallet, keyShare: shareRecord };
   }
 
+  async _handleWireAuxInfoResult({ session, wallet, participantId, participantIndex, result } = {}) {
+    const output = result && typeof result === 'object' ? result : {};
+    const status = String(output.status || '').trim().toLowerCase();
+    const auxInfo = output.auxInfo || output.aux_info || null;
+    if (status !== 'completed' || !auxInfo) {
+      return null;
+    }
+
+    const sessionId = String(session?.id || '').trim();
+    const walletId = String(wallet?.id || session?.walletId || '').trim();
+    const localParticipantId = String(participantId || '').trim();
+    if (!sessionId || !walletId || !localParticipantId) {
+      return null;
+    }
+
+    const shareVersion = Number(output.shareVersion ?? session?.shareVersion ?? wallet?.shareVersion ?? 1);
+    const keyVersion = Number(output.keyVersion ?? session?.keyVersion ?? wallet?.keyVersion ?? 1);
+    const shareId = output.shareId || `${walletId}:${localParticipantId}:${shareVersion}`;
+    const existingShare = await getMpcKeyShare(shareId);
+    if (!existingShare?.share) {
+      throw new Error('MPC_CGGMP24_CORE_KEY_SHARE_NOT_FOUND');
+    }
+
+    const now = getTimestamp();
+    const shareRecord = {
+      ...existingShare,
+      id: shareId,
+      walletId,
+      sessionId: existingShare.sessionId || sessionId,
+      auxInfoSessionId: sessionId,
+      participantId: localParticipantId,
+      participantIndex: Number.isInteger(participantIndex)
+        ? participantIndex
+        : existingShare.participantIndex,
+      curve: output.curve || existingShare.curve || session?.curve || wallet?.curve || 'secp256k1',
+      keyVersion,
+      shareVersion,
+      engine: existingShare.engine || 'cggmp24',
+      auxInfo,
+      auxInfoStatus: 'completed',
+      signingStatus: 'unavailable',
+      signingUnavailableReason: 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED',
+      updatedAt: now
+    };
+    await saveMpcKeyShare(shareRecord);
+
+    const completedResult = {
+      ...(session?.result && typeof session.result === 'object' ? session.result : {}),
+      status: 'keygen_completed',
+      auxInfoStatus: 'completed',
+      curve: shareRecord.curve,
+      keyVersion,
+      shareVersion,
+      engine: 'cggmp24',
+      signingStatus: 'unavailable',
+      signingUnavailableReason: 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED'
+    };
+    const nextSession = {
+      ...session,
+      status: 'keygen_completed',
+      result: completedResult,
+      auxInfoStatus: 'completed',
+      keyVersion,
+      shareVersion,
+      updatedAt: now
+    };
+    await saveMpcSession(nextSession);
+
+    const nextWallet = {
+      ...wallet,
+      id: walletId,
+      name: wallet?.name || session?.name || '',
+      type: wallet?.type || 'mpc',
+      status: 'keygen_completed',
+      keygenSessionId: wallet?.keygenSessionId || sessionId,
+      curve: shareRecord.curve,
+      keyVersion,
+      shareVersion,
+      auxInfoStatus: 'completed',
+      signingStatus: 'unavailable',
+      signingUnavailableReason: 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED',
+      updatedAt: now
+    };
+    await saveMpcWallet(nextWallet);
+
+    await this._appendAuditLog({
+      sessionId,
+      level: 'info',
+      action: 'wire-aux-info-completed',
+      message: 'MPC wire aux-info 已完成，本地 aux-info 已保存'
+    });
+
+    return { session: nextSession, wallet: nextWallet, keyShare: shareRecord };
+  }
+
   async startKeygenSession(options = {}) {
     await this.init();
     const sessionId = String(options.sessionId || '').trim();
@@ -1159,6 +1254,17 @@ class MpcService {
       const walletId = String(options.walletId || session?.walletId || '').trim();
       const wallet = walletId ? await getMpcWallet(walletId) : null;
       handledResult = await this._handleWireKeygenResult({
+        session,
+        wallet,
+        participantId,
+        participantIndex: recipientIndex,
+        result
+      });
+    } else if (protocol === 'aux-info' && result?.status === 'completed') {
+      const participantId = String(options.participantId || await this._resolveLocalParticipantId(session)).trim();
+      const walletId = String(options.walletId || session?.walletId || '').trim();
+      const wallet = walletId ? await getMpcWallet(walletId) : null;
+      handledResult = await this._handleWireAuxInfoResult({
         session,
         wallet,
         participantId,
