@@ -18,11 +18,11 @@ import {
 import { handleEthAccounts, handleEthRequestAccounts, handleWalletGetPermissions, handleWalletRequestPermissions, handleWalletRevokePermissions } from './account-handler.js';
 import { handleEthChainId, handleNetVersion, handleSwitchChain, handleAddEthereumChain } from './chain-handler.js';
 import { handleRpcMethod } from './rpc-handler.js';
-import { resolveMpcAccountIdByAddress, signTransaction, signMessage, signTypedData } from './signing.js';
-import { getSelectedAccount, isAuthorized, updateUserSetting } from '../storage/index.js';
+import { resolveMpcAccountIdByAddress, signTransaction, signMessage, signTypedData, isMpcAccountId } from './signing.js';
+import { getSelectedAccount, isAuthorized, updateUserSetting, getNetworkByChainId, getNetworkConfigByKey } from '../storage/index.js';
 import { focusUnlockWindow, requestUnlock } from './unlock-flow.js';
 import { withPopupBoundsAsync } from './window-utils.js';
-import { POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
+import { DEFAULT_NETWORK, POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { handleUcanSession, handleUcanSign } from './ucan.js';
 import { requestIdentityPresentation as handleIdentityPresentation } from './identity-presentation.js';
@@ -146,6 +146,46 @@ async function ensureSiteAuthorized(origin) {
   if (!authorized) {
     throw createUnauthorizedError('Site not connected');
   }
+}
+
+async function getCurrentRpcUrl() {
+  const network = await getNetworkByChainId(state.currentChainId);
+  let rpcUrl = state.currentRpcUrl || network?.rpcUrl || network?.rpc;
+  if (!rpcUrl) {
+    const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+    rpcUrl = fallbackConfig?.rpcUrl || fallbackConfig?.rpc || '';
+  }
+  if (!rpcUrl) {
+    throw createInternalError('RPC URL not configured');
+  }
+  return rpcUrl;
+}
+
+export async function broadcastSignedTransaction(signedTransaction) {
+  const raw = String(signedTransaction || '').trim();
+  if (!/^0x[0-9a-fA-F]+$/.test(raw)) {
+    throw createInvalidParams('Invalid signed transaction');
+  }
+  const rpcUrl = await getCurrentRpcUrl();
+  const response = await fetch(rpcUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: getTimestamp(),
+      method: 'eth_sendRawTransaction',
+      params: [raw]
+    })
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || payload?.error) {
+    throw createInternalError(payload?.error?.message || `Failed to broadcast transaction: HTTP ${response.status}`);
+  }
+  const hash = String(payload?.result || '').trim();
+  if (!/^0x[0-9a-fA-F]{64}$/.test(hash)) {
+    throw createInternalError('Invalid transaction hash returned by RPC');
+  }
+  return hash;
 }
 
 async function waitForApprovalAndExecute({
@@ -598,6 +638,9 @@ async function handleSendTransaction(account, params, origin, tabId, clientReque
     onApproved: async () => {
       console.log('✅ Transaction approved, signing...');
       const result = await signTransaction(signerAccountId, transaction);
+      if (isMpcAccountId(signerAccountId)) {
+        return await broadcastSignedTransaction(result);
+      }
       return result.hash;
     },
     onRejectedMessage: 'User rejected the transaction'
