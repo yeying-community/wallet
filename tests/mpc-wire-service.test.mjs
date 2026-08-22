@@ -33,7 +33,11 @@ globalThis.chrome = {
 };
 
 const { mpcService } = await import('../js/background/mpc-service.js');
-const { MpcTssStateMachineAdapter } = await import('../js/background/mpc-tss-engine.js');
+const {
+  MpcTssStateMachineAdapter,
+  resetMpcTssEngineForTests,
+  setMpcTssEngineForTests,
+} = await import('../js/background/mpc-tss-engine.js');
 const { Cggmp24WasmEngine } = await import('../js/background/mpc-cggmp24-wasm-engine.js');
 const { createMpcWireMessage } = await import('../js/background/mpc-wire-protocol.js');
 const {
@@ -50,6 +54,7 @@ test.beforeEach(async () => {
   await chrome.storage.local.clear();
   mpcService._wireSessionCursors.clear();
   mpcService._wireSessionAdapters.clear();
+  resetMpcTssEngineForTests();
 });
 
 test('tickWireSession polls wire messages, advances adapter, and stores sequence cursor', async () => {
@@ -449,6 +454,22 @@ test('tickWireSession persists completed cggmp24 aux-info result without marking
     setEndpoint() {},
     fetchMessages: async () => ({ messages: [], nextSequence: 0 })
   };
+  setMpcTssEngineForTests({
+    isLoaded: () => true,
+    combineKeyShare(coreKeyShare, auxInfo) {
+      return {
+        status: 'completed',
+        curve: 'secp256k1',
+        keyShare: {
+          core: coreKeyShare,
+          aux: auxInfo
+        },
+        compressedPublicKeyHex: '03abcdef',
+        uncompressedPublicKeyHex: `04${'44'.repeat(64)}`,
+        ethereumAddress: '0x4444444444444444444444444444444444444444'
+      };
+    }
+  });
 
   const adapter = {
     async getResult() {
@@ -478,22 +499,32 @@ test('tickWireSession persists completed cggmp24 aux-info result without marking
     const share = await getMpcKeyShare('mpc-wallet-aux-1:0x2222222222222222222222222222222222222222:1');
     assert.deepEqual(share.auxInfo, { paillier: 'aux-1', rid: 'rid-1' });
     assert.equal(share.auxInfoStatus, 'completed');
+    assert.equal(share.completeKeyShareStatus, 'completed');
+    assert.deepEqual(share.completeKeyShare, {
+      core: { shared_public_key: '03abcdef', i: 1 },
+      aux: { paillier: 'aux-1', rid: 'rid-1' }
+    });
     assert.equal(share.signingStatus, 'unavailable');
 
     const session = await getMpcSession('session-aux-1');
     assert.equal(session.status, 'keygen_completed');
     assert.equal(session.auxInfoStatus, 'completed');
     assert.equal(session.result.auxInfoStatus, 'completed');
+    assert.equal(session.result.completeKeyShareStatus, 'completed');
     assert.equal(session.result.signingUnavailableReason, 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED');
 
     const wallet = await getMpcWallet('mpc-wallet-aux-1');
     assert.equal(wallet.status, 'keygen_completed');
-    assert.equal(wallet.address, '0x3333333333333333333333333333333333333333');
+    assert.equal(wallet.address, '0x4444444444444444444444444444444444444444');
+    assert.equal(wallet.publicKey, '03abcdef');
+    assert.equal(wallet.uncompressedPublicKey, `04${'44'.repeat(64)}`);
     assert.equal(wallet.auxInfoStatus, 'completed');
+    assert.equal(wallet.completeKeyShareStatus, 'completed');
     assert.equal(wallet.signingStatus, 'unavailable');
   } finally {
     mpcService._ensureCoordinatorToken = originalEnsure;
     mpcService._coordinator = originalCoordinator;
+    resetMpcTssEngineForTests();
   }
 });
 
@@ -576,6 +607,7 @@ test('service wire sessions can drive two cggmp24 keygen participants through th
           uncompressedPublicKeyHex: `04${'33'.repeat(64)}`,
           ethereumAddress: '0x3333333333333333333333333333333333333333',
         }),
+        combineKeyShareJson: () => JSON.stringify({ status: 'completed' }),
       },
     });
   }

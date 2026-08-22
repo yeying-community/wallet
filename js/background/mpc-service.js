@@ -784,6 +784,23 @@ class MpcService {
     if (!existingShare?.share) {
       throw new Error('MPC_CGGMP24_CORE_KEY_SHARE_NOT_FOUND');
     }
+    let combinedKeyShare = null;
+    let combinedPublicMaterial = null;
+    const tssEngine = getMpcTssEngine();
+    const canCombineKeyShare = typeof tssEngine?.combineKeyShare === 'function'
+      && (typeof tssEngine.isLoaded !== 'function' || tssEngine.isLoaded());
+    if (canCombineKeyShare) {
+      const combined = await tssEngine.combineKeyShare(existingShare.share, auxInfo);
+      if (combined && typeof combined === 'object') {
+        combinedKeyShare = combined.keyShare || combined.key_share || null;
+        combinedPublicMaterial = {
+          publicKey: String(combined.compressedPublicKeyHex || combined.publicKey || '').trim(),
+          uncompressedPublicKey: String(combined.uncompressedPublicKeyHex || combined.uncompressedPublicKey || '').trim(),
+          address: String(combined.ethereumAddress || combined.address || '').trim(),
+          curve: combined.curve
+        };
+      }
+    }
 
     const now = getTimestamp();
     const shareRecord = {
@@ -802,6 +819,8 @@ class MpcService {
       engine: existingShare.engine || 'cggmp24',
       auxInfo,
       auxInfoStatus: 'completed',
+      completeKeyShare: combinedKeyShare || existingShare.completeKeyShare,
+      completeKeyShareStatus: combinedKeyShare ? 'completed' : existingShare.completeKeyShareStatus,
       signingStatus: 'unavailable',
       signingUnavailableReason: 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED',
       updatedAt: now
@@ -812,7 +831,12 @@ class MpcService {
       ...(session?.result && typeof session.result === 'object' ? session.result : {}),
       status: 'keygen_completed',
       auxInfoStatus: 'completed',
-      curve: shareRecord.curve,
+      completeKeyShareStatus: shareRecord.completeKeyShareStatus,
+      publicKey: combinedPublicMaterial?.publicKey || session?.result?.publicKey || wallet?.publicKey || existingShare.publicKey || '',
+      groupPublicKey: combinedPublicMaterial?.publicKey || session?.result?.groupPublicKey || wallet?.publicKey || existingShare.publicKey || '',
+      uncompressedPublicKey: combinedPublicMaterial?.uncompressedPublicKey || session?.result?.uncompressedPublicKey || wallet?.uncompressedPublicKey || existingShare.uncompressedPublicKey || '',
+      address: combinedPublicMaterial?.address || session?.result?.address || wallet?.address || existingShare.address || '',
+      curve: combinedPublicMaterial?.curve || shareRecord.curve,
       keyVersion,
       shareVersion,
       engine: 'cggmp24',
@@ -838,9 +862,13 @@ class MpcService {
       status: 'keygen_completed',
       keygenSessionId: wallet?.keygenSessionId || sessionId,
       curve: shareRecord.curve,
+      address: combinedPublicMaterial?.address || wallet?.address || existingShare.address || '',
+      publicKey: combinedPublicMaterial?.publicKey || wallet?.publicKey || existingShare.publicKey || '',
+      uncompressedPublicKey: combinedPublicMaterial?.uncompressedPublicKey || wallet?.uncompressedPublicKey || existingShare.uncompressedPublicKey || '',
       keyVersion,
       shareVersion,
       auxInfoStatus: 'completed',
+      completeKeyShareStatus: shareRecord.completeKeyShareStatus,
       signingStatus: 'unavailable',
       signingUnavailableReason: 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED',
       updatedAt: now

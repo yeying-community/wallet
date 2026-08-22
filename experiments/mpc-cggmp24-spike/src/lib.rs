@@ -27,6 +27,7 @@ cggmp24::define_security_level!(SpikeSecurityLevel {
 
 pub type SecpKeyShare = KeyShare<Secp256k1, SpikeSecurityLevel>;
 pub type SecpCoreKeyShare = cggmp24_keygen::key_share::CoreKeyShare<Secp256k1>;
+pub type SecpAuxInfo = cggmp24::key_share::AuxInfo<SpikeSecurityLevel>;
 pub type SecpSignature = Signature<Secp256k1>;
 pub type SecpSigningMessage = cggmp24::signing::msg::Msg<Secp256k1, Sha256>;
 pub type SecpAuxInfoMessage = cggmp24::key_refresh::msg::Msg<Sha256, SpikeSecurityLevel>;
@@ -209,6 +210,17 @@ pub struct CoreKeySharePublicMaterial {
     pub ethereum_address: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CombinedKeyShareJson {
+    pub status: String,
+    pub curve: String,
+    pub key_share: serde_json::Value,
+    pub compressed_public_key_hex: String,
+    pub uncompressed_public_key_hex: String,
+    pub ethereum_address: String,
+}
+
 fn to_js_error(error: impl core::fmt::Display) -> JsValue {
     JsValue::from_str(&error.to_string())
 }
@@ -218,6 +230,23 @@ fn core_key_share_public_material(
 ) -> Result<CoreKeySharePublicMaterial, JsValue> {
     let compressed = share.shared_public_key.to_bytes(true);
     let uncompressed = share.shared_public_key.to_bytes(false);
+    let uncompressed_bytes = uncompressed.as_ref();
+    if uncompressed_bytes.len() != 65 || uncompressed_bytes.first() != Some(&0x04) {
+        return Err(JsValue::from_str("MPC_CGGMP24_INVALID_PUBLIC_KEY_ENCODING"));
+    }
+    let hash = Keccak256::digest(&uncompressed_bytes[1..]);
+    let address = &hash[hash.len() - 20..];
+    Ok(CoreKeySharePublicMaterial {
+        curve: "secp256k1".to_string(),
+        compressed_public_key_hex: hex::encode(compressed.as_ref()),
+        uncompressed_public_key_hex: hex::encode(uncompressed_bytes),
+        ethereum_address: format!("0x{}", hex::encode(address)),
+    })
+}
+
+fn key_share_public_material(share: &SecpKeyShare) -> Result<CoreKeySharePublicMaterial, JsValue> {
+    let compressed = share.shared_public_key().to_bytes(true);
+    let uncompressed = share.shared_public_key().to_bytes(false);
     let uncompressed_bytes = uncompressed.as_ref();
     if uncompressed_bytes.len() != 65 || uncompressed_bytes.first() != Some(&0x04) {
         return Err(JsValue::from_str("MPC_CGGMP24_INVALID_PUBLIC_KEY_ENCODING"));
@@ -251,6 +280,7 @@ pub fn cggmp24_engine_metadata_json() -> Result<String, JsValue> {
             "getOutgoingMessages".to_string(),
             "getResult".to_string(),
             "coreKeySharePublicMaterial".to_string(),
+            "combineKeyShare".to_string(),
             "startAuxInfo".to_string(),
         ],
     })
@@ -293,6 +323,25 @@ pub fn core_key_share_public_material_json(json: &str) -> Result<String, JsValue
     let share: SecpCoreKeyShare = serde_json::from_str(json).map_err(to_js_error)?;
     let material = core_key_share_public_material(&share)?;
     serde_json::to_string(&material).map_err(to_js_error)
+}
+
+#[wasm_bindgen(js_name = combineKeyShareJson)]
+pub fn combine_key_share_json(core_json: &str, aux_info_json: &str) -> Result<String, JsValue> {
+    let core: SecpCoreKeyShare = serde_json::from_str(core_json).map_err(to_js_error)?;
+    let aux_info: SecpAuxInfo = serde_json::from_str(aux_info_json).map_err(to_js_error)?;
+    let key_share: SecpKeyShare =
+        KeyShare::from_parts((core, aux_info)).map_err(to_js_error)?;
+    let material = key_share_public_material(&key_share)?;
+    let key_share_json = serde_json::to_value(&key_share).map_err(to_js_error)?;
+    serde_json::to_string(&CombinedKeyShareJson {
+        status: "completed".to_string(),
+        curve: material.curve,
+        key_share: key_share_json,
+        compressed_public_key_hex: material.compressed_public_key_hex,
+        uncompressed_public_key_hex: material.uncompressed_public_key_hex,
+        ethereum_address: material.ethereum_address,
+    })
+    .map_err(to_js_error)
 }
 
 #[wasm_bindgen]
@@ -871,5 +920,31 @@ mod tests {
 
         assert!(verify_signature(&shares[0], message, &signature));
         assert_eq!(serialize_signature_hex(&signature).len(), 128);
+    }
+
+    #[test]
+    #[ignore = "Runs trusted-dealer auxiliary-data generation and can take minutes locally."]
+    fn combine_key_share_json_rebuilds_trusted_dealer_share() {
+        let shares = trusted_dealer_2_of_2();
+        let core: SecpCoreKeyShare =
+            <SecpKeyShare as AsRef<SecpCoreKeyShare>>::as_ref(&shares[0]).clone();
+        let aux_info: SecpAuxInfo =
+            <SecpKeyShare as AsRef<SecpAuxInfo>>::as_ref(&shares[0]).clone();
+        let core_json = serde_json::to_string(&core).expect("core should serialize");
+        let aux_info_json = serde_json::to_string(&aux_info).expect("aux-info should serialize");
+
+        let combined: CombinedKeyShareJson = serde_json::from_str(
+            &combine_key_share_json(&core_json, &aux_info_json).expect("share should combine"),
+        )
+        .expect("combined result should deserialize");
+
+        assert_eq!(combined.status, "completed");
+        assert_eq!(combined.curve, "secp256k1");
+        assert_eq!(combined.compressed_public_key_hex.len(), 66);
+        assert_eq!(combined.uncompressed_public_key_hex.len(), 130);
+        assert!(combined.uncompressed_public_key_hex.starts_with("04"));
+        assert_eq!(combined.ethereum_address.len(), 42);
+        assert!(combined.key_share.get("core").is_some());
+        assert!(combined.key_share.get("aux").is_some());
     }
 }

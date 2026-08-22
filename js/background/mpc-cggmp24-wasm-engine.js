@@ -7,6 +7,7 @@ const REQUIRED_WASM_EXPORTS = [
   'normalizeThresholdKeygenPayloadJson',
   'normalizeAuxInfoPayloadJson',
   'coreKeySharePublicMaterialJson',
+  'combineKeyShareJson',
 ];
 
 function requireFunction(target, name) {
@@ -64,6 +65,14 @@ export class Cggmp24WasmEngine {
   coreKeySharePublicMaterial(keyShare) {
     const material = requireFunction(this._wasm, 'coreKeySharePublicMaterialJson')(stringifyJson(keyShare));
     return parseJson(material, {});
+  }
+
+  combineKeyShare(coreKeyShare, auxInfo) {
+    const combined = requireFunction(this._wasm, 'combineKeyShareJson')(
+      stringifyJson(coreKeyShare),
+      stringifyJson(auxInfo)
+    );
+    return parseJson(combined, {});
   }
 
   async startKeygen({ sessionId, senderIndex, parties, threshold, curve = 'secp256k1' } = {}) {

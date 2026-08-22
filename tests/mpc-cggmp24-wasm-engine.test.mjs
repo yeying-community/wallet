@@ -60,6 +60,20 @@ test('Cggmp24WasmEngine exposes metadata and JSON normalization exports', () => 
           ethereumAddress: '0x1111111111111111111111111111111111111111',
         });
       },
+      combineKeyShareJson: (coreJson, auxInfoJson) => {
+        calls.push(['combine', JSON.parse(coreJson), JSON.parse(auxInfoJson)]);
+        return JSON.stringify({
+          status: 'completed',
+          curve: 'secp256k1',
+          keyShare: {
+            core: JSON.parse(coreJson),
+            aux: JSON.parse(auxInfoJson),
+          },
+          compressedPublicKeyHex: '03abcdef',
+          uncompressedPublicKeyHex: `04${'11'.repeat(64)}`,
+          ethereumAddress: '0x1111111111111111111111111111111111111111',
+        });
+      },
     },
   });
 
@@ -79,7 +93,18 @@ test('Cggmp24WasmEngine exposes metadata and JSON normalization exports', () => 
     uncompressedPublicKeyHex: `04${'11'.repeat(64)}`,
     ethereumAddress: '0x1111111111111111111111111111111111111111',
   });
-  assert.deepEqual(calls.map(([name]) => name), ['wire', 'sign', 'keygen', 'aux-info', 'material']);
+  assert.deepEqual(engine.combineKeyShare({ core: 'share' }, { aux: 'info' }), {
+    status: 'completed',
+    curve: 'secp256k1',
+    keyShare: {
+      core: { core: 'share' },
+      aux: { aux: 'info' },
+    },
+    compressedPublicKeyHex: '03abcdef',
+    uncompressedPublicKeyHex: `04${'11'.repeat(64)}`,
+    ethereumAddress: '0x1111111111111111111111111111111111111111',
+  });
+  assert.deepEqual(calls.map(([name]) => name), ['wire', 'sign', 'keygen', 'aux-info', 'material', 'combine']);
 });
 
 test('installCggmp24WasmEngine installs the loaded engine through the TSS boundary', async () => {
@@ -102,6 +127,7 @@ test('installCggmp24WasmEngine installs the loaded engine through the TSS bounda
         uncompressedPublicKeyHex: `04${'11'.repeat(64)}`,
         ethereumAddress: '0x1111111111111111111111111111111111111111',
       }),
+      combineKeyShareJson: () => JSON.stringify({ status: 'completed' }),
     },
   });
 
@@ -185,6 +211,7 @@ test('Cggmp24WasmEngine drives threshold keygen sessions through the TSS adapter
           ethereumAddress: '0x2222222222222222222222222222222222222222',
         });
       },
+      combineKeyShareJson: () => JSON.stringify({ status: 'completed' }),
     },
   });
   const adapter = new MpcTssStateMachineAdapter({
@@ -305,6 +332,7 @@ test('Cggmp24WasmEngine drives aux-info sessions through the TSS adapter contrac
       normalizeThresholdKeygenPayloadJson: (json) => json,
       normalizeAuxInfoPayloadJson: (json) => json,
       coreKeySharePublicMaterialJson: () => JSON.stringify({}),
+      combineKeyShareJson: () => JSON.stringify({ status: 'completed' }),
     },
   });
   const adapter = new MpcTssStateMachineAdapter({
