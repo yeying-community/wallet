@@ -2277,6 +2277,13 @@ class MpcService {
       if (!existing) {
         await saveMpcMessage(data);
       }
+      await this._tickWireSessionForStreamMessage(sessionId, data).catch((error) => this._appendAuditLog({
+        sessionId,
+        level: 'warn',
+        action: 'wire-message-process-skipped',
+        message: error?.message || 'MPC wire message processing skipped',
+        metadata: { messageId: data.id }
+      }));
     }
 
     if (eventType === 'session-update') {
@@ -2328,6 +2335,32 @@ class MpcService {
       action: `event-${eventType}`,
       message,
       time
+    });
+  }
+
+  async _tickWireSessionForStreamMessage(sessionId, message) {
+    const envelope = message?.envelope && typeof message.envelope === 'object' ? message.envelope : null;
+    if (!envelope || String(envelope.engine || '').trim() !== 'cggmp24') {
+      return null;
+    }
+    const protocol = String(envelope.protocol || message?.type || '').trim();
+    if (!['keygen', 'aux-info', 'sign'].includes(protocol)) {
+      return null;
+    }
+    const requestId = String(
+      envelope?.payload?.requestId
+      || envelope?.payload?.signRequestId
+      || envelope?.payload?.sign_request_id
+      || message?.requestId
+      || message?.signRequestId
+      || ''
+    ).trim();
+    return await this.tickWireSession({
+      sessionId,
+      protocol,
+      requestId,
+      signRequestId: requestId,
+      limit: 50
     });
   }
 

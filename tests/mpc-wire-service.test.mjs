@@ -992,6 +992,57 @@ test('processPendingWireSignRequests continues bounded ticks while wire messages
   }
 });
 
+test('stream wire message event ticks matching cggmp24 protocol session', async () => {
+  const originalTickWireSession = mpcService.tickWireSession;
+  const ticks = [];
+  mpcService.tickWireSession = async (options) => {
+    ticks.push(options);
+    return { result: null };
+  };
+
+  try {
+    await mpcService._handleStreamEvent('session-stream-aux', {
+      id: 'event-stream-aux-1',
+      type: 'message',
+      data: {
+        type: 'message',
+        data: {
+          id: 'wire-stream-aux-1',
+          sessionId: 'session-stream-aux',
+          from: '0',
+          to: '1',
+          type: 'aux-info',
+          envelope: {
+            protocol_version: 1,
+            engine: 'cggmp24',
+            session_id: 'session-stream-aux',
+            protocol: 'aux-info',
+            sender_index: 0,
+            audience: 'all-parties',
+            sequence: 1,
+            payload: { Round1: { aux: true } }
+          },
+          createdAt: 1
+        },
+        timestamp: 2
+      }
+    });
+
+    const stored = await getMpcMessage('wire-stream-aux-1');
+    assert.equal(stored.type, 'aux-info');
+    assert.equal(ticks.length, 1);
+    assert.deepEqual(ticks[0], {
+      sessionId: 'session-stream-aux',
+      protocol: 'aux-info',
+      requestId: '',
+      signRequestId: '',
+      limit: 50
+    });
+  } finally {
+    mpcService.tickWireSession = originalTickWireSession;
+  }
+});
+
 test('service wire sessions can drive two cggmp24 keygen participants through the message log', async () => {
   class FakeKeygenSession {
     constructor(sessionId, senderIndex, partyCount, threshold) {
