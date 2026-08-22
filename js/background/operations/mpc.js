@@ -501,6 +501,15 @@ export async function handleMpcListSignRequests(options = {}) {
   }
 }
 
+export async function handleMpcProcessPendingSignRequests(options = {}) {
+  try {
+    const result = await mpcService.processPendingWireSignRequests(options);
+    return { success: true, ...result };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to process pending sign requests' };
+  }
+}
+
 export async function handleMpcGetSession(sessionId) {
   try {
     const session = await mpcService.getSession(sessionId);

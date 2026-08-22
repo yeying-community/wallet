@@ -16,11 +16,13 @@ import {
   saveMpcParticipant,
   getMpcWallet,
   saveMpcWallet,
+  getMpcKeyShares,
   getMpcKeyShare,
   saveMpcKeyShare,
   getMpcSession,
   saveMpcSession,
   getMpcSessionList,
+  getMpcSignRequests,
   getMpcSignRequest,
   saveMpcSignRequest,
   getMpcMessage,
@@ -1592,6 +1594,135 @@ class MpcService {
         page: Number(options.page || 1),
         pageSize: Number(options.pageSize || 20)
       }
+    };
+  }
+
+  async _findLocalCompleteKeyShare({ walletId, participantId, shareVersion } = {}) {
+    const normalizedWalletId = String(walletId || '').trim();
+    const normalizedParticipantId = String(participantId || '').trim().toLowerCase();
+    if (!normalizedWalletId || !normalizedParticipantId) {
+      return null;
+    }
+    const shares = Object.values(await getMpcKeyShares());
+    const matches = shares
+      .filter((share) => String(share?.walletId || '').trim() === normalizedWalletId)
+      .filter((share) => String(share?.participantId || '').trim().toLowerCase() === normalizedParticipantId)
+      .filter((share) => share?.completeKeyShare)
+      .filter((share) => !shareVersion || Number(share?.shareVersion || 0) === Number(shareVersion))
+      .sort((a, b) => Number(b?.shareVersion || 0) - Number(a?.shareVersion || 0));
+    return matches[0] || null;
+  }
+
+  _resolveSignRequestPayload(signRequest) {
+    const payload = signRequest?.payload && typeof signRequest.payload === 'object'
+      ? signRequest.payload
+      : {};
+    if (payload.messageHex || payload.dataHex || payload.transactionHash || payload.hash) {
+      return payload;
+    }
+    const nested = payload.payload && typeof payload.payload === 'object' ? payload.payload : null;
+    if (nested?.messageHex || nested?.dataHex || nested?.transactionHash || nested?.hash) {
+      return nested;
+    }
+    return payload;
+  }
+
+  async processPendingWireSignRequests(options = {}) {
+    await this.init();
+    const syncRemote = options.syncRemote !== false;
+    if (syncRemote) {
+      await this.listSignRequests({
+        sessionId: options.sessionId,
+        walletId: options.walletId,
+        status: options.status || 'pending',
+        page: options.page || 1,
+        pageSize: options.pageSize || 20,
+        password: options.password
+      }).catch(() => null);
+    }
+
+    const requestMap = await getMpcSignRequests();
+    const requestId = String(options.requestId || options.signRequestId || '').trim();
+    const wantedStatus = String(options.status || 'pending').trim().toLowerCase();
+    const requests = Object.values(requestMap)
+      .filter((request) => !requestId || String(request?.id || '').trim() === requestId)
+      .filter((request) => !options.walletId || String(request?.walletId || '').trim() === String(options.walletId).trim())
+      .filter((request) => !options.sessionId || String(request?.sessionId || '').trim() === String(options.sessionId).trim())
+      .filter((request) => String(request?.status || '').trim().toLowerCase() === wantedStatus);
+
+    const processed = [];
+    for (const signRequest of requests) {
+      const id = String(signRequest?.id || '').trim();
+      try {
+        const sessionId = String(signRequest?.sessionId || options.sessionId || '').trim();
+        if (!sessionId) {
+          throw new Error('MPC_SESSION_NOT_FOUND');
+        }
+        const session = await getMpcSession(sessionId);
+        if (!session) {
+          throw new Error('MPC_SESSION_NOT_FOUND');
+        }
+        const walletId = String(signRequest?.walletId || session.walletId || options.walletId || '').trim();
+        const wallet = walletId ? await getMpcWallet(walletId) : null;
+        if (!wallet) {
+          throw new Error('MPC_WALLET_NOT_FOUND');
+        }
+        const participantId = String(options.participantId || await this._resolveLocalParticipantId(session)).trim();
+        if (!participantId) {
+          throw new Error('MPC_PARTICIPANT_NOT_FOUND');
+        }
+        const keyShare = await this._findLocalCompleteKeyShare({
+          walletId,
+          participantId,
+          shareVersion: signRequest.shareVersion || wallet.shareVersion || session.shareVersion
+        });
+        if (!keyShare) {
+          throw new Error('MPC_COMPLETE_KEY_SHARE_NOT_FOUND');
+        }
+        const participantIndex = Number.isInteger(Number(options.recipientIndex))
+          ? Number(options.recipientIndex)
+          : (Number.isInteger(Number(keyShare.participantIndex)) ? Number(keyShare.participantIndex) : await this._resolveLocalParticipantIndex(session, { participantId }));
+        const participants = this._normalizeParticipantIds(session.participants || wallet.participants || []);
+        const parties = participants.length ? participants.map((_participant, index) => index) : [];
+        const payload = this._resolveSignRequestPayload(signRequest);
+        await this.startWireSession({
+          sessionId,
+          protocol: 'sign',
+          requestId: id,
+          recipientIndex: participantIndex,
+          parties,
+          payload,
+          keyShareRef: keyShare
+        });
+        const tick = await this.tickWireSession({
+          sessionId,
+          protocol: 'sign',
+          requestId: id,
+          participantId,
+          recipientIndex: participantIndex,
+          password: options.password
+        });
+        const updated = await getMpcSignRequest(id);
+        processed.push({
+          requestId: id,
+          status: updated?.status || signRequest.status,
+          sessionId,
+          walletId,
+          participantId,
+          result: tick.result,
+          handledResult: tick.handledResult
+        });
+      } catch (error) {
+        processed.push({
+          requestId: id,
+          status: 'skipped',
+          error: error?.message || String(error)
+        });
+      }
+    }
+    return {
+      processed,
+      count: processed.length
     };
   }
 

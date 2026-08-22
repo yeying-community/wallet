@@ -608,6 +608,126 @@ test('tickWireSession persists completed cggmp24 sign result to local sign reque
   }
 });
 
+test('processPendingWireSignRequests starts and ticks local pending sign requests', async () => {
+  await saveMpcSession({
+    id: 'session-process-sign-1',
+    type: 'keygen',
+    walletId: 'mpc-wallet-process-sign-1',
+    status: 'keygen_completed',
+    threshold: 1,
+    curve: 'secp256k1',
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222'
+    ],
+    keyVersion: 1,
+    shareVersion: 1,
+    createdAt: 1,
+    updatedAt: 1
+  });
+  await saveMpcWallet({
+    id: 'mpc-wallet-process-sign-1',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'active',
+    keygenSessionId: 'session-process-sign-1',
+    threshold: 1,
+    curve: 'secp256k1',
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222'
+    ],
+    keyVersion: 1,
+    shareVersion: 1,
+    createdAt: 1,
+    updatedAt: 1
+  });
+  await saveMpcKeyShare({
+    id: 'mpc-wallet-process-sign-1:0x2222222222222222222222222222222222222222:1',
+    walletId: 'mpc-wallet-process-sign-1',
+    sessionId: 'session-process-sign-1',
+    participantId: '0x2222222222222222222222222222222222222222',
+    participantIndex: 1,
+    share: { core: 'core-share' },
+    completeKeyShare: { complete: 'complete-share' },
+    keyVersion: 1,
+    shareVersion: 1,
+    createdAt: 1,
+    updatedAt: 1
+  });
+  await saveMpcSignRequest({
+    id: 'sign-request-process-1',
+    walletId: 'mpc-wallet-process-sign-1',
+    sessionId: 'session-process-sign-1',
+    type: 'message',
+    status: 'pending',
+    payload: { message: 'hello', messageHex: '0x68656c6c6f' },
+    keyVersion: 1,
+    shareVersion: 1,
+    createdAt: 1,
+    updatedAt: 1
+  });
+
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    fetchMessages: async () => ({ messages: [], nextSequence: 0 })
+  };
+  setMpcTssEngineForTests({
+    async startSign(input) {
+      assert.equal(input.sessionId, 'session-process-sign-1');
+      assert.equal(input.requestId, 'sign-request-process-1');
+      assert.equal(input.senderIndex, 1);
+      assert.deepEqual(input.parties, [0, 1]);
+      assert.deepEqual(input.payload, { message: 'hello', messageHex: '0x68656c6c6f' });
+      assert.deepEqual(input.keyShareRef.completeKeyShare, { complete: 'complete-share' });
+      return {
+        sessionId: input.sessionId,
+        requestId: input.requestId,
+        senderIndex: input.senderIndex,
+        protocol: 'sign',
+        result: {
+          status: 'completed',
+          requestId: input.requestId,
+          signatureHex: '0xmpcsig'
+        }
+      };
+    },
+    async receiveMessage({ state }) {
+      return state;
+    },
+    async advance({ state }) {
+      return state;
+    },
+    async getOutgoingMessages() {
+      return [];
+    },
+    async getResult({ state }) {
+      return state.result;
+    }
+  });
+
+  try {
+    const result = await mpcService.processPendingWireSignRequests({
+      syncRemote: false,
+      participantId: '0x2222222222222222222222222222222222222222'
+    });
+
+    assert.equal(result.count, 1);
+    assert.equal(result.processed[0].requestId, 'sign-request-process-1');
+    assert.equal(result.processed[0].status, 'completed');
+    const signRequest = await getMpcSignRequest('sign-request-process-1');
+    assert.equal(signRequest.status, 'completed');
+    assert.equal(signRequest.signature, '0xmpcsig');
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+    resetMpcTssEngineForTests();
+  }
+});
+
 test('service wire sessions can drive two cggmp24 keygen participants through the message log', async () => {
   class FakeKeygenSession {
     constructor(sessionId, senderIndex, partyCount, threshold) {

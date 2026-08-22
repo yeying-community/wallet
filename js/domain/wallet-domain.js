@@ -775,6 +775,15 @@ export class WalletDomain extends BaseDomain {
   }
 
   /**
+   * 推进本地待处理 MPC 签名请求
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async processPendingMpcSignRequests(options = {}) {
+    return await this._sendMessage(WalletMessageType.MPC_PROCESS_PENDING_SIGN_REQUESTS, options);
+  }
+
+  /**
    * 获取 MPC 会话详情
    * @param {string} sessionId
    * @returns {Promise<Object>}
