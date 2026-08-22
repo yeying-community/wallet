@@ -35,6 +35,17 @@ export class MpcTssStateMachineAdapter {
     return await this._rememberAndFlush({ sessionId, protocol: 'sign', senderIndex, state });
   }
 
+  async startAuxInfo({ sessionId, senderIndex, parties, curve = 'secp256k1' } = {}) {
+    const startAuxInfo = requireFunction(this._engine, 'startAuxInfo');
+    const state = await startAuxInfo({
+      sessionId,
+      senderIndex,
+      parties,
+      curve
+    });
+    return await this._rememberAndFlush({ sessionId, protocol: 'aux-info', senderIndex, state });
+  }
+
   async startKeygen({ sessionId, senderIndex, parties, threshold, curve = 'secp256k1' } = {}) {
     const startKeygen = requireFunction(this._engine, 'startKeygen');
     const state = await startKeygen({
@@ -164,6 +175,10 @@ class UnconfiguredMpcTssEngine {
   }
 
   async startKeygen() {
+    throw new Error('MPC_TSS_ENGINE_NOT_CONFIGURED');
+  }
+
+  async startAuxInfo() {
     throw new Error('MPC_TSS_ENGINE_NOT_CONFIGURED');
   }
 

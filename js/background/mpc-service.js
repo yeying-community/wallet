@@ -1079,6 +1079,13 @@ class MpcService {
         threshold: options.threshold ?? session?.threshold,
         curve: options.curve || session?.curve || 'secp256k1'
       });
+    } else if (protocol === 'aux-info') {
+      started = await adapter.startAuxInfo({
+        sessionId,
+        senderIndex,
+        parties: participants,
+        curve: options.curve || session?.curve || 'secp256k1'
+      });
     } else if (protocol === 'sign') {
       started = await adapter.startSign({
         sessionId,

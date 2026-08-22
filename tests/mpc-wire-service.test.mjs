@@ -193,6 +193,16 @@ test('startWireSession starts keygen and sign adapters through service transport
           outgoing: [{ payload: { Round1a: { keygen: true } } }]
         };
       },
+      async startAuxInfo(input) {
+        assert.equal(input.sessionId, 'session-1');
+        assert.equal(input.senderIndex, 1);
+        assert.deepEqual(input.parties, [0, 1]);
+        return {
+          senderIndex: input.senderIndex,
+          protocol: 'aux-info',
+          outgoing: [{ payload: { Round1: { aux: true } } }]
+        };
+      },
       async startSign(input) {
         assert.equal(input.requestId, 'sign-request-1');
         assert.deepEqual(input.payload, { digest: '0xabc' });
@@ -231,6 +241,23 @@ test('startWireSession starts keygen and sign adapters through service transport
       sequence: 0
     });
 
+    const auxInfo = await mpcService.startWireSession({
+      sessionId: 'session-1',
+      protocol: 'aux-info',
+      recipientIndex: 1,
+      parties: [0, 1],
+      adapter
+    });
+    assert.equal(auxInfo.protocol, 'aux-info');
+    assert.deepEqual(sent[1], {
+      sessionId: 'session-1',
+      protocol: 'aux-info',
+      senderIndex: 1,
+      audience: 'all-parties',
+      payload: { Round1: { aux: true } },
+      sequence: 0
+    });
+
     const sign = await mpcService.startWireSession({
       sessionId: 'session-1',
       protocol: 'sign',
@@ -241,7 +268,7 @@ test('startWireSession starts keygen and sign adapters through service transport
       adapter
     });
     assert.equal(sign.protocol, 'sign');
-    assert.deepEqual(sent[1], {
+    assert.deepEqual(sent[2], {
       sessionId: 'session-1',
       protocol: 'sign',
       senderIndex: 1,
@@ -418,10 +445,12 @@ test('service wire sessions can drive two cggmp24 keygen participants through th
     return new Cggmp24WasmEngine({
       wasm: {
         Cggmp24ThresholdKeygenSession: FakeKeygenSession,
+        Cggmp24AuxInfoSession: class {},
         cggmp24EngineMetadataJson: () => JSON.stringify({ engine: 'cggmp24' }),
         normalizeWireMessageJson: (json) => json,
         normalizeSigningPayloadJson: (json) => json,
         normalizeThresholdKeygenPayloadJson: (json) => json,
+        normalizeAuxInfoPayloadJson: (json) => json,
         coreKeySharePublicMaterialJson: () => JSON.stringify({
           curve: 'secp256k1',
           compressedPublicKeyHex: '03shared',

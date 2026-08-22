@@ -1,9 +1,11 @@
 const REQUIRED_WASM_EXPORTS = [
   'Cggmp24ThresholdKeygenSession',
+  'Cggmp24AuxInfoSession',
   'cggmp24EngineMetadataJson',
   'normalizeWireMessageJson',
   'normalizeSigningPayloadJson',
   'normalizeThresholdKeygenPayloadJson',
+  'normalizeAuxInfoPayloadJson',
   'coreKeySharePublicMaterialJson',
 ];
 
@@ -51,6 +53,11 @@ export class Cggmp24WasmEngine {
 
   normalizeThresholdKeygenPayload(payload) {
     const normalized = requireFunction(this._wasm, 'normalizeThresholdKeygenPayloadJson')(stringifyJson(payload));
+    return parseJson(normalized, {});
+  }
+
+  normalizeAuxInfoPayload(payload) {
+    const normalized = requireFunction(this._wasm, 'normalizeAuxInfoPayloadJson')(stringifyJson(payload));
     return parseJson(normalized, {});
   }
 
@@ -104,9 +111,44 @@ export class Cggmp24WasmEngine {
     throw new Error('MPC_CGGMP24_STATE_MACHINE_NOT_IMPLEMENTED');
   }
 
+  async startAuxInfo({ sessionId, senderIndex, parties, curve = 'secp256k1' } = {}) {
+    if (curve !== 'secp256k1') {
+      throw new Error('MPC_CGGMP24_UNSUPPORTED_CURVE');
+    }
+    const normalizedSessionId = String(sessionId || '').trim();
+    if (!normalizedSessionId) {
+      throw new Error('MPC_SESSION_ID_REQUIRED');
+    }
+    const normalizedSenderIndex = Number(senderIndex);
+    const partyCount = Array.isArray(parties) ? parties.length : Number(parties || 0);
+    if (!Number.isInteger(normalizedSenderIndex) || normalizedSenderIndex < 0) {
+      throw new Error('INVALID_MPC_PARTICIPANT_INDEX');
+    }
+    if (!Number.isInteger(partyCount) || partyCount <= 0) {
+      throw new Error('INVALID_MPC_PARTICIPANT_COUNT');
+    }
+    const Session = requireFunction(this._wasm, 'Cggmp24AuxInfoSession');
+    const wasmSession = new Session(
+      normalizedSessionId,
+      normalizedSenderIndex,
+      partyCount
+    );
+    const state = {
+      protocol: 'aux-info',
+      sessionId: normalizedSessionId,
+      senderIndex: normalizedSenderIndex,
+      parties: Array.isArray(parties) ? [...parties] : [],
+      curve,
+      wasmSession
+    };
+    this._sessions.set(normalizedSessionId, state);
+    await this.advance({ sessionId: normalizedSessionId, state });
+    return state;
+  }
+
   async receiveMessage({ sessionId, state, message } = {}) {
     const sessionState = this._resolveSessionState(sessionId, state);
-    if (sessionState.protocol !== 'keygen') {
+    if (sessionState.protocol !== 'keygen' && sessionState.protocol !== 'aux-info') {
       throw new Error('MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED');
     }
     sessionState.wasmSession.receiveWireMessageJson(stringifyJson(message));
@@ -115,7 +157,7 @@ export class Cggmp24WasmEngine {
 
   async advance({ sessionId, state, maxSteps = 100 } = {}) {
     const sessionState = this._resolveSessionState(sessionId, state);
-    if (sessionState.protocol !== 'keygen') {
+    if (sessionState.protocol !== 'keygen' && sessionState.protocol !== 'aux-info') {
       throw new Error('MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED');
     }
     sessionState.lastAdvance = parseJson(sessionState.wasmSession.advanceJson(maxSteps), {});
@@ -124,12 +166,12 @@ export class Cggmp24WasmEngine {
 
   async getOutgoingMessages({ sessionId, state } = {}) {
     const sessionState = this._resolveSessionState(sessionId, state);
-    if (sessionState.protocol !== 'keygen') {
+    if (sessionState.protocol !== 'keygen' && sessionState.protocol !== 'aux-info') {
       throw new Error('MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED');
     }
     const outgoing = parseJson(sessionState.wasmSession.drainOutgoingJson(), []);
     return (Array.isArray(outgoing) ? outgoing : []).map((message) => ({
-      protocol: 'keygen',
+      protocol: sessionState.protocol,
       senderIndex: sessionState.senderIndex,
       audience: message.audience,
       payload: message.payload
@@ -138,12 +180,19 @@ export class Cggmp24WasmEngine {
 
   async getResult({ sessionId, state } = {}) {
     const sessionState = this._resolveSessionState(sessionId, state);
-    if (sessionState.protocol !== 'keygen') {
+    if (sessionState.protocol !== 'keygen' && sessionState.protocol !== 'aux-info') {
       throw new Error('MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED');
     }
     const result = parseJson(sessionState.wasmSession.resultJson(), null);
     if (!result) {
       return null;
+    }
+    if (sessionState.protocol === 'aux-info') {
+      return {
+        status: 'completed',
+        auxInfo: result,
+        curve: sessionState.curve,
+      };
     }
     const material = this.coreKeySharePublicMaterial(result);
     const publicKey = String(material.compressedPublicKeyHex || '').trim();

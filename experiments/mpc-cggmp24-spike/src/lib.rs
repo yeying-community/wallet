@@ -1,6 +1,6 @@
 use cggmp24::key_share::AnyKeyShare;
 use cggmp24::supported_curves::Secp256k1;
-use cggmp24::{signing, trusted_dealer, DataToSign, ExecutionId, KeyShare, Signature};
+use cggmp24::{aux_info_gen, signing, trusted_dealer, DataToSign, ExecutionId, KeyShare, Signature};
 use rand::rngs::OsRng;
 use round_based::state_machine::{ProceedResult, StateMachine};
 use round_based::{Incoming, MessageDestination, MessageType};
@@ -29,12 +29,19 @@ pub type SecpKeyShare = KeyShare<Secp256k1, SpikeSecurityLevel>;
 pub type SecpCoreKeyShare = cggmp24_keygen::key_share::CoreKeyShare<Secp256k1>;
 pub type SecpSignature = Signature<Secp256k1>;
 pub type SecpSigningMessage = cggmp24::signing::msg::Msg<Secp256k1, Sha256>;
+pub type SecpAuxInfoMessage = cggmp24::key_refresh::msg::Msg<Sha256, SpikeSecurityLevel>;
 pub type SecpThresholdKeygenMessage =
     cggmp24_keygen::ThresholdMsg<Secp256k1, SpikeSecurityLevel, Sha256>;
 type SecpThresholdKeygenState = Box<
     dyn StateMachine<
         Output = Result<SecpCoreKeyShare, cggmp24_keygen::KeygenError>,
         Msg = SecpThresholdKeygenMessage,
+    >,
+>;
+type SecpAuxInfoState = Box<
+    dyn StateMachine<
+        Output = Result<cggmp24::key_share::AuxInfo<SpikeSecurityLevel>, cggmp24::key_refresh::KeyRefreshError>,
+        Msg = SecpAuxInfoMessage,
     >,
 >;
 
@@ -244,6 +251,7 @@ pub fn cggmp24_engine_metadata_json() -> Result<String, JsValue> {
             "getOutgoingMessages".to_string(),
             "getResult".to_string(),
             "coreKeySharePublicMaterial".to_string(),
+            "startAuxInfo".to_string(),
         ],
     })
     .map_err(to_js_error)
@@ -271,6 +279,12 @@ pub fn normalize_signing_payload_json(json: &str) -> Result<String, JsValue> {
 #[wasm_bindgen(js_name = normalizeThresholdKeygenPayloadJson)]
 pub fn normalize_threshold_keygen_payload_json(json: &str) -> Result<String, JsValue> {
     let message: SecpThresholdKeygenMessage = serde_json::from_str(json).map_err(to_js_error)?;
+    serde_json::to_string(&message).map_err(to_js_error)
+}
+
+#[wasm_bindgen(js_name = normalizeAuxInfoPayloadJson)]
+pub fn normalize_aux_info_payload_json(json: &str) -> Result<String, JsValue> {
+    let message: SecpAuxInfoMessage = serde_json::from_str(json).map_err(to_js_error)?;
     serde_json::to_string(&message).map_err(to_js_error)
 }
 
@@ -441,6 +455,190 @@ impl Cggmp24ThresholdKeygenSession {
 impl Cggmp24ThresholdKeygenSession {
     fn outgoing_to_json(
         message: round_based::Outgoing<SecpThresholdKeygenMessage>,
+    ) -> Result<WasmOutgoingMessage, JsValue> {
+        let audience = match message.recipient {
+            MessageDestination::AllParties => MpcMessageAudience::AllParties,
+            MessageDestination::OneParty(recipient_index) => {
+                MpcMessageAudience::OneParty { recipient_index }
+            }
+        };
+        Ok(WasmOutgoingMessage {
+            audience,
+            payload: serde_json::to_value(message.msg).map_err(to_js_error)?,
+        })
+    }
+
+    fn snapshot_json(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&WasmAdvanceResult {
+            status: self.status.clone(),
+            outgoing: self.outgoing.clone(),
+            result: self.result.clone(),
+            error: self.error.clone(),
+        })
+        .map_err(to_js_error)
+    }
+}
+
+#[wasm_bindgen]
+pub struct Cggmp24AuxInfoSession {
+    session_id: String,
+    sender_index: u16,
+    state: Option<SecpAuxInfoState>,
+    outgoing: Vec<WasmOutgoingMessage>,
+    result: Option<serde_json::Value>,
+    status: String,
+    error: Option<String>,
+}
+
+#[wasm_bindgen]
+impl Cggmp24AuxInfoSession {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        session_id: String,
+        sender_index: u16,
+        party_count: u16,
+    ) -> Result<Cggmp24AuxInfoSession, JsValue> {
+        if session_id.trim().is_empty() {
+            return Err(JsValue::from_str("MPC_SESSION_ID_REQUIRED"));
+        }
+        if party_count == 0 || sender_index >= party_count {
+            return Err(JsValue::from_str("INVALID_MPC_PARTICIPANT_INDEX"));
+        }
+
+        let eid_bytes = format!("{}:aux-info:0", session_id).into_bytes();
+        let eid_bytes: &'static [u8] = Box::leak(eid_bytes.into_boxed_slice());
+        let rng: &'static mut OsRng = Box::leak(Box::new(OsRng));
+        let pregenerated =
+            cggmp24::key_refresh::PregeneratedPrimes::<SpikeSecurityLevel>::generate(rng);
+        let state = aux_info_gen::<SpikeSecurityLevel>(
+            ExecutionId::new(eid_bytes),
+            sender_index,
+            party_count,
+            pregenerated,
+        )
+        .set_digest::<Sha256>()
+        .into_state_machine(rng);
+
+        Ok(Cggmp24AuxInfoSession {
+            session_id,
+            sender_index,
+            state: Some(Box::new(state)),
+            outgoing: Vec::new(),
+            result: None,
+            status: "running".to_string(),
+            error: None,
+        })
+    }
+
+    #[wasm_bindgen(js_name = advanceJson)]
+    pub fn advance_json(&mut self, max_steps: u32) -> Result<String, JsValue> {
+        let steps = max_steps.max(1).min(1000);
+        for _ in 0..steps {
+            if self.result.is_some() || self.error.is_some() {
+                break;
+            }
+            let state = self
+                .state
+                .as_mut()
+                .ok_or_else(|| JsValue::from_str("MPC_AUX_INFO_STATE_NOT_STARTED"))?;
+            match state.proceed() {
+                ProceedResult::SendMsg(message) => {
+                    self.outgoing.push(Self::outgoing_to_json(message)?);
+                    self.status = "running".to_string();
+                }
+                ProceedResult::NeedsOneMoreMessage => {
+                    self.status = "waiting".to_string();
+                    break;
+                }
+                ProceedResult::Output(Ok(aux_info)) => {
+                    self.result = Some(serde_json::to_value(aux_info).map_err(to_js_error)?);
+                    self.status = "completed".to_string();
+                    break;
+                }
+                ProceedResult::Output(Err(error)) => {
+                    self.error = Some(error.to_string());
+                    self.status = "error".to_string();
+                    break;
+                }
+                ProceedResult::Yielded => {
+                    self.status = "running".to_string();
+                }
+                ProceedResult::Error(error) => {
+                    self.error = Some(format!("{error:?}"));
+                    self.status = "error".to_string();
+                    break;
+                }
+            }
+        }
+        self.snapshot_json()
+    }
+
+    #[wasm_bindgen(js_name = receiveWireMessageJson)]
+    pub fn receive_wire_message_json(&mut self, json: &str) -> Result<String, JsValue> {
+        let wire: MpcWireMessage<serde_json::Value> =
+            serde_json::from_str(json).map_err(to_js_error)?;
+        if wire.protocol_version != PROTOCOL_VERSION {
+            return Err(JsValue::from_str("MPC_WIRE_PROTOCOL_VERSION_UNSUPPORTED"));
+        }
+        if wire.engine != ENGINE_ID {
+            return Err(JsValue::from_str("MPC_WIRE_ENGINE_UNSUPPORTED"));
+        }
+        if wire.session_id != self.session_id {
+            return Err(JsValue::from_str("MPC_WIRE_SESSION_MISMATCH"));
+        }
+        if wire.protocol != MpcProtocolKind::AuxInfo {
+            return Err(JsValue::from_str("MPC_WIRE_PROTOCOL_MISMATCH"));
+        }
+        if wire.sender_index == self.sender_index {
+            return Err(JsValue::from_str("MPC_WIRE_SELF_MESSAGE_REJECTED"));
+        }
+        let message: SecpAuxInfoMessage = serde_json::from_value(wire.payload).map_err(to_js_error)?;
+        let msg_type = match wire.audience {
+            MpcMessageAudience::AllParties => MessageType::Broadcast,
+            MpcMessageAudience::OneParty { recipient_index } => {
+                if recipient_index != self.sender_index {
+                    return Err(JsValue::from_str("MPC_WIRE_RECIPIENT_MISMATCH"));
+                }
+                MessageType::P2P
+            }
+        };
+        let incoming = Incoming {
+            id: wire.sequence,
+            sender: wire.sender_index,
+            msg_type,
+            msg: message,
+        };
+        let state = self
+            .state
+            .as_mut()
+            .ok_or_else(|| JsValue::from_str("MPC_AUX_INFO_STATE_NOT_STARTED"))?;
+        state
+            .received_msg(incoming)
+            .map_err(|_| JsValue::from_str("MPC_AUX_INFO_UNEXPECTED_MESSAGE"))?;
+        self.status = "running".to_string();
+        self.snapshot_json()
+    }
+
+    #[wasm_bindgen(js_name = drainOutgoingJson)]
+    pub fn drain_outgoing_json(&mut self) -> Result<String, JsValue> {
+        let outgoing = core::mem::take(&mut self.outgoing);
+        serde_json::to_string(&outgoing).map_err(to_js_error)
+    }
+
+    #[wasm_bindgen(js_name = resultJson)]
+    pub fn result_json(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.result).map_err(to_js_error)
+    }
+
+    #[wasm_bindgen(js_name = status)]
+    pub fn status(&self) -> String {
+        self.status.clone()
+    }
+}
+
+impl Cggmp24AuxInfoSession {
+    fn outgoing_to_json(
+        message: round_based::Outgoing<SecpAuxInfoMessage>,
     ) -> Result<WasmOutgoingMessage, JsValue> {
         let audience = match message.recipient {
             MessageDestination::AllParties => MpcMessageAudience::AllParties,

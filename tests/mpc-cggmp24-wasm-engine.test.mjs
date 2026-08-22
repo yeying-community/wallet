@@ -34,6 +34,7 @@ test('Cggmp24WasmEngine exposes metadata and JSON normalization exports', () => 
         curve: 'secp256k1',
       }),
       Cggmp24ThresholdKeygenSession: class {},
+      Cggmp24AuxInfoSession: class {},
       normalizeWireMessageJson: (json) => {
         calls.push(['wire', JSON.parse(json)]);
         return json;
@@ -44,6 +45,10 @@ test('Cggmp24WasmEngine exposes metadata and JSON normalization exports', () => 
       },
       normalizeThresholdKeygenPayloadJson: (json) => {
         calls.push(['keygen', JSON.parse(json)]);
+        return json;
+      },
+      normalizeAuxInfoPayloadJson: (json) => {
+        calls.push(['aux-info', JSON.parse(json)]);
         return json;
       },
       coreKeySharePublicMaterialJson: (json) => {
@@ -67,13 +72,14 @@ test('Cggmp24WasmEngine exposes metadata and JSON normalization exports', () => 
   assert.deepEqual(engine.normalizeWireMessage({ engine: 'cggmp24' }), { engine: 'cggmp24' });
   assert.deepEqual(engine.normalizeSigningPayload({ Round1a: {} }), { Round1a: {} });
   assert.deepEqual(engine.normalizeThresholdKeygenPayload({ Round1: {} }), { Round1: {} });
+  assert.deepEqual(engine.normalizeAuxInfoPayload({ Round1: {} }), { Round1: {} });
   assert.deepEqual(engine.coreKeySharePublicMaterial({ shared_public_key: '03abcdef' }), {
     curve: 'secp256k1',
     compressedPublicKeyHex: '03abcdef',
     uncompressedPublicKeyHex: `04${'11'.repeat(64)}`,
     ethereumAddress: '0x1111111111111111111111111111111111111111',
   });
-  assert.deepEqual(calls.map(([name]) => name), ['wire', 'sign', 'keygen', 'material']);
+  assert.deepEqual(calls.map(([name]) => name), ['wire', 'sign', 'keygen', 'aux-info', 'material']);
 });
 
 test('installCggmp24WasmEngine installs the loaded engine through the TSS boundary', async () => {
@@ -85,9 +91,11 @@ test('installCggmp24WasmEngine installs the loaded engine through the TSS bounda
         protocolVersion: 1,
       }),
       Cggmp24ThresholdKeygenSession: class {},
+      Cggmp24AuxInfoSession: class {},
       normalizeWireMessageJson: (json) => json,
       normalizeSigningPayloadJson: (json) => json,
       normalizeThresholdKeygenPayloadJson: (json) => json,
+      normalizeAuxInfoPayloadJson: (json) => json,
       coreKeySharePublicMaterialJson: () => JSON.stringify({
         curve: 'secp256k1',
         compressedPublicKeyHex: '03abcdef',
@@ -162,10 +170,12 @@ test('Cggmp24WasmEngine drives threshold keygen sessions through the TSS adapter
   const engine = new Cggmp24WasmEngine({
     wasm: {
       Cggmp24ThresholdKeygenSession: FakeKeygenSession,
+      Cggmp24AuxInfoSession: class {},
       cggmp24EngineMetadataJson: () => JSON.stringify({ engine: 'cggmp24' }),
       normalizeWireMessageJson: (json) => json,
       normalizeSigningPayloadJson: (json) => json,
       normalizeThresholdKeygenPayloadJson: (json) => json,
+      normalizeAuxInfoPayloadJson: (json) => json,
       coreKeySharePublicMaterialJson: (json) => {
         calls.push(['material', JSON.parse(json)]);
         return JSON.stringify({
@@ -238,5 +248,108 @@ test('Cggmp24WasmEngine drives threshold keygen sessions through the TSS adapter
     walletAddress: '0x2222222222222222222222222222222222222222',
     curve: 'secp256k1',
     threshold: 2,
+  });
+});
+
+test('Cggmp24WasmEngine drives aux-info sessions through the TSS adapter contract', async () => {
+  class FakeAuxInfoSession {
+    constructor(sessionId, senderIndex, partyCount) {
+      this.sessionId = sessionId;
+      this.senderIndex = senderIndex;
+      this.partyCount = partyCount;
+      this.outgoing = [{ audience: 'all-parties', payload: { Round1: { aux: senderIndex } } }];
+      this.result = null;
+    }
+
+    advanceJson() {
+      if (this.seenMessage) {
+        this.result = { paillier: `aux-${this.senderIndex}` };
+      }
+      return JSON.stringify({
+        status: this.result ? 'completed' : 'waiting',
+        outgoing: this.outgoing,
+        result: this.result,
+        error: null,
+      });
+    }
+
+    receiveWireMessageJson(json) {
+      this.seenMessage = JSON.parse(json);
+      return JSON.stringify({
+        status: 'running',
+        outgoing: this.outgoing,
+        result: this.result,
+        error: null,
+      });
+    }
+
+    drainOutgoingJson() {
+      const outgoing = this.outgoing;
+      this.outgoing = [];
+      return JSON.stringify(outgoing);
+    }
+
+    resultJson() {
+      return JSON.stringify(this.result);
+    }
+  }
+
+  const sent = [];
+  const engine = new Cggmp24WasmEngine({
+    wasm: {
+      Cggmp24ThresholdKeygenSession: class {},
+      Cggmp24AuxInfoSession: FakeAuxInfoSession,
+      cggmp24EngineMetadataJson: () => JSON.stringify({ engine: 'cggmp24' }),
+      normalizeWireMessageJson: (json) => json,
+      normalizeSigningPayloadJson: (json) => json,
+      normalizeThresholdKeygenPayloadJson: (json) => json,
+      normalizeAuxInfoPayloadJson: (json) => json,
+      coreKeySharePublicMaterialJson: () => JSON.stringify({}),
+    },
+  });
+  const adapter = new MpcTssStateMachineAdapter({
+    engine,
+    transport: {
+      async sendWireMessage(message) {
+        sent.push(message);
+        return { message };
+      },
+    },
+  });
+
+  await adapter.startAuxInfo({
+    sessionId: 'session-aux',
+    senderIndex: 1,
+    parties: [0, 1],
+    curve: 'secp256k1',
+  });
+
+  assert.deepEqual(sent[0], {
+    sessionId: 'session-aux',
+    protocol: 'aux-info',
+    senderIndex: 1,
+    audience: 'all-parties',
+    payload: { Round1: { aux: 1 } },
+    sequence: 0,
+  });
+
+  await adapter.receiveMessage({
+    sessionId: 'session-aux',
+    message: {
+      protocol_version: 1,
+      engine: 'cggmp24',
+      session_id: 'session-aux',
+      protocol: 'aux-info',
+      sequence: 3,
+      sender_index: 0,
+      audience: 'all-parties',
+      payload: { Round1: { aux: 0 } },
+    },
+  });
+
+  assert.deepEqual(await adapter.getResult({ sessionId: 'session-aux' }), {
+    status: 'completed',
+    auxInfo: { paillier: 'aux-1' },
+    curve: 'secp256k1',
   });
 });
