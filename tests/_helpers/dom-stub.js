@@ -54,6 +54,15 @@ function makeClassList(el) {
   return cl;
 }
 
+function escapeTextForHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function parseSelector(selector) {
   // 支持 #id、.class、tag（简单三选一，够 sites-controller 用）
   if (selector.startsWith('#')) return { type: 'id', value: selector.slice(1) };
@@ -106,6 +115,23 @@ export function createElement(init = {}) {
   };
   el.children.forEach((c) => { c.parent = el; });
   makeClassList(el);
+  let textContentValue = el.textContent ?? '';
+  let innerHTMLValue = el.innerHTML ?? '';
+  Object.defineProperty(el, 'textContent', {
+    get: () => textContentValue,
+    set: (value) => {
+      textContentValue = String(value ?? '');
+      innerHTMLValue = escapeTextForHtml(textContentValue);
+    },
+    configurable: true
+  });
+  Object.defineProperty(el, 'innerHTML', {
+    get: () => innerHTMLValue,
+    set: (value) => {
+      innerHTMLValue = String(value ?? '');
+    },
+    configurable: true
+  });
   el._setAttribute = (name, value) => { el.attrs[name] = value; };
   el.querySelector = (selector) => {
     if (selector === '.modal-overlay') {

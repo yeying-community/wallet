@@ -27,7 +27,7 @@ export async function getAllAuthorizations() {
  * @param {string} address - 授权的地址
  * @returns {Promise<void>}
  */
-export async function saveAuthorization(origin, address, profileFields = undefined) {
+export async function saveAuthorization(origin, address, profileFields = undefined, accounts = undefined) {
   try {
     const existing = await getMapItem(PermissionStorageKeys.CONNECTED_SITES, origin);
     const permission = {
@@ -35,6 +35,13 @@ export async function saveAuthorization(origin, address, profileFields = undefin
       address,
       timestamp: getTimestamp()
     };
+    if (accounts !== undefined) {
+      permission.accounts = Array.from(new Set(
+        (Array.isArray(accounts) ? accounts : [accounts])
+          .map((item) => String(item || '').trim())
+          .filter(Boolean)
+      ));
+    }
     if (profileFields !== undefined) {
       permission.profileFields = Array.from(new Set(profileFields));
       permission.profileUpdatedAt = getTimestamp();

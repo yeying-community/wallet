@@ -61,13 +61,13 @@ test('loads the MV3 extension and preserves wallet state across lock and unlock'
 
     await page.locator('#welcomeCreateWalletBtn').click();
     await page.locator('#setPasswordPage').waitFor({ state: 'visible' });
-    assert.equal(await page.locator('#setWalletName').inputValue(), '主钱包');
+    assert.match(await page.locator('#setWalletName').inputValue(), /^hd-\d{4}$/);
     assert.equal((await page.locator('#setPasswordBtn').textContent())?.trim(), '创建钱包');
 
     await page.locator('#setWalletName').fill('E2E Wallet');
-    await page.locator('#newPassword').fill('E2E-password-2026');
-    await page.locator('#confirmPassword').fill('E2E-password-2026');
     await page.locator('#setPasswordBtn').click();
+    await page.locator('#passwordPromptInput').fill('E2E-password-2026');
+    await page.locator('#passwordPromptConfirm').click();
 
     await page.locator('#walletPage').waitFor({ state: 'visible', timeout: 30_000 });
     await page.waitForTimeout(2_500);

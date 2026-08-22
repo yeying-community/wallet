@@ -37,6 +37,8 @@ import {
   WalletStorageKeys,
   clearAllData,
   getMpcWalletList,
+  getMpcSessionList,
+  saveMpcWallet,
   clearTransactionsByAddress,
   ensureDefaultNetworks,
   saveSelectedNetworkName,
@@ -57,6 +59,110 @@ import { IdentityStorageKeys } from '../../storage/storage-keys.js';
 import { getValue, setValue } from '../../storage/storage-base.js';
 
 const MIN_PASSWORD_LENGTH = 8;
+const INVALID_MPC_WALLET_NAMES = new Set(['', 'MPC 钱包创建邀请', 'MPC 钱包邀请', '名称缺失']);
+const MPC_SESSION_WALLET_STATUS = {
+  ready: 'keygen_ready',
+  rounds: 'keygen_running',
+  running: 'keygen_running',
+  in_progress: 'keygen_running',
+  'in-progress': 'keygen_running',
+  interrupted: 'keygen_interrupted',
+  keygen_interrupted: 'keygen_interrupted',
+  keygen_completed: 'keygen_completed',
+  completed: 'active',
+  complete: 'active',
+  succeeded: 'active',
+  success: 'active',
+  active: 'active',
+  failed: 'failed',
+  error: 'failed',
+};
+
+function isInvalidMpcWalletName(name) {
+  return INVALID_MPC_WALLET_NAMES.has(String(name || '').trim());
+}
+
+async function repairMpcWalletNamesFromLocalSessions(mpcWallets = []) {
+  const sessions = await getMpcSessionList();
+  const sessionsById = new Map();
+  const sessionsByWalletId = new Map();
+  for (const session of Array.isArray(sessions) ? sessions : []) {
+    const name = String(session?.name || '').trim();
+    if (isInvalidMpcWalletName(name)) continue;
+    const sessionId = String(session?.id || session?.sessionId || '').trim();
+    const walletId = String(session?.walletId || '').trim();
+    if (sessionId && !sessionsById.has(sessionId)) sessionsById.set(sessionId, session);
+    if (walletId && !sessionsByWalletId.has(walletId)) sessionsByWalletId.set(walletId, session);
+  }
+
+  const repaired = [];
+  for (const wallet of Array.isArray(mpcWallets) ? mpcWallets : []) {
+    if (!wallet?.id) {
+      repaired.push(wallet);
+      continue;
+    }
+    const sessionId = String(wallet.keygenSessionId || wallet.sessionId || '').trim();
+    const session = (sessionId && sessionsById.get(sessionId)) || sessionsByWalletId.get(String(wallet.id || '').trim());
+    const name = String(session?.name || '').trim();
+    const next = { ...wallet };
+    let changed = false;
+    if (isInvalidMpcWalletName(next.name) && !isInvalidMpcWalletName(name) && next.name !== name) {
+      next.name = name;
+      changed = true;
+    }
+    const hasLocalKeygenMaterial = Boolean(
+      String(next.address || '').trim()
+      || String(next.publicKey || '').trim()
+      || String(next.status || '').trim() === 'keygen_completed'
+      || String(next.status || '').trim() === 'active'
+    );
+    const mappedStatus = MPC_SESSION_WALLET_STATUS[String(session?.status || '').trim().toLowerCase()];
+    if (mappedStatus && next.status !== mappedStatus) {
+      if (hasLocalKeygenMaterial && ['keygen_ready', 'keygen_running'].includes(mappedStatus)) {
+        if (!['active', 'keygen_completed'].includes(String(next.status || '').trim())) {
+          next.status = 'keygen_completed';
+          changed = true;
+        }
+      } else {
+        next.status = mappedStatus;
+        changed = true;
+      }
+    }
+    if (changed) {
+      next.updatedAt = getTimestamp();
+      await saveMpcWallet(next);
+    }
+    repaired.push(next);
+  }
+  return repaired;
+}
+
+function isIncompleteMpcWallet(wallet) {
+  if (!wallet || wallet.type !== 'mpc') return false;
+  if (String(wallet.address || '').trim()) return false;
+  return String(wallet.keygenSessionId || wallet.sessionId || '').trim() !== '';
+}
+
+async function syncIncompleteMpcWalletsFromCoordinator(mpcWallets = []) {
+  const syncedWallets = [];
+  for (const wallet of Array.isArray(mpcWallets) ? mpcWallets : []) {
+    if (!isIncompleteMpcWallet(wallet)) {
+      syncedWallets.push(wallet);
+      continue;
+    }
+    try {
+      const sessions = await mpcService.getSessions(wallet.id);
+      const syncedWallet = sessions?.wallet && typeof sessions.wallet === 'object'
+        ? sessions.wallet
+        : await getMpcWalletList().then(list => list.find(item => item?.id === wallet.id));
+      syncedWallets.push(syncedWallet || wallet);
+    } catch (error) {
+      console.warn('[WalletOperations] MPC 钱包状态自动同步失败:', wallet.id, error?.message || error);
+      syncedWallets.push(wallet);
+    }
+  }
+  return syncedWallets;
+}
 
 async function rememberUnlockedAccount(account, password) {
   if (!account?.id || !password) {
@@ -80,7 +186,7 @@ async function rememberUnlockedAccount(account, password) {
 export async function isWalletInitialized() {
   try {
     const wallets = await getWallets();
-    const mpcWallets = await getMpcWalletList();
+    const mpcWallets = await repairMpcWalletNamesFromLocalSessions(await getMpcWalletList());
     const obj = wallets || {};
     const hasHdWallet = Object.keys(obj).length > 0;
     const hasMpcWallet = Array.isArray(mpcWallets) && mpcWallets.length > 0;
@@ -100,7 +206,8 @@ export async function HandleGetWalletList() {
     const accounts = await getAccountList();
     const selectedAccountId = await getSelectedAccountId();
     const walletsData = await getWallets();
-    const mpcWallets = await getMpcWalletList();
+    const repairedMpcWallets = await repairMpcWalletNamesFromLocalSessions(await getMpcWalletList());
+    const mpcWallets = await syncIncompleteMpcWalletsFromCoordinator(repairedMpcWallets);
 
     // 按 walletId 分组
     const walletMap = new Map();

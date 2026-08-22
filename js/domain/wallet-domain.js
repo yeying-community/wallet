@@ -574,59 +574,6 @@ export class WalletDomain extends BaseDomain {
     return await this._sendMessage(WalletMessageType.CLEAR_ALL_AUTHORIZATIONS);
   }
 
-  // ==================== Community Passport ====================
-
-  async getPassportStatus(endpoint) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_GET_STATUS, { endpoint });
-  }
-
-  async createPassportBinding(endpoint, accessToken) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_CREATE_BINDING, { endpoint, accessToken });
-  }
-
-  async getPassportBindings(endpoint, accessToken) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_GET_BINDINGS, { endpoint, accessToken });
-  }
-
-  async setPassportUsername(endpoint, accessToken, username) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_SET_USERNAME, { endpoint, accessToken, username });
-  }
-
-  async requestPassportEmailVerification(endpoint, accessToken, email) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_EMAIL_VERIFICATION_REQUEST, {
-      endpoint,
-      accessToken,
-      email
-    });
-  }
-
-  async confirmPassportEmailVerification(endpoint, accessToken, verificationId, code) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_EMAIL_VERIFICATION_CONFIRM, {
-      endpoint,
-      accessToken,
-      verificationId,
-      code
-    });
-  }
-
-  async createPassportUnlink(endpoint, accessToken) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_CREATE_UNLINK, { endpoint, accessToken });
-  }
-
-  async confirmPassportUnlink(endpoint, accessToken, request) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_CONFIRM_UNLINK, {
-      endpoint, accessToken, ...request
-    });
-  }
-
-  async approvePassportAuthorization(endpoint, accessToken, requestId) {
-    return await this._sendMessage(WalletMessageType.PASSPORT_APPROVE_AUTHORIZATION, {
-      endpoint,
-      accessToken,
-      requestId
-    });
-  }
-
   // ==================== 联系人管理 ====================
 
   /**
@@ -774,6 +721,15 @@ export class WalletDomain extends BaseDomain {
   }
 
   /**
+   * 本地忽略未接受的 MPC 邀请
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async dismissMpcInvite(options = {}) {
+    return await this._sendMessage(WalletMessageType.MPC_DISMISS_INVITE, options);
+  }
+
+  /**
    * 接受 MPC 邀请并加入会话
    * @param {Object} options
    * @returns {Promise<Object>}
@@ -816,6 +772,24 @@ export class WalletDomain extends BaseDomain {
    */
   async fetchMpcSessionMessages(options = {}) {
     return await this._sendMessage(WalletMessageType.MPC_FETCH_SESSION_MESSAGES, options);
+  }
+
+  /**
+   * 获取 MPC 签名请求列表
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async listMpcSignRequests(options = {}) {
+    return await this._sendMessage(WalletMessageType.MPC_LIST_SIGN_REQUESTS, options);
+  }
+
+  /**
+   * 推进本地待处理 MPC 签名请求
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async processPendingMpcSignRequests(options = {}) {
+    return await this._sendMessage(WalletMessageType.MPC_PROCESS_PENDING_SIGN_REQUESTS, options);
   }
 
   /**

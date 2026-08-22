@@ -96,6 +96,37 @@ export class MpcCoordinatorClient {
     });
   }
 
+  async completeSession(sessionId, payload, signature = {}) {
+    return this.request(`/api/v1/public/mpc/sessions/${sessionId}/complete`, {
+      method: 'POST',
+      body: { ...payload, ...signature }
+    });
+  }
+
+  async createSignRequest(payload, signature = {}) {
+    return this.request('/api/v1/public/mpc/sign-requests', {
+      method: 'POST',
+      body: { ...payload, ...signature }
+    });
+  }
+
+  async listSignRequests({ sessionId = '', walletId = '', status = '', page = 1, pageSize = 20 } = {}) {
+    const params = new URLSearchParams();
+    if (sessionId) params.set('sessionId', String(sessionId));
+    if (walletId) params.set('walletId', String(walletId));
+    if (status) params.set('status', String(status));
+    params.set('page', String(page || 1));
+    params.set('pageSize', String(pageSize || 20));
+    return this.request(`/api/v1/public/mpc/sign-requests?${params.toString()}`, { method: 'GET' });
+  }
+
+  async completeSignRequest(requestId, payload, signature = {}) {
+    return this.request(`/api/v1/public/mpc/sign-requests/${requestId}/complete`, {
+      method: 'POST',
+      body: { ...payload, ...signature }
+    });
+  }
+
   async sendMessage(sessionId, message, signature = {}) {
     return this.request(`/api/v1/public/mpc/sessions/${sessionId}/messages`, {
       method: 'POST',
@@ -103,10 +134,23 @@ export class MpcCoordinatorClient {
     });
   }
 
-  async fetchMessages(sessionId, { since, cursor, limit } = {}) {
+  async sendWireMessage(sessionId, message, signature = {}) {
+    return this.request(`/api/v1/public/mpc/sessions/${sessionId}/messages`, {
+      method: 'POST',
+      body: { message, ...signature }
+    });
+  }
+
+  async fetchMessages(sessionId, { since, cursor, limit, after, recipientIndex } = {}) {
     const params = new URLSearchParams();
     if (since !== undefined && since !== null) {
       params.set('since', String(since));
+    }
+    if (after !== undefined && after !== null) {
+      params.set('after', String(after));
+    }
+    if (recipientIndex !== undefined && recipientIndex !== null) {
+      params.set('recipientIndex', String(recipientIndex));
     }
     if (cursor !== undefined && cursor !== null) {
       params.set('cursor', String(cursor));
@@ -136,6 +180,13 @@ export class MpcCoordinatorClient {
     params.set('page', String(page || 1));
     params.set('pageSize', String(pageSize || 20));
     return this.request(`/api/v1/public/notifications?${params.toString()}`, { method: 'GET' });
+  }
+
+  async listMpcInvites({ page = 1, pageSize = 20 } = {}) {
+    const params = new URLSearchParams();
+    params.set('page', String(page || 1));
+    params.set('pageSize', String(pageSize || 20));
+    return this.request(`/api/v1/public/mpc/invites?${params.toString()}`, { method: 'GET' });
   }
 
   async markNotificationRead(notificationUid) {

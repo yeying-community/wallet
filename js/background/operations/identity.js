@@ -12,7 +12,7 @@ import {
 import { saveIdentityCredentials, getIdentityCredentials } from '../../storage/identity-storage.js';
 import { getValue, setValue } from '../../storage/storage-base.js';
 import { IdentityStorageKeys } from '../../storage/storage-keys.js';
-import { PassportClient } from '../passport-client.js';
+import { IdentityClient } from '../identity-client.js';
 
 function publicRecord(record) {
   if (!record) return null;
@@ -108,7 +108,7 @@ export async function handleListIdentityCredentials({ identityId } = {}) {
 export async function handleRequestIdentityVerification(data = {}, dependencies = {}) {
   const identity = data.identity || await getValue(IdentityStorageKeys.SELECTED_IDENTITY, null);
   if (!identity) throw new Error('Identity not selected');
-  const client = new PassportClient({ endpoint: data.endpoint, fetchImpl: dependencies.fetchImpl });
+  const client = new IdentityClient({ endpoint: data.endpoint, fetchImpl: dependencies.fetchImpl });
   return client.requestIdentityVerification({
     types: data.types,
     identity: identity.startsWith('did:') ? identity : `did:yeying:${identity}`,
@@ -121,7 +121,7 @@ export async function handleRequestIdentityVerification(data = {}, dependencies 
 export async function handleConfirmIdentityVerification(data = {}, dependencies = {}) {
   const identityId = data.identityId || await getValue(IdentityStorageKeys.SELECTED_IDENTITY, null);
   if (!identityId) throw new Error('Identity not selected');
-  const client = new PassportClient({ endpoint: data.endpoint, fetchImpl: dependencies.fetchImpl });
+  const client = new IdentityClient({ endpoint: data.endpoint, fetchImpl: dependencies.fetchImpl });
   const result = await client.confirmIdentityVerification({ verificationId: data.verificationId, code: data.code, types: data.types });
   if (!Array.isArray(result?.credentials) || result.credentials.length === 0) throw new Error('IDENTITY_CREDENTIALS_MISSING');
   await saveIdentityCredentials(identityId, result.credentials);

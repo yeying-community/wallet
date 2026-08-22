@@ -8,7 +8,7 @@ import { APPROVAL_PORT_NAME, ApprovalMessageType, WalletMessageType, NetworkMess
 import { sendResponse, sendError, registerConnection, unregisterConnection, checkSessionAndNotify } from './connection.js';
 import { routeRequest } from './request-router.js';
 import { unlockWallet, lockWallet, isAccountUnlocked } from './keyring.js';
-import { signMessage, signTransaction } from './signing.js';
+import { resolveMpcAccountIdByAddress, signMessage, signTransaction } from './signing.js';
 import { ethers } from '../../lib/ethers-6.16.esm.min.js';
 import {
   isWalletInitialized,
@@ -58,17 +58,6 @@ import {
   handleResolveBackupSyncConflict
 } from './operations/backup-sync.js';
 import {
-  handleGetPassportStatus,
-  handleCreatePassportBinding,
-  handleGetPassportBindings,
-  handleSetPassportUsername,
-  handleRequestPassportEmailVerification,
-  handleConfirmPassportEmailVerification,
-  handleCreatePassportUnlink,
-  handleConfirmPassportUnlink,
-  handleApprovePassportAuthorization
-} from './operations/passport.js';
-import {
   handleCreateMpcWallet,
   handleGetMpcSettings,
   handleUpdateMpcSettings,
@@ -77,11 +66,15 @@ import {
   handleMpcCreateSession,
   handleMpcCancelSession,
   handleMpcListInvites,
+  handleMpcDismissInvite,
   handleMpcAcceptInvite,
   handleMpcJoinSession,
+  handleMpcStartKeygen,
   handleMpcSendSessionMessage,
   handleMpcDecryptMessage,
   handleMpcFetchSessionMessages,
+  handleMpcListSignRequests,
+  handleMpcProcessPendingSignRequests,
   handleMpcGetSession,
   handleMpcGetSessions,
   handleMpcStartStream,
@@ -348,6 +341,8 @@ async function handleGetNetworkInfoMessage() {
 
 async function resolveAccountIdByAddress(address) {
   if (!address) return null;
+  const mpcAccountId = await resolveMpcAccountIdByAddress(address);
+  if (mpcAccountId) return mpcAccountId;
   const accounts = await getAccountList();
   const lowered = address.toLowerCase();
   const match = accounts.find(account => account?.address?.toLowerCase() === lowered);
@@ -858,15 +853,6 @@ const popupHandlers = new Map([
   // ==================== 备份同步 ====================
   [WalletMessageType.GET_BACKUP_SYNC_SETTINGS, async () => await handleGetBackupSyncSettings()],
   [WalletMessageType.UPDATE_BACKUP_SYNC_SETTINGS, async (data) => await handleUpdateBackupSyncSettings(data?.updates)],
-  [WalletMessageType.PASSPORT_GET_STATUS, async (data) => await handleGetPassportStatus(data)],
-  [WalletMessageType.PASSPORT_CREATE_BINDING, async (data) => await handleCreatePassportBinding(data)],
-  [WalletMessageType.PASSPORT_GET_BINDINGS, async (data) => await handleGetPassportBindings(data)],
-  [WalletMessageType.PASSPORT_SET_USERNAME, async (data) => await handleSetPassportUsername(data)],
-  [WalletMessageType.PASSPORT_EMAIL_VERIFICATION_REQUEST, async (data) => await handleRequestPassportEmailVerification(data)],
-  [WalletMessageType.PASSPORT_EMAIL_VERIFICATION_CONFIRM, async (data) => await handleConfirmPassportEmailVerification(data)],
-  [WalletMessageType.PASSPORT_CREATE_UNLINK, async (data) => await handleCreatePassportUnlink(data)],
-  [WalletMessageType.PASSPORT_CONFIRM_UNLINK, async (data) => await handleConfirmPassportUnlink(data)],
-  [WalletMessageType.PASSPORT_APPROVE_AUTHORIZATION, async (data) => await handleApprovePassportAuthorization(data)],
   [WalletMessageType.BACKUP_SYNC_NOW, async () => await handleBackupSyncNow()],
   [WalletMessageType.BACKUP_SYNC_CLEAR_REMOTE, async () => await handleBackupSyncClearRemote()],
   [WalletMessageType.BACKUP_SYNC_CLEAR_LOGS, async () => await handleBackupSyncClearLogs()],
@@ -881,11 +867,15 @@ const popupHandlers = new Map([
   [WalletMessageType.MPC_CREATE_SESSION, async (data) => await handleMpcCreateSession(data)],
   [WalletMessageType.MPC_CANCEL_SESSION, async (data) => await handleMpcCancelSession(data)],
   [WalletMessageType.MPC_LIST_INVITES, async (data) => await handleMpcListInvites(data)],
+  [WalletMessageType.MPC_DISMISS_INVITE, async (data) => await handleMpcDismissInvite(data)],
   [WalletMessageType.MPC_ACCEPT_INVITE, async (data) => await handleMpcAcceptInvite(data)],
   [WalletMessageType.MPC_JOIN_SESSION, async (data) => await handleMpcJoinSession(data)],
+  [WalletMessageType.MPC_START_KEYGEN, async (data) => await handleMpcStartKeygen(data)],
   [WalletMessageType.MPC_SEND_SESSION_MESSAGE, async (data) => await handleMpcSendSessionMessage(data)],
   [WalletMessageType.MPC_DECRYPT_MESSAGE, async (data) => await handleMpcDecryptMessage(data)],
   [WalletMessageType.MPC_FETCH_SESSION_MESSAGES, async (data) => await handleMpcFetchSessionMessages(data)],
+  [WalletMessageType.MPC_LIST_SIGN_REQUESTS, async (data) => await handleMpcListSignRequests(data)],
+  [WalletMessageType.MPC_PROCESS_PENDING_SIGN_REQUESTS, async (data) => await handleMpcProcessPendingSignRequests(data)],
   [WalletMessageType.MPC_GET_SESSION, async (data) => await handleMpcGetSession(data?.sessionId)],
   [WalletMessageType.MPC_GET_SESSIONS, async (data) => await handleMpcGetSessions(data)],
   [WalletMessageType.MPC_START_STREAM, async (data) => await handleMpcStartStream(data)],
