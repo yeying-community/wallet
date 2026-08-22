@@ -37,8 +37,12 @@ function isRemoteSessionCleanupBlockedError(error) {
   const code = String(error?.code || error?.status || error?.statusCode || '').trim();
   return message === 'Session is not cancellable'
     || message === 'SESSION_NOT_CANCELLABLE'
+    || message === 'Session not found'
+    || message === 'SESSION_NOT_FOUND'
     || message === 'Forbidden'
     || code === '403'
+    || code === '404'
+    || code === 'NOT_FOUND'
     || code === 'FORBIDDEN';
 }
 

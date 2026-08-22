@@ -637,6 +637,64 @@ test('被邀请方取消未完成 MPC 创建遇到远端 Forbidden 时会清理�
   }
 });
 
+test('取消未完成 MPC 创建遇到远端 Session not found 时会清理本地记录', async () => {
+  await saveAccount({
+    id: 'account-1',
+    walletId: 'wallet-1',
+    address: '0x1111111111111111111111111111111111111111',
+  });
+  await setSelectedAccountId('account-1');
+  state.keyring = new Map([
+    ['account-1', { signMessage: async (message) => `signed:${message}` }],
+  ]);
+  await saveMpcWallet({
+    id: 'mpc-wallet-missing-session',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'keygen_running',
+    keygenSessionId: 'e87388c7-1e74-4031-a41e-9357ad72d3d5',
+    threshold: 1,
+    participants: ['0x1', '0x2'],
+  });
+  await saveMpcSession({
+    id: 'e87388c7-1e74-4031-a41e-9357ad72d3d5',
+    type: 'keygen',
+    walletId: 'mpc-wallet-missing-session',
+    status: 'running',
+    threshold: 1,
+    participants: ['0x1', '0x2'],
+  });
+
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    cancelSession: async () => {
+      const error = new Error('Session not found');
+      error.status = 404;
+      throw error;
+    },
+  };
+
+  try {
+    const result = await handleMpcCancelSession({
+      walletId: 'mpc-wallet-missing-session',
+      sessionId: 'e87388c7-1e74-4031-a41e-9357ad72d3d5',
+      password: 'password123',
+    });
+
+    assert.equal(result.success, true);
+    assert.equal(result.remoteCancelled, false);
+    assert.match(result.warning, /已移除本地未完成 MPC 钱包记录/);
+    assert.equal(await getMpcWallet('mpc-wallet-missing-session'), null);
+    assert.equal(await getMpcSession('e87388c7-1e74-4031-a41e-9357ad72d3d5'), null);
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+  }
+});
+
 test('已生成地址的 MPC 钱包不能通过取消创建入口移除', async () => {
   await saveMpcWallet({
     id: 'mpc-wallet-active',
