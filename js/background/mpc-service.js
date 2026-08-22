@@ -805,6 +805,11 @@ class MpcService {
     }
 
     const now = getTimestamp();
+    const completeKeyShare = combinedKeyShare || existingShare.completeKeyShare;
+    const canSign = !!completeKeyShare;
+    const signingStatus = canSign ? 'available' : 'unavailable';
+    const signingUnavailableReason = canSign ? '' : 'MPC_CGGMP24_COMPLETE_KEY_SHARE_NOT_FOUND';
+
     const shareRecord = {
       ...existingShare,
       id: shareId,
@@ -821,10 +826,10 @@ class MpcService {
       engine: existingShare.engine || 'cggmp24',
       auxInfo,
       auxInfoStatus: 'completed',
-      completeKeyShare: combinedKeyShare || existingShare.completeKeyShare,
-      completeKeyShareStatus: combinedKeyShare ? 'completed' : existingShare.completeKeyShareStatus,
-      signingStatus: 'unavailable',
-      signingUnavailableReason: 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED',
+      completeKeyShare,
+      completeKeyShareStatus: completeKeyShare ? 'completed' : existingShare.completeKeyShareStatus,
+      signingStatus,
+      signingUnavailableReason,
       updatedAt: now
     };
     await saveMpcKeyShare(shareRecord);
@@ -842,12 +847,12 @@ class MpcService {
       keyVersion,
       shareVersion,
       engine: 'cggmp24',
-      signingStatus: 'unavailable',
-      signingUnavailableReason: 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED'
+      signingStatus,
+      signingUnavailableReason
     };
     const nextSession = {
       ...session,
-      status: 'keygen_completed',
+      status: canSign ? 'active' : 'keygen_completed',
       result: completedResult,
       auxInfoStatus: 'completed',
       keyVersion,
@@ -861,7 +866,7 @@ class MpcService {
       id: walletId,
       name: wallet?.name || session?.name || '',
       type: wallet?.type || 'mpc',
-      status: 'keygen_completed',
+      status: canSign ? 'active' : 'keygen_completed',
       keygenSessionId: wallet?.keygenSessionId || sessionId,
       curve: shareRecord.curve,
       address: combinedPublicMaterial?.address || wallet?.address || existingShare.address || '',
@@ -871,8 +876,8 @@ class MpcService {
       shareVersion,
       auxInfoStatus: 'completed',
       completeKeyShareStatus: shareRecord.completeKeyShareStatus,
-      signingStatus: 'unavailable',
-      signingUnavailableReason: 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED',
+      signingStatus,
+      signingUnavailableReason,
       updatedAt: now
     };
     await saveMpcWallet(nextWallet);

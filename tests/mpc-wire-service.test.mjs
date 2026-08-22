@@ -386,7 +386,7 @@ test('tickWireSession persists completed cggmp24 wire keygen result without mark
   }
 });
 
-test('tickWireSession persists completed cggmp24 aux-info result without marking wallet signable', async () => {
+test('tickWireSession persists completed cggmp24 aux-info result and marks wallet signable', async () => {
   await saveMpcSession({
     id: 'session-aux-1',
     type: 'keygen',
@@ -497,7 +497,7 @@ test('tickWireSession persists completed cggmp24 aux-info result without marking
     });
 
     assert.equal(result.result.status, 'completed');
-    assert.equal(result.handledResult.wallet.status, 'keygen_completed');
+    assert.equal(result.handledResult.wallet.status, 'active');
     const share = await getMpcKeyShare('mpc-wallet-aux-1:0x2222222222222222222222222222222222222222:1');
     assert.deepEqual(share.auxInfo, { paillier: 'aux-1', rid: 'rid-1' });
     assert.equal(share.auxInfoStatus, 'completed');
@@ -506,23 +506,26 @@ test('tickWireSession persists completed cggmp24 aux-info result without marking
       core: { shared_public_key: '03abcdef', i: 1 },
       aux: { paillier: 'aux-1', rid: 'rid-1' }
     });
-    assert.equal(share.signingStatus, 'unavailable');
+    assert.equal(share.signingStatus, 'available');
+    assert.equal(share.signingUnavailableReason, '');
 
     const session = await getMpcSession('session-aux-1');
-    assert.equal(session.status, 'keygen_completed');
+    assert.equal(session.status, 'active');
     assert.equal(session.auxInfoStatus, 'completed');
     assert.equal(session.result.auxInfoStatus, 'completed');
     assert.equal(session.result.completeKeyShareStatus, 'completed');
-    assert.equal(session.result.signingUnavailableReason, 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED');
+    assert.equal(session.result.signingStatus, 'available');
+    assert.equal(session.result.signingUnavailableReason, '');
 
     const wallet = await getMpcWallet('mpc-wallet-aux-1');
-    assert.equal(wallet.status, 'keygen_completed');
+    assert.equal(wallet.status, 'active');
     assert.equal(wallet.address, '0x4444444444444444444444444444444444444444');
     assert.equal(wallet.publicKey, '03abcdef');
     assert.equal(wallet.uncompressedPublicKey, `04${'44'.repeat(64)}`);
     assert.equal(wallet.auxInfoStatus, 'completed');
     assert.equal(wallet.completeKeyShareStatus, 'completed');
-    assert.equal(wallet.signingStatus, 'unavailable');
+    assert.equal(wallet.signingStatus, 'available');
+    assert.equal(wallet.signingUnavailableReason, '');
   } finally {
     mpcService._ensureCoordinatorToken = originalEnsure;
     mpcService._coordinator = originalCoordinator;
