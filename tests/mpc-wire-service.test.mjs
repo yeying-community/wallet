@@ -728,6 +728,152 @@ test('processPendingWireSignRequests starts and ticks local pending sign request
   }
 });
 
+test('processPendingWireSignRequests continues bounded ticks while wire messages make progress', async () => {
+  await saveMpcSession({
+    id: 'session-process-sign-loop',
+    type: 'keygen',
+    walletId: 'mpc-wallet-process-sign-loop',
+    status: 'keygen_completed',
+    threshold: 1,
+    curve: 'secp256k1',
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222'
+    ],
+    keyVersion: 1,
+    shareVersion: 1,
+    createdAt: 1,
+    updatedAt: 1
+  });
+  await saveMpcWallet({
+    id: 'mpc-wallet-process-sign-loop',
+    name: 'mpc-loop',
+    type: 'mpc',
+    status: 'active',
+    keygenSessionId: 'session-process-sign-loop',
+    threshold: 1,
+    curve: 'secp256k1',
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222'
+    ],
+    keyVersion: 1,
+    shareVersion: 1,
+    createdAt: 1,
+    updatedAt: 1
+  });
+  await saveMpcKeyShare({
+    id: 'mpc-wallet-process-sign-loop:0x2222222222222222222222222222222222222222:1',
+    walletId: 'mpc-wallet-process-sign-loop',
+    sessionId: 'session-process-sign-loop',
+    participantId: '0x2222222222222222222222222222222222222222',
+    participantIndex: 1,
+    completeKeyShare: { complete: 'loop-share' },
+    keyVersion: 1,
+    shareVersion: 1,
+    createdAt: 1,
+    updatedAt: 1
+  });
+  await saveMpcSignRequest({
+    id: 'sign-request-process-loop',
+    walletId: 'mpc-wallet-process-sign-loop',
+    sessionId: 'session-process-sign-loop',
+    type: 'message',
+    status: 'pending',
+    payload: { messageHex: '0x68656c6c6f' },
+    keyVersion: 1,
+    shareVersion: 1,
+    createdAt: 1,
+    updatedAt: 1
+  });
+
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  const fetchQueries = [];
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    fetchMessages: async (_sessionId, query) => {
+      fetchQueries.push(query);
+      if (Number(query.after || 0) > 0) {
+        return { messages: [], nextSequence: query.after };
+      }
+      return {
+        messages: [{
+          id: 'wire-loop-1',
+          sessionId: 'session-process-sign-loop',
+          sender: '0',
+          receiver: '1',
+          round: 1,
+          type: 'sign',
+          seq: 1,
+          envelope: createMpcWireMessage({
+            sessionId: 'session-process-sign-loop',
+            protocol: 'sign',
+            senderIndex: 0,
+            audience: { oneParty: { recipientIndex: 1 } },
+            payload: { Round1: { from: 0 } },
+            sequence: 1
+          }),
+          createdAt: '1'
+        }],
+        nextSequence: 1
+      };
+    }
+  };
+  let getResultCalls = 0;
+  setMpcTssEngineForTests({
+    async startSign(input) {
+      return {
+        sessionId: input.sessionId,
+        requestId: input.requestId,
+        senderIndex: input.senderIndex,
+        protocol: 'sign',
+        result: { status: 'waiting' }
+      };
+    },
+    async receiveMessage({ state }) {
+      return { ...state, received: true };
+    },
+    async advance({ state }) {
+      return state;
+    },
+    async getOutgoingMessages() {
+      return [];
+    },
+    async getResult({ state }) {
+      getResultCalls += 1;
+      if (state.received && getResultCalls > 1) {
+        return {
+          status: 'completed',
+          requestId: 'sign-request-process-loop',
+          signatureHex: '0xloopsig'
+        };
+      }
+      return { status: 'waiting' };
+    }
+  });
+
+  try {
+    const result = await mpcService.processPendingWireSignRequests({
+      syncRemote: false,
+      participantId: '0x2222222222222222222222222222222222222222',
+      maxTicks: 5
+    });
+
+    assert.equal(fetchQueries.length, 2);
+    assert.equal(result.processed[0].tickCount, 2);
+    assert.equal(result.processed[0].status, 'completed');
+    const signRequest = await getMpcSignRequest('sign-request-process-loop');
+    assert.equal(signRequest.status, 'completed');
+    assert.equal(signRequest.signature, '0xloopsig');
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+    resetMpcTssEngineForTests();
+  }
+});
+
 test('service wire sessions can drive two cggmp24 keygen participants through the message log', async () => {
   class FakeKeygenSession {
     constructor(sessionId, senderIndex, partyCount, threshold) {

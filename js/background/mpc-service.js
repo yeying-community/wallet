@@ -1694,14 +1694,28 @@ class MpcService {
           payload,
           keyShareRef: keyShare
         });
-        const tick = await this.tickWireSession({
-          sessionId,
-          protocol: 'sign',
-          requestId: id,
-          participantId,
-          recipientIndex: participantIndex,
-          password: options.password
-        });
+        const maxTicks = Math.max(1, Math.min(Number(options.maxTicks) || 5, 20));
+        let tick = null;
+        let tickCount = 0;
+        for (let attempt = 0; attempt < maxTicks; attempt += 1) {
+          tick = await this.tickWireSession({
+            sessionId,
+            protocol: 'sign',
+            requestId: id,
+            participantId,
+            recipientIndex: participantIndex,
+            password: options.password,
+            limit: options.limit
+          });
+          tickCount += 1;
+          if (tick?.result?.status === 'completed' || tick?.handledResult) {
+            break;
+          }
+          const madeProgress = (tick?.messages?.length || 0) > 0 || (tick?.outputs?.length || 0) > 0;
+          if (!madeProgress) {
+            break;
+          }
+        }
         const updated = await getMpcSignRequest(id);
         processed.push({
           requestId: id,
@@ -1709,6 +1723,7 @@ class MpcService {
           sessionId,
           walletId,
           participantId,
+          tickCount,
           result: tick.result,
           handledResult: tick.handledResult
         });
