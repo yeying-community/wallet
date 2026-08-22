@@ -115,7 +115,7 @@ test.afterEach(() => {
   resetMpcTssEngineForTests();
 });
 
-test('routeRequest eth_sendTransaction 对 MPC 钱包签名后广播 raw transaction 并返回 hash', async () => {
+async function setupUnlockedMpcWallet() {
   await saveAccount({
     id: 'account-1',
     walletId: 'wallet-1',
@@ -151,7 +151,9 @@ test('routeRequest eth_sendTransaction 对 MPC 钱包签名后广播 raw transac
     keyVersion: 1,
     shareVersion: 1,
   });
+}
 
+function installMpcSignatureEngine({ signatureHex = '', objectSignature = null, assertStart = () => {} } = {}) {
   const originalEnsure = mpcService._ensureCoordinatorToken;
   const originalCoordinator = mpcService._coordinator;
   mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
@@ -161,6 +163,7 @@ test('routeRequest eth_sendTransaction 对 MPC 钱包签名后广播 raw transac
   };
   setMpcTssEngineForTests({
     async startSign(input) {
+      assertStart(input);
       return {
         sessionId: input.sessionId,
         requestId: input.requestId,
@@ -169,10 +172,8 @@ test('routeRequest eth_sendTransaction 对 MPC 钱包签名后广播 raw transac
         result: {
           status: 'completed',
           requestId: input.requestId,
-          signature: {
-            r: `0x${'11'.repeat(32)}`,
-            s: `0x${'22'.repeat(32)}`
-          },
+          ...(signatureHex ? { signatureHex } : {}),
+          ...(objectSignature ? { signature: objectSignature } : {}),
           recoveryId: 0
         }
       };
@@ -188,6 +189,40 @@ test('routeRequest eth_sendTransaction 对 MPC 钱包签名后广播 raw transac
     },
     async getResult({ state }) {
       return state.result;
+    }
+  });
+  return () => {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+  };
+}
+
+async function approveNextRequest() {
+  await new Promise((resolve, reject) => {
+    const startedAt = Date.now();
+    const poll = () => {
+      const pendingId = [...state.pendingRequests.keys()][0];
+      if (pendingId) {
+        recordApprovalResponse(pendingId, { approved: true });
+        resolve();
+        return;
+      }
+      if (Date.now() - startedAt > 1000) {
+        reject(new Error('approval request was not created'));
+        return;
+      }
+      setTimeout(poll, 0);
+    };
+    poll();
+  });
+}
+
+test('routeRequest eth_sendTransaction 对 MPC 钱包签名后广播 raw transaction 并返回 hash', async () => {
+  await setupUnlockedMpcWallet();
+  const restoreMpc = installMpcSignatureEngine({
+    objectSignature: {
+      r: `0x${'11'.repeat(32)}`,
+      s: `0x${'22'.repeat(32)}`
     }
   });
 
@@ -217,23 +252,7 @@ test('routeRequest eth_sendTransaction 对 MPC 钱包签名后广播 raw transac
       clientRequestId: 'rpc-1'
     });
 
-    await new Promise((resolve, reject) => {
-      const startedAt = Date.now();
-      const poll = () => {
-        const pendingId = [...state.pendingRequests.keys()][0];
-        if (pendingId) {
-          recordApprovalResponse(pendingId, { approved: true });
-          resolve();
-          return;
-        }
-        if (Date.now() - startedAt > 1000) {
-          reject(new Error('approval request was not created'));
-          return;
-        }
-        setTimeout(poll, 0);
-      };
-      poll();
-    });
+    await approveNextRequest();
 
     const hash = await routePromise;
 
@@ -244,7 +263,78 @@ test('routeRequest eth_sendTransaction 对 MPC 钱包签名后广播 raw transac
     assert.match(fetchCalls[0].body.params[0], /^0x/);
   } finally {
     globalThis.fetch = originalFetch;
-    mpcService._ensureCoordinatorToken = originalEnsure;
-    mpcService._coordinator = originalCoordinator;
+    restoreMpc();
+  }
+});
+
+test('routeRequest personal_sign 对 MPC 钱包审批后返回 wire 签名', async () => {
+  await setupUnlockedMpcWallet();
+  const restoreMpc = installMpcSignatureEngine({
+    signatureHex: `0x${'56'.repeat(65)}`,
+    assertStart(input) {
+      assert.deepEqual(input.payload, {
+        message: 'hello',
+        messageHex: '0x68656c6c6f'
+      });
+    }
+  });
+
+  try {
+    const routePromise = routeRequest('personal_sign', [
+      'hello',
+      '0x1111111111111111111111111111111111111111'
+    ], {
+      origin: 'https://dapp.example',
+      tabId: 1,
+      clientRequestId: 'rpc-2'
+    });
+
+    await approveNextRequest();
+
+    assert.equal(await routePromise, `0x${'56'.repeat(65)}`);
+  } finally {
+    restoreMpc();
+  }
+});
+
+test('routeRequest eth_signTypedData_v4 对 MPC 钱包审批后返回 wire 签名', async () => {
+  await setupUnlockedMpcWallet();
+  const typedData = {
+    domain: { name: 'App', version: '1', chainId: 1 },
+    types: {
+      EIP712Domain: [
+        { name: 'name', type: 'string' },
+        { name: 'version', type: 'string' },
+        { name: 'chainId', type: 'uint256' }
+      ],
+      Mail: [{ name: 'contents', type: 'string' }]
+    },
+    message: { contents: 'hello' }
+  };
+  const restoreMpc = installMpcSignatureEngine({
+    signatureHex: `0x${'78'.repeat(65)}`,
+    assertStart(input) {
+      assert.equal(input.payload.domain.name, 'App');
+      assert.equal(input.payload.value.contents, 'hello');
+      assert.match(input.payload.messageHex, /^0x[0-9a-f]{64}$/i);
+      assert.equal(input.payload.messageHex, input.payload.typedDataHash);
+    }
+  });
+
+  try {
+    const routePromise = routeRequest('eth_signTypedData_v4', [
+      '0x1111111111111111111111111111111111111111',
+      JSON.stringify(typedData)
+    ], {
+      origin: 'https://dapp.example',
+      tabId: 1,
+      clientRequestId: 'rpc-3'
+    });
+
+    await approveNextRequest();
+
+    assert.equal(await routePromise, `0x${'78'.repeat(65)}`);
+  } finally {
+    restoreMpc();
   }
 });
