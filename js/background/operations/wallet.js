@@ -36,7 +36,10 @@ import {
   setStorage,
   WalletStorageKeys,
   clearAllData,
+  getMpcWallet,
   getMpcWalletList,
+  getMpcSessionList,
+  saveMpcWallet,
   clearTransactionsByAddress,
   ensureDefaultNetworks,
   saveSelectedNetworkName,
@@ -57,6 +60,169 @@ import { IdentityStorageKeys } from '../../storage/storage-keys.js';
 import { getValue, setValue } from '../../storage/storage-base.js';
 
 const MIN_PASSWORD_LENGTH = 8;
+const INVALID_MPC_WALLET_NAMES = new Set(['', 'MPC 钱包创建邀请', 'MPC 钱包邀请', '名称缺失']);
+const MPC_ACCOUNT_ID_PREFIX = 'mpc:';
+const MPC_SESSION_WALLET_STATUS = {
+  ready: 'keygen_ready',
+  rounds: 'keygen_running',
+  running: 'keygen_running',
+  in_progress: 'keygen_running',
+  'in-progress': 'keygen_running',
+  interrupted: 'keygen_interrupted',
+  keygen_interrupted: 'keygen_interrupted',
+  keygen_completed: 'keygen_completed',
+  completed: 'active',
+  complete: 'active',
+  succeeded: 'active',
+  success: 'active',
+  active: 'active',
+  failed: 'failed',
+  error: 'failed',
+};
+
+function getMpcAccountId(walletId) {
+  const id = String(walletId || '').trim();
+  return id ? `${MPC_ACCOUNT_ID_PREFIX}${id}` : '';
+}
+
+function isMpcAccountId(accountId) {
+  return String(accountId || '').startsWith(MPC_ACCOUNT_ID_PREFIX);
+}
+
+function getMpcWalletIdFromAccountId(accountId) {
+  return isMpcAccountId(accountId)
+    ? String(accountId || '').slice(MPC_ACCOUNT_ID_PREFIX.length).trim()
+    : '';
+}
+
+function buildMpcAccountView(wallet, selectedAccountId = '') {
+  const address = String(wallet?.address || '').trim();
+  const walletId = String(wallet?.id || '').trim();
+  if (!walletId || !address) return null;
+  const id = getMpcAccountId(walletId);
+  return {
+    id,
+    walletId,
+    walletType: 'mpc',
+    type: 'mpc',
+    name: wallet.name || 'MPC Wallet',
+    address,
+    status: wallet.status || '',
+    publicKey: wallet.publicKey || '',
+    keygenSessionId: wallet.keygenSessionId || '',
+    keyVersion: wallet.keyVersion,
+    shareVersion: wallet.shareVersion,
+    isSelected: id === selectedAccountId,
+  };
+}
+
+function isInvalidMpcWalletName(name) {
+  return INVALID_MPC_WALLET_NAMES.has(String(name || '').trim());
+}
+
+async function repairMpcWalletNamesFromLocalSessions(mpcWallets = []) {
+  const sessions = await getMpcSessionList();
+  const sessionsById = new Map();
+  const sessionsByWalletId = new Map();
+  for (const session of Array.isArray(sessions) ? sessions : []) {
+    const name = String(session?.name || '').trim();
+    if (isInvalidMpcWalletName(name)) continue;
+    const sessionId = String(session?.id || session?.sessionId || '').trim();
+    const walletId = String(session?.walletId || '').trim();
+    if (sessionId && !sessionsById.has(sessionId)) sessionsById.set(sessionId, session);
+    if (walletId && !sessionsByWalletId.has(walletId)) sessionsByWalletId.set(walletId, session);
+  }
+
+  const repaired = [];
+  for (const wallet of Array.isArray(mpcWallets) ? mpcWallets : []) {
+    if (!wallet?.id) {
+      repaired.push(wallet);
+      continue;
+    }
+    const sessionId = String(wallet.keygenSessionId || wallet.sessionId || '').trim();
+    const session = (sessionId && sessionsById.get(sessionId)) || sessionsByWalletId.get(String(wallet.id || '').trim());
+    const name = String(session?.name || '').trim();
+    const next = { ...wallet };
+    let changed = false;
+    if (isInvalidMpcWalletName(next.name) && !isInvalidMpcWalletName(name) && next.name !== name) {
+      next.name = name;
+      changed = true;
+    }
+    const hasLocalKeygenMaterial = Boolean(
+      String(next.address || '').trim()
+      || String(next.publicKey || '').trim()
+      || String(next.status || '').trim() === 'keygen_completed'
+      || String(next.status || '').trim() === 'active'
+    );
+    const mappedStatus = MPC_SESSION_WALLET_STATUS[String(session?.status || '').trim().toLowerCase()];
+    if (mappedStatus && next.status !== mappedStatus) {
+      if (hasLocalKeygenMaterial && ['keygen_ready', 'keygen_running'].includes(mappedStatus)) {
+        if (!['active', 'keygen_completed'].includes(String(next.status || '').trim())) {
+          next.status = 'keygen_completed';
+          changed = true;
+        }
+      } else {
+        next.status = mappedStatus;
+        changed = true;
+      }
+    }
+    if (changed) {
+      next.updatedAt = getTimestamp();
+      await saveMpcWallet(next);
+    }
+    repaired.push(next);
+  }
+  return repaired;
+}
+
+function isIncompleteMpcWallet(wallet) {
+  if (!wallet || wallet.type !== 'mpc') return false;
+  if (String(wallet.address || '').trim()) return false;
+  return String(wallet.keygenSessionId || wallet.sessionId || '').trim() !== '';
+}
+
+async function syncIncompleteMpcWalletsFromCoordinator(mpcWallets = []) {
+  const syncedWallets = [];
+  for (const wallet of Array.isArray(mpcWallets) ? mpcWallets : []) {
+    if (!isIncompleteMpcWallet(wallet)) {
+      syncedWallets.push(wallet);
+      continue;
+    }
+    try {
+      const sessions = await mpcService.getSessions(wallet.id);
+      const syncedWallet = sessions?.wallet && typeof sessions.wallet === 'object'
+        ? sessions.wallet
+        : await getMpcWalletList().then(list => list.find(item => item?.id === wallet.id));
+      syncedWallets.push(syncedWallet || wallet);
+    } catch (error) {
+      console.warn('[WalletOperations] MPC 钱包状态自动同步失败:', wallet.id, error?.message || error);
+      syncedWallets.push(wallet);
+    }
+  }
+  return syncedWallets;
+}
+
+async function reconcileMpcWalletSigningReadiness(mpcWallets = []) {
+  const reconciled = [];
+  for (const wallet of Array.isArray(mpcWallets) ? mpcWallets : []) {
+    if (!wallet?.id || !String(wallet?.address || '').trim()) {
+      reconciled.push(wallet);
+      continue;
+    }
+    try {
+      const result = await mpcService.reconcileWalletSigningReadiness(wallet);
+      reconciled.push(result?.wallet || wallet);
+    } catch (error) {
+      console.warn('[WalletOperations] MPC 钱包签名能力状态检查失败:', wallet.id, error?.message || error);
+      reconciled.push({
+        ...wallet,
+        signingStatus: 'unavailable',
+        signingUnavailableReason: error?.message || 'MPC_SIGNING_READINESS_CHECK_FAILED'
+      });
+    }
+  }
+  return reconciled;
+}
 
 async function rememberUnlockedAccount(account, password) {
   if (!account?.id || !password) {
@@ -80,7 +246,7 @@ async function rememberUnlockedAccount(account, password) {
 export async function isWalletInitialized() {
   try {
     const wallets = await getWallets();
-    const mpcWallets = await getMpcWalletList();
+    const mpcWallets = await repairMpcWalletNamesFromLocalSessions(await getMpcWalletList());
     const obj = wallets || {};
     const hasHdWallet = Object.keys(obj).length > 0;
     const hasMpcWallet = Array.isArray(mpcWallets) && mpcWallets.length > 0;
@@ -100,7 +266,10 @@ export async function HandleGetWalletList() {
     const accounts = await getAccountList();
     const selectedAccountId = await getSelectedAccountId();
     const walletsData = await getWallets();
-    const mpcWallets = await getMpcWalletList();
+    const repairedMpcWallets = await repairMpcWalletNamesFromLocalSessions(await getMpcWalletList());
+    const mpcWallets = await reconcileMpcWalletSigningReadiness(
+      await syncIncompleteMpcWalletsFromCoordinator(repairedMpcWallets)
+    );
 
     // 按 walletId 分组
     const walletMap = new Map();
@@ -133,7 +302,8 @@ export async function HandleGetWalletList() {
       mpcWallets.forEach(wallet => {
         if (!wallet?.id) return;
         if (walletMap.has(wallet.id)) return;
-        walletMap.set(wallet.id, { ...wallet, type: 'mpc', accounts: [] });
+        const mpcAccount = buildMpcAccountView(wallet, selectedAccountId);
+        walletMap.set(wallet.id, { ...wallet, type: 'mpc', accounts: mpcAccount ? [mpcAccount] : [] });
       });
     }
 
@@ -147,7 +317,7 @@ export async function HandleGetWalletList() {
     return {
       success: true,
       wallets,
-      totalAccounts: accounts.length
+      totalAccounts: accounts.length + wallets.filter(wallet => wallet?.type === 'mpc' && wallet.accounts?.length).length
     };
 
   } catch (error) {
@@ -361,6 +531,27 @@ export async function handleSwitchAccount(accountId, password = null) {
   try {
     console.log('🔄 Switching account:', accountId);
 
+    if (isMpcAccountId(accountId)) {
+      const walletId = getMpcWalletIdFromAccountId(accountId);
+      const wallet = walletId ? await getMpcWalletList().then(list => list.find(item => item?.id === walletId)) : null;
+      const account = buildMpcAccountView(wallet, accountId);
+      if (!account) {
+        throw new Error('MPC wallet not found or address not generated');
+      }
+      await setSelectedAccountId(accountId);
+      if (!state.keyring) {
+        state.keyring = new Map();
+      }
+      state.keyring.set(accountId, { type: 'mpc', walletId });
+      resetLockTimer();
+      broadcastEvent(EventType.ACCOUNTS_CHANGED, { accounts: [account.address] });
+      console.log('✅ MPC account switched:', account.name);
+      return {
+        success: true,
+        account
+      };
+    }
+
     // 获取账户信息
     const account = await getAccount(accountId);
     if (!account) {
@@ -489,6 +680,11 @@ export async function handleGetAccountById(accountId) {
   }
 
   try {
+    const mpcWalletId = getMpcWalletIdFromAccountId(accountId);
+    if (mpcWalletId) {
+      const account = buildMpcAccountView(await getMpcWallet(mpcWalletId));
+      return { success: true, account };
+    }
     const account = await getAccount(accountId);
     return { success: true, account: account || null };
   } catch (error) {
@@ -517,6 +713,20 @@ export async function handleUpdateAccountName(accountId, newName) {
   }
 
   try {
+    const mpcWalletId = getMpcWalletIdFromAccountId(accountId);
+    if (mpcWalletId) {
+      const wallet = await getMpcWallet(mpcWalletId);
+      if (!wallet) {
+        return { success: false, error: 'account not found' };
+      }
+      const updatedWallet = {
+        ...wallet,
+        name: newName.trim(),
+        updatedAt: getTimestamp()
+      };
+      await saveMpcWallet(updatedWallet);
+      return { success: true, account: buildMpcAccountView(updatedWallet) };
+    }
     const account = await getAccount(accountId);
     if (!account) {
       return { success: false, error: 'account not found' };

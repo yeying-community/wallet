@@ -96,6 +96,7 @@ export const MpcStorageKeys = {
   MPC_PARTICIPANTS: 'mpc_participants',
   MPC_KEY_SHARES: 'mpc_key_shares',
   MPC_SESSIONS: 'mpc_sessions',
+  MPC_WIRE_STATES: 'mpc_wire_states',
   MPC_SIGN_REQUESTS: 'mpc_sign_requests',
   MPC_MESSAGES: 'mpc_messages',
   MPC_AUDIT_LOGS: 'mpc_audit_logs',

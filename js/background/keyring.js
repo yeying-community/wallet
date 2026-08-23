@@ -7,7 +7,7 @@ import { state } from './state.js';
 import { createInvalidPasswordError, createAccountNotFoundError, createWalletLockedError } from '../common/errors/index.js';
 import { validatePassword } from '../common/crypto/index.js';
 import { createWalletInstance } from './vault.js';
-import { getAccount, getAccountList, setSelectedAccountId } from '../storage/index.js';
+import { getAccount, getAccountList, getMpcWallet, setSelectedAccountId } from '../storage/index.js';
 import { cachePassword, clearPasswordCache, refreshPasswordCache } from './password-cache.js';
 import { broadcastEvent } from './connection.js';
 import { TIMEOUTS } from '../config/index.js';
@@ -17,6 +17,18 @@ import { backupSyncService } from './sync-service.js';
 import { mpcService } from './mpc-service.js';
 import { onCustodyUnlocked } from './operations/custody.js';
 import { diagnostics } from './diagnostics.js';
+
+const MPC_ACCOUNT_ID_PREFIX = 'mpc:';
+
+function isMpcAccountId(accountId) {
+  return String(accountId || '').startsWith(MPC_ACCOUNT_ID_PREFIX);
+}
+
+function getMpcWalletIdFromAccountId(accountId) {
+  return isMpcAccountId(accountId)
+    ? String(accountId || '').slice(MPC_ACCOUNT_ID_PREFIX.length).trim()
+    : '';
+}
 
 /**
  * 解锁钱包
@@ -36,6 +48,45 @@ export async function unlockWallet(password, accountId, source = 'unknown') {
     }
 
     // 获取账户信息
+    if (isMpcAccountId(accountId)) {
+      const walletId = getMpcWalletIdFromAccountId(accountId);
+      const wallet = walletId ? await getMpcWallet(walletId) : null;
+      if (!wallet?.id || !String(wallet.address || '').trim()) {
+        throw createAccountNotFoundError(accountId);
+      }
+      if (!state.keyring) {
+        state.keyring = new Map();
+      }
+      state.keyring.set(accountId, { type: 'mpc', walletId });
+      await setSelectedAccountId(accountId);
+      cachePassword(password, TIMEOUTS.PASSWORD);
+      resetLockTimer();
+      notifyUnlocked(source);
+      updateKeepAlive();
+      backupSyncService.onUnlocked(password).catch((error) => {
+        console.warn('[BackupSync] unlock hook failed:', error?.message || error);
+      });
+      mpcService.onUnlocked(password).catch((error) => {
+        console.warn('[MPC] unlock hook failed:', error?.message || error);
+      });
+      onCustodyUnlocked(password).catch((error) => {
+        console.warn('[Custody] unlock hook failed:', error?.message || error);
+      });
+      console.log('✅ MPC wallet unlocked');
+      diagnostics.record({ category: 'unlock', action: 'unlock', message: 'mpc wallet unlocked', meta: { source, accountId } });
+      return {
+        success: true,
+        account: {
+          id: accountId,
+          walletId,
+          walletType: 'mpc',
+          type: 'mpc',
+          name: wallet.name || 'MPC Wallet',
+          address: wallet.address
+        }
+      };
+    }
+
     let account = accountId ? await getAccount(accountId) : null;
     if (!account) {
       const accounts = await getAccountList();

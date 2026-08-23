@@ -18,14 +18,21 @@ import {
 import { handleEthAccounts, handleEthRequestAccounts, handleWalletGetPermissions, handleWalletRequestPermissions, handleWalletRevokePermissions } from './account-handler.js';
 import { handleEthChainId, handleNetVersion, handleSwitchChain, handleAddEthereumChain } from './chain-handler.js';
 import { handleRpcMethod } from './rpc-handler.js';
-import { signTransaction, signMessage, signTypedData } from './signing.js';
-import { getSelectedAccount, isAuthorized, updateUserSetting } from '../storage/index.js';
+import {
+  buildMpcSignedTransactionFromSignRequest,
+  resolveMpcAccountIdByAddress,
+  signTransaction,
+  signMessage,
+  signTypedData,
+  isMpcAccountId
+} from './signing.js';
+import { getSelectedAccount, isAuthorized, updateUserSetting, getNetworkByChainId, getNetworkConfigByKey, getMpcSignRequest } from '../storage/index.js';
 import { focusUnlockWindow, requestUnlock } from './unlock-flow.js';
+import { mpcService } from './mpc-service.js';
 import { withPopupBoundsAsync } from './window-utils.js';
-import { POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
+import { DEFAULT_NETWORK, POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { handleUcanSession, handleUcanSign } from './ucan.js';
-import { requestPassportAssertion } from './passport-assertion.js';
 import { requestIdentityPresentation as handleIdentityPresentation } from './identity-presentation.js';
 import { handleYeyingGetProfile } from './profile-handler.js';
 import {
@@ -45,6 +52,9 @@ import {
   removePendingRequest,
   waitForApprovalResponse
 } from './approval-flow.js';
+
+const MPC_SIGN_WAIT_TIMEOUT_MS = 60000;
+const MPC_SIGN_WAIT_INTERVAL_MS = 1500;
 
 async function handleFocusPendingApproval(origin, tabId) {
   await ensureApprovalStateHydrated();
@@ -120,6 +130,25 @@ async function recordUnlockRequest(info) {
   }
 }
 
+async function resolveSignerAccountId(defaultAccount, requestedAddress = '') {
+  const requested = String(requestedAddress || '').trim();
+  if (!requested) {
+    return defaultAccount?.id || '';
+  }
+  const mpcAccountId = await resolveMpcAccountIdByAddress(requested);
+  if (mpcAccountId) {
+    return mpcAccountId;
+  }
+  if (
+    defaultAccount?.id
+    && defaultAccount?.address
+    && String(defaultAccount.address).toLowerCase() === requested.toLowerCase()
+  ) {
+    return defaultAccount.id;
+  }
+  throw createUnauthorizedError('Requested signing address is not available');
+}
+
 async function ensureSiteAuthorized(origin) {
   if (!origin) {
     throw createUnauthorizedError('Unauthorized origin');
@@ -128,6 +157,46 @@ async function ensureSiteAuthorized(origin) {
   if (!authorized) {
     throw createUnauthorizedError('Site not connected');
   }
+}
+
+async function getCurrentRpcUrl() {
+  const network = await getNetworkByChainId(state.currentChainId);
+  let rpcUrl = state.currentRpcUrl || network?.rpcUrl || network?.rpc;
+  if (!rpcUrl) {
+    const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+    rpcUrl = fallbackConfig?.rpcUrl || fallbackConfig?.rpc || '';
+  }
+  if (!rpcUrl) {
+    throw createInternalError('RPC URL not configured');
+  }
+  return rpcUrl;
+}
+
+export async function broadcastSignedTransaction(signedTransaction) {
+  const raw = String(signedTransaction || '').trim();
+  if (!/^0x[0-9a-fA-F]+$/.test(raw)) {
+    throw createInvalidParams('Invalid signed transaction');
+  }
+  const rpcUrl = await getCurrentRpcUrl();
+  const response = await fetch(rpcUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: getTimestamp(),
+      method: 'eth_sendRawTransaction',
+      params: [raw]
+    })
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || payload?.error) {
+    throw createInternalError(payload?.error?.message || `Failed to broadcast transaction: HTTP ${response.status}`);
+  }
+  const hash = String(payload?.result || '').trim();
+  if (!/^0x[0-9a-fA-F]{64}$/.test(hash)) {
+    throw createInternalError('Invalid transaction hash returned by RPC');
+  }
+  return hash;
 }
 
 async function waitForApprovalAndExecute({
@@ -166,6 +235,92 @@ async function waitForApprovalAndExecute({
   } catch (error) {
     removePendingRequest(requestId);
     throw error;
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isMpcSigningPendingError(error) {
+  return String(error?.code || error?.message || '').trim() === 'MPC_SIGNING_PENDING';
+}
+
+function extractMpcCompletedSignature(signRequest) {
+  return String(
+    signRequest?.signature
+    || signRequest?.signatureHex
+    || (typeof signRequest?.result?.signature === 'string' ? signRequest.result.signature : '')
+    || (typeof signRequest?.result?.signatureHex === 'string' ? signRequest.result.signatureHex : '')
+    || ''
+  ).trim();
+}
+
+function extractMpcCompletedSignedTransaction(signRequest) {
+  return buildMpcSignedTransactionFromSignRequest(signRequest);
+}
+
+function extractMpcCompletedResult(signRequest, resultType) {
+  if (resultType === 'signedTransaction') {
+    return extractMpcCompletedSignedTransaction(signRequest);
+  }
+  return extractMpcCompletedSignature(signRequest);
+}
+
+function createMpcCompletedWithoutResultError(resultType) {
+  if (resultType === 'signedTransaction') {
+    return createInternalError('MPC transaction signing completed without signed transaction');
+  }
+  return createInternalError('MPC signing completed without signature');
+}
+
+async function waitForMpcSignatureCompletion(pendingError, { resultType = 'signature' } = {}) {
+  const requestId = String(pendingError?.requestId || pendingError?.signRequest?.id || '').trim();
+  if (!requestId) {
+    throw pendingError;
+  }
+
+  const deadline = Date.now() + MPC_SIGN_WAIT_TIMEOUT_MS;
+  let lastStatus = String(pendingError?.signRequest?.status || 'pending').trim().toLowerCase();
+  while (Date.now() < deadline) {
+    await mpcService.processPendingWireSignRequests({
+      requestId,
+      syncRemote: true,
+      maxTicks: 5
+    }).catch(() => null);
+
+    const signRequest = await getMpcSignRequest(requestId);
+    lastStatus = String(signRequest?.status || lastStatus || '').trim().toLowerCase();
+    if (lastStatus === 'completed') {
+      const result = extractMpcCompletedResult(signRequest, resultType);
+      if (!result) {
+        throw createMpcCompletedWithoutResultError(resultType);
+      }
+      return result;
+    }
+    if (lastStatus === 'rejected') {
+      throw createUserRejectedError('MPC signing request rejected');
+    }
+    if (lastStatus === 'expired') {
+      throw createTimeoutError('MPC signing request expired');
+    }
+    if (lastStatus === 'failed') {
+      throw createInternalError(signRequest?.error || 'MPC signing request failed');
+    }
+    await sleep(MPC_SIGN_WAIT_INTERVAL_MS);
+  }
+
+  throw createTimeoutError('MPC signing is waiting for other participants');
+}
+
+async function executeMpcAwareSignature(operation, options = {}) {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isMpcSigningPendingError(error)) {
+      throw error;
+    }
+    return await waitForMpcSignatureCompletion(error, options);
   }
 }
 
@@ -227,7 +382,6 @@ export async function routeRequest(method, params, metadata) {
     'eth_signTypedData_v4',
     'yeying_ucan_session',
     'yeying_ucan_sign',
-    'yeying_passport_assertion',
     'yeying_identity_presentation',
     'yeying_encrypt',
     'yeying_decrypt'
@@ -304,11 +458,6 @@ export async function routeRequest(method, params, metadata) {
     return handleUcanSign(origin, account, params);
   }
 
-  if (method === 'yeying_passport_assertion') {
-    await ensureSiteAuthorized(origin);
-    return handlePassportAssertion(account, paramsArray, origin, tabId, clientRequestId);
-  }
-
   if (method === 'yeying_identity_presentation') {
     await ensureSiteAuthorized(origin);
     return handleIdentityPresentationApproval(account, paramsArray, origin, tabId, clientRequestId);
@@ -348,19 +497,19 @@ export async function routeRequest(method, params, metadata) {
   // ==================== 签名相关 ====================
 
   if (method === 'eth_sendTransaction') {
-    return handleSendTransaction(account.id, paramsArray, origin, tabId, clientRequestId);
+    return handleSendTransaction(account, paramsArray, origin, tabId, clientRequestId);
   }
 
   if (method === 'eth_signTransaction') {
-    return handleSignTransaction(account.id, paramsArray, origin, tabId, clientRequestId);
+    return handleSignTransaction(account, paramsArray, origin, tabId, clientRequestId);
   }
 
   if (method === 'personal_sign' || method === 'eth_sign') {
-    return handlePersonalSign(account.id, paramsArray, origin, tabId, method, clientRequestId);
+    return handlePersonalSign(account, paramsArray, origin, tabId, method, clientRequestId);
   }
 
   if (method === 'eth_signTypedData' || method === 'eth_signTypedData_v4') {
-    return handleSignTypedData(account.id, paramsArray, origin, tabId, method, clientRequestId);
+    return handleSignTypedData(account, paramsArray, origin, tabId, method, clientRequestId);
   }
 
   // ==================== RPC 转发 ====================
@@ -369,50 +518,6 @@ export async function routeRequest(method, params, metadata) {
   return handleRpcMethod(method, rpcParams);
 }
 
-async function handlePassportAssertion(account, params, origin, tabId, clientRequestId) {
-  const request = Array.isArray(params) ? (params[0] || {}) : (params || {});
-  if (!request || typeof request !== 'object') {
-    throw createInvalidParams('Invalid Passport assertion parameters');
-  }
-
-  const pending = findPendingRequest('passport_assertion', origin, tabId);
-  const clientRequestKey = getClientRequestKey(origin, tabId, 'yeying_passport_assertion', clientRequestId);
-  const existingPending = findPendingRequestByClientKey(clientRequestKey);
-  if (pending && !existingPending) {
-    focusPendingWindow(pending);
-    throw createError(-32002, 'Passport assertion request already pending');
-  }
-
-  return waitForApprovalAndExecute({
-    existingPending,
-    requestType: 'passport_assertion',
-    origin,
-    tabId,
-    reuseSession: true,
-    createPending: () => {
-      const requestId = `passport_assertion_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
-      addPendingRequest(requestId, {
-        type: 'passport_assertion',
-        approvalType: 'passport_assertion',
-        origin,
-        tabId,
-        reuseSession: true,
-        clientRequestKey,
-        expiresAt: Date.now() + TIMEOUTS.REQUEST,
-        data: {
-          origin,
-          accountId: account.id,
-          address: account.address,
-          request
-        },
-        timestamp: getTimestamp()
-      });
-      return requestId;
-    },
-    onApproved: async () => requestPassportAssertion({ account, params: request, origin }),
-    onRejectedMessage: 'User rejected the Passport login request'
-  });
-}
 
 async function handleIdentityPresentationApproval(account, params, origin, tabId, clientRequestId) {
   const request = Array.isArray(params) ? (params[0] || {}) : (params || {});
@@ -588,12 +693,13 @@ async function handleWatchAsset(origin, params, tabId) {
  * @param {number} tabId - 标签页 ID
  * @returns {Promise<string>} 交易哈希
  */
-async function handleSendTransaction(accountId, params, origin, tabId, clientRequestId) {
+async function handleSendTransaction(account, params, origin, tabId, clientRequestId) {
   const [transaction] = params;
 
   if (!transaction || typeof transaction !== 'object') {
     throw createInvalidParams('Invalid transaction object');
   }
+  const signerAccountId = await resolveSignerAccountId(account, transaction.from);
 
   const pending = findPendingRequest('transaction', origin, tabId);
   const clientRequestKey = getClientRequestKey(origin, tabId, 'eth_sendTransaction', clientRequestId);
@@ -618,7 +724,7 @@ async function handleSendTransaction(accountId, params, origin, tabId, clientReq
         clientRequestKey,
         expiresAt: Date.now() + TIMEOUTS.REQUEST,
         data: {
-          accountId,
+          accountId: signerAccountId,
           transaction,
           origin
         },
@@ -628,7 +734,13 @@ async function handleSendTransaction(accountId, params, origin, tabId, clientReq
     },
     onApproved: async () => {
       console.log('✅ Transaction approved, signing...');
-      const result = await signTransaction(accountId, transaction);
+      const result = await executeMpcAwareSignature(
+        () => signTransaction(signerAccountId, transaction),
+        isMpcAccountId(signerAccountId) ? { resultType: 'signedTransaction' } : {}
+      );
+      if (isMpcAccountId(signerAccountId)) {
+        return await broadcastSignedTransaction(result);
+      }
       return result.hash;
     },
     onRejectedMessage: 'User rejected the transaction'
@@ -643,13 +755,14 @@ async function handleSendTransaction(accountId, params, origin, tabId, clientReq
  * @param {number} tabId - 标签页 ID
  * @returns {Promise<string>} 签名后的交易
  */
-async function handleSignTransaction(accountId, params, origin, tabId, clientRequestId) {
+async function handleSignTransaction(account, params, origin, tabId, clientRequestId) {
   // 与 handleSendTransaction 类似，但只返回签名后的交易，不发送
   const [transaction] = params;
 
   if (!transaction || typeof transaction !== 'object') {
     throw createInvalidParams('Invalid transaction object');
   }
+  const signerAccountId = await resolveSignerAccountId(account, transaction.from);
 
   const pending = findPendingRequest('sign_transaction', origin, tabId);
   const clientRequestKey = getClientRequestKey(origin, tabId, 'eth_signTransaction', clientRequestId);
@@ -674,7 +787,7 @@ async function handleSignTransaction(accountId, params, origin, tabId, clientReq
         clientRequestKey,
         expiresAt: Date.now() + TIMEOUTS.REQUEST,
         data: {
-          accountId,
+          accountId: signerAccountId,
           transaction,
           origin
         },
@@ -682,7 +795,10 @@ async function handleSignTransaction(accountId, params, origin, tabId, clientReq
       });
       return requestId;
     },
-    onApproved: async () => signTransaction(accountId, transaction),
+    onApproved: async () => executeMpcAwareSignature(
+      () => signTransaction(signerAccountId, transaction),
+      isMpcAccountId(signerAccountId) ? { resultType: 'signedTransaction' } : {}
+    ),
     onRejectedMessage: 'User rejected the transaction'
   });
 }
@@ -695,7 +811,7 @@ async function handleSignTransaction(accountId, params, origin, tabId, clientReq
  * @param {number} tabId - 标签页 ID
  * @returns {Promise<string>} 签名
  */
-async function handlePersonalSign(accountId, params, origin, tabId, method, clientRequestId) {
+async function handlePersonalSign(account, params, origin, tabId, method, clientRequestId) {
   // personal_sign 参数顺序: [message, address]
   // eth_sign 参数顺序: [address, message]
   let messageToSign, address;
@@ -712,6 +828,7 @@ async function handlePersonalSign(accountId, params, origin, tabId, method, clie
   } else {
     throw createInvalidParams('Invalid parameters for personal_sign');
   }
+  const signerAccountId = await resolveSignerAccountId(account, address);
 
   const pending = findPendingRequest('sign_message', origin, tabId);
   const clientRequestKey = getClientRequestKey(origin, tabId, method, clientRequestId);
@@ -738,7 +855,7 @@ async function handlePersonalSign(accountId, params, origin, tabId, method, clie
         clientRequestKey,
         expiresAt: Date.now() + TIMEOUTS.REQUEST,
         data: {
-          accountId,
+          accountId: signerAccountId,
           message: messageToSign,
           origin
         },
@@ -746,7 +863,7 @@ async function handlePersonalSign(accountId, params, origin, tabId, method, clie
       });
       return requestId;
     },
-    onApproved: async () => signMessage(accountId, messageToSign),
+    onApproved: async () => executeMpcAwareSignature(() => signMessage(signerAccountId, messageToSign)),
     onRejectedMessage: 'User rejected the signature request'
   });
 }
@@ -759,13 +876,14 @@ async function handlePersonalSign(accountId, params, origin, tabId, method, clie
  * @param {number} tabId - 标签页 ID
  * @returns {Promise<string>} 签名
  */
-async function handleSignTypedData(accountId, params, origin, tabId, method, clientRequestId) {
+async function handleSignTypedData(account, params, origin, tabId, method, clientRequestId) {
   // eth_signTypedData_v4 参数: [address, typedData]
   const [address, typedDataJson] = params;
 
   if (!typedDataJson) {
     throw createInvalidParams('Invalid typed data');
   }
+  const signerAccountId = await resolveSignerAccountId(account, address);
 
   let typedData;
   try {
@@ -799,7 +917,7 @@ async function handleSignTypedData(accountId, params, origin, tabId, method, cli
         clientRequestKey,
         expiresAt: Date.now() + TIMEOUTS.REQUEST,
         data: {
-          accountId,
+          accountId: signerAccountId,
           typedData,
           origin
         },
@@ -809,7 +927,7 @@ async function handleSignTypedData(accountId, params, origin, tabId, method, cli
     },
     onApproved: async () => {
       const { domain, types, message: value } = typedData;
-      return signTypedData(accountId, domain, types, value);
+      return executeMpcAwareSignature(() => signTypedData(signerAccountId, domain, types, value));
     },
     onRejectedMessage: 'User rejected the signature request'
   });

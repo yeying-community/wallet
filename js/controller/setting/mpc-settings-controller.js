@@ -5,7 +5,7 @@
  *
  * 依赖通过构造参数注入：{ wallet, requestPassword }
  */
-import { showPage, showSuccess, showError, showWaiting, hideWaiting, copyToClipboard } from '../../common/ui/index.js';
+import { showPage, getCurrentPage, showSuccess, showError, showWaiting, hideWaiting, copyToClipboard } from '../../common/ui/index.js';
 import { formatLocaleDateTime } from '../../common/utils/time-utils.js';
 import { escapeHtml } from '../../common/ui/html-ui.js';
 import { deriveUcanAudience } from '../../common/ucan-utils.js';
@@ -29,6 +29,7 @@ export class MpcSettingsController {
     this.mpcSettings = null;
     this.custodySettings = null;
     this.mpcLogs = [];
+    this.mpcSignRequests = [];
     this.mpcMessages = [];
     this.mpcMessageCursor = null;
     this.mpcMessagePollTimer = null;
@@ -47,6 +48,12 @@ export class MpcSettingsController {
     const mpcAuditBtn = document.getElementById('mpcAuditBtn');
     if (mpcAuditBtn) {
       mpcAuditBtn.addEventListener('click', async () => {
+        await this.openMpcLogsPage();
+      });
+    }
+    const mpcSettingsActivityBtn = document.getElementById('mpcSettingsActivityBtn');
+    if (mpcSettingsActivityBtn) {
+      mpcSettingsActivityBtn.addEventListener('click', async () => {
         await this.openMpcLogsPage();
       });
     }
@@ -88,7 +95,7 @@ export class MpcSettingsController {
     const mpcInvitesRefreshBtn = document.getElementById('mpcInvitesRefreshBtn');
     if (mpcInvitesRefreshBtn) {
       mpcInvitesRefreshBtn.addEventListener('click', async () => {
-        await this.loadMpcInvites(true);
+        await this.refreshMpcActivity();
       });
     }
     const mpcInvitesList = document.getElementById('mpcInvitesList');
@@ -97,6 +104,14 @@ export class MpcSettingsController {
         const button = event.target.closest('[data-mpc-invite-accept]');
         if (!button) return;
         await this.handleMpcInviteAccept(button.dataset.notificationUid || '');
+      });
+    }
+    const mpcLogsList = document.getElementById('mpcLogsList');
+    if (mpcLogsList) {
+      mpcLogsList.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-mpc-sign-process]');
+        if (!button) return;
+        await this.handleMpcSignRequestProcess(button.dataset.requestId || '');
       });
     }
 
@@ -306,7 +321,6 @@ export class MpcSettingsController {
 
   openMpcDetailPage() {
     showPage('mpcDetailPage');
-    this.loadMpcInvites(false);
     this.loadMpcDeviceInfo(false);
   }
 
@@ -327,6 +341,11 @@ export class MpcSettingsController {
     } catch (error) {
       console.error('[MpcSettings] 获取 MPC 设置失败:', error);
     }
+  }
+
+  async loadSessions() {
+    await this.loadMpcLogs();
+    window.refreshWalletSelects?.();
   }
 
   async loadCustodySettings() {
@@ -388,6 +407,7 @@ export class MpcSettingsController {
       const endpoint = settings.coordinatorEndpoint || DEFAULT_MPC_COORDINATOR_ENDPOINT;
       summary.textContent = `默认协调器：${endpoint}`;
     }
+    this.renderMpcInviteSummary();
     window.refreshWalletSelects?.();
   }
 
@@ -722,8 +742,8 @@ export class MpcSettingsController {
       showError('请填写参与者列表');
       return;
     }
-    if (!Number.isFinite(threshold) || threshold <= 0) {
-      showError('门限必须大于 0');
+    if (!Number.isFinite(threshold) || threshold < 2) {
+      showError('门限必须至少为 2');
       return;
     }
     if (threshold > participants.length) {
@@ -1138,7 +1158,7 @@ export class MpcSettingsController {
 
   async loadMpcInvites(showToast = false) {
     const listEl = document.getElementById('mpcInvitesList');
-    if (!listEl || typeof this.wallet.listMpcInvites !== 'function') {
+    if (typeof this.wallet.listMpcInvites !== 'function') {
       return;
     }
     try {
@@ -1147,14 +1167,41 @@ export class MpcSettingsController {
         throw new Error(result?.error || '加载失败');
       }
       this.mpcInvites = Array.isArray(result.items) ? result.items : [];
-      this.renderMpcInvites(this.mpcInvites);
+      if (listEl) this.renderMpcInvites(this.mpcInvites);
+      this.renderMpcInviteSummary();
       if (showToast) showSuccess('MPC 邀请已刷新');
     } catch (error) {
       console.error('[MpcSettings] 加载 MPC 邀请失败:', error);
       this.mpcInvites = [];
-      this.renderMpcInvites([], this.getMpcInviteLoadErrorMessage(error));
+      if (listEl) this.renderMpcInvites([], this.getMpcInviteLoadErrorMessage(error));
+      this.renderMpcInviteSummary(error);
       if (showToast) showError('刷新失败: ' + error.message);
     }
+  }
+
+  renderMpcInviteSummary(error = null) {
+    const hint = document.getElementById('mpcSettingsInviteHint');
+    const activityBtn = document.getElementById('mpcSettingsActivityBtn');
+    if (!hint) return;
+    if (error) {
+      hint.textContent = this.getMpcInviteLoadErrorMessage(error);
+      hint.classList.remove('hidden');
+      activityBtn?.classList.remove('btn-primary');
+      activityBtn?.classList.add('btn-secondary');
+      return;
+    }
+    const count = Array.isArray(this.mpcInvites) ? this.mpcInvites.length : 0;
+    if (count > 0) {
+      hint.textContent = `有 ${count} 个待处理邀请，请前往多签活动处理。`;
+      hint.classList.remove('hidden');
+      activityBtn?.classList.remove('btn-secondary');
+      activityBtn?.classList.add('btn-primary');
+      return;
+    }
+    hint.textContent = '';
+    hint.classList.add('hidden');
+    activityBtn?.classList.remove('btn-primary');
+    activityBtn?.classList.add('btn-secondary');
   }
 
   getMpcInviteLoadErrorMessage(error) {
@@ -1185,9 +1232,10 @@ export class MpcSettingsController {
       const participants = Array.isArray(payload.participants) ? payload.participants.length : '-';
       const inviter = payload.inviter || item?.actor || '';
       const createdAt = item?.createdAt ? formatLocaleDateTime(item.createdAt) : '';
+      const walletName = this.getMpcInviteWalletName(item);
       return `
         <div class="mpc-invite-item">
-          <div class="mpc-invite-title">${escapeHtml(item?.title || 'MPC 钱包创建邀请')}</div>
+          <div class="mpc-invite-title">${escapeHtml(walletName)}</div>
           <div class="mpc-invite-meta">
             <span>会话：${escapeHtml(this.shortenText(sessionId))}</span>
             <span>钱包：${escapeHtml(this.shortenText(walletId))}</span>
@@ -1206,6 +1254,13 @@ export class MpcSettingsController {
     }).join('');
   }
 
+  getMpcInviteWalletName(invite) {
+    const payload = invite?.payload || {};
+    const invalidNames = new Set(['MPC 钱包创建邀请', 'MPC 钱包邀请']);
+    const name = String(payload.name || invite?.session?.name || '').trim();
+    return name && !invalidNames.has(name) ? name : '名称缺失';
+  }
+
   async handleMpcInviteAccept(notificationUid) {
     const invite = this.mpcInvites.find((item) =>
       String(item?.notificationUid || item?.uid || '') === String(notificationUid || '')
@@ -1221,7 +1276,7 @@ export class MpcSettingsController {
     try {
       showWaiting();
       const result = await this.wallet.acceptMpcInvite({
-        notificationUid: invite.notificationUid || invite.uid,
+        notificationUid: invite.notificationUid || '',
         sessionId: invite.payload?.sessionId || invite.subjectId,
         walletId: invite.payload?.walletId,
         payload: invite.payload || {},
@@ -1252,8 +1307,86 @@ export class MpcSettingsController {
   }
 
   async openMpcLogsPage() {
+    const returnPage = getCurrentPage() === 'settingsPage' ? 'settingsPage' : 'mpcDetailPage';
+    const page = document.getElementById('mpcLogsPage');
+    if (page) page.dataset.returnPage = returnPage;
     showPage('mpcLogsPage');
-    await this.loadMpcLogs();
+    await Promise.all([
+      this.loadMpcInvites(false),
+      this.loadMpcSignRequests(false),
+      this.loadMpcLogs()
+    ]);
+  }
+
+  async refreshMpcActivity() {
+    try {
+      await Promise.all([
+        this.loadMpcInvites(false),
+        this.loadMpcSignRequests(false),
+        this.loadMpcLogs()
+      ]);
+      showSuccess('多签活动已刷新');
+    } catch (error) {
+      showError('刷新失败: ' + (error?.message || '未知错误'));
+    }
+  }
+
+  async loadMpcSignRequests(showToast = false) {
+    if (typeof this.wallet.listMpcSignRequests !== 'function') {
+      this.mpcSignRequests = [];
+      return;
+    }
+    try {
+      if (typeof this.wallet.processPendingMpcSignRequests === 'function') {
+        await this.wallet.processPendingMpcSignRequests({ pageSize: 20 }).catch((error) => {
+          console.warn('[MpcSettings] 推进待处理 MPC 签名请求失败:', error);
+        });
+      }
+      const result = await this.wallet.listMpcSignRequests({ pageSize: 20 });
+      if (!result?.success) {
+        throw new Error(result?.error || '加载失败');
+      }
+      this.mpcSignRequests = Array.isArray(result.items) ? result.items : [];
+      this.renderMpcLogsList();
+      this.updateMpcLogsSummary();
+      if (showToast) showSuccess('MPC 签名请求已刷新');
+    } catch (error) {
+      console.error('[MpcSettings] 加载 MPC 签名请求失败:', error);
+      this.mpcSignRequests = [];
+      this.renderMpcLogsList();
+      this.updateMpcLogsSummary();
+      if (showToast) showError('刷新失败: ' + error.message);
+    }
+  }
+
+  async handleMpcSignRequestProcess(requestId) {
+    const id = String(requestId || '').trim();
+    if (!id) {
+      showError('未找到 MPC 签名请求');
+      return;
+    }
+    if (typeof this.wallet.processPendingMpcSignRequests !== 'function') {
+      showError('当前钱包不支持处理 MPC 签名请求');
+      return;
+    }
+    try {
+      showWaiting();
+      const result = await this.wallet.processPendingMpcSignRequests({
+        requestId: id,
+        maxTicks: 8,
+        syncRemote: true
+      });
+      if (!result?.success) {
+        throw new Error(result?.error || '处理失败');
+      }
+      await this.loadMpcSignRequests(false);
+      showSuccess('MPC 签名请求已处理');
+    } catch (error) {
+      console.error('[MpcSettings] 处理 MPC 签名请求失败:', error);
+      showError('处理失败: ' + (error?.message || '未知错误'));
+    } finally {
+      hideWaiting();
+    }
   }
 
   async loadMpcLogs() {
@@ -1310,17 +1443,75 @@ export class MpcSettingsController {
     return activity;
   }
 
+  formatMpcSignRequestActivity(request = {}) {
+    const status = String(request.status || '').toLowerCase();
+    const type = String(request.payloadType || request.type || '').toLowerCase();
+    const titleByType = {
+      message: '消息签名请求',
+      transaction: '交易签名请求',
+      typed_data: '结构化数据签名请求'
+    };
+    const statusText = status === 'completed'
+      ? '已完成'
+      : (status === 'failed' || status === 'rejected' ? '未完成' : '待处理');
+    const statusClass = status === 'completed'
+      ? 'info'
+      : (status === 'failed' || status === 'rejected' ? 'error' : 'warn');
+    const hash = request.payloadHash ? `摘要 ${this.shortenText(request.payloadHash, 10, 8)}` : '签名内容待同步';
+    const chain = request.chainId ? ` · 链 ${request.chainId}` : '';
+    return {
+      title: titleByType[type] || 'MPC 签名请求',
+      detail: `${hash}${chain}`,
+      status: statusText,
+      statusClass
+    };
+  }
+
+  isMpcSignRequestActionable(request = {}) {
+    const status = String(request.status || '').trim().toLowerCase();
+    return Boolean(request?.id) && !['completed', 'rejected', 'failed', 'expired'].includes(status);
+  }
+
   renderMpcLogsList() {
     const container = document.getElementById('mpcLogsList');
     if (!container) return;
+    const signRequests = Array.isArray(this.mpcSignRequests) ? [...this.mpcSignRequests] : [];
     const entries = [...this.mpcLogs].reverse();
 
-    if (entries.length === 0) {
+    if (entries.length === 0 && signRequests.length === 0) {
       container.innerHTML = '<div class="empty-message">暂无多签活动</div>';
       return;
     }
 
-    container.innerHTML = entries.map(entry => {
+    const signRequestHtml = signRequests.map(request => {
+      const timeText = request?.completedAt || request?.createdAt
+        ? formatLocaleDateTime(request.completedAt || request.createdAt)
+        : '-';
+      const activity = this.formatMpcSignRequestActivity(request);
+      const actionsHtml = this.isMpcSignRequestActionable(request)
+        ? `
+          <div class="mpc-activity-actions">
+            <button
+              class="btn btn-primary btn-small"
+              data-mpc-sign-process="1"
+              data-request-id="${escapeHtml(request.id || '')}"
+            >处理</button>
+          </div>
+        `
+        : '';
+      return `
+        <div class="sync-activity-item mpc-activity-item">
+          <div class="mpc-activity-header">
+            <div class="sync-activity-time">${escapeHtml(timeText)}</div>
+            <span class="sync-activity-tag level-${activity.statusClass}">${escapeHtml(activity.status)}</span>
+          </div>
+          <div class="mpc-activity-content">${escapeHtml(activity.title)}：${escapeHtml(activity.detail)}</div>
+          ${actionsHtml}
+        </div>
+      `;
+    }).join('');
+
+    const logHtml = entries.map(entry => {
       const timeText = entry?.time ? formatLocaleDateTime(entry.time) : '-';
       const activity = this.formatMpcActivity(entry);
 
@@ -1334,6 +1525,8 @@ export class MpcSettingsController {
         </div>
       `;
     }).join('');
+
+    container.innerHTML = `${signRequestHtml}${logHtml}`;
 
   }
 
@@ -1365,7 +1558,9 @@ export class MpcSettingsController {
       lastEl.textContent = latest?.time ? formatLocaleDateTime(latest.time) : '-';
     }
     if (totalEl) {
-      totalEl.textContent = String(Array.isArray(this.mpcLogs) ? this.mpcLogs.length : 0);
+      const logCount = Array.isArray(this.mpcLogs) ? this.mpcLogs.length : 0;
+      const requestCount = Array.isArray(this.mpcSignRequests) ? this.mpcSignRequests.length : 0;
+      totalEl.textContent = String(logCount + requestCount);
     }
     if (matchEl) {
       matchEl.textContent = String(Array.isArray(this.mpcLogFiltered) ? this.mpcLogFiltered.length : 0);

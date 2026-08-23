@@ -134,8 +134,8 @@ test('openBackupSyncSettings：先 openSettingsPage 再请求 scrollIntoView', a
   c.settingController.loadMpcSettings = async () => {};
   elements.backupSyncSection.scrollIntoView = () => { c.__scrolled = true; };
   await c.openBackupSyncSettings();
-  // requestAnimationFrame 异步 → 等 microtask
-  await new Promise((r) => setImmediate(r));
+  // requestAnimationFrame stub uses setTimeout(0), so wait for the timer queue.
+  await new Promise((r) => setTimeout(r, 0));
   assert.equal(c.__scrolled, true, '应调用 backupSyncSection.scrollIntoView');
 });
 

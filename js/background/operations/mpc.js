@@ -26,9 +26,63 @@ const DEFAULT_MPC_REFRESH_POLICY = 'manual';
 const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
 const DEFAULT_MPC_UCAN_RESOURCE = 'mpc';
 const DEFAULT_MPC_UCAN_ACTION = 'coordinate';
+const MPC_IGNORED_INVITES_SETTING = 'mpcIgnoredInviteIds';
 const MPC_AUTH_SCHEMES = new Set(['ucan']);
 const MPC_E2E_SUITES = new Set(['x25519-aes-gcm']);
 const MPC_REFRESH_POLICIES = new Set(['manual']);
+const INVALID_MPC_WALLET_NAMES = new Set(['MPC 钱包创建邀请', 'MPC 钱包邀请']);
+const MPC_KEYGEN_STARTABLE_SESSION_STATUSES = new Set(['ready', 'running', 'rounds', 'in_progress', 'in-progress']);
+
+function isRemoteSessionCleanupBlockedError(error) {
+  const message = String(error?.message || error || '').trim();
+  const code = String(error?.code || error?.status || error?.statusCode || '').trim();
+  return message === 'Session is not cancellable'
+    || message === 'SESSION_NOT_CANCELLABLE'
+    || message === 'Session not found'
+    || message === 'SESSION_NOT_FOUND'
+    || message === 'Forbidden'
+    || code === '403'
+    || code === '404'
+    || code === 'NOT_FOUND'
+    || code === 'FORBIDDEN';
+}
+
+function isMpcWalletCreated(wallet) {
+  return String(wallet?.status || '').trim() === 'active' || Boolean(String(wallet?.address || '').trim());
+}
+
+function isKeygenStartableSession(session) {
+  return MPC_KEYGEN_STARTABLE_SESSION_STATUSES.has(String(session?.status || '').trim().toLowerCase());
+}
+
+function normalizeIgnoredInviteIds(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function getInviteIgnoreIds(source = {}) {
+  const payload = source?.payload && typeof source.payload === 'object' ? source.payload : source;
+  return [
+    source?.notificationUid,
+    source?.uid,
+    source?.subjectId,
+    payload?.sessionId,
+    payload?.walletId,
+    source?.sessionId,
+    source?.walletId
+  ].map((item) => String(item || '').trim()).filter(Boolean);
+}
+
+export function resolveMpcWalletName(source = {}) {
+  const payload = source?.payload && typeof source.payload === 'object' ? source.payload : source;
+  const name = String(payload?.name || '').trim();
+  if (!name || INVALID_MPC_WALLET_NAMES.has(name)) {
+    throw new Error('MPC 钱包名称缺失');
+  }
+  return name;
+}
 
 /**
  * 创建 MPC 钱包（并创建 Keygen 会话）
@@ -37,7 +91,10 @@ const MPC_REFRESH_POLICIES = new Set(['manual']);
  */
 export async function handleCreateMpcWallet(options = {}) {
   try {
-    const name = String(options.name || 'MPC Wallet').trim() || 'MPC Wallet';
+    const name = String(options.name || '').trim();
+    if (!name || INVALID_MPC_WALLET_NAMES.has(name)) {
+      throw new Error('请输入 MPC 钱包名称');
+    }
     const walletId = generateId('mpc_wallet');
     const currentAccount = await getSelectedAccount() || (await getAccountList())[0] || null;
     const selfAddress = String(currentAccount?.address || '').trim();
@@ -61,8 +118,8 @@ export async function handleCreateMpcWallet(options = {}) {
     if (!participants.length) {
       throw new Error('参与者不能为空');
     }
-    if (!Number.isFinite(threshold) || threshold <= 0) {
-      throw new Error('门限必须大于 0');
+    if (!Number.isFinite(threshold) || threshold < 2) {
+      throw new Error('门限必须至少为 2');
     }
     if (threshold > participants.length) {
       throw new Error('门限不能大于参与者数量');
@@ -100,6 +157,7 @@ export async function handleCreateMpcWallet(options = {}) {
 
     const sessionResult = await mpcService.createSession({
       type: 'keygen',
+      name,
       walletId,
       threshold,
       participants,
@@ -128,6 +186,13 @@ export async function handleCreateMpcWallet(options = {}) {
     };
 
     await saveMpcWallet(wallet);
+    await mpcService.syncWalletFromSession(sessionResult.session || wallet.keygenSessionId).catch(() => null);
+    if (isKeygenStartableSession(sessionResult.session)) {
+      await mpcService.startKeygenSession({
+        sessionId: wallet.keygenSessionId,
+        password: options.password
+      }).catch(() => null);
+    }
 
     return {
       success: true,
@@ -313,24 +378,60 @@ export async function handleMpcCancelSession(options = {}) {
     if (!wallet) {
       throw new Error('MPC 钱包不存在');
     }
-    if (wallet.status && wallet.status !== 'keygen_pending') {
-      throw new Error('只有未完成的 MPC 钱包创建可以取消');
+    if (isMpcWalletCreated(wallet)) {
+      throw new Error('已创建成功的 MPC 钱包不能通过该入口移除');
     }
-    const result = await mpcService.cancelSession({
-      sessionId,
-      password: options.password
-    });
+    let result = null;
+    let remoteCancelled = true;
+    try {
+      result = await mpcService.cancelSession({
+        sessionId,
+        password: options.password
+      });
+    } catch (error) {
+      if (!isRemoteSessionCleanupBlockedError(error)) {
+        throw error;
+      }
+      remoteCancelled = false;
+    }
     await deleteMpcSession(sessionId);
     await deleteMpcWallet(walletId);
     return {
       success: true,
-      session: result.session,
-      response: result.response,
+      session: result?.session || null,
+      response: result?.response || null,
       walletId,
-      sessionId
+      sessionId,
+      remoteCancelled,
+      warning: remoteCancelled ? '' : '远端会话当前不可取消，已移除本地未完成 MPC 钱包记录'
     };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to cancel MPC session' };
+  }
+}
+
+export async function handleMpcDismissInvite(options = {}) {
+  try {
+    const ids = getInviteIgnoreIds(options);
+    if (!ids.length) {
+      throw new Error('invite id is required');
+    }
+    const current = normalizeIgnoredInviteIds(await getUserSetting(MPC_IGNORED_INVITES_SETTING, []));
+    const next = Array.from(new Set([...current, ...ids]));
+    await updateUserSettings({ [MPC_IGNORED_INVITES_SETTING]: next });
+
+    const notificationUid = String(options?.notificationUid || options?.uid || '').trim();
+    if (notificationUid) {
+      await mpcService.markInviteRead(notificationUid).catch(() => null);
+    }
+
+    return {
+      success: true,
+      ignoredIds: next,
+      dismissedIds: ids
+    };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to dismiss MPC invite' };
   }
 }
 
@@ -387,12 +488,13 @@ export async function handleMpcAcceptInvite(options = {}) {
     }
     await mpcService.startEventStream(sessionId).catch(() => null);
 
+    const walletName = resolveMpcWalletName(payload);
     const existingWallet = await getMpcWallet(walletId);
     if (!existingWallet) {
       const now = getTimestamp();
       await saveMpcWallet({
         id: walletId,
-        name: String(payload.name || 'MPC Wallet').trim() || 'MPC Wallet',
+        name: walletName,
         type: 'mpc',
         status: 'keygen_pending',
         keygenSessionId: sessionId,
@@ -405,6 +507,19 @@ export async function handleMpcAcceptInvite(options = {}) {
         createdAt: now,
         updatedAt: now
       });
+    } else if (String(existingWallet.name || '').trim() !== walletName) {
+      await saveMpcWallet({
+        ...existingWallet,
+        name: walletName,
+        updatedAt: getTimestamp()
+      });
+    }
+    await mpcService.syncWalletFromSession(joinResult.session || sessionId).catch(() => null);
+    if (isKeygenStartableSession(joinResult.session)) {
+      await mpcService.startKeygenSession({
+        sessionId,
+        password: options.password
+      }).catch(() => null);
     }
 
     if (notificationUid) {
@@ -429,6 +544,15 @@ export async function handleMpcJoinSession(options = {}) {
     return { success: true, participant: result.participant, response: result.response };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to join session' };
+  }
+}
+
+export async function handleMpcStartKeygen(options = {}) {
+  try {
+    const result = await mpcService.startKeygenSession(options);
+    return { success: true, result };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to start keygen' };
   }
 }
 
@@ -460,6 +584,24 @@ export async function handleMpcFetchSessionMessages(options = {}) {
   }
 }
 
+export async function handleMpcListSignRequests(options = {}) {
+  try {
+    const result = await mpcService.listSignRequests(options);
+    return { success: true, ...result };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to list sign requests' };
+  }
+}
+
+export async function handleMpcProcessPendingSignRequests(options = {}) {
+  try {
+    const result = await mpcService.processPendingWireSignRequests(options);
+    return { success: true, ...result };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to process pending sign requests' };
+  }
+}
+
 export async function handleMpcGetSession(sessionId) {
   try {
     const session = await mpcService.getSession(sessionId);
@@ -471,10 +613,50 @@ export async function handleMpcGetSession(sessionId) {
 
 export async function handleMpcGetSessions(options = {}) {
   try {
-    const sessions = await mpcService.getSessions(options?.walletId);
-    return { success: true, sessions };
+    const sessions = await mpcService.getSessions(options?.walletId, { localOnly: Boolean(options?.localOnly) });
+    const walletId = String(options?.walletId || '').trim();
+    const wallet = walletId
+      ? (await mpcService.reconcileWalletSigningReadiness(walletId))?.wallet
+      : null;
+    return { success: true, sessions, wallet };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to get sessions' };
+  }
+}
+
+export async function handleMpcDiagnoseWallet(options = {}) {
+  try {
+    const walletId = String(options?.walletId || options?.id || '').trim();
+    if (!walletId) {
+      throw new Error('MPC 钱包 ID 不能为空');
+    }
+    const readiness = await mpcService.evaluateWalletSigningReadiness(walletId);
+    const wallet = readiness?.wallet || null;
+    const keyShare = readiness?.keyShare || null;
+    return {
+      success: true,
+      diagnosis: {
+        walletId,
+        status: String(wallet?.status || ''),
+        signingStatus: String(wallet?.signingStatus || ''),
+        signingUnavailableReason: String(wallet?.signingUnavailableReason || readiness?.reason || ''),
+        canSign: Boolean(readiness?.canSign),
+        reason: String(readiness?.reason || ''),
+        hasAddress: Boolean(String(wallet?.address || '').trim()),
+        keyVersion: wallet?.keyVersion ?? keyShare?.keyVersion ?? null,
+        shareVersion: wallet?.shareVersion ?? keyShare?.shareVersion ?? null,
+        participantId: String(keyShare?.participantId || ''),
+        hasKeyShare: Boolean(keyShare?.share),
+        hasAuxInfo: Boolean(keyShare?.auxInfo),
+        auxInfoStatus: String(keyShare?.auxInfoStatus || wallet?.auxInfoStatus || ''),
+        hasCompleteKeyShare: Boolean(keyShare?.completeKeyShare),
+        completeKeyShareStatus: String(keyShare?.completeKeyShareStatus || wallet?.completeKeyShareStatus || ''),
+        localSigningStatus: String(keyShare?.signingStatus || ''),
+        localSigningUnavailableReason: String(keyShare?.signingUnavailableReason || '')
+      }
+    };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to diagnose MPC wallet' };
   }
 }
 

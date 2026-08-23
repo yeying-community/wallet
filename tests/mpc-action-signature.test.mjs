@@ -57,16 +57,48 @@ test('MPC coordinator write requests include action signature fields', async () 
     const signature = { requestId: 'action-1', timestamp: '1786062000000', signature: '0xsig' };
     await client.createSession({ type: 'keygen' }, signature);
     await client.joinSession('session-1', { participantId: '0xabc' }, signature);
+    await client.completeSignRequest('sign-request-1', { signature: '0xmpcsig' }, signature);
     await client.sendMessage('session-1', { id: 'message-1' }, signature);
+    await client.sendWireMessage('session-1', { protocol_version: 1, engine: 'cggmp24' }, signature);
 
-    assert.equal(requests.length, 3);
+    assert.equal(requests.length, 5);
     requests.forEach((request) => {
       assert.equal(request.options.headers.Authorization, 'Bearer ucan-token');
       assert.equal(request.body.requestId, 'action-1');
       assert.equal(request.body.timestamp, '1786062000000');
       assert.equal(request.body.signature, '0xsig');
     });
-    assert.deepEqual(requests[2].body.message, { id: 'message-1' });
+    assert.equal(requests[2].url, 'http://127.0.0.1:8100/api/v1/public/mpc/sign-requests/sign-request-1/complete');
+    assert.deepEqual(requests[3].body.message, { id: 'message-1' });
+    assert.deepEqual(requests[4].body.message, { protocol_version: 1, engine: 'cggmp24' });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('MPC coordinator fetchMessages supports wire message cursors', async () => {
+  let requestedUrl = '';
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    requestedUrl = String(url);
+    return new Response(JSON.stringify({ code: 0, data: { messages: [], nextSequence: 8 } }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  try {
+    const client = new MpcCoordinatorClient({ endpoint: 'http://127.0.0.1:8100' });
+    const result = await client.fetchMessages('session-1', {
+      after: 4,
+      recipientIndex: 1,
+      limit: 20,
+    });
+
+    assert.equal(
+      requestedUrl,
+      'http://127.0.0.1:8100/api/v1/public/mpc/sessions/session-1/messages?after=4&recipientIndex=1&limit=20'
+    );
+    assert.deepEqual(result, { messages: [], nextSequence: 8 });
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -94,4 +126,50 @@ test('unset MPC session expiry is omitted instead of serialized as null', async 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('MPC create session request preserves wallet name for invite payloads', async () => {
+  let requestBody;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    requestBody = JSON.parse(options.body);
+    return new Response(JSON.stringify({ code: 0, data: { id: 'session-1' } }), { status: 200 });
+  };
+  try {
+    const client = new MpcCoordinatorClient({ endpoint: 'http://127.0.0.1:8100' });
+    await client.createSession({
+      type: 'keygen',
+      name: '团队金库',
+      walletId: 'wallet-1',
+    }, {
+      requestId: 'action-1',
+      timestamp: '1786062000000',
+      signature: '0xsig',
+    });
+    assert.equal(requestBody.name, '团队金库');
+    assert.equal('walletName' in requestBody, false);
+    assert.equal('metadata' in requestBody, false);
+    assert.equal(requestBody.walletId, 'wallet-1');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('MPC session create signature payload excludes display-only wallet name', async () => {
+  const payload = {
+    requestedSessionId: '',
+    type: 'keygen',
+    walletId: 'wallet-1',
+    threshold: 2,
+    participants: ['0x1', '0x2'],
+    curve: 'secp256k1',
+    expiresAt: '',
+    keyVersion: undefined,
+    shareVersion: undefined,
+  };
+  const canonical = '{"curve":"secp256k1","expiresAt":"","participants":["0x1","0x2"],"requestedSessionId":"","threshold":2,"type":"keygen","walletId":"wallet-1"}';
+  const expectedHash = createHash('sha256').update(canonical).digest('hex');
+
+  assert.equal(await buildActionPayloadHash(payload), expectedHash);
+  assert.equal(Object.hasOwn(payload, 'name'), false);
 });

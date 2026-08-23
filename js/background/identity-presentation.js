@@ -15,7 +15,7 @@ function normalizeRequest(params, origin) {
   const appId = String(request.appId || '').trim();
   const audience = String(request.audience || origin || '').trim();
   const nonce = String(request.nonce || '').trim();
-  if (!appId || !audience || !nonce) throw createInvalidParams('appId, audience and nonce are required');
+  if (!audience || !nonce) throw createInvalidParams('audience and nonce are required');
   return { ...request, appId, audience, nonce, scopes };
 }
 
@@ -34,6 +34,27 @@ function credentialTypeForScope(scope) {
   return scope === 'identity.email' ? 'EmailCredential' : 'UsernameCredential';
 }
 
+function decodeCredentialTypesFromJwt(token) {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3) return [];
+  try {
+    const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(`${normalized}${'='.repeat((4 - normalized.length % 4) % 4)}`));
+    const types = payload?.vc?.type;
+    return Array.isArray(types) ? types : (types ? [types] : []);
+  } catch {
+    return [];
+  }
+}
+
+function credentialTypes(credential) {
+  const types = credential?.payload?.vc?.type || credential?.type;
+  const normalized = Array.isArray(types) ? [...types] : (types ? [types] : []);
+  const jwt = credential?.credential || credential?.jwt || (typeof credential === 'string' ? credential : '');
+  normalized.push(...decodeCredentialTypesFromJwt(jwt));
+  return [...new Set(normalized)];
+}
+
 function toBase64Url(bytes) {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -50,13 +71,13 @@ export async function requestIdentityPresentation({ account, params, origin, pas
   const expiresAt = request.expiresAt || new Date(Date.now() + 5 * 60 * 1000).toISOString();
   const credentials = await getIdentityCredentials(identityId);
   const selectedCredentials = credentials.filter((credential) => {
-    const type = credential?.payload?.vc?.type || credential?.type;
-    return request.scopes.some((scope) => scopeNeedsCredential(scope) && type === credentialTypeForScope(scope));
+    const types = credentialTypes(credential);
+    return request.scopes.some((scope) => scopeNeedsCredential(scope) && types.includes(credentialTypeForScope(scope)));
   });
   for (const scope of request.scopes) {
     if (scopeNeedsCredential(scope) && !selectedCredentials.some((credential) => {
-      const type = credential?.payload?.vc?.type || credential?.type;
-      return type === credentialTypeForScope(scope);
+      const types = credentialTypes(credential);
+      return types.includes(credentialTypeForScope(scope));
     })) throw new Error(`IDENTITY_SCOPE_NOT_GRANTED:${scope}`);
   }
   const unsigned = { version: 1, holder: record.document.id, audience: request.audience, nonce: request.nonce, issuedAt, expiresAt, scopes: request.scopes, identityDocument: request.scopes.includes('identity.basic') ? record.document : undefined, walletProof: request.scopes.includes('identity.wallet') ? { chainKey: account.chainKey || `eip155:${account.chainId || 1}`, address: account.address } : undefined, credentials: selectedCredentials.map((credential) => credential.credential || credential.jwt || credential) };

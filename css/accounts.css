@@ -189,7 +189,7 @@
   background: #fff;
 }
 
-.mpc-wallet-actions .mpc-participant-change-btn {
+.mpc-wallet-actions .mpc-wallet-action-btn {
   flex: 1;
   width: 0;
   min-height: 42px;
@@ -203,20 +203,31 @@
   cursor: pointer;
 }
 
-.mpc-wallet-actions .mpc-participant-change-btn + .mpc-participant-change-btn {
+.mpc-wallet-actions .mpc-wallet-action-btn + .mpc-wallet-action-btn {
   border-left: 1px solid #e5e7eb;
 }
 
-.mpc-wallet-actions .mpc-participant-change-btn:hover {
+.mpc-wallet-actions .mpc-wallet-action-btn:hover {
   background: #f3f4f6;
   color: #1f2937;
 }
 
-.mpc-wallet-actions .mpc-participant-change-btn:focus-visible {
+.mpc-wallet-actions .mpc-wallet-action-btn:focus-visible {
   position: relative;
   z-index: 1;
   outline: 2px solid #6366f1;
   outline-offset: -2px;
+}
+
+.mpc-wallet-actions .mpc-wallet-action-btn.primary {
+  background: #4f46e5;
+  color: #fff;
+  font-weight: 600;
+}
+
+.mpc-wallet-actions .mpc-wallet-action-btn.primary:hover {
+  background: #4338ca;
+  color: #fff;
 }
 
 .mpc-wallet-detail-modal {
@@ -228,6 +239,61 @@
   font-size: 13px;
   font-weight: 600;
   color: #1f2937;
+}
+
+.mpc-wallet-detail-page-body .detail-row {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.mpc-wallet-detail-page-body .detail-value {
+  flex: 1 1 auto;
+  text-align: right;
+}
+
+.mpc-wallet-address-value {
+  justify-content: flex-end;
+}
+
+.mpc-wallet-address-value .detail-value {
+  flex: 0 1 auto;
+}
+
+.mpc-participants-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.mpc-participants-row .detail-value {
+  width: 100%;
+  text-align: left;
+}
+
+.mpc-participants-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.mpc-participant-item {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.mpc-participant-index {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.mpc-participant-address {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow-wrap: anywhere;
+  line-height: 18px;
 }
 
 .wallet-account-count {

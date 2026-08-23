@@ -59,7 +59,7 @@ export class WelcomeController {
       if (Date.now() - Number(walletRecoveryPkce.createdAt || 0) > 10 * 60 * 1000) {
         throw new Error('恢复授权已过期，请重新发起');
       }
-      const response = await fetch(`${RECOVERY_NODE_ENDPOINT}/api/v1/public/auth/passport/authorize/exchange`, {
+      const response = await fetch(`${RECOVERY_NODE_ENDPOINT}/api/v1/public/identity/authorize/exchange`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -143,7 +143,7 @@ export class WelcomeController {
     const state = this.base64Url(crypto.getRandomValues(new Uint8Array(24)));
     const redirectUri = `chrome-extension://${chrome.runtime.id}/html/recovery-callback.html`;
     await chrome.storage.local.set({ walletRecoveryPkce: { verifier, state, redirectUri, createdAt: Date.now() } });
-    const response = await fetch(`${RECOVERY_NODE_ENDPOINT}/api/v1/public/auth/passport/authorize/request`, {
+    const response = await fetch(`${RECOVERY_NODE_ENDPOINT}/api/v1/public/identity/authorize/request`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -159,7 +159,7 @@ export class WelcomeController {
     if (!response.ok || payload.code !== 0) throw new Error(payload.message || '无法发起恢复授权');
     const requestId = payload.data?.requestId;
     if (!requestId) throw new Error('恢复授权请求无效');
-    await chrome.tabs.create({ url: `${RECOVERY_NODE_ENDPOINT}/passport/authorize?request_id=${encodeURIComponent(requestId)}` });
+    await chrome.tabs.create({ url: `${RECOVERY_NODE_ENDPOINT}/identity/authorize?requestId=${encodeURIComponent(requestId)}` });
   }
 
   base64Url(bytes) {
@@ -170,29 +170,13 @@ export class WelcomeController {
 
   preparePasswordFormForNewWallet() {
     const hint = document.getElementById('setPasswordHint');
-    const passwordLabel = document.getElementById('setPasswordLabel');
-    const confirmLabel = document.getElementById('confirmPasswordLabel');
-    const confirmGroup = document.getElementById('confirmPasswordGroup');
-    const passwordInput = document.getElementById('newPassword');
     const walletTypeGroup = document.getElementById('createWalletTypeGroup');
     const walletTypeSelect = document.getElementById('createWalletTypeSelect');
     const mpcFields = document.getElementById('mpcCreateWalletFields');
     const mpcResult = document.getElementById('mpcCreateWalletResult');
 
     if (hint) {
-      hint.textContent = '请设置一个密码来保护您的钱包';
-    }
-    if (passwordLabel) {
-      passwordLabel.textContent = '密码';
-    }
-    if (confirmLabel) {
-      confirmLabel.textContent = '确认密码';
-    }
-    if (confirmGroup) {
-      confirmGroup.classList.remove('hidden');
-    }
-    if (passwordInput) {
-      passwordInput.placeholder = '至少8位字符';
+      hint.textContent = '请填写钱包名称';
     }
     if (walletTypeGroup) {
       walletTypeGroup.classList.add('hidden');
@@ -224,15 +208,11 @@ export class WelcomeController {
 
   resetCreateWalletForm() {
     const nameInput = document.getElementById('setWalletName');
-    const passwordInput = document.getElementById('newPassword');
-    const confirmInput = document.getElementById('confirmPassword');
     const walletTypeSelect = document.getElementById('createWalletTypeSelect');
     const mpcFields = document.getElementById('mpcCreateWalletFields');
     const mpcResult = document.getElementById('mpcCreateWalletResult');
 
-    if (nameInput) nameInput.value = '主钱包';
-    if (passwordInput) passwordInput.value = '';
-    if (confirmInput) confirmInput.value = '';
+    if (nameInput) nameInput.value = `hd-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
     if (walletTypeSelect) walletTypeSelect.value = 'hd';
     if (mpcFields) mpcFields.classList.add('hidden');
     if (mpcResult) {

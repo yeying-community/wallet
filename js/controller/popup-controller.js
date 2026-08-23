@@ -134,6 +134,7 @@ export class PopupController {
         await this.accountListController?.loadWalletList();
       },
       onReturnToAccounts: async () => this.openAccountsPage(),
+      promptPassword: (options) => this.accountModalsController.promptPassword(options),
     });
   }
 
@@ -203,6 +204,7 @@ export class PopupController {
     if (!state?.pageId || state.pageId === 'walletPage') return false;
     switch (state.pageId) {
       case 'accountsPage':
+      case 'mpcWalletDetailPage':
         await this.openAccountsPage();
         break;
       case 'settingsPage':
@@ -633,11 +635,16 @@ export class PopupController {
       networkFormPage: 'networkManagePage',
       tokenAddPage: 'walletPage',
       accountDetailPage: 'accountsPage',
+      mpcWalletDetailPage: 'accountsPage',
       settingsPage: 'walletPage',
       contactsPage: document.getElementById('contactsPage')?.dataset?.returnPage || 'walletPage',
       sitesPage: 'walletPage',
       backupSyncLogsPage: document.getElementById('backupSyncLogsPage')?.dataset?.returnPage || 'settingsPage',
-      mpcLogsPage: 'mpcDetailPage',
+      mpcLogsPage: document.getElementById('mpcLogsPage')?.dataset?.returnPage || 'mpcDetailPage',
+      walletIdentityDetailPage: 'settingsPage',
+      walletIdentityPasskeyPage: 'walletIdentityDetailPage',
+      walletIdentityAuthenticatorPage: 'walletIdentityDetailPage',
+      walletIdentityEditPage: 'walletIdentityDetailPage',
       backupSyncDetailPage: 'settingsPage',
       custodyDetailPage: 'settingsPage',
       mpcDetailPage: 'settingsPage',
@@ -653,6 +660,9 @@ export class PopupController {
       }
       if (currentPage === 'backupSyncLogsPage') {
         delete document.getElementById('backupSyncLogsPage')?.dataset.returnPage;
+      }
+      if (currentPage === 'mpcLogsPage') {
+        delete document.getElementById('mpcLogsPage')?.dataset.returnPage;
       }
       showPage(targetPage);
       if (targetPage === 'networkManagePage') {
