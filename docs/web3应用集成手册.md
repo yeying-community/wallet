@@ -25,8 +25,7 @@ did:yeying:wid_*
 
 字段含义：
 
-- `walletIdentityId`：`wid_*`，钱包身份短 ID。
-- `did`：`did:yeying:<walletIdentityId>`，跨系统身份主键。
+- `did`：`did:yeying:wid_*`，跨系统身份主键。
 - `walletAddress`：已验证关联的钱包账户，不是身份主键。
 - `UsernameCredential`：Node 签发的用户名 JWT-VC。
 - `EmailCredential`：Node 签发的邮箱 JWT-VC。
@@ -89,7 +88,6 @@ exchange 返回：
 ```json
 {
   "did": "did:yeying:wid_example",
-  "walletIdentityId": "wid_example",
   "walletAddress": "0x...",
   "scopes": ["identity.basic", "identity.wallet", "identity.email"],
   "credentials": []
