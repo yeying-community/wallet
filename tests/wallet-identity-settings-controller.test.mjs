@@ -12,6 +12,13 @@ function setup() {
     walletIdentityVerifyBtn: { tagName: 'button' },
     walletIdentityClearVerificationBtn: { tagName: 'button' },
     walletIdentityEmailStatusText: { tagName: 'p' },
+    walletIdentityTotpStatusPage: { tagName: 'p' },
+    walletIdentityTotpSetupPage: { tagName: 'div' },
+    walletIdentityTotpSecretPage: { tagName: 'div' },
+    walletIdentityTotpUriPage: { tagName: 'div' },
+    walletIdentityTotpCodeInput: { tagName: 'input' },
+    setupWalletIdentityTotpBtn: { tagName: 'button' },
+    revokeWalletIdentityTotpBtn: { tagName: 'button' },
   });
   elements = dom.elements;
   globalThis.document = dom.document;
@@ -322,4 +329,41 @@ test('registerIdentityPasskey registers a new passkey from the verified identity
 
   assert.equal(fetchCalls.some(call => call.url.endsWith('/api/v1/public/identity/passkeys/register/request')), true);
   assert.equal(fetchCalls.some(call => call.url.endsWith('/api/v1/public/identity/passkeys/register/confirm')), true);
+});
+
+test('setup and confirm identity TOTP from the verified identity detail flow', async () => {
+  const endpoint = 'http://127.0.0.1:8100';
+  elements.walletIdentityEndpointInput.value = endpoint;
+  const fetchCalls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    fetchCalls.push({ url: String(url), body: options.body ? JSON.parse(options.body) : null });
+    if (String(url).includes('/identity/totp/setup')) {
+      return { ok: true, json: async () => ({ code: 0, data: { totp: { secret: 'JBSWY3DPEHPK3PXP', otpauthUri: 'otpauth://totp/YeYing' } } }) };
+    }
+    if (String(url).includes('/identity/totp/confirm')) {
+      return { ok: true, json: async () => ({ code: 0, data: { totp: { enabled: true, status: 'active', deviceName: 'TOTP 验证器' } } }) };
+    }
+    if (String(url).includes('/identity/totp/get')) {
+      return { ok: true, json: async () => ({ code: 0, data: { totp: { enabled: true, status: 'active', deviceName: 'TOTP 验证器' } } }) };
+    }
+    return { ok: false, status: 404, json: async () => ({ code: 404, message: 'not found' }) };
+  };
+  const controller = new WalletIdentitySettingsController({
+    wallet: {
+      listIdentities: async () => ({ selectedIdentityId: 'wid_1', identities: [{ document: { walletIdentityId: 'wid_1' } }] }),
+      exportIdentityDocument: async () => ({ document: { id: 'did:yeying:wid_1', walletIdentityId: 'wid_1' } }),
+      signIdentityDocument: async (document) => ({ ...document, id: document.id || 'did:yeying:wid_1' })
+    },
+    requestPassword: async () => 'wallet-password'
+  });
+
+  await controller.setupIdentityTotp();
+  assert.equal(elements.walletIdentityTotpSecretPage.textContent, 'Secret：JBSWY3DPEHPK3PXP');
+  assert.equal(fetchCalls.some(call => call.url.endsWith('/api/v1/public/identity/totp/setup')), true);
+
+  elements.walletIdentityTotpCodeInput.value = '123456';
+  await controller.confirmIdentityTotp();
+
+  assert.equal(fetchCalls.some(call => call.url.endsWith('/api/v1/public/identity/totp/confirm')), true);
+  assert.equal(elements.walletIdentityTotpStatusPage.textContent, '已启用：TOTP 验证器');
 });

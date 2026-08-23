@@ -40,6 +40,10 @@ export class WalletIdentitySettingsController {
     document.getElementById('changeWalletIdentityPageBtn')?.addEventListener('click', () => this.changeWalletIdentity());
     document.getElementById('registerWalletIdentityPasskeyBtn')?.addEventListener('click', () => this.registerIdentityPasskey());
     document.getElementById('refreshWalletIdentityPasskeysBtn')?.addEventListener('click', () => this.refreshIdentityPasskeys());
+    document.getElementById('refreshWalletIdentityTotpBtn')?.addEventListener('click', () => this.refreshIdentityTotp());
+    document.getElementById('setupWalletIdentityTotpBtn')?.addEventListener('click', () => this.setupIdentityTotp());
+    document.getElementById('confirmWalletIdentityTotpBtn')?.addEventListener('click', () => this.confirmIdentityTotp());
+    document.getElementById('revokeWalletIdentityTotpBtn')?.addEventListener('click', () => this.revokeIdentityTotp());
     document.getElementById('walletIdentityPasskeyListPage')?.addEventListener('click', (event) => {
       const button = event.target?.closest?.('[data-passkey-revoke]');
       if (button) this.revokeIdentityPasskey(button.dataset.passkeyRevoke);
@@ -211,7 +215,10 @@ export class WalletIdentitySettingsController {
       this.setDetailValue('walletIdentityDetailDidPage', identity?.document?.id || '-');
       this.setDetailValue('walletIdentityDetailEndpointPage', this.endpoint() || DEFAULT_NODE_ENDPOINT);
       showPage('walletIdentityDetailPage');
-      await this.refreshIdentityPasskeys({ quiet: true });
+      await Promise.all([
+        this.refreshIdentityPasskeys({ quiet: true }),
+        this.refreshIdentityTotp({ quiet: true })
+      ]);
     } catch (error) {
       showError(error?.message || '无法读取钱包身份详情');
     }
@@ -758,7 +765,7 @@ export class WalletIdentitySettingsController {
     if (!identityDid) throw new Error('未选择钱包身份');
     if (!requireSigned) return { identityId, identityDid, identityDocument: document };
     const password = await this.requestPassword?.();
-    if (!password) throw new Error('需要钱包密码才能管理通行证');
+    if (!password) throw new Error('需要钱包密码才能管理身份认证器');
     const signed = await this.wallet.signIdentityDocument(document, password, identityId);
     return { identityId, identityDid: signed?.id || identityDid, identityDocument: signed, password };
   }
@@ -842,6 +849,15 @@ export class WalletIdentitySettingsController {
     if (element) element.textContent = text || '';
   }
 
+  setTotpStatus(text) {
+    const element = document.getElementById('walletIdentityTotpStatusPage');
+    if (element) element.textContent = text || '';
+  }
+
+  setTotpSetupVisible(visible) {
+    document.getElementById('walletIdentityTotpSetupPage')?.classList.toggle('hidden', !visible);
+  }
+
   formatCredentialId(value) {
     const text = String(value || '');
     if (text.length <= 18) return text || '-';
@@ -863,6 +879,85 @@ export class WalletIdentitySettingsController {
     } catch (error) {
       hideWaiting();
       showError(error?.message || '撤销通行证失败');
+    }
+  }
+
+  async refreshIdentityTotp({ quiet = false } = {}) {
+    try {
+      const endpoint = this.endpoint();
+      const { identityDid } = await this.selectedIdentityContext();
+      const result = await this.getIdentityTotp(endpoint, { identity: identityDid });
+      const totp = result?.totp || {};
+      const enabled = Boolean(totp.enabled);
+      this.setTotpStatus(enabled ? `已启用${totp.deviceName ? `：${totp.deviceName}` : ''}` : '未启用 TOTP 验证器。');
+      document.getElementById('setupWalletIdentityTotpBtn')?.classList.toggle('hidden', enabled);
+      document.getElementById('revokeWalletIdentityTotpBtn')?.classList.toggle('hidden', !enabled);
+      this.setTotpSetupVisible(totp.status === 'pending');
+    } catch (error) {
+      const message = error?.message || '加载 TOTP 状态失败';
+      this.setTotpStatus(message);
+      if (!quiet) showError(message);
+    }
+  }
+
+  async setupIdentityTotp() {
+    try {
+      const endpoint = this.endpoint();
+      const { identityDid, identityDocument } = await this.selectedIdentityContext({ requireSigned: true });
+      showWaiting();
+      const result = await this.setupIdentityTotpAuthenticator(endpoint, { identity: identityDid, identityDocument, deviceName: 'TOTP 验证器' });
+      hideWaiting();
+      const totp = result?.totp || {};
+      document.getElementById('walletIdentityTotpSecretPage').textContent = totp.secret ? `Secret：${totp.secret}` : '';
+      document.getElementById('walletIdentityTotpUriPage').textContent = totp.otpauthUri || '';
+      document.getElementById('walletIdentityTotpCodeInput').value = '';
+      this.setTotpSetupVisible(true);
+      this.setTotpStatus('请在认证器应用中添加 Secret 或 otpauth URI，然后输入验证码确认。');
+      showSuccess('TOTP 配置已创建');
+    } catch (error) {
+      hideWaiting();
+      const message = error?.message || '启用 TOTP 失败';
+      this.setTotpStatus(message);
+      showError(message);
+    }
+  }
+
+  async confirmIdentityTotp() {
+    try {
+      const endpoint = this.endpoint();
+      const { identityDid } = await this.selectedIdentityContext();
+      const code = String(document.getElementById('walletIdentityTotpCodeInput')?.value || '').trim();
+      if (!code) throw new Error('请输入 TOTP 验证码');
+      showWaiting();
+      await this.confirmIdentityTotpAuthenticator(endpoint, { identity: identityDid, code });
+      hideWaiting();
+      this.setTotpSetupVisible(false);
+      showSuccess('TOTP 已启用');
+      await this.refreshIdentityTotp({ quiet: true });
+    } catch (error) {
+      hideWaiting();
+      const message = error?.message || '确认 TOTP 失败';
+      this.setTotpStatus(message);
+      showError(message);
+    }
+  }
+
+  async revokeIdentityTotp() {
+    try {
+      if (typeof globalThis.confirm === 'function' && !globalThis.confirm('确认撤销 TOTP 验证器？撤销后验证码不能再用于钱包身份确认。')) return;
+      const endpoint = this.endpoint();
+      const { identityDid, identityDocument } = await this.selectedIdentityContext({ requireSigned: true });
+      showWaiting();
+      await this.revokeIdentityTotpAuthenticator(endpoint, { identity: identityDid, identityDocument });
+      hideWaiting();
+      this.setTotpSetupVisible(false);
+      showSuccess('TOTP 已撤销');
+      await this.refreshIdentityTotp({ quiet: true });
+    } catch (error) {
+      hideWaiting();
+      const message = error?.message || '撤销 TOTP 失败';
+      this.setTotpStatus(message);
+      showError(message);
     }
   }
 
@@ -901,6 +996,43 @@ export class WalletIdentitySettingsController {
     });
     const json = await response.json().catch(() => ({}));
     if (!response.ok || json.code !== 0) throw new Error(json.message || '确认 Passkey 注册失败');
+    return json.data;
+  }
+
+  async getIdentityTotp(endpoint, body) {
+    const response = await fetch(new URL('/api/v1/public/identity/totp/get', endpoint), {
+      method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    const json = await response.json().catch(() => ({}));
+    if (response.status === 404) throw new Error('当前身份服务尚未提供 TOTP 接口');
+    if (!response.ok || json.code !== 0) throw new Error(json.message || '加载 TOTP 状态失败');
+    return json.data;
+  }
+
+  async setupIdentityTotpAuthenticator(endpoint, body) {
+    const response = await fetch(new URL('/api/v1/public/identity/totp/setup', endpoint), {
+      method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || json.code !== 0) throw new Error(json.message || '创建 TOTP 配置失败');
+    return json.data;
+  }
+
+  async confirmIdentityTotpAuthenticator(endpoint, body) {
+    const response = await fetch(new URL('/api/v1/public/identity/totp/confirm', endpoint), {
+      method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || json.code !== 0) throw new Error(json.message || '确认 TOTP 失败');
+    return json.data;
+  }
+
+  async revokeIdentityTotpAuthenticator(endpoint, body) {
+    const response = await fetch(new URL('/api/v1/public/identity/totp/revoke', endpoint), {
+      method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || json.code !== 0) throw new Error(json.message || '撤销 TOTP 失败');
     return json.data;
   }
 }

@@ -887,14 +887,6 @@
           </div>
         </div>
 
-        <div class="account-profile-section">
-          <label for="accountUsernameInput">公开用户名</label>
-          <div class="account-profile-edit">
-            <input id="accountUsernameInput" class="input" type="text" maxlength="32" placeholder="例如 alice" />
-            <button id="saveAccountUsernameBtn" class="btn btn-primary btn-small">保存</button>
-          </div>
-        </div>
-
         <div class="account-detail-qr-actions">
           <div class="account-detail-qr-size">
             <label for="accountDetailQrSize">二维码大小</label>
@@ -1166,6 +1158,27 @@
             </div>
             <div id="walletIdentityPasskeyListPage" class="identity-passkey-list"></div>
           </div>
+          <div class="identity-passkey-section">
+            <div class="identity-passkey-header">
+              <div>
+                <h3>TOTP 验证器</h3>
+                <p id="walletIdentityTotpStatusPage" class="settings-hint">用于一次性验证码确认，可选启用。</p>
+              </div>
+              <button id="refreshWalletIdentityTotpBtn" class="btn btn-secondary btn-small" type="button">刷新</button>
+            </div>
+            <div id="walletIdentityTotpSetupPage" class="identity-totp-setup hidden">
+              <div class="identity-totp-secret" id="walletIdentityTotpSecretPage"></div>
+              <div class="identity-totp-uri" id="walletIdentityTotpUriPage"></div>
+              <div class="identity-totp-actions">
+                <input id="walletIdentityTotpCodeInput" class="settings-input" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="6 位验证码">
+                <button id="confirmWalletIdentityTotpBtn" class="btn btn-primary btn-small" type="button">确认</button>
+              </div>
+            </div>
+            <div class="identity-totp-actions">
+              <button id="setupWalletIdentityTotpBtn" class="btn btn-secondary btn-small" type="button">启用 TOTP</button>
+              <button id="revokeWalletIdentityTotpBtn" class="btn btn-danger btn-small hidden" type="button">撤销 TOTP</button>
+            </div>
+          </div>
           <div class="settings-row identity-detail-actions"><button id="registerWalletIdentityPasskeyBtn" class="btn btn-primary">注册通行证</button><button id="changeWalletIdentityPageBtn" class="btn btn-secondary">变更资料</button><button id="clearWalletIdentityVerificationBtn" class="btn btn-danger">解除验证</button></div>
         </div>
       </div>
@@ -1290,16 +1303,13 @@
           </div>
         </div>
         <div class="mpc-wallet-detail-page-body">
-          <div class="account-detail-card">
-            <div class="account-detail-avatar mpc-wallet-avatar">MPC</div>
-            <div class="account-detail-summary">
-              <div class="account-detail-name-row">
-                <div class="account-detail-name" id="mpcWalletDetailName">MPC 钱包</div>
-              </div>
-              <div class="account-detail-address-row">
-                <div class="account-detail-address" id="mpcWalletDetailAddress">尚未生成</div>
-              </div>
-            </div>
+          <div class="detail-row">
+            <div class="detail-label">名称</div>
+            <div class="detail-value" id="mpcWalletDetailName">-</div>
+          </div>
+          <div class="detail-row">
+            <div class="detail-label">地址</div>
+            <div class="detail-value" id="mpcWalletDetailAddress">-</div>
           </div>
           <div class="detail-row">
             <div class="detail-label">状态</div>
@@ -1313,7 +1323,7 @@
             <div class="detail-label">门限</div>
             <div class="detail-value" id="mpcWalletDetailThreshold">-</div>
           </div>
-          <div class="detail-row">
+          <div class="detail-row mpc-participants-row">
             <div class="detail-label">参与者</div>
             <div class="detail-value" id="mpcWalletDetailParticipants">-</div>
           </div>

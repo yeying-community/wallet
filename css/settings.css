@@ -121,14 +121,20 @@
   gap: 12px;
 }
 
-.wallet-identity-heading h3 {
-  margin-bottom: 0;
+#walletIdentitySettingsSection .wallet-identity-heading h3 {
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+  margin: 0;
+  line-height: 20px;
 }
 
 .wallet-identity-status {
+  display: block;
   width: 10px;
   height: 10px;
   flex: 0 0 10px;
+  align-self: center;
   border-radius: 50%;
   background: #9ca3af;
   box-shadow: 0 0 0 3px rgba(156, 163, 175, 0.16);
@@ -307,6 +313,43 @@
   font-size: 12px;
   color: #6b7280;
   word-break: break-word;
+}
+
+.identity-totp-setup {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.identity-totp-setup.hidden {
+  display: none;
+}
+
+.identity-totp-secret,
+.identity-totp-uri {
+  font-size: 12px;
+  color: #374151;
+  word-break: break-all;
+}
+
+.identity-totp-secret {
+  font-weight: 600;
+}
+
+.identity-totp-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.identity-totp-actions .hidden {
+  display: none;
 }
 
 .settings-section-danger {
