@@ -1,4 +1,4 @@
-import { showPage, showError, showSuccess, setPageOrigin, showWaiting, hideWaiting } from '../../common/ui/index.js';
+import { showPage, showError, showSuccess, setPageOrigin, showWaiting, hideWaiting, copyAddressToClipboard, createCopyToastHandler } from '../../common/ui/index.js';
 import { shortenAddress, generateAvatar } from '../../common/chain/index.js';
 import { escapeHtml } from '../../common/ui/html-ui.js';
 import { clearImportWalletForm } from '../wallet/import-wallet-controller.js';
@@ -75,6 +75,11 @@ export class AccountListController {
 
     document.getElementById('refreshMpcWalletDetailBtn')?.addEventListener('click', () => {
       void this.refreshMpcWalletDetail({ localOnly: false });
+    });
+    document.getElementById('mpcWalletDetailCopyAddressBtn')?.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void this.handleMpcWalletAddressCopy();
     });
     document.getElementById('cancelMpcWalletCreationBtn')?.addEventListener('click', () => {
       void this.handleCancelMpcWalletCreation();
@@ -613,7 +618,13 @@ export class AccountListController {
     setText('mpcWalletDetailName', wallet?.name || 'MPC 钱包');
     setText('mpcWalletDetailStatus', statusLabels[wallet?.status] || wallet?.status || '等待参与者完成密钥生成');
     setText('mpcWalletDetailSigningStatus', this.getMpcWalletSigningStatusText(wallet));
-    setText('mpcWalletDetailAddress', wallet?.address ? shortenAddress(wallet.address) : '尚未生成');
+    const walletAddress = String(wallet?.address || '').trim();
+    setText('mpcWalletDetailAddress', walletAddress ? shortenAddress(walletAddress) : '尚未生成');
+    const copyAddressBtn = document.getElementById('mpcWalletDetailCopyAddressBtn');
+    if (copyAddressBtn) {
+      copyAddressBtn.dataset.address = walletAddress;
+      copyAddressBtn.classList.toggle('hidden', !walletAddress);
+    }
     setText('mpcWalletDetailThreshold', `${wallet?.threshold || '-'} / ${participants.length || '-'}`);
     const participantsElement = document.getElementById('mpcWalletDetailParticipants');
     if (participantsElement) {
@@ -653,6 +664,19 @@ export class AccountListController {
           </div>
         </div>
       `).join('');
+  }
+
+  async handleMpcWalletAddressCopy() {
+    const wallet = this.mpcWalletsById.get(this.activeMpcWalletId);
+    const address = String(wallet?.address || document.getElementById('mpcWalletDetailCopyAddressBtn')?.dataset?.address || '').trim();
+    if (!address) {
+      showError('暂无可复制地址');
+      return;
+    }
+    await copyAddressToClipboard(address, createCopyToastHandler({
+      onSuccess: showSuccess,
+      onError: showError
+    }));
   }
 
   async handleCancelMpcWalletCreation() {

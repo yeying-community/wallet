@@ -1351,7 +1351,15 @@
           </div>
           <div class="detail-row">
             <div class="detail-label">地址</div>
-            <div class="detail-value" id="mpcWalletDetailAddress">-</div>
+            <div class="detail-value-row mpc-wallet-address-value">
+              <div class="detail-value" id="mpcWalletDetailAddress">-</div>
+              <button type="button" class="detail-copy-icon hidden" id="mpcWalletDetailCopyAddressBtn" aria-label="复制 MPC 钱包地址" title="复制地址">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+              </button>
+            </div>
           </div>
           <div class="detail-row">
             <div class="detail-label">状态</div>
