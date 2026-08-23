@@ -43,10 +43,6 @@ export class AccountDetailController {
         this.exitAccountNameEdit();
       }
     });
-    document.getElementById('saveAccountUsernameBtn')?.addEventListener('click', async () => {
-      await this.saveAccountUsername();
-    });
-
     const addressEl = document.getElementById('accountDetailAddress');
     if (addressEl) {
       addressEl.addEventListener('click', (event) => {
@@ -96,7 +92,6 @@ export class AccountDetailController {
       const addressEl = document.getElementById('accountDetailAddress');
       const avatarEl = document.getElementById('accountDetailAvatar');
       const sizeSelect = document.getElementById('accountDetailQrSize');
-      const usernameInput = document.getElementById('accountUsernameInput');
 
       if (nameEl) {
         nameEl.textContent = account.name || '账户';
@@ -108,7 +103,6 @@ export class AccountDetailController {
         indexEl.textContent = Number.isInteger(account.index) ? `#${account.index}` : '';
         indexEl.title = Number.isInteger(account.index) ? `派生索引 ${account.index}` : '';
       }
-      if (usernameInput) usernameInput.value = account.username || '';
       if (addressEl) {
         addressEl.textContent = account.address ? shortenAddress(account.address) : '';
       }
@@ -209,17 +203,6 @@ export class AccountDetailController {
       showSuccess('账户名称已更新');
     } catch (error) {
       console.error('[AccountDetailController] 更新账户名称失败:', error);
-      showError('更新失败: ' + error.message);
-    }
-  }
-
-  async saveAccountUsername() {
-    if (!this.currentDetailAccountId) return;
-    const username = document.getElementById('accountUsernameInput')?.value.trim() || '';
-    try {
-      await this.wallet.updateAccountUsername(this.currentDetailAccountId, username);
-      showSuccess('公开用户名已更新');
-    } catch (error) {
       showError('更新失败: ' + error.message);
     }
   }

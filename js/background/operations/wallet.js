@@ -36,6 +36,7 @@ import {
   setStorage,
   WalletStorageKeys,
   clearAllData,
+  getMpcWallet,
   getMpcWalletList,
   getMpcSessionList,
   saveMpcWallet,
@@ -679,6 +680,11 @@ export async function handleGetAccountById(accountId) {
   }
 
   try {
+    const mpcWalletId = getMpcWalletIdFromAccountId(accountId);
+    if (mpcWalletId) {
+      const account = buildMpcAccountView(await getMpcWallet(mpcWalletId));
+      return { success: true, account };
+    }
     const account = await getAccount(accountId);
     return { success: true, account: account || null };
   } catch (error) {
@@ -707,6 +713,20 @@ export async function handleUpdateAccountName(accountId, newName) {
   }
 
   try {
+    const mpcWalletId = getMpcWalletIdFromAccountId(accountId);
+    if (mpcWalletId) {
+      const wallet = await getMpcWallet(mpcWalletId);
+      if (!wallet) {
+        return { success: false, error: 'account not found' };
+      }
+      const updatedWallet = {
+        ...wallet,
+        name: newName.trim(),
+        updatedAt: getTimestamp()
+      };
+      await saveMpcWallet(updatedWallet);
+      return { success: true, account: buildMpcAccountView(updatedWallet) };
+    }
     const account = await getAccount(accountId);
     if (!account) {
       return { success: false, error: 'account not found' };

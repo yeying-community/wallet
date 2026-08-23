@@ -1,4 +1,4 @@
-import { showPage, showError, showSuccess, showWaiting, hideWaiting } from '../../common/ui/index.js';
+import { showPage, showError, showSuccess, showWaiting, hideWaiting, generateQRCode } from '../../common/ui/index.js';
 
 const DEFAULT_NODE_ENDPOINT = 'https://node.yeying.pub';
 const ENDPOINT_STORAGE_KEY = 'walletIdentityNodeEndpoint';
@@ -908,6 +908,9 @@ export class WalletIdentitySettingsController {
       const result = await this.setupIdentityTotpAuthenticator(endpoint, { identity: identityDid, identityDocument, deviceName: 'TOTP 验证器' });
       hideWaiting();
       const totp = result?.totp || {};
+      const qrContainer = document.getElementById('walletIdentityTotpQrPage');
+      if (qrContainer) qrContainer.innerHTML = '';
+      if (totp.otpauthUri) generateQRCode(totp.otpauthUri, 'walletIdentityTotpQrPage', { width: 160, height: 160 });
       document.getElementById('walletIdentityTotpSecretPage').textContent = totp.secret ? `Secret：${totp.secret}` : '';
       document.getElementById('walletIdentityTotpUriPage').textContent = totp.otpauthUri || '';
       document.getElementById('walletIdentityTotpCodeInput').value = '';

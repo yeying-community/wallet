@@ -36,7 +36,12 @@ const { mpcService } = await import('../js/background/mpc-service.js');
 const { handleMpcAcceptInvite, handleMpcCancelSession, handleMpcDismissInvite } = await import('../js/background/operations/mpc.js');
 const { setMpcTssEngineForTests, resetMpcTssEngineForTests } = await import('../js/background/mpc-tss-engine.js');
 const { state } = await import('../js/background/state.js');
-const { HandleGetWalletList, handleSwitchAccount } = await import('../js/background/operations/wallet.js');
+const {
+  HandleGetWalletList,
+  handleGetAccountById,
+  handleSwitchAccount,
+  handleUpdateAccountName
+} = await import('../js/background/operations/wallet.js');
 const {
   getSelectedAccount,
   getMpcWallet,
@@ -344,6 +349,36 @@ test('钱包列表暴露可选择的 MPC 钱包账户并支持切换', async () 
     listAfterSwitch.wallets.find((wallet) => wallet.id === 'mpc-wallet-1')?.accounts[0]?.isSelected,
     true
   );
+});
+
+test('MPC 钱包账户支持账户详情读取和名称更新', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'active',
+    address: '0x2222222222222222222222222222222222222222',
+    publicKey: '03abcdef',
+    keygenSessionId: 'session-1',
+    threshold: 2,
+    participants: ['0x1', '0x2'],
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+
+  const detail = await handleGetAccountById('mpc:mpc-wallet-1');
+  assert.equal(detail.success, true);
+  assert.equal(detail.account.id, 'mpc:mpc-wallet-1');
+  assert.equal(detail.account.name, 'mpc10');
+  assert.equal(detail.account.walletType, 'mpc');
+  assert.equal(detail.account.address, '0x2222222222222222222222222222222222222222');
+
+  const updated = await handleUpdateAccountName('mpc:mpc-wallet-1', '团队金库');
+  assert.equal(updated.success, true);
+  assert.equal(updated.account.name, '团队金库');
+
+  const wallet = await getMpcWallet('mpc-wallet-1');
+  assert.equal(wallet.name, '团队金库');
 });
 
 test('钱包列表按本地 completeKeyShare 明确收敛 MPC 签名能力状态', async () => {

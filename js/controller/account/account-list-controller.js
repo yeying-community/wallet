@@ -289,7 +289,11 @@ export class AccountListController {
       const mpcStatus = this.getMpcWalletStatusText(wallet);
       const primaryAccountId = String(accounts[0]?.id || '').trim();
       const accountHtml = isMpc ? `
-          <div class="account-item mpc-wallet-identity" data-wallet-id="${escapeHtml(wallet.id)}">
+          <div
+            class="account-item mpc-wallet-identity ${accounts[0]?.isSelected ? 'active' : ''}"
+            data-wallet-id="${escapeHtml(wallet.id)}"
+            ${primaryAccountId ? `data-account-id="${escapeHtml(primaryAccountId)}"` : ''}
+          >
             <div class="account-avatar mpc-wallet-avatar" ${mpcAddress ? `data-address="${escapeHtml(mpcAddress)}"` : ''}>MPC</div>
             <div class="account-details">
               <div class="account-name">${escapeHtml(walletName)}</div>
@@ -610,7 +614,17 @@ export class AccountListController {
     setText('mpcWalletDetailSigningStatus', this.getMpcWalletSigningStatusText(wallet));
     setText('mpcWalletDetailAddress', wallet?.address ? shortenAddress(wallet.address) : '尚未生成');
     setText('mpcWalletDetailThreshold', `${wallet?.threshold || '-'} / ${participants.length || '-'}`);
-    setText('mpcWalletDetailParticipants', participants.length ? participants.join(', ') : '-');
+    const participantsElement = document.getElementById('mpcWalletDetailParticipants');
+    if (participantsElement) {
+      participantsElement.innerHTML = participants.length
+        ? `<div class="mpc-participants-list">${participants.map((participant, index) => `
+          <div class="mpc-participant-item">
+            <span class="mpc-participant-index">${index + 1}</span>
+            <span class="mpc-participant-address">${escapeHtml(participant)}</span>
+          </div>
+        `).join('')}</div>`
+        : '-';
+    }
     const cancelBtn = document.getElementById('cancelMpcWalletCreationBtn');
     if (cancelBtn) {
       const canCancel = !this.isMpcWalletCreated(wallet);
@@ -790,6 +804,11 @@ export class AccountListController {
         if (e.target.closest('.account-action-btn')) return;
 
         if (item.classList.contains('mpc-wallet-identity')) {
+          const accountId = item.dataset.accountId;
+          if (accountId && onAccountDetails) {
+            onAccountDetails(accountId);
+            return;
+          }
           void this.openMpcWalletDetail(item.dataset.walletId);
           return;
         }

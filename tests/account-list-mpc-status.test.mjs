@@ -123,6 +123,35 @@ test('账户管理把 MPC 钱包地址缩短展示', () => {
   }
 });
 
+test('账户管理给可用 MPC 钱包渲染账户详情入口', () => {
+  const { document, elements } = createDocument({ walletList: { tagName: 'div' } });
+  globalThis.document = document;
+  try {
+    const controller = new AccountListController({ wallet: {} });
+    controller.renderWalletList([{
+      id: 'mpc-1',
+      name: 'mpc10',
+      type: 'mpc',
+      status: 'active',
+      address: '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      threshold: 2,
+      participants: ['0x1', '0x2'],
+      accounts: [{
+        id: 'mpc:mpc-1',
+        name: 'mpc10',
+        address: '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      }],
+    }]);
+
+    assert.match(elements.walletList.innerHTML, /data-primary-account-id="mpc:mpc-1"/);
+    assert.match(elements.walletList.innerHTML, /data-account-id="mpc:mpc-1"/);
+    assert.match(elements.walletList.innerHTML, /mpc-wallet-detail-btn/);
+    assert.match(elements.walletList.innerHTML, /查看 MPC 钱包详情/);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
 test('账户管理把待处理 MPC 邀请展示为可接受的钱包卡片', () => {
   const { document, elements } = createDocument({ walletList: { tagName: 'div' } });
   globalThis.document = document;
@@ -195,7 +224,11 @@ test('待接受 MPC 邀请详情图标打开邀请详情', () => {
     assert.equal(elements.mpcWalletDetailStatus.textContent, '待接受邀请');
     assert.equal(elements.mpcWalletDetailSigningStatus.textContent, '不可签名');
     assert.equal(elements.mpcWalletDetailThreshold.textContent, '2 / 2');
-    assert.equal(elements.mpcWalletDetailParticipants.textContent, '0x1, 0x2');
+    assert.match(elements.mpcWalletDetailParticipants.innerHTML, /mpc-participants-list/);
+    assert.match(elements.mpcWalletDetailParticipants.innerHTML, /mpc-participant-item/);
+    assert.match(elements.mpcWalletDetailParticipants.innerHTML, /0x1/);
+    assert.match(elements.mpcWalletDetailParticipants.innerHTML, /0x2/);
+    assert.doesNotMatch(elements.mpcWalletDetailParticipants.innerHTML, /0x1, 0x2/);
     assert.equal(elements.cancelMpcWalletCreationBtn.classList.contains('hidden'), false);
     assert.match(elements.mpcWalletDetailSessions.innerHTML, /61705018-13b2-43e9-ab09-2698b64759f6/);
   } finally {
@@ -390,6 +423,81 @@ test('HD 钱包头部点击打开第一个账户详情', () => {
     elements.walletList.children[0].dispatchEvent({ type: 'click' });
 
     assert.deepEqual(opened, ['account-1']);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test('MPC 钱包账户行点击打开账户详情，右上角详情图标打开 MPC 详情', async () => {
+  const mpcItem = createElement({
+    tagName: 'div',
+    _classes: 'account-item mpc-wallet-identity',
+    dataset: { walletId: 'mpc-1', accountId: 'mpc:mpc-1' },
+  });
+  const detailBtn = createElement({
+    tagName: 'button',
+    _classes: 'wallet-header-btn mpc-wallet-detail-btn',
+    dataset: { walletId: 'mpc-1' },
+  });
+  const { document, elements } = createDocument({
+    walletList: {
+      tagName: 'div',
+      children: [mpcItem, detailBtn],
+    },
+    mpcWalletDetailPage: { tagName: 'div', _classes: 'page hidden' },
+    mpcWalletDetailName: { tagName: 'h3' },
+    mpcWalletDetailStatus: { tagName: 'div' },
+    mpcWalletDetailSigningStatus: { tagName: 'div' },
+    mpcWalletDetailAddress: { tagName: 'div' },
+    mpcWalletDetailThreshold: { tagName: 'div' },
+    mpcWalletDetailParticipants: { tagName: 'div' },
+    mpcWalletDetailSessions: { tagName: 'div' },
+    cancelMpcWalletCreationBtn: { tagName: 'button', _classes: 'hidden' },
+  });
+  globalThis.document = document;
+  const openedAccounts = [];
+  try {
+    const controller = new AccountListController({
+      wallet: {
+        getMpcSessions: async () => ({
+          success: true,
+          wallet: {
+            id: 'mpc-1',
+            name: 'mpc10',
+            type: 'mpc',
+            status: 'active',
+            signingStatus: 'available',
+            address: '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+            threshold: 2,
+            participants: ['0x1', '0x2'],
+          },
+          sessions: [],
+        }),
+      },
+    });
+    controller.mpcWalletsById.set('mpc-1', {
+      id: 'mpc-1',
+      name: 'mpc10',
+      type: 'mpc',
+      status: 'active',
+      address: '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      threshold: 2,
+      participants: ['0x1', '0x2'],
+    });
+    controller.bindWalletListEvents(
+      (accountId) => openedAccounts.push(accountId),
+      null,
+      null,
+      null,
+      null
+    );
+
+    elements.walletList.children[0].dispatchEvent({ type: 'click' });
+    elements.walletList.children[1].dispatchEvent({ type: 'click' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.deepEqual(openedAccounts, ['mpc:mpc-1']);
+    assert.equal(elements.mpcWalletDetailPage.classList.contains('hidden'), false);
   } finally {
     delete globalThis.document;
   }

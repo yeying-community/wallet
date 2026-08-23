@@ -241,6 +241,36 @@
   color: #1f2937;
 }
 
+.mpc-participants-row {
+  align-items: flex-start;
+}
+
+.mpc-participants-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.mpc-participant-item {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.mpc-participant-index {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.mpc-participant-address {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow-wrap: anywhere;
+  line-height: 18px;
+}
+
 .wallet-account-count {
   color: #9ca3af;
 }

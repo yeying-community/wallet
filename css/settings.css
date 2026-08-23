@@ -336,6 +336,22 @@
   word-break: break-all;
 }
 
+.identity-totp-qr {
+  display: grid;
+  place-items: center;
+  min-height: 176px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.identity-totp-qr canvas,
+.identity-totp-qr img,
+.identity-totp-qr svg {
+  width: 160px;
+  height: 160px;
+}
+
 .identity-totp-secret {
   font-weight: 600;
 }

@@ -14,6 +14,7 @@ function setup() {
     walletIdentityEmailStatusText: { tagName: 'p' },
     walletIdentityTotpStatusPage: { tagName: 'p' },
     walletIdentityTotpSetupPage: { tagName: 'div' },
+    walletIdentityTotpQrPage: { tagName: 'div' },
     walletIdentityTotpSecretPage: { tagName: 'div' },
     walletIdentityTotpUriPage: { tagName: 'div' },
     walletIdentityTotpCodeInput: { tagName: 'input' },
