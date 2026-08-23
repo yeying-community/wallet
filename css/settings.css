@@ -21,6 +21,37 @@
   padding: 20px;
 }
 
+#walletIdentityDetailPage,
+#walletIdentityPasskeyPage,
+#walletIdentityAuthenticatorPage,
+#walletIdentityEditPage {
+  padding: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+#walletIdentityDetailPage .page-header,
+#walletIdentityPasskeyPage .page-header,
+#walletIdentityAuthenticatorPage .page-header,
+#walletIdentityEditPage .page-header {
+  margin: 0;
+  padding: 20px 20px 15px;
+  flex: 0 0 auto;
+  background: #ffffff;
+  z-index: 10;
+}
+
+#walletIdentityDetailPage .settings-body,
+#walletIdentityPasskeyPage .settings-body,
+#walletIdentityAuthenticatorPage .settings-body,
+#walletIdentityEditPage .settings-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px;
+}
+
 #sitesPage {
   padding: 0;
   height: 100vh;
