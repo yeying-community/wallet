@@ -33,7 +33,7 @@ globalThis.chrome = {
 };
 
 const { mpcService } = await import('../js/background/mpc-service.js');
-const { handleMpcAcceptInvite, handleMpcCancelSession, handleMpcDismissInvite } = await import('../js/background/operations/mpc.js');
+const { handleMpcAcceptInvite, handleMpcCancelSession, handleMpcDiagnoseWallet, handleMpcDismissInvite } = await import('../js/background/operations/mpc.js');
 const { setMpcTssEngineForTests, resetMpcTssEngineForTests } = await import('../js/background/mpc-tss-engine.js');
 const { state } = await import('../js/background/state.js');
 const {
@@ -429,6 +429,51 @@ test('钱包列表按本地 completeKeyShare 明确收敛 MPC 签名能力状态
   assert.equal(wallet.status, 'active');
   assert.equal(wallet.signingStatus, 'available');
   assert.equal(wallet.signingUnavailableReason, '');
+});
+
+test('MPC 钱包诊断只返回签名材料状态，不泄露本地密钥内容', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'keygen_completed',
+    address: '0x2222222222222222222222222222222222222222',
+    publicKey: '03abcdef',
+    keygenSessionId: 'session-1',
+    threshold: 2,
+    participants: ['0x1', '0x2'],
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcKeyShare({
+    id: 'share-1',
+    walletId: 'mpc-wallet-1',
+    sessionId: 'session-1',
+    participantId: '0x1',
+    share: { secret: 'local-share' },
+    auxInfo: { secret: 'aux-info' },
+    auxInfoStatus: 'completed',
+    completeKeyShare: { secret: 'complete-local-share' },
+    completeKeyShareStatus: 'completed',
+    signingStatus: 'available',
+    shareVersion: 1,
+    keyVersion: 1,
+  });
+
+  const result = await handleMpcDiagnoseWallet({ walletId: 'mpc-wallet-1' });
+
+  assert.equal(result.success, true);
+  assert.equal(result.diagnosis.canSign, true);
+  assert.equal(result.diagnosis.hasAddress, true);
+  assert.equal(result.diagnosis.hasKeyShare, true);
+  assert.equal(result.diagnosis.hasAuxInfo, true);
+  assert.equal(result.diagnosis.hasCompleteKeyShare, true);
+  assert.equal(result.diagnosis.auxInfoStatus, 'completed');
+  assert.equal(result.diagnosis.completeKeyShareStatus, 'completed');
+  const serialized = JSON.stringify(result);
+  assert.equal(serialized.includes('local-share'), false);
+  assert.equal(serialized.includes('aux-info'), false);
+  assert.equal(serialized.includes('complete-local-share'), false);
 });
 
 test('session 数字字段缺失时不会把本地值误同步为 0', async () => {

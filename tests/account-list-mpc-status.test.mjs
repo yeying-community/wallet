@@ -363,7 +363,7 @@ test('MPC 钱包详情只请求并展示当前钱包的会话', async () => {
   }
 });
 
-test('MPC 钱包详情展示签名材料缺失原因', () => {
+test('MPC 钱包详情把签名材料缺失展示为短状态', () => {
   const { document, elements } = createDocument({
     mpcWalletDetailName: { tagName: 'h3' },
     mpcWalletDetailStatus: { tagName: 'div' },
@@ -390,7 +390,7 @@ test('MPC 钱包详情展示签名材料缺失原因', () => {
     }, []);
 
     assert.equal(elements.mpcWalletDetailStatus.textContent, '已完成');
-    assert.equal(elements.mpcWalletDetailSigningStatus.textContent, '签名材料缺失，请等待或重试签名能力准备');
+    assert.equal(elements.mpcWalletDetailSigningStatus.textContent, '准备中');
   } finally {
     delete globalThis.document;
   }

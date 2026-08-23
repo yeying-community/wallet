@@ -814,6 +814,15 @@ export class WalletDomain extends BaseDomain {
   }
 
   /**
+   * 诊断 MPC 钱包本地签名材料状态
+   * @param {string} walletId
+   * @returns {Promise<Object>}
+   */
+  async diagnoseMpcWallet(walletId) {
+    return await this._sendMessage(WalletMessageType.MPC_DIAGNOSE_WALLET, { walletId });
+  }
+
+  /**
    * 启动 MPC 会话事件流
    * @param {string} sessionId
    * @param {string} cursor

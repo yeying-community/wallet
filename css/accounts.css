@@ -241,6 +241,16 @@
   color: #1f2937;
 }
 
+.mpc-wallet-detail-page-body .detail-row {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.mpc-wallet-detail-page-body .detail-value {
+  flex: 1 1 auto;
+  text-align: right;
+}
+
 .mpc-participants-row {
   align-items: flex-start;
 }

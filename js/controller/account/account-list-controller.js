@@ -487,11 +487,12 @@ export class AccountListController {
     }
     const reason = String(wallet?.signingUnavailableReason || '').trim();
     const reasonLabels = {
-      MPC_KEYGEN_NOT_COMPLETED: '地址尚未生成',
-      MPC_KEY_SHARE_NOT_FOUND: '本地密钥分片缺失',
-      MPC_COMPLETE_KEY_SHARE_NOT_FOUND: '签名材料缺失，请等待或重试签名能力准备',
-      MPC_WALLET_NOT_SIGNABLE: '当前钱包状态不可签名',
-      MPC_SIGNING_READINESS_CHECK_FAILED: '签名能力检查失败'
+      MPC_KEYGEN_NOT_COMPLETED: '未就绪',
+      MPC_KEY_SHARE_NOT_FOUND: '不可用',
+      MPC_COMPLETE_KEY_SHARE_NOT_FOUND: '准备中',
+      MPC_CGGMP24_COMPLETE_KEY_SHARE_NOT_FOUND: '准备中',
+      MPC_WALLET_NOT_SIGNABLE: '不可用',
+      MPC_SIGNING_READINESS_CHECK_FAILED: '检查失败'
     };
     if (reasonLabels[reason]) {
       return reasonLabels[reason];

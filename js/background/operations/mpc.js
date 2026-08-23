@@ -624,6 +624,42 @@ export async function handleMpcGetSessions(options = {}) {
   }
 }
 
+export async function handleMpcDiagnoseWallet(options = {}) {
+  try {
+    const walletId = String(options?.walletId || options?.id || '').trim();
+    if (!walletId) {
+      throw new Error('MPC 钱包 ID 不能为空');
+    }
+    const readiness = await mpcService.evaluateWalletSigningReadiness(walletId);
+    const wallet = readiness?.wallet || null;
+    const keyShare = readiness?.keyShare || null;
+    return {
+      success: true,
+      diagnosis: {
+        walletId,
+        status: String(wallet?.status || ''),
+        signingStatus: String(wallet?.signingStatus || ''),
+        signingUnavailableReason: String(wallet?.signingUnavailableReason || readiness?.reason || ''),
+        canSign: Boolean(readiness?.canSign),
+        reason: String(readiness?.reason || ''),
+        hasAddress: Boolean(String(wallet?.address || '').trim()),
+        keyVersion: wallet?.keyVersion ?? keyShare?.keyVersion ?? null,
+        shareVersion: wallet?.shareVersion ?? keyShare?.shareVersion ?? null,
+        participantId: String(keyShare?.participantId || ''),
+        hasKeyShare: Boolean(keyShare?.share),
+        hasAuxInfo: Boolean(keyShare?.auxInfo),
+        auxInfoStatus: String(keyShare?.auxInfoStatus || wallet?.auxInfoStatus || ''),
+        hasCompleteKeyShare: Boolean(keyShare?.completeKeyShare),
+        completeKeyShareStatus: String(keyShare?.completeKeyShareStatus || wallet?.completeKeyShareStatus || ''),
+        localSigningStatus: String(keyShare?.signingStatus || ''),
+        localSigningUnavailableReason: String(keyShare?.signingUnavailableReason || '')
+      }
+    };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to diagnose MPC wallet' };
+  }
+}
+
 export async function handleMpcStartStream(options = {}) {
   try {
     const sessionId = options?.sessionId;
