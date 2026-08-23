@@ -613,7 +613,7 @@ export async function handleMpcGetSession(sessionId) {
 
 export async function handleMpcGetSessions(options = {}) {
   try {
-    const sessions = await mpcService.getSessions(options?.walletId);
+    const sessions = await mpcService.getSessions(options?.walletId, { localOnly: Boolean(options?.localOnly) });
     const walletId = String(options?.walletId || '').trim();
     const wallet = walletId ? await getMpcWallet(walletId) : null;
     return { success: true, sessions, wallet };

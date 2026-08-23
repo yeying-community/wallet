@@ -129,6 +129,22 @@ test('active MPC 钱包地址会解析为 MPC signer id', async () => {
   assert.equal(accountId, 'mpc:mpc-wallet-1');
 });
 
+test('keygen completed 且已生成地址的 MPC 钱包地址会解析为 MPC signer id', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'keygen_completed',
+    address: '0x1111111111111111111111111111111111111111',
+    publicKey: '03abcdef',
+    keygenSessionId: 'session-1',
+  });
+
+  const accountId = await resolveMpcAccountIdByAddress('0x1111111111111111111111111111111111111111');
+
+  assert.equal(accountId, 'mpc:mpc-wallet-1');
+});
+
 test('未完成 keygen 的 MPC 钱包不能进入签名', async () => {
   await saveMpcWallet({
     id: 'mpc-wallet-1',
@@ -141,6 +157,32 @@ test('未完成 keygen 的 MPC 钱包不能进入签名', async () => {
   await assert.rejects(
     () => signMessage(getMpcAccountId('mpc-wallet-1'), 'hello'),
     /MPC_KEYGEN_NOT_COMPLETED/
+  );
+});
+
+test('keygen completed 且已生成地址的 MPC 钱包缺少完整 key share 时返回签名材料错误', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'keygen_completed',
+    address: '0x1111111111111111111111111111111111111111',
+    publicKey: '03abcdef',
+    keygenSessionId: 'session-1',
+  });
+  await saveMpcKeyShare({
+    id: 'share-1',
+    walletId: 'mpc-wallet-1',
+    sessionId: 'session-1',
+    participantId: '0x1111111111111111111111111111111111111111',
+    share: { secret: 'local-share' },
+    keyVersion: 1,
+    shareVersion: 1,
+  });
+
+  await assert.rejects(
+    () => signMessage(getMpcAccountId('mpc-wallet-1'), 'hello'),
+    /MPC_COMPLETE_KEY_SHARE_NOT_FOUND/
   );
 });
 

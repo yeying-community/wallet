@@ -60,6 +60,7 @@ import { getValue, setValue } from '../../storage/storage-base.js';
 
 const MIN_PASSWORD_LENGTH = 8;
 const INVALID_MPC_WALLET_NAMES = new Set(['', 'MPC 钱包创建邀请', 'MPC 钱包邀请', '名称缺失']);
+const MPC_ACCOUNT_ID_PREFIX = 'mpc:';
 const MPC_SESSION_WALLET_STATUS = {
   ready: 'keygen_ready',
   rounds: 'keygen_running',
@@ -77,6 +78,42 @@ const MPC_SESSION_WALLET_STATUS = {
   failed: 'failed',
   error: 'failed',
 };
+
+function getMpcAccountId(walletId) {
+  const id = String(walletId || '').trim();
+  return id ? `${MPC_ACCOUNT_ID_PREFIX}${id}` : '';
+}
+
+function isMpcAccountId(accountId) {
+  return String(accountId || '').startsWith(MPC_ACCOUNT_ID_PREFIX);
+}
+
+function getMpcWalletIdFromAccountId(accountId) {
+  return isMpcAccountId(accountId)
+    ? String(accountId || '').slice(MPC_ACCOUNT_ID_PREFIX.length).trim()
+    : '';
+}
+
+function buildMpcAccountView(wallet, selectedAccountId = '') {
+  const address = String(wallet?.address || '').trim();
+  const walletId = String(wallet?.id || '').trim();
+  if (!walletId || !address) return null;
+  const id = getMpcAccountId(walletId);
+  return {
+    id,
+    walletId,
+    walletType: 'mpc',
+    type: 'mpc',
+    name: wallet.name || 'MPC Wallet',
+    address,
+    status: wallet.status || '',
+    publicKey: wallet.publicKey || '',
+    keygenSessionId: wallet.keygenSessionId || '',
+    keyVersion: wallet.keyVersion,
+    shareVersion: wallet.shareVersion,
+    isSelected: id === selectedAccountId,
+  };
+}
 
 function isInvalidMpcWalletName(name) {
   return INVALID_MPC_WALLET_NAMES.has(String(name || '').trim());
@@ -240,7 +277,8 @@ export async function HandleGetWalletList() {
       mpcWallets.forEach(wallet => {
         if (!wallet?.id) return;
         if (walletMap.has(wallet.id)) return;
-        walletMap.set(wallet.id, { ...wallet, type: 'mpc', accounts: [] });
+        const mpcAccount = buildMpcAccountView(wallet, selectedAccountId);
+        walletMap.set(wallet.id, { ...wallet, type: 'mpc', accounts: mpcAccount ? [mpcAccount] : [] });
       });
     }
 
@@ -254,7 +292,7 @@ export async function HandleGetWalletList() {
     return {
       success: true,
       wallets,
-      totalAccounts: accounts.length
+      totalAccounts: accounts.length + wallets.filter(wallet => wallet?.type === 'mpc' && wallet.accounts?.length).length
     };
 
   } catch (error) {
@@ -467,6 +505,27 @@ export async function handleCreateSubAccount(walletId, accountName, password) {
 export async function handleSwitchAccount(accountId, password = null) {
   try {
     console.log('🔄 Switching account:', accountId);
+
+    if (isMpcAccountId(accountId)) {
+      const walletId = getMpcWalletIdFromAccountId(accountId);
+      const wallet = walletId ? await getMpcWalletList().then(list => list.find(item => item?.id === walletId)) : null;
+      const account = buildMpcAccountView(wallet, accountId);
+      if (!account) {
+        throw new Error('MPC wallet not found or address not generated');
+      }
+      await setSelectedAccountId(accountId);
+      if (!state.keyring) {
+        state.keyring = new Map();
+      }
+      state.keyring.set(accountId, { type: 'mpc', walletId });
+      resetLockTimer();
+      broadcastEvent(EventType.ACCOUNTS_CHANGED, { accounts: [account.address] });
+      console.log('✅ MPC account switched:', account.name);
+      return {
+        success: true,
+        account
+      };
+    }
 
     // 获取账户信息
     const account = await getAccount(accountId);

@@ -49,10 +49,18 @@ function ensureMpcWalletCanSign(wallet) {
   if (!wallet?.id) {
     throw new Error('MPC_WALLET_NOT_FOUND');
   }
-  if (String(wallet.status || '').trim() !== 'active' || !normalizeAddress(wallet.address)) {
+  if (!isMpcWalletAddressReady(wallet)) {
     throw new Error('MPC_KEYGEN_NOT_COMPLETED');
   }
   return wallet;
+}
+
+function isMpcWalletAddressReady(wallet) {
+  if (!wallet?.id || !normalizeAddress(wallet.address)) {
+    return false;
+  }
+  const status = String(wallet.status || '').trim();
+  return !['failed', 'keygen_interrupted', 'cancelled', 'canceled'].includes(status);
 }
 
 export async function resolveMpcAccountIdByAddress(address) {
@@ -60,7 +68,7 @@ export async function resolveMpcAccountIdByAddress(address) {
   if (!normalized) return '';
   const wallets = await getMpcWalletList();
   const wallet = wallets.find((item) =>
-    String(item?.status || '').trim() === 'active'
+    isMpcWalletAddressReady(item)
     && normalizeAddress(item?.address) === normalized
   );
   return wallet?.id ? getMpcAccountId(wallet.id) : '';

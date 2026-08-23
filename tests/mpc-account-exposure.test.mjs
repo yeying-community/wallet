@@ -52,7 +52,7 @@ test.afterEach(() => {
   state.connectedSites = new Map();
 });
 
-test('eth_accounts 会返回授权且可用的 active MPC 钱包地址', async () => {
+test('eth_accounts 会返回授权且已生成地址的 keygen completed MPC 钱包地址', async () => {
   await saveAccount({
     id: 'account-1',
     walletId: 'wallet-1',
@@ -64,7 +64,7 @@ test('eth_accounts 会返回授权且可用的 active MPC 钱包地址', async (
     id: 'mpc-wallet-1',
     name: 'mpc10',
     type: 'mpc',
-    status: 'active',
+    status: 'keygen_completed',
     address: '0x2222222222222222222222222222222222222222',
     publicKey: '03abcdef',
   });

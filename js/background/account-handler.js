@@ -73,6 +73,14 @@ function dedupeAddresses(addresses = []) {
   return result;
 }
 
+function isMpcWalletAddressReady(wallet) {
+  if (!wallet?.address) {
+    return false;
+  }
+  const status = String(wallet?.status || '').trim();
+  return !['failed', 'keygen_interrupted', 'cancelled', 'canceled'].includes(status);
+}
+
 async function getAvailableAccountAddresses(selectedAccount = null) {
   const addresses = [];
   if (selectedAccount?.address) {
@@ -80,7 +88,7 @@ async function getAvailableAccountAddresses(selectedAccount = null) {
   }
   const mpcWallets = await getMpcWalletList();
   for (const wallet of Array.isArray(mpcWallets) ? mpcWallets : []) {
-    if (String(wallet?.status || '').trim() === 'active' && wallet?.address) {
+    if (isMpcWalletAddressReady(wallet)) {
       addresses.push(wallet.address);
     }
   }

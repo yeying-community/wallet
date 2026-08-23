@@ -42,6 +42,7 @@ const vault = await import('../js/background/vault.js');
 const storage = await import('../js/storage/index.js');
 const keyring = await import('../js/background/keyring.js');
 const walletOps = await import('../js/background/operations/wallet.js');
+const { mpcService } = await import('../js/background/mpc-service.js');
 
 const PASSWORD = 'Correct-Horse-9';
 const WRONG_PASSWORD = 'Correct-Horse-8';
@@ -75,6 +76,35 @@ test('未指定账户解锁时按实际账户 ID 写入 keyring', async () => {
 
   const instance = keyring.getWalletInstance(mainAccount.id);
   assert.equal(instance.address.toLowerCase(), mainAccount.address.toLowerCase());
+});
+
+test('可用 MPC 钱包可作为当前账户解锁', async () => {
+  await keyring.lockWallet();
+  await storage.saveMpcWallet({
+    id: 'mpc-wallet-keyring',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'active',
+    address: '0x2222222222222222222222222222222222222222',
+    publicKey: '03abcdef',
+  });
+
+  const originalMpcOnUnlocked = mpcService.onUnlocked;
+  mpcService.onUnlocked = async () => null;
+  try {
+    const res = await keyring.unlockWallet(PASSWORD, 'mpc:mpc-wallet-keyring', 'popup');
+
+    assert.equal(res.success, true);
+    assert.equal(res.account.id, 'mpc:mpc-wallet-keyring');
+    assert.equal(res.account.walletType, 'mpc');
+    assert.equal(res.account.address, '0x2222222222222222222222222222222222222222');
+    assert.deepEqual(keyring.getWalletInstance('mpc:mpc-wallet-keyring'), {
+      type: 'mpc',
+      walletId: 'mpc-wallet-keyring',
+    });
+  } finally {
+    mpcService.onUnlocked = originalMpcOnUnlocked;
+  }
 });
 
 test('错误密码解锁失败且不改变锁定态', async () => {

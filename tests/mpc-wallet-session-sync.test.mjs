@@ -36,8 +36,9 @@ const { mpcService } = await import('../js/background/mpc-service.js');
 const { handleMpcAcceptInvite, handleMpcCancelSession, handleMpcDismissInvite } = await import('../js/background/operations/mpc.js');
 const { setMpcTssEngineForTests, resetMpcTssEngineForTests } = await import('../js/background/mpc-tss-engine.js');
 const { state } = await import('../js/background/state.js');
-const { HandleGetWalletList } = await import('../js/background/operations/wallet.js');
+const { HandleGetWalletList, handleSwitchAccount } = await import('../js/background/operations/wallet.js');
 const {
+  getSelectedAccount,
   getMpcWallet,
   getMpcSession,
   getMpcSignRequest,
@@ -303,6 +304,46 @@ test('钱包列表会用本地 ready session 修复 MPC 钱包状态', async () 
 
   assert.equal(result.success, true);
   assert.equal(result.wallets.find((wallet) => wallet.id === 'mpc-wallet-1')?.status, 'keygen_ready');
+});
+
+test('钱包列表暴露可选择的 MPC 钱包账户并支持切换', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'active',
+    address: '0x2222222222222222222222222222222222222222',
+    publicKey: '03abcdef',
+    keygenSessionId: 'session-1',
+    threshold: 2,
+    participants: ['0x1', '0x2'],
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+
+  const listBeforeSwitch = await HandleGetWalletList();
+  const mpcWallet = listBeforeSwitch.wallets.find((wallet) => wallet.id === 'mpc-wallet-1');
+  assert.equal(mpcWallet.accounts.length, 1);
+  assert.equal(mpcWallet.accounts[0].id, 'mpc:mpc-wallet-1');
+  assert.equal(mpcWallet.accounts[0].name, 'mpc10');
+  assert.equal(mpcWallet.accounts[0].address, '0x2222222222222222222222222222222222222222');
+  assert.equal(mpcWallet.accounts[0].isSelected, false);
+
+  const switched = await handleSwitchAccount('mpc:mpc-wallet-1');
+  assert.equal(switched.success, true);
+  assert.equal(switched.account.id, 'mpc:mpc-wallet-1');
+  assert.equal(switched.account.walletType, 'mpc');
+  assert.equal(state.keyring.get('mpc:mpc-wallet-1')?.type, 'mpc');
+
+  const selected = await getSelectedAccount();
+  assert.equal(selected.id, 'mpc:mpc-wallet-1');
+  assert.equal(selected.address, '0x2222222222222222222222222222222222222222');
+
+  const listAfterSwitch = await HandleGetWalletList();
+  assert.equal(
+    listAfterSwitch.wallets.find((wallet) => wallet.id === 'mpc-wallet-1')?.accounts[0]?.isSelected,
+    true
+  );
 });
 
 test('session 数字字段缺失时不会把本地值误同步为 0', async () => {

@@ -16,10 +16,37 @@ import {
   getValue,
   setValue
 } from './storage-base.js';
+import { getMpcWallet } from './mpc-storage.js';
 import { logError } from '../common/errors/index.js';
 
 const STORE = WalletStorageKeys.ACCOUNTS; // 'accounts'
 const SELECTED_KEY = WalletStorageKeys.SELECTED_ACCOUNT_ID;
+const MPC_ACCOUNT_ID_PREFIX = 'mpc:';
+
+function getMpcWalletIdFromAccountId(accountId) {
+  return String(accountId || '').startsWith(MPC_ACCOUNT_ID_PREFIX)
+    ? String(accountId || '').slice(MPC_ACCOUNT_ID_PREFIX.length).trim()
+    : '';
+}
+
+function buildMpcAccountView(wallet) {
+  if (!wallet?.id || !String(wallet?.address || '').trim()) {
+    return null;
+  }
+  return {
+    id: `${MPC_ACCOUNT_ID_PREFIX}${wallet.id}`,
+    walletId: wallet.id,
+    walletType: 'mpc',
+    type: 'mpc',
+    name: wallet.name || 'MPC Wallet',
+    address: wallet.address,
+    status: wallet.status || '',
+    publicKey: wallet.publicKey || '',
+    keygenSessionId: wallet.keygenSessionId || '',
+    keyVersion: wallet.keyVersion,
+    shareVersion: wallet.shareVersion,
+  };
+}
 
 // ==================== 公共 API ====================
 
@@ -194,6 +221,10 @@ export async function getSelectedAccount() {
     const accountId = await getSelectedAccountId();
     if (!accountId) {
       return null;
+    }
+    const mpcWalletId = getMpcWalletIdFromAccountId(accountId);
+    if (mpcWalletId) {
+      return buildMpcAccountView(await getMpcWallet(mpcWalletId));
     }
     return await getAccount(accountId);
   } catch (error) {

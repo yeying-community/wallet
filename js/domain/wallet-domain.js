@@ -806,8 +806,11 @@ export class WalletDomain extends BaseDomain {
    * @param {string} walletId - 可选，按 MPC 钱包过滤
    * @returns {Promise<Object>}
    */
-  async getMpcSessions(walletId = '') {
-    return await this._sendMessage(WalletMessageType.MPC_GET_SESSIONS, { walletId });
+  async getMpcSessions(walletId = '', options = {}) {
+    const input = walletId && typeof walletId === 'object'
+      ? walletId
+      : { walletId, ...(options && typeof options === 'object' ? options : {}) };
+    return await this._sendMessage(WalletMessageType.MPC_GET_SESSIONS, input);
   }
 
   /**

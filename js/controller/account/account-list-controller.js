@@ -74,15 +74,11 @@ export class AccountListController {
     }
 
     document.getElementById('refreshMpcWalletDetailBtn')?.addEventListener('click', () => {
-      void this.refreshMpcWalletDetail();
+      void this.refreshMpcWalletDetail({ localOnly: false });
     });
     document.getElementById('cancelMpcWalletCreationBtn')?.addEventListener('click', () => {
       void this.handleCancelMpcWalletCreation();
     });
-    document.getElementById('closeMpcWalletDetailModal')?.addEventListener('click', () => this.closeMpcWalletDetail());
-    document.getElementById('mpcWalletDetailModal')
-      ?.querySelector('.modal-overlay')
-      ?.addEventListener('click', () => this.closeMpcWalletDetail());
   }
 
   async handleExportAccounts() {
@@ -291,6 +287,7 @@ export class AccountListController {
       const mpcParticipantCount = Array.isArray(wallet.participants) ? wallet.participants.length : 0;
       const mpcAddress = String(wallet.address || accounts[0]?.address || '').trim();
       const mpcStatus = this.getMpcWalletStatusText(wallet);
+      const primaryAccountId = String(accounts[0]?.id || '').trim();
       const accountHtml = isMpc ? `
           <div class="account-item mpc-wallet-identity" data-wallet-id="${escapeHtml(wallet.id)}">
             <div class="account-avatar mpc-wallet-avatar" ${mpcAddress ? `data-address="${escapeHtml(mpcAddress)}"` : ''}>MPC</div>
@@ -326,8 +323,8 @@ export class AccountListController {
         `).join('') : '<div class="empty-message">暂无账户</div>';
 
       return `
-    <div class="wallet-card" data-wallet-id="${wallet.id}">
-      <div class="wallet-header">
+    <div class="wallet-card" data-wallet-id="${escapeHtml(wallet.id)}" ${primaryAccountId ? `data-primary-account-id="${escapeHtml(primaryAccountId)}"` : ''}>
+      <div class="wallet-header" ${primaryAccountId ? `data-primary-account-id="${escapeHtml(primaryAccountId)}"` : ''}>
         <div class="wallet-icon ${isImported ? 'imported' : ''}">
           ${walletIcon}
         </div>
@@ -471,7 +468,7 @@ export class AccountListController {
       keygen_ready: '等待密钥生成',
       keygen_running: '密钥生成中',
       keygen_interrupted: '创建中断',
-      keygen_completed: '密钥生成完成，签名启用中',
+      keygen_completed: '已完成',
       active: '可用',
       failed: '密钥生成失败',
     };
@@ -506,7 +503,7 @@ export class AccountListController {
     this.activeMpcWalletId = '';
     this.activeMpcInviteId = notificationUid;
     this.renderMpcWalletDetail(wallet, sessions);
-    document.getElementById('mpcWalletDetailModal')?.classList.remove('hidden');
+    showPage('mpcWalletDetailPage');
   }
 
   shortenText(value, head = 8, tail = 6) {
@@ -520,28 +517,40 @@ export class AccountListController {
     if (!wallet) return;
     this.activeMpcWalletId = walletId;
     this.renderMpcWalletDetail(wallet, []);
-    document.getElementById('mpcWalletDetailModal')?.classList.remove('hidden');
-    await this.refreshMpcWalletDetail();
+    showPage('mpcWalletDetailPage');
+    await this.refreshMpcWalletDetail({ localOnly: true, silent: true });
   }
 
   closeMpcWalletDetail() {
     this.activeMpcWalletId = '';
     this.activeMpcInviteId = '';
-    document.getElementById('mpcWalletDetailModal')?.classList.add('hidden');
+    showPage('accountsPage');
   }
 
   isMpcWalletCreated(wallet) {
     return String(wallet?.status || '').trim() === 'active' || Boolean(String(wallet?.address || '').trim());
   }
 
-  async refreshMpcWalletDetail() {
+  async refreshMpcWalletDetail(options = {}) {
     const walletId = this.activeMpcWalletId;
     const wallet = this.mpcWalletsById.get(walletId);
     if (!wallet) return;
     const container = document.getElementById('mpcWalletDetailSessions');
-    if (container) container.innerHTML = '<div class="empty-message">正在加载...</div>';
+    if (container && !container.innerHTML.trim()) {
+      container.innerHTML = '<div class="empty-message">暂无会话</div>';
+    }
+    const localOnly = options?.localOnly !== false;
+    let timeoutId = null;
     try {
-      const result = await this.wallet.getMpcSessions(walletId);
+      const request = this.wallet.getMpcSessions(walletId, { localOnly });
+      const result = localOnly
+        ? await request
+        : await Promise.race([
+          request,
+          new Promise((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error('加载超时')), 8000);
+          })
+        ]);
       if (!result?.success) throw new Error(result?.error || '加载失败');
       const freshWallet = result.wallet && typeof result.wallet === 'object' ? result.wallet : wallet;
       if (freshWallet?.id) {
@@ -550,7 +559,11 @@ export class AccountListController {
       this.renderMpcWalletDetail(freshWallet, Array.isArray(result.sessions) ? result.sessions : []);
     } catch (error) {
       if (container) container.innerHTML = '<div class="empty-message">会话加载失败</div>';
-      showError('MPC 会话加载失败: ' + (error?.message || '未知错误'));
+      if (!options?.silent) {
+        showError('MPC 会话加载失败: ' + (error?.message || '未知错误'));
+      }
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
     }
   }
 
@@ -566,21 +579,19 @@ export class AccountListController {
       keygen_ready: '等待密钥生成',
       keygen_running: '密钥生成中',
       keygen_interrupted: '创建中断，可移除后重新创建',
-      keygen_completed: '密钥生成完成，签名启用中',
+      keygen_completed: '已完成',
       active: '可用',
       failed: '密钥生成失败',
     };
     setText('mpcWalletDetailName', wallet?.name || 'MPC 钱包');
     setText('mpcWalletDetailStatus', statusLabels[wallet?.status] || wallet?.status || '等待参与者完成密钥生成');
-    setText('mpcWalletDetailAddress', wallet?.address || '尚未生成');
+    setText('mpcWalletDetailAddress', wallet?.address ? shortenAddress(wallet.address) : '尚未生成');
     setText('mpcWalletDetailThreshold', `${wallet?.threshold || '-'} / ${participants.length || '-'}`);
     setText('mpcWalletDetailParticipants', participants.length ? participants.join(', ') : '-');
     const cancelBtn = document.getElementById('cancelMpcWalletCreationBtn');
-    const footer = cancelBtn?.closest('.modal-footer');
     if (cancelBtn) {
       const canCancel = !this.isMpcWalletCreated(wallet);
       cancelBtn.classList.toggle('hidden', !canCancel);
-      footer?.classList.toggle('hidden', !canCancel);
     }
 
     const container = document.getElementById('mpcWalletDetailSessions');
@@ -762,6 +773,17 @@ export class AccountListController {
 
         const accountId = item.dataset.accountId;
         if (onAccountDetails) {
+          onAccountDetails(accountId);
+        }
+      });
+    });
+
+    container.querySelectorAll('.wallet-header').forEach(header => {
+      if (!header.dataset?.primaryAccountId) return;
+      header.addEventListener('click', (event) => {
+        if (event.target.closest('button')) return;
+        const accountId = header.dataset.primaryAccountId;
+        if (accountId && onAccountDetails) {
           onAccountDetails(accountId);
         }
       });

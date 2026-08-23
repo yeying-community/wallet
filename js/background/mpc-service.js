@@ -2483,11 +2483,14 @@ class MpcService {
     return await this._coordinator.markNotificationRead(uid);
   }
 
-  async getSessions(walletId = '') {
+  async getSessions(walletId = '', options = {}) {
     const sessions = await getMpcSessionList();
     const normalizedWalletId = String(walletId || '').trim();
     if (!normalizedWalletId) return sessions;
     const matched = sessions.filter(session => String(session?.walletId || '').trim() === normalizedWalletId);
+    if (options?.localOnly) {
+      return matched;
+    }
     const refreshed = [];
     for (const session of matched) {
       try {

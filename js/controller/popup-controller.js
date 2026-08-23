@@ -204,6 +204,7 @@ export class PopupController {
     if (!state?.pageId || state.pageId === 'walletPage') return false;
     switch (state.pageId) {
       case 'accountsPage':
+      case 'mpcWalletDetailPage':
         await this.openAccountsPage();
         break;
       case 'settingsPage':
@@ -634,6 +635,7 @@ export class PopupController {
       networkFormPage: 'networkManagePage',
       tokenAddPage: 'walletPage',
       accountDetailPage: 'accountsPage',
+      mpcWalletDetailPage: 'accountsPage',
       settingsPage: 'walletPage',
       contactsPage: document.getElementById('contactsPage')?.dataset?.returnPage || 'walletPage',
       sitesPage: 'walletPage',
