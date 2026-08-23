@@ -396,7 +396,7 @@ class ApprovalApp {
     document.getElementById('identityRequest').classList.remove('hidden');
     const request = this.requestData.request || {};
     document.getElementById('identityOrigin').textContent = this.requestData.origin || '未知网站';
-    document.getElementById('identityAppId').textContent = request.appId || '-';
+    document.getElementById('identityAppId').textContent = request.appId || request.audience || this.requestData.origin || '-';
     document.getElementById('identityAudience').textContent = request.audience || '-';
     document.getElementById('identityNonce').textContent = request.nonce || '-';
     const labels = { 'identity.basic': '钱包身份', 'identity.wallet': '钱包账户', 'identity.username': '已验证用户名', 'identity.email': '已验证邮箱' };

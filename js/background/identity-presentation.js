@@ -15,7 +15,7 @@ function normalizeRequest(params, origin) {
   const appId = String(request.appId || '').trim();
   const audience = String(request.audience || origin || '').trim();
   const nonce = String(request.nonce || '').trim();
-  if (!appId || !audience || !nonce) throw createInvalidParams('appId, audience and nonce are required');
+  if (!audience || !nonce) throw createInvalidParams('audience and nonce are required');
   return { ...request, appId, audience, nonce, scopes };
 }
 
