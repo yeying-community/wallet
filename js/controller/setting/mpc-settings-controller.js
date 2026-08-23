@@ -106,6 +106,14 @@ export class MpcSettingsController {
         await this.handleMpcInviteAccept(button.dataset.notificationUid || '');
       });
     }
+    const mpcLogsList = document.getElementById('mpcLogsList');
+    if (mpcLogsList) {
+      mpcLogsList.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-mpc-sign-process]');
+        if (!button) return;
+        await this.handleMpcSignRequestProcess(button.dataset.requestId || '');
+      });
+    }
 
     const mpcCoordinatorSaveBtn = document.getElementById('mpcCoordinatorSaveBtn');
     if (mpcCoordinatorSaveBtn) {
@@ -1351,6 +1359,36 @@ export class MpcSettingsController {
     }
   }
 
+  async handleMpcSignRequestProcess(requestId) {
+    const id = String(requestId || '').trim();
+    if (!id) {
+      showError('未找到 MPC 签名请求');
+      return;
+    }
+    if (typeof this.wallet.processPendingMpcSignRequests !== 'function') {
+      showError('当前钱包不支持处理 MPC 签名请求');
+      return;
+    }
+    try {
+      showWaiting();
+      const result = await this.wallet.processPendingMpcSignRequests({
+        requestId: id,
+        maxTicks: 8,
+        syncRemote: true
+      });
+      if (!result?.success) {
+        throw new Error(result?.error || '处理失败');
+      }
+      await this.loadMpcSignRequests(false);
+      showSuccess('MPC 签名请求已处理');
+    } catch (error) {
+      console.error('[MpcSettings] 处理 MPC 签名请求失败:', error);
+      showError('处理失败: ' + (error?.message || '未知错误'));
+    } finally {
+      hideWaiting();
+    }
+  }
+
   async loadMpcLogs() {
     try {
       const result = await this.wallet.getMpcAuditLogs();
@@ -1419,7 +1457,7 @@ export class MpcSettingsController {
     const statusClass = status === 'completed'
       ? 'info'
       : (status === 'failed' || status === 'rejected' ? 'error' : 'warn');
-    const hash = request.payloadHash ? `摘要 ${this.shortenText(request.payloadHash, 10, 8)}` : '等待成员确认签名内容';
+    const hash = request.payloadHash ? `摘要 ${this.shortenText(request.payloadHash, 10, 8)}` : '签名内容待同步';
     const chain = request.chainId ? ` · 链 ${request.chainId}` : '';
     return {
       title: titleByType[type] || 'MPC 签名请求',
@@ -1427,6 +1465,11 @@ export class MpcSettingsController {
       status: statusText,
       statusClass
     };
+  }
+
+  isMpcSignRequestActionable(request = {}) {
+    const status = String(request.status || '').trim().toLowerCase();
+    return Boolean(request?.id) && !['completed', 'rejected', 'failed', 'expired'].includes(status);
   }
 
   renderMpcLogsList() {
@@ -1445,6 +1488,17 @@ export class MpcSettingsController {
         ? formatLocaleDateTime(request.completedAt || request.createdAt)
         : '-';
       const activity = this.formatMpcSignRequestActivity(request);
+      const actionsHtml = this.isMpcSignRequestActionable(request)
+        ? `
+          <div class="mpc-activity-actions">
+            <button
+              class="btn btn-primary btn-small"
+              data-mpc-sign-process="1"
+              data-request-id="${escapeHtml(request.id || '')}"
+            >处理</button>
+          </div>
+        `
+        : '';
       return `
         <div class="sync-activity-item mpc-activity-item">
           <div class="mpc-activity-header">
@@ -1452,6 +1506,7 @@ export class MpcSettingsController {
             <span class="sync-activity-tag level-${activity.statusClass}">${escapeHtml(activity.status)}</span>
           </div>
           <div class="mpc-activity-content">${escapeHtml(activity.title)}：${escapeHtml(activity.detail)}</div>
+          ${actionsHtml}
         </div>
       `;
     }).join('');

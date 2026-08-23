@@ -79,6 +79,12 @@ async function getMpcWalletForSigning(accountId) {
   return walletId ? await getMpcWallet(walletId) : null;
 }
 
+async function prepareMpcWalletForSigning(accountId) {
+  const wallet = ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
+  const readiness = await mpcService.reconcileWalletSigningReadiness(wallet);
+  return ensureMpcWalletCanSign(readiness?.wallet || wallet);
+}
+
 async function getLatestMpcKeyShare(walletId) {
   const id = String(walletId || '').trim();
   if (!id) return null;
@@ -217,6 +223,10 @@ function createPendingMpcSignError(request) {
   return error;
 }
 
+function isPendingMpcSignError(error) {
+  return String(error?.code || error?.message || '').trim() === 'MPC_SIGNING_PENDING';
+}
+
 function extractMpcSignature(source) {
   return String(
     source?.signRequest?.signature
@@ -270,6 +280,23 @@ function buildMpcSignedTransaction(context, signatureSource) {
   const tx = ethers.Transaction.from(txPayload.transaction || {});
   tx.signature = signature;
   return tx.serialized;
+}
+
+export function buildMpcSignedTransactionFromSignRequest(signRequest) {
+  const request = signRequest && typeof signRequest === 'object' ? signRequest : null;
+  if (!request || request.type !== 'transaction') {
+    return '';
+  }
+  const signedTransaction = String(
+    request.signedTransaction
+    || request.result?.signedTransaction
+    || request.result?.signed_transaction
+    || ''
+  ).trim();
+  if (/^0x[0-9a-fA-F]+$/.test(signedTransaction)) {
+    return signedTransaction;
+  }
+  return buildMpcSignedTransaction({ request }, request);
 }
 
 async function startMpcWireSigning(wallet, context) {
@@ -335,7 +362,7 @@ async function startMpcWireSigning(wallet, context) {
 export async function signTransaction(accountId, transaction) {
   try {
     if (isMpcAccountId(accountId)) {
-      const wallet = ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
+      const wallet = await prepareMpcWalletForSigning(accountId);
       const context = await createMpcSignContext(wallet, 'transaction', { transaction });
       return await startMpcWireSigning(wallet, context);
     }
@@ -371,7 +398,9 @@ export async function signTransaction(accountId, transaction) {
     };
 
   } catch (error) {
-    console.error('❌ Sign transaction failed:', error);
+    if (!isPendingMpcSignError(error)) {
+      console.error('❌ Sign transaction failed:', error);
+    }
     throw error;
   }
 }
@@ -423,7 +452,7 @@ function normalizeTransaction(transaction) {
 export async function signMessage(accountId, message) {
   try {
     if (isMpcAccountId(accountId)) {
-      const wallet = ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
+      const wallet = await prepareMpcWalletForSigning(accountId);
       const context = await createMpcSignContext(wallet, 'message', { message });
       return await startMpcWireSigning(wallet, context);
     }
@@ -435,7 +464,9 @@ export async function signMessage(accountId, message) {
     return signature;
 
   } catch (error) {
-    console.error('❌ Sign message failed:', error);
+    if (!isPendingMpcSignError(error)) {
+      console.error('❌ Sign message failed:', error);
+    }
     throw error;
   }
 }
@@ -451,7 +482,7 @@ export async function signMessage(accountId, message) {
 export async function signTypedData(accountId, domain, types, value) {
   try {
     if (isMpcAccountId(accountId)) {
-      const wallet = ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
+      const wallet = await prepareMpcWalletForSigning(accountId);
       const context = await createMpcSignContext(wallet, 'typed_data', { domain, types, value });
       return await startMpcWireSigning(wallet, context);
     }
@@ -468,7 +499,9 @@ export async function signTypedData(accountId, domain, types, value) {
     return signature;
 
   } catch (error) {
-    console.error('❌ Sign typed data failed:', error);
+    if (!isPendingMpcSignError(error)) {
+      console.error('❌ Sign typed data failed:', error);
+    }
     throw error;
   }
 }

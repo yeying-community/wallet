@@ -119,6 +119,96 @@ class MpcService {
     this._deviceKeys = null;
   }
 
+  async evaluateWalletSigningReadiness(walletOrId) {
+    await this.init();
+    const wallet = typeof walletOrId === 'string'
+      ? await getMpcWallet(walletOrId)
+      : walletOrId;
+    if (!wallet?.id) {
+      throw new Error('MPC_WALLET_NOT_FOUND');
+    }
+
+    const status = String(wallet.status || '').trim();
+    const isTerminal = ['failed', 'keygen_failed', 'keygen_interrupted', 'cancelled', 'canceled'].includes(status);
+    const hasAddress = Boolean(String(wallet.address || '').trim());
+    if (isTerminal || !hasAddress) {
+      return {
+        wallet,
+        canSign: false,
+        reason: hasAddress ? 'MPC_WALLET_NOT_SIGNABLE' : 'MPC_KEYGEN_NOT_COMPLETED',
+        keyShare: null
+      };
+    }
+
+    const keyShare = await this._findLatestLocalKeyShareForWallet(wallet.id);
+    if (!keyShare?.share) {
+      return {
+        wallet,
+        canSign: false,
+        reason: 'MPC_KEY_SHARE_NOT_FOUND',
+        keyShare: null
+      };
+    }
+
+    if (!keyShare.completeKeyShare) {
+      return {
+        wallet,
+        canSign: false,
+        reason: 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND',
+        keyShare
+      };
+    }
+
+    return {
+      wallet,
+      canSign: true,
+      reason: '',
+      keyShare
+    };
+  }
+
+  async reconcileWalletSigningReadiness(walletOrId) {
+    const readiness = await this.evaluateWalletSigningReadiness(walletOrId);
+    const wallet = readiness.wallet;
+    const status = String(wallet.status || '').trim();
+    const isTerminal = ['failed', 'keygen_failed', 'keygen_interrupted', 'cancelled', 'canceled'].includes(status);
+    const hasAddress = Boolean(String(wallet.address || '').trim());
+    if (isTerminal || !hasAddress) {
+      return readiness;
+    }
+
+    const keyShare = readiness.keyShare;
+    const next = {
+      ...wallet,
+      status: readiness.canSign ? 'active' : 'keygen_completed',
+      signingStatus: readiness.canSign ? 'available' : 'unavailable',
+      signingUnavailableReason: readiness.canSign ? '' : readiness.reason,
+      auxInfoStatus: keyShare?.auxInfoStatus || wallet.auxInfoStatus || '',
+      completeKeyShareStatus: readiness.canSign
+        ? 'completed'
+        : (keyShare?.completeKeyShareStatus || wallet.completeKeyShareStatus || 'missing'),
+      keyVersion: Number(wallet.keyVersion || keyShare?.keyVersion || 1),
+      shareVersion: Number(wallet.shareVersion || keyShare?.shareVersion || 1),
+      updatedAt: getTimestamp()
+    };
+
+    const changed = [
+      'status',
+      'signingStatus',
+      'signingUnavailableReason',
+      'auxInfoStatus',
+      'completeKeyShareStatus',
+      'keyVersion',
+      'shareVersion'
+    ].some((field) => String(wallet[field] ?? '') !== String(next[field] ?? ''));
+
+    if (changed) {
+      await saveMpcWallet(next);
+      readiness.wallet = next;
+    }
+    return readiness;
+  }
+
   async ensureDeviceKeys(password) {
     if (!password) {
       throw new Error('Password is required to unlock MPC keys');
@@ -2141,6 +2231,18 @@ class MpcService {
       .filter((share) => String(share?.participantId || '').trim().toLowerCase() === normalizedParticipantId)
       .filter((share) => share?.completeKeyShare)
       .filter((share) => !shareVersion || Number(share?.shareVersion || 0) === Number(shareVersion))
+      .sort((a, b) => Number(b?.shareVersion || 0) - Number(a?.shareVersion || 0));
+    return matches[0] || null;
+  }
+
+  async _findLatestLocalKeyShareForWallet(walletId) {
+    const normalizedWalletId = String(walletId || '').trim();
+    if (!normalizedWalletId) {
+      return null;
+    }
+    const shares = Object.values(await getMpcKeyShares());
+    const matches = shares
+      .filter((share) => String(share?.walletId || '').trim() === normalizedWalletId)
       .sort((a, b) => Number(b?.shareVersion || 0) - Number(a?.shareVersion || 0));
     return matches[0] || null;
   }

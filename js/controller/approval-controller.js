@@ -383,6 +383,10 @@ export class ApprovalController {
 
     try {
       await this.sendResponse({ approved: true });
+      if (this.isMpcApprovalRequest()) {
+        this.showMpcSigningWaitingState('交易已确认');
+        return;
+      }
       this.closeWindow();
     } catch (error) {
       this.isProcessing = false;
@@ -421,6 +425,10 @@ export class ApprovalController {
 
     try {
       await this.sendResponse({ approved: true });
+      if (this.isMpcApprovalRequest()) {
+        this.showMpcSigningWaitingState('签名已确认');
+        return;
+      }
       this.closeWindow();
     } catch (error) {
       this.isProcessing = false;
@@ -655,6 +663,19 @@ export class ApprovalController {
         this.closeWindow();
       }, timeoutMs);
     }
+  }
+
+  isMpcApprovalRequest() {
+    return String(this.requestData?.accountId || '').startsWith('mpc:');
+  }
+
+  showMpcSigningWaitingState(title = '已确认') {
+    this.showFollowupWaitingState({
+      title,
+      description: '已发起 MPC 多方签名请求，正在等待其他成员确认。',
+      hint: '可在钱包插件的“多签活动”中查看和处理待签名请求。',
+      timeoutMs: 6000
+    });
   }
 
   clearFollowupTimer() {

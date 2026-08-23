@@ -476,6 +476,28 @@ export class AccountListController {
     return statusLabels[status] || '地址生成中';
   }
 
+  getMpcWalletSigningStatusText(wallet) {
+    const signingStatus = String(wallet?.signingStatus || '').trim();
+    if (signingStatus === 'available') {
+      return '可签名';
+    }
+    const reason = String(wallet?.signingUnavailableReason || '').trim();
+    const reasonLabels = {
+      MPC_KEYGEN_NOT_COMPLETED: '地址尚未生成',
+      MPC_KEY_SHARE_NOT_FOUND: '本地密钥分片缺失',
+      MPC_COMPLETE_KEY_SHARE_NOT_FOUND: '签名材料缺失，请等待或重试签名能力准备',
+      MPC_WALLET_NOT_SIGNABLE: '当前钱包状态不可签名',
+      MPC_SIGNING_READINESS_CHECK_FAILED: '签名能力检查失败'
+    };
+    if (reasonLabels[reason]) {
+      return reasonLabels[reason];
+    }
+    if (wallet?.address) {
+      return '签名能力准备中';
+    }
+    return '不可签名';
+  }
+
   openMpcInviteDetail(notificationUid) {
     const invite = this.pendingMpcInvites.find((item) =>
       String(item?.notificationUid || item?.uid || '') === String(notificationUid || '')
@@ -585,6 +607,7 @@ export class AccountListController {
     };
     setText('mpcWalletDetailName', wallet?.name || 'MPC 钱包');
     setText('mpcWalletDetailStatus', statusLabels[wallet?.status] || wallet?.status || '等待参与者完成密钥生成');
+    setText('mpcWalletDetailSigningStatus', this.getMpcWalletSigningStatusText(wallet));
     setText('mpcWalletDetailAddress', wallet?.address ? shortenAddress(wallet.address) : '尚未生成');
     setText('mpcWalletDetailThreshold', `${wallet?.threshold || '-'} / ${participants.length || '-'}`);
     setText('mpcWalletDetailParticipants', participants.length ? participants.join(', ') : '-');

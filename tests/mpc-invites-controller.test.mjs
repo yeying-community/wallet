@@ -164,6 +164,39 @@ test('renderMpcLogsList 会展示 MPC 签名请求活动', async () => {
   assert.equal(elements.mpcLogsTotal.textContent, '1');
 });
 
+test('renderMpcLogsList 给待处理 MPC 签名请求展示处理按钮', async () => {
+  const elements = setup();
+  const controller = new MpcSettingsController({
+    wallet: {},
+    requestPassword: async () => 'password123',
+  });
+  controller.mpcSignRequests = [{
+    id: 'sign-request-1',
+    walletId: 'mpc-wallet-1',
+    sessionId: 'session-1',
+    type: 'transaction',
+    payloadHash: '0x1234567890abcdef1234',
+    status: 'pending',
+    createdAt: '1787270000000',
+  }, {
+    id: 'sign-request-2',
+    walletId: 'mpc-wallet-1',
+    sessionId: 'session-1',
+    type: 'message',
+    payloadHash: '0xabcdef',
+    status: 'completed',
+    createdAt: '1787270000000',
+  }];
+  controller.mpcLogs = [];
+
+  controller.renderMpcLogsList();
+
+  assert.match(elements.mpcLogsList.innerHTML, /交易签名请求/);
+  assert.match(elements.mpcLogsList.innerHTML, /data-mpc-sign-process/);
+  assert.match(elements.mpcLogsList.innerHTML, /data-request-id="sign-request-1"/);
+  assert.doesNotMatch(elements.mpcLogsList.innerHTML, /data-request-id="sign-request-2"[\s\S]*>处理<\/button>/);
+});
+
 test('loadMpcSignRequests 刷新前会推进待处理 MPC 签名请求', async () => {
   setup();
   const calls = [];
@@ -195,6 +228,44 @@ test('loadMpcSignRequests 刷新前会推进待处理 MPC 签名请求', async (
   await controller.loadMpcSignRequests(false);
 
   assert.deepEqual(calls, [
+    ['process', { pageSize: 20 }],
+    ['list', { pageSize: 20 }],
+  ]);
+  assert.equal(controller.mpcSignRequests.length, 1);
+});
+
+test('handleMpcSignRequestProcess 按 requestId 推进签名请求并刷新列表', async () => {
+  setup();
+  const calls = [];
+  const controller = new MpcSettingsController({
+    wallet: {
+      processPendingMpcSignRequests: async (options) => {
+        calls.push(['process', options]);
+        return { success: true, processed: [{ requestId: options.requestId, status: 'completed' }], count: 1 };
+      },
+      listMpcSignRequests: async (options) => {
+        calls.push(['list', options]);
+        return {
+          success: true,
+          items: [{
+            id: 'sign-request-1',
+            walletId: 'mpc-wallet-1',
+            sessionId: 'session-1',
+            type: 'transaction',
+            payloadHash: '0x1234',
+            status: 'completed',
+            createdAt: '1787270000000',
+          }],
+        };
+      },
+    },
+    requestPassword: async () => 'password123',
+  });
+
+  await controller.handleMpcSignRequestProcess('sign-request-1');
+
+  assert.deepEqual(calls, [
+    ['process', { requestId: 'sign-request-1', maxTicks: 8, syncRemote: true }],
     ['process', { pageSize: 20 }],
     ['list', { pageSize: 20 }],
   ]);

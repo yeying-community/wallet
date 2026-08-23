@@ -93,8 +93,10 @@ const { resetState, state } = await import('../js/background/state.js');
 const { mpcService } = await import('../js/background/mpc-service.js');
 const { setMpcTssEngineForTests, resetMpcTssEngineForTests } = await import('../js/background/mpc-tss-engine.js');
 const {
+  getMpcSignRequests,
   saveAccount,
   saveMpcKeyShare,
+  saveMpcSignRequest,
   saveMpcWallet,
   setSelectedAccountId
 } = await import('../js/storage/index.js');
@@ -267,6 +269,187 @@ test('routeRequest eth_sendTransaction 对 MPC 钱包签名后广播 raw transac
   }
 });
 
+test('routeRequest eth_sendTransaction 会等待 pending MPC 交易签名完成后广播', async () => {
+  await setupUnlockedMpcWallet();
+  const originalProcessPending = mpcService.processPendingWireSignRequests;
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  const originalFetch = globalThis.fetch;
+  let processCalls = 0;
+  const fetchCalls = [];
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    fetchMessages: async () => ({ messages: [], nextSequence: 0 })
+  };
+  mpcService.processPendingWireSignRequests = async (options = {}) => {
+    processCalls += 1;
+    const requests = Object.values(await getMpcSignRequests());
+    const requestId = options.requestId || requests[0]?.id;
+    const request = requests.find((item) => item.id === requestId);
+    assert.ok(request, 'pending MPC transaction sign request should exist');
+    assert.equal(request.type, 'transaction');
+    await saveMpcSignRequest({
+      ...request,
+      status: 'completed',
+      result: {
+        status: 'completed',
+        signature: {
+          r: `0x${'11'.repeat(32)}`,
+          s: `0x${'22'.repeat(32)}`
+        },
+        recoveryId: 0
+      },
+      completedAt: '2'
+    });
+    return { processed: [{ requestId, status: 'completed' }], count: 1 };
+  };
+  setMpcTssEngineForTests({
+    async startSign(input) {
+      return {
+        sessionId: input.sessionId,
+        requestId: input.requestId,
+        senderIndex: input.senderIndex,
+        protocol: 'sign',
+        result: { status: 'waiting' }
+      };
+    },
+    async receiveMessage({ state }) {
+      return state;
+    },
+    async advance({ state }) {
+      return state;
+    },
+    async getOutgoingMessages() {
+      return [];
+    },
+    async getResult() {
+      return { status: 'waiting' };
+    }
+  });
+  globalThis.fetch = async (url, options) => {
+    fetchCalls.push({ url, body: JSON.parse(options.body) });
+    return new Response(JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      result: `0x${'ab'.repeat(32)}`
+    }), { status: 200 });
+  };
+
+  try {
+    const routePromise = routeRequest('eth_sendTransaction', [{
+      from: '0x1111111111111111111111111111111111111111',
+      to: '0x2222222222222222222222222222222222222222',
+      value: '0x0',
+      nonce: 0,
+      gasLimit: '0x5208',
+      gasPrice: '0x1',
+      chainId: 1,
+    }], {
+      origin: 'https://dapp.example',
+      tabId: 1,
+      clientRequestId: 'rpc-tx-pending'
+    });
+
+    await approveNextRequest();
+
+    assert.equal(await routePromise, `0x${'ab'.repeat(32)}`);
+    assert.equal(processCalls, 1);
+    assert.equal(fetchCalls.length, 1);
+    assert.equal(fetchCalls[0].body.method, 'eth_sendRawTransaction');
+    assert.match(fetchCalls[0].body.params[0], /^0x/);
+  } finally {
+    mpcService.processPendingWireSignRequests = originalProcessPending;
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('routeRequest eth_signTransaction 会等待 pending MPC 交易签名完成后返回 raw transaction', async () => {
+  await setupUnlockedMpcWallet();
+  const originalProcessPending = mpcService.processPendingWireSignRequests;
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  let processCalls = 0;
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    fetchMessages: async () => ({ messages: [], nextSequence: 0 })
+  };
+  mpcService.processPendingWireSignRequests = async (options = {}) => {
+    processCalls += 1;
+    const requests = Object.values(await getMpcSignRequests());
+    const requestId = options.requestId || requests[0]?.id;
+    const request = requests.find((item) => item.id === requestId);
+    assert.ok(request, 'pending MPC transaction sign request should exist');
+    assert.equal(request.type, 'transaction');
+    await saveMpcSignRequest({
+      ...request,
+      status: 'completed',
+      result: {
+        status: 'completed',
+        signature: {
+          r: `0x${'33'.repeat(32)}`,
+          s: `0x${'44'.repeat(32)}`
+        },
+        recoveryId: 1
+      },
+      completedAt: '2'
+    });
+    return { processed: [{ requestId, status: 'completed' }], count: 1 };
+  };
+  setMpcTssEngineForTests({
+    async startSign(input) {
+      return {
+        sessionId: input.sessionId,
+        requestId: input.requestId,
+        senderIndex: input.senderIndex,
+        protocol: 'sign',
+        result: { status: 'waiting' }
+      };
+    },
+    async receiveMessage({ state }) {
+      return state;
+    },
+    async advance({ state }) {
+      return state;
+    },
+    async getOutgoingMessages() {
+      return [];
+    },
+    async getResult() {
+      return { status: 'waiting' };
+    }
+  });
+
+  try {
+    const routePromise = routeRequest('eth_signTransaction', [{
+      from: '0x1111111111111111111111111111111111111111',
+      to: '0x2222222222222222222222222222222222222222',
+      value: '0x0',
+      nonce: 0,
+      gasLimit: '0x5208',
+      gasPrice: '0x1',
+      chainId: 1,
+    }], {
+      origin: 'https://dapp.example',
+      tabId: 1,
+      clientRequestId: 'rpc-sign-tx-pending'
+    });
+
+    await approveNextRequest();
+
+    const signedTransaction = await routePromise;
+    assert.equal(processCalls, 1);
+    assert.match(signedTransaction, /^0x/);
+  } finally {
+    mpcService.processPendingWireSignRequests = originalProcessPending;
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+  }
+});
+
 test('routeRequest personal_sign 对 MPC 钱包审批后返回 wire 签名', async () => {
   await setupUnlockedMpcWallet();
   const restoreMpc = installMpcSignatureEngine({
@@ -294,6 +477,76 @@ test('routeRequest personal_sign 对 MPC 钱包审批后返回 wire 签名', asy
     assert.equal(await routePromise, `0x${'56'.repeat(65)}`);
   } finally {
     restoreMpc();
+  }
+});
+
+test('routeRequest personal_sign 会等待 pending MPC 签名请求完成', async () => {
+  await setupUnlockedMpcWallet();
+  const originalProcessPending = mpcService.processPendingWireSignRequests;
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  let processCalls = 0;
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    fetchMessages: async () => ({ messages: [], nextSequence: 0 })
+  };
+  mpcService.processPendingWireSignRequests = async (options = {}) => {
+    processCalls += 1;
+    const requests = Object.values(await getMpcSignRequests());
+    const requestId = options.requestId || requests[0]?.id;
+    const request = requests.find((item) => item.id === requestId);
+    assert.ok(request, 'pending MPC sign request should exist');
+    await saveMpcSignRequest({
+      ...request,
+      status: 'completed',
+      signature: `0x${'90'.repeat(65)}`,
+      completedAt: '2'
+    });
+    return { processed: [{ requestId, status: 'completed' }], count: 1 };
+  };
+  setMpcTssEngineForTests({
+    async startSign(input) {
+      return {
+        sessionId: input.sessionId,
+        requestId: input.requestId,
+        senderIndex: input.senderIndex,
+        protocol: 'sign',
+        result: { status: 'waiting' }
+      };
+    },
+    async receiveMessage({ state }) {
+      return state;
+    },
+    async advance({ state }) {
+      return state;
+    },
+    async getOutgoingMessages() {
+      return [];
+    },
+    async getResult() {
+      return { status: 'waiting' };
+    }
+  });
+
+  try {
+    const routePromise = routeRequest('personal_sign', [
+      'hello',
+      '0x1111111111111111111111111111111111111111'
+    ], {
+      origin: 'https://dapp.example',
+      tabId: 1,
+      clientRequestId: 'rpc-pending'
+    });
+
+    await approveNextRequest();
+
+    assert.equal(await routePromise, `0x${'90'.repeat(65)}`);
+    assert.equal(processCalls, 1);
+  } finally {
+    mpcService.processPendingWireSignRequests = originalProcessPending;
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
   }
 });
 

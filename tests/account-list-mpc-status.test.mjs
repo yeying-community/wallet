@@ -164,6 +164,7 @@ test('待接受 MPC 邀请详情图标打开邀请详情', () => {
     walletList: { tagName: 'div' },
     mpcWalletDetailName: { tagName: 'h3' },
     mpcWalletDetailStatus: { tagName: 'div' },
+    mpcWalletDetailSigningStatus: { tagName: 'div' },
     mpcWalletDetailAddress: { tagName: 'div' },
     mpcWalletDetailThreshold: { tagName: 'div' },
     mpcWalletDetailParticipants: { tagName: 'div' },
@@ -192,6 +193,7 @@ test('待接受 MPC 邀请详情图标打开邀请详情', () => {
     assert.equal(elements.accountsPage.classList.contains('hidden'), true);
     assert.equal(elements.mpcWalletDetailName.textContent, 'mcp10');
     assert.equal(elements.mpcWalletDetailStatus.textContent, '待接受邀请');
+    assert.equal(elements.mpcWalletDetailSigningStatus.textContent, '不可签名');
     assert.equal(elements.mpcWalletDetailThreshold.textContent, '2 / 2');
     assert.equal(elements.mpcWalletDetailParticipants.textContent, '0x1, 0x2');
     assert.equal(elements.cancelMpcWalletCreationBtn.classList.contains('hidden'), false);
@@ -268,6 +270,7 @@ test('MPC 钱包详情只请求并展示当前钱包的会话', async () => {
     walletList: { tagName: 'div' },
     mpcWalletDetailName: { tagName: 'h3' },
     mpcWalletDetailStatus: { tagName: 'div' },
+    mpcWalletDetailSigningStatus: { tagName: 'div' },
     mpcWalletDetailAddress: { tagName: 'div' },
     mpcWalletDetailThreshold: { tagName: 'div' },
     mpcWalletDetailParticipants: { tagName: 'div' },
@@ -289,6 +292,7 @@ test('MPC 钱包详情只请求并展示当前钱包的会话', async () => {
               name: '家庭金库',
               type: 'mpc',
               status: 'active',
+              signingStatus: 'available',
               address: '0x1111111111111111111111111111111111111111',
               threshold: 2,
               participants: ['0x1', '0x2', '0x3'],
@@ -315,11 +319,45 @@ test('MPC 钱包详情只请求并展示当前钱包的会话', async () => {
     assert.equal(elements.accountsPage.classList.contains('hidden'), true);
     assert.equal(elements.mpcWalletDetailName.textContent, '家庭金库');
     assert.equal(elements.mpcWalletDetailStatus.textContent, '可用');
+    assert.equal(elements.mpcWalletDetailSigningStatus.textContent, '可签名');
     assert.equal(elements.mpcWalletDetailAddress.textContent, '0x1111...1111');
     assert.equal(elements.mpcWalletDetailThreshold.textContent, '2 / 3');
     assert.equal(elements.cancelMpcWalletCreationBtn.classList.contains('hidden'), true);
     assert.match(elements.mpcWalletDetailSessions.innerHTML, /轮次 2/);
     assert.doesNotMatch(elements.mpcWalletDetailSessions.innerHTML, /暂无会话/);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test('MPC 钱包详情展示签名材料缺失原因', () => {
+  const { document, elements } = createDocument({
+    mpcWalletDetailName: { tagName: 'h3' },
+    mpcWalletDetailStatus: { tagName: 'div' },
+    mpcWalletDetailSigningStatus: { tagName: 'div' },
+    mpcWalletDetailAddress: { tagName: 'div' },
+    mpcWalletDetailThreshold: { tagName: 'div' },
+    mpcWalletDetailParticipants: { tagName: 'div' },
+    mpcWalletDetailSessions: { tagName: 'div' },
+    cancelMpcWalletCreationBtn: { tagName: 'button', _classes: 'hidden' },
+  });
+  globalThis.document = document;
+  try {
+    const controller = new AccountListController({ wallet: {} });
+    controller.renderMpcWalletDetail({
+      id: 'mpc-1',
+      name: 'mpc10',
+      type: 'mpc',
+      status: 'keygen_completed',
+      signingStatus: 'unavailable',
+      signingUnavailableReason: 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND',
+      address: '0x1111111111111111111111111111111111111111',
+      threshold: 2,
+      participants: ['0x1', '0x2'],
+    }, []);
+
+    assert.equal(elements.mpcWalletDetailStatus.textContent, '已完成');
+    assert.equal(elements.mpcWalletDetailSigningStatus.textContent, '签名材料缺失，请等待或重试签名能力准备');
   } finally {
     delete globalThis.document;
   }

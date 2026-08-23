@@ -346,6 +346,56 @@ test('钱包列表暴露可选择的 MPC 钱包账户并支持切换', async () 
   );
 });
 
+test('钱包列表按本地 completeKeyShare 明确收敛 MPC 签名能力状态', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'active',
+    address: '0x2222222222222222222222222222222222222222',
+    publicKey: '03abcdef',
+    keygenSessionId: 'session-1',
+    threshold: 2,
+    participants: ['0x1', '0x2'],
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcKeyShare({
+    id: 'share-1',
+    walletId: 'mpc-wallet-1',
+    sessionId: 'session-1',
+    participantId: '0x1',
+    share: { secret: 'local-share' },
+    shareVersion: 1,
+    keyVersion: 1,
+  });
+
+  let result = await HandleGetWalletList();
+  let wallet = result.wallets.find((item) => item.id === 'mpc-wallet-1');
+  assert.equal(wallet.status, 'keygen_completed');
+  assert.equal(wallet.signingStatus, 'unavailable');
+  assert.equal(wallet.signingUnavailableReason, 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND');
+
+  await saveMpcKeyShare({
+    id: 'share-1',
+    walletId: 'mpc-wallet-1',
+    sessionId: 'session-1',
+    participantId: '0x1',
+    share: { secret: 'local-share' },
+    completeKeyShare: { secret: 'complete-local-share' },
+    completeKeyShareStatus: 'completed',
+    auxInfoStatus: 'completed',
+    shareVersion: 1,
+    keyVersion: 1,
+  });
+
+  result = await HandleGetWalletList();
+  wallet = result.wallets.find((item) => item.id === 'mpc-wallet-1');
+  assert.equal(wallet.status, 'active');
+  assert.equal(wallet.signingStatus, 'available');
+  assert.equal(wallet.signingUnavailableReason, '');
+});
+
 test('session 数字字段缺失时不会把本地值误同步为 0', async () => {
   await saveMpcWallet({
     id: 'mpc-wallet-1',

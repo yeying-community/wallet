@@ -201,6 +201,28 @@ async function syncIncompleteMpcWalletsFromCoordinator(mpcWallets = []) {
   return syncedWallets;
 }
 
+async function reconcileMpcWalletSigningReadiness(mpcWallets = []) {
+  const reconciled = [];
+  for (const wallet of Array.isArray(mpcWallets) ? mpcWallets : []) {
+    if (!wallet?.id || !String(wallet?.address || '').trim()) {
+      reconciled.push(wallet);
+      continue;
+    }
+    try {
+      const result = await mpcService.reconcileWalletSigningReadiness(wallet);
+      reconciled.push(result?.wallet || wallet);
+    } catch (error) {
+      console.warn('[WalletOperations] MPC 钱包签名能力状态检查失败:', wallet.id, error?.message || error);
+      reconciled.push({
+        ...wallet,
+        signingStatus: 'unavailable',
+        signingUnavailableReason: error?.message || 'MPC_SIGNING_READINESS_CHECK_FAILED'
+      });
+    }
+  }
+  return reconciled;
+}
+
 async function rememberUnlockedAccount(account, password) {
   if (!account?.id || !password) {
     return;
@@ -244,7 +266,9 @@ export async function HandleGetWalletList() {
     const selectedAccountId = await getSelectedAccountId();
     const walletsData = await getWallets();
     const repairedMpcWallets = await repairMpcWalletNamesFromLocalSessions(await getMpcWalletList());
-    const mpcWallets = await syncIncompleteMpcWalletsFromCoordinator(repairedMpcWallets);
+    const mpcWallets = await reconcileMpcWalletSigningReadiness(
+      await syncIncompleteMpcWalletsFromCoordinator(repairedMpcWallets)
+    );
 
     // 按 walletId 分组
     const walletMap = new Map();

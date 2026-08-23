@@ -18,9 +18,17 @@ import {
 import { handleEthAccounts, handleEthRequestAccounts, handleWalletGetPermissions, handleWalletRequestPermissions, handleWalletRevokePermissions } from './account-handler.js';
 import { handleEthChainId, handleNetVersion, handleSwitchChain, handleAddEthereumChain } from './chain-handler.js';
 import { handleRpcMethod } from './rpc-handler.js';
-import { resolveMpcAccountIdByAddress, signTransaction, signMessage, signTypedData, isMpcAccountId } from './signing.js';
-import { getSelectedAccount, isAuthorized, updateUserSetting, getNetworkByChainId, getNetworkConfigByKey } from '../storage/index.js';
+import {
+  buildMpcSignedTransactionFromSignRequest,
+  resolveMpcAccountIdByAddress,
+  signTransaction,
+  signMessage,
+  signTypedData,
+  isMpcAccountId
+} from './signing.js';
+import { getSelectedAccount, isAuthorized, updateUserSetting, getNetworkByChainId, getNetworkConfigByKey, getMpcSignRequest } from '../storage/index.js';
 import { focusUnlockWindow, requestUnlock } from './unlock-flow.js';
+import { mpcService } from './mpc-service.js';
 import { withPopupBoundsAsync } from './window-utils.js';
 import { DEFAULT_NETWORK, POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
@@ -44,6 +52,9 @@ import {
   removePendingRequest,
   waitForApprovalResponse
 } from './approval-flow.js';
+
+const MPC_SIGN_WAIT_TIMEOUT_MS = 60000;
+const MPC_SIGN_WAIT_INTERVAL_MS = 1500;
 
 async function handleFocusPendingApproval(origin, tabId) {
   await ensureApprovalStateHydrated();
@@ -224,6 +235,92 @@ async function waitForApprovalAndExecute({
   } catch (error) {
     removePendingRequest(requestId);
     throw error;
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isMpcSigningPendingError(error) {
+  return String(error?.code || error?.message || '').trim() === 'MPC_SIGNING_PENDING';
+}
+
+function extractMpcCompletedSignature(signRequest) {
+  return String(
+    signRequest?.signature
+    || signRequest?.signatureHex
+    || (typeof signRequest?.result?.signature === 'string' ? signRequest.result.signature : '')
+    || (typeof signRequest?.result?.signatureHex === 'string' ? signRequest.result.signatureHex : '')
+    || ''
+  ).trim();
+}
+
+function extractMpcCompletedSignedTransaction(signRequest) {
+  return buildMpcSignedTransactionFromSignRequest(signRequest);
+}
+
+function extractMpcCompletedResult(signRequest, resultType) {
+  if (resultType === 'signedTransaction') {
+    return extractMpcCompletedSignedTransaction(signRequest);
+  }
+  return extractMpcCompletedSignature(signRequest);
+}
+
+function createMpcCompletedWithoutResultError(resultType) {
+  if (resultType === 'signedTransaction') {
+    return createInternalError('MPC transaction signing completed without signed transaction');
+  }
+  return createInternalError('MPC signing completed without signature');
+}
+
+async function waitForMpcSignatureCompletion(pendingError, { resultType = 'signature' } = {}) {
+  const requestId = String(pendingError?.requestId || pendingError?.signRequest?.id || '').trim();
+  if (!requestId) {
+    throw pendingError;
+  }
+
+  const deadline = Date.now() + MPC_SIGN_WAIT_TIMEOUT_MS;
+  let lastStatus = String(pendingError?.signRequest?.status || 'pending').trim().toLowerCase();
+  while (Date.now() < deadline) {
+    await mpcService.processPendingWireSignRequests({
+      requestId,
+      syncRemote: true,
+      maxTicks: 5
+    }).catch(() => null);
+
+    const signRequest = await getMpcSignRequest(requestId);
+    lastStatus = String(signRequest?.status || lastStatus || '').trim().toLowerCase();
+    if (lastStatus === 'completed') {
+      const result = extractMpcCompletedResult(signRequest, resultType);
+      if (!result) {
+        throw createMpcCompletedWithoutResultError(resultType);
+      }
+      return result;
+    }
+    if (lastStatus === 'rejected') {
+      throw createUserRejectedError('MPC signing request rejected');
+    }
+    if (lastStatus === 'expired') {
+      throw createTimeoutError('MPC signing request expired');
+    }
+    if (lastStatus === 'failed') {
+      throw createInternalError(signRequest?.error || 'MPC signing request failed');
+    }
+    await sleep(MPC_SIGN_WAIT_INTERVAL_MS);
+  }
+
+  throw createTimeoutError('MPC signing is waiting for other participants');
+}
+
+async function executeMpcAwareSignature(operation, options = {}) {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isMpcSigningPendingError(error)) {
+      throw error;
+    }
+    return await waitForMpcSignatureCompletion(error, options);
   }
 }
 
@@ -637,7 +734,10 @@ async function handleSendTransaction(account, params, origin, tabId, clientReque
     },
     onApproved: async () => {
       console.log('✅ Transaction approved, signing...');
-      const result = await signTransaction(signerAccountId, transaction);
+      const result = await executeMpcAwareSignature(
+        () => signTransaction(signerAccountId, transaction),
+        isMpcAccountId(signerAccountId) ? { resultType: 'signedTransaction' } : {}
+      );
       if (isMpcAccountId(signerAccountId)) {
         return await broadcastSignedTransaction(result);
       }
@@ -695,7 +795,10 @@ async function handleSignTransaction(account, params, origin, tabId, clientReque
       });
       return requestId;
     },
-    onApproved: async () => signTransaction(signerAccountId, transaction),
+    onApproved: async () => executeMpcAwareSignature(
+      () => signTransaction(signerAccountId, transaction),
+      isMpcAccountId(signerAccountId) ? { resultType: 'signedTransaction' } : {}
+    ),
     onRejectedMessage: 'User rejected the transaction'
   });
 }
@@ -760,7 +863,7 @@ async function handlePersonalSign(account, params, origin, tabId, method, client
       });
       return requestId;
     },
-    onApproved: async () => signMessage(signerAccountId, messageToSign),
+    onApproved: async () => executeMpcAwareSignature(() => signMessage(signerAccountId, messageToSign)),
     onRejectedMessage: 'User rejected the signature request'
   });
 }
@@ -824,7 +927,7 @@ async function handleSignTypedData(account, params, origin, tabId, method, clien
     },
     onApproved: async () => {
       const { domain, types, message: value } = typedData;
-      return signTypedData(signerAccountId, domain, types, value);
+      return executeMpcAwareSignature(() => signTypedData(signerAccountId, domain, types, value));
     },
     onRejectedMessage: 'User rejected the signature request'
   });

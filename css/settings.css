@@ -734,6 +734,13 @@
   overflow-wrap: anywhere;
 }
 
+.mpc-activity-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
+}
+
 .sync-log-toolbar {
   margin-bottom: 12px;
 }

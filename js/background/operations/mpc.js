@@ -615,7 +615,9 @@ export async function handleMpcGetSessions(options = {}) {
   try {
     const sessions = await mpcService.getSessions(options?.walletId, { localOnly: Boolean(options?.localOnly) });
     const walletId = String(options?.walletId || '').trim();
-    const wallet = walletId ? await getMpcWallet(walletId) : null;
+    const wallet = walletId
+      ? (await mpcService.reconcileWalletSigningReadiness(walletId))?.wallet
+      : null;
     return { success: true, sessions, wallet };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to get sessions' };
