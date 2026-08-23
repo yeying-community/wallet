@@ -82,6 +82,8 @@
 /* Settings actions share the identity detail action height, including small variants. */
 #settingsPage .settings-section .btn,
 #walletIdentityDetailPage .settings-body .btn,
+#walletIdentityPasskeyPage .settings-body .btn,
+#walletIdentityAuthenticatorPage .settings-body .btn,
 #backupSyncDetailPage .settings-body .btn,
 #custodyDetailPage .settings-body .btn,
 #mpcDetailPage .settings-body .btn {
@@ -264,6 +266,29 @@
 .identity-detail-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; margin-top: 18px; }
 .wallet-identity-details .detail-label,
 .wallet-identity-details .detail-value { font-size: 13px; font-weight: 400; color: #374151; }
+
+.identity-security-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.identity-management-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.identity-management-card h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: #111827;
+}
 
 .identity-passkey-section {
   margin-top: 18px;

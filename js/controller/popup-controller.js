@@ -642,6 +642,8 @@ export class PopupController {
       backupSyncLogsPage: document.getElementById('backupSyncLogsPage')?.dataset?.returnPage || 'settingsPage',
       mpcLogsPage: document.getElementById('mpcLogsPage')?.dataset?.returnPage || 'mpcDetailPage',
       walletIdentityDetailPage: 'settingsPage',
+      walletIdentityPasskeyPage: 'walletIdentityDetailPage',
+      walletIdentityAuthenticatorPage: 'walletIdentityDetailPage',
       walletIdentityEditPage: 'walletIdentityDetailPage',
       backupSyncDetailPage: 'settingsPage',
       custodyDetailPage: 'settingsPage',

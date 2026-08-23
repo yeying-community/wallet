@@ -37,7 +37,11 @@ export class WalletIdentitySettingsController {
     document.getElementById('viewWalletIdentityBtn')?.addEventListener('click', () => this.openIdentityDetails());
     document.getElementById('closeWalletIdentityDetailModal')?.addEventListener('click', () => this.closeIdentityDetails());
     document.getElementById('walletIdentityDetailBackBtn')?.addEventListener('click', () => showPage('settingsPage'));
+    document.getElementById('walletIdentityPasskeyBackBtn')?.addEventListener('click', () => showPage('walletIdentityDetailPage'));
+    document.getElementById('walletIdentityAuthenticatorBackBtn')?.addEventListener('click', () => showPage('walletIdentityDetailPage'));
     document.getElementById('changeWalletIdentityPageBtn')?.addEventListener('click', () => this.changeWalletIdentity());
+    document.getElementById('manageWalletIdentityPasskeysBtn')?.addEventListener('click', () => this.openIdentityPasskeys());
+    document.getElementById('manageWalletIdentityAuthenticatorsBtn')?.addEventListener('click', () => this.openIdentityAuthenticators());
     document.getElementById('registerWalletIdentityPasskeyBtn')?.addEventListener('click', () => this.registerIdentityPasskey());
     document.getElementById('refreshWalletIdentityPasskeysBtn')?.addEventListener('click', () => this.refreshIdentityPasskeys());
     document.getElementById('refreshWalletIdentityTotpBtn')?.addEventListener('click', () => this.refreshIdentityTotp());
@@ -216,8 +220,8 @@ export class WalletIdentitySettingsController {
       this.setDetailValue('walletIdentityDetailEndpointPage', this.endpoint() || DEFAULT_NODE_ENDPOINT);
       showPage('walletIdentityDetailPage');
       await Promise.all([
-        this.refreshIdentityPasskeys({ quiet: true }),
-        this.refreshIdentityTotp({ quiet: true })
+        this.refreshIdentityPasskeySummary({ quiet: true }),
+        this.refreshIdentityTotpSummary({ quiet: true })
       ]);
     } catch (error) {
       showError(error?.message || '无法读取钱包身份详情');
@@ -770,6 +774,16 @@ export class WalletIdentitySettingsController {
     return { identityId, identityDid: signed?.id || identityDid, identityDocument: signed, password };
   }
 
+  async openIdentityPasskeys() {
+    showPage('walletIdentityPasskeyPage');
+    await this.refreshIdentityPasskeys({ quiet: true });
+  }
+
+  async openIdentityAuthenticators() {
+    showPage('walletIdentityAuthenticatorPage');
+    await this.refreshIdentityTotp({ quiet: true });
+  }
+
   async registerIdentityPasskey() {
     try {
       const endpoint = this.endpoint();
@@ -780,6 +794,7 @@ export class WalletIdentitySettingsController {
       hideWaiting();
       showSuccess('通行证已注册');
       await this.refreshIdentityPasskeys({ quiet: true });
+      await this.refreshIdentityPasskeySummary({ quiet: true });
     } catch (error) {
       hideWaiting();
       showError(error?.message || '注册通行证失败');
@@ -798,10 +813,26 @@ export class WalletIdentitySettingsController {
       this.renderIdentityPasskeys(credentials);
       const activeCount = credentials.filter(item => !item?.revokedAt).length;
       this.setPasskeyStatus(activeCount ? `已启用 ${activeCount} 个通行证` : '未启用通行证；可点击“注册通行证”启用无钱包插件登录。');
+      this.setPasskeySummary(activeCount ? `已启用 ${activeCount} 个通行证` : '未启用通行证');
     } catch (error) {
       const message = error?.message || '加载通行证失败';
       this.renderIdentityPasskeys([]);
       this.setPasskeyStatus(message);
+      if (!quiet) showError(message);
+    }
+  }
+
+  async refreshIdentityPasskeySummary({ quiet = false } = {}) {
+    try {
+      const endpoint = this.endpoint();
+      const { identityDid } = await this.selectedIdentityContext();
+      const result = await this.listIdentityPasskeys(endpoint, { identity: identityDid });
+      const credentials = Array.isArray(result?.credentials) ? result.credentials : [];
+      const activeCount = credentials.filter(item => !item?.revokedAt).length;
+      this.setPasskeySummary(activeCount ? `已启用 ${activeCount} 个通行证` : '未启用通行证');
+    } catch (error) {
+      const message = error?.message || '加载通行证状态失败';
+      this.setPasskeySummary(message);
       if (!quiet) showError(message);
     }
   }
@@ -849,8 +880,18 @@ export class WalletIdentitySettingsController {
     if (element) element.textContent = text || '';
   }
 
+  setPasskeySummary(text) {
+    const element = document.getElementById('walletIdentityPasskeySummaryPage');
+    if (element) element.textContent = text || '';
+  }
+
   setTotpStatus(text) {
     const element = document.getElementById('walletIdentityTotpStatusPage');
+    if (element) element.textContent = text || '';
+  }
+
+  setTotpSummary(text) {
+    const element = document.getElementById('walletIdentityTotpSummaryPage');
     if (element) element.textContent = text || '';
   }
 
@@ -876,6 +917,7 @@ export class WalletIdentitySettingsController {
       hideWaiting();
       showSuccess('通行证已撤销');
       await this.refreshIdentityPasskeys({ quiet: true });
+      await this.refreshIdentityPasskeySummary({ quiet: true });
     } catch (error) {
       hideWaiting();
       showError(error?.message || '撤销通行证失败');
@@ -890,12 +932,28 @@ export class WalletIdentitySettingsController {
       const totp = result?.totp || {};
       const enabled = Boolean(totp.enabled);
       this.setTotpStatus(enabled ? `已启用${totp.deviceName ? `：${totp.deviceName}` : ''}` : '未启用 TOTP 验证器。');
+      this.setTotpSummary(enabled ? `TOTP 已启用${totp.deviceName ? `：${totp.deviceName}` : ''}` : 'TOTP 未启用');
       document.getElementById('setupWalletIdentityTotpBtn')?.classList.toggle('hidden', enabled);
       document.getElementById('revokeWalletIdentityTotpBtn')?.classList.toggle('hidden', !enabled);
       this.setTotpSetupVisible(totp.status === 'pending');
     } catch (error) {
       const message = error?.message || '加载 TOTP 状态失败';
       this.setTotpStatus(message);
+      if (!quiet) showError(message);
+    }
+  }
+
+  async refreshIdentityTotpSummary({ quiet = false } = {}) {
+    try {
+      const endpoint = this.endpoint();
+      const { identityDid } = await this.selectedIdentityContext();
+      const result = await this.getIdentityTotp(endpoint, { identity: identityDid });
+      const totp = result?.totp || {};
+      const enabled = Boolean(totp.enabled);
+      this.setTotpSummary(enabled ? `TOTP 已启用${totp.deviceName ? `：${totp.deviceName}` : ''}` : 'TOTP 未启用');
+    } catch (error) {
+      const message = error?.message || '加载验证器状态失败';
+      this.setTotpSummary(message);
       if (!quiet) showError(message);
     }
   }
@@ -937,6 +995,7 @@ export class WalletIdentitySettingsController {
       this.setTotpSetupVisible(false);
       showSuccess('TOTP 已启用');
       await this.refreshIdentityTotp({ quiet: true });
+      await this.refreshIdentityTotpSummary({ quiet: true });
     } catch (error) {
       hideWaiting();
       const message = error?.message || '确认 TOTP 失败';
@@ -956,6 +1015,7 @@ export class WalletIdentitySettingsController {
       this.setTotpSetupVisible(false);
       showSuccess('TOTP 已撤销');
       await this.refreshIdentityTotp({ quiet: true });
+      await this.refreshIdentityTotpSummary({ quiet: true });
     } catch (error) {
       hideWaiting();
       const message = error?.message || '撤销 TOTP 失败';
