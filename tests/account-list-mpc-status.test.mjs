@@ -74,7 +74,7 @@ test('账户管理把 rounds 的 MPC 钱包展示为密钥生成中', () => {
   }
 });
 
-test('账户管理把 keygen completed 的 MPC 钱包状态简化为已完成', () => {
+test('账户管理把 keygen completed 且签名未就绪的 MPC 钱包展示为签名准备中', () => {
   const { document, elements } = createDocument({ walletList: { tagName: 'div' } });
   globalThis.document = document;
   try {
@@ -90,7 +90,7 @@ test('账户管理把 keygen completed 的 MPC 钱包状态简化为已完成', 
       accounts: [],
     }]);
 
-    assert.match(elements.walletList.innerHTML, /门限 2 \/ 2 · 已完成/);
+    assert.match(elements.walletList.innerHTML, /门限 2 \/ 2 · 签名准备中/);
     assert.doesNotMatch(elements.walletList.innerHTML, /签名启用中/);
   } finally {
     delete globalThis.document;
@@ -199,6 +199,7 @@ test('待接受 MPC 邀请详情图标打开邀请详情', () => {
     mpcWalletDetailParticipants: { tagName: 'div' },
     mpcWalletDetailSessions: { tagName: 'div' },
     cancelMpcWalletCreationBtn: { tagName: 'button', _classes: 'hidden' },
+    prepareMpcWalletSigningBtn: { tagName: 'button', _classes: 'hidden' },
   });
   globalThis.document = document;
   try {
@@ -309,6 +310,7 @@ test('MPC 钱包详情只请求并展示当前钱包的会话', async () => {
     mpcWalletDetailParticipants: { tagName: 'div' },
     mpcWalletDetailSessions: { tagName: 'div' },
     cancelMpcWalletCreationBtn: { tagName: 'button', _classes: 'hidden' },
+    prepareMpcWalletSigningBtn: { tagName: 'button', _classes: 'hidden' },
   });
   globalThis.document = document;
   const requestedWalletIds = [];
@@ -351,7 +353,7 @@ test('MPC 钱包详情只请求并展示当前钱包的会话', async () => {
     assert.equal(elements.mpcWalletDetailPage.classList.contains('hidden'), false);
     assert.equal(elements.accountsPage.classList.contains('hidden'), true);
     assert.equal(elements.mpcWalletDetailName.textContent, '家庭金库');
-    assert.equal(elements.mpcWalletDetailStatus.textContent, '可用');
+    assert.equal(elements.mpcWalletDetailStatus.textContent, '已完成');
     assert.equal(elements.mpcWalletDetailSigningStatus.textContent, '可签名');
     assert.equal(elements.mpcWalletDetailAddress.textContent, '0x1111...1111');
     assert.equal(elements.mpcWalletDetailThreshold.textContent, '2 / 3');
@@ -373,6 +375,7 @@ test('MPC 钱包详情把签名材料缺失展示为短状态', () => {
     mpcWalletDetailParticipants: { tagName: 'div' },
     mpcWalletDetailSessions: { tagName: 'div' },
     cancelMpcWalletCreationBtn: { tagName: 'button', _classes: 'hidden' },
+    prepareMpcWalletSigningBtn: { tagName: 'button', _classes: 'hidden' },
   });
   globalThis.document = document;
   try {
@@ -389,8 +392,9 @@ test('MPC 钱包详情把签名材料缺失展示为短状态', () => {
       participants: ['0x1', '0x2'],
     }, []);
 
-    assert.equal(elements.mpcWalletDetailStatus.textContent, '已完成');
+    assert.equal(elements.mpcWalletDetailStatus.textContent, '签名准备中');
     assert.equal(elements.mpcWalletDetailSigningStatus.textContent, '准备中');
+    assert.equal(elements.prepareMpcWalletSigningBtn.classList.contains('hidden'), false);
   } finally {
     delete globalThis.document;
   }
@@ -568,6 +572,200 @@ test('取消未完成 MPC 钱包创建会调用取消会话并刷新列表', asy
     assert.match(elements.walletList.innerHTML, /暂无钱包/);
     assert.equal(controller.mpcWalletsById.has('mpc-1'), false);
   } finally {
+    delete globalThis.document;
+  }
+});
+
+test('账户管理可从 MPC 钱包卡片删除已生成地址但不可用的钱包', async () => {
+  const { document, elements } = createDocument({
+    accountsPage: { tagName: 'div', _classes: 'page' },
+    mpcWalletDetailPage: { tagName: 'div', _classes: 'page hidden' },
+    walletList: { tagName: 'div' },
+  });
+  globalThis.document = document;
+  let deleted = null;
+  let walletListLoads = 0;
+  let refreshed = 0;
+  try {
+    const controller = new AccountListController({
+      wallet: {
+        getWalletList: async () => {
+          walletListLoads += 1;
+          return [];
+        },
+        listMpcInvites: async () => ({ success: true, items: [] }),
+        deleteMpcWallet: async (input) => {
+          deleted = input;
+          return { success: true };
+        },
+      },
+      promptPassword: async () => 'password123',
+      onWalletUpdated: async () => {
+        refreshed += 1;
+      },
+    });
+
+    controller.renderWalletList([{
+      id: 'mpc-1',
+      name: '坏的钱包',
+      type: 'mpc',
+      status: 'keygen_completed',
+      signingStatus: 'unavailable',
+      signingUnavailableReason: 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND',
+      address: '0x1234567890123456789012345678901234567890',
+      keygenSessionId: 'session-keygen-1',
+      threshold: 2,
+      participants: ['0x1', '0x2'],
+      accounts: [],
+    }]);
+
+    assert.match(elements.walletList.innerHTML, /mpc-wallet-delete-btn/);
+    assert.match(elements.walletList.innerHTML, /data-wallet-id="mpc-1"/);
+
+    await controller.handleDeleteMpcWallet('mpc-1');
+
+    assert.deepEqual(deleted, {
+      walletId: 'mpc-1',
+      password: 'password123',
+    });
+    assert.equal(walletListLoads, 1);
+    assert.equal(refreshed, 1);
+    assert.match(elements.walletList.innerHTML, /暂无钱包/);
+    assert.equal(controller.mpcWalletsById.has('mpc-1'), false);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test('重试 MPC 签名准备会调用钱包操作并刷新详情', async () => {
+  const { document } = createDocument({
+    walletList: { tagName: 'div' },
+    mpcWalletDetailPage: { tagName: 'div', _classes: 'page' },
+    mpcWalletDetailName: { tagName: 'h3' },
+    mpcWalletDetailStatus: { tagName: 'div' },
+    mpcWalletDetailSigningStatus: { tagName: 'div' },
+    mpcWalletDetailAddress: { tagName: 'div' },
+    mpcWalletDetailThreshold: { tagName: 'div' },
+    mpcWalletDetailParticipants: { tagName: 'div' },
+    mpcWalletDetailSessions: { tagName: 'div' },
+    cancelMpcWalletCreationBtn: { tagName: 'button', _classes: 'hidden' },
+    prepareMpcWalletSigningBtn: { tagName: 'button', _classes: 'hidden' },
+    globalWaitingOverlay: { tagName: 'div', _classes: 'hidden' },
+    globalToast: { tagName: 'div' },
+  });
+  globalThis.document = document;
+  let prepareInput = null;
+  let walletListLoads = 0;
+  let refreshed = 0;
+  let sessionRequest = null;
+  try {
+    const controller = new AccountListController({
+      wallet: {
+        prepareMpcWalletSigning: async (input) => {
+          prepareInput = input;
+          return {
+            success: true,
+            repaired: true,
+            diagnosis: { canSign: true }
+          };
+        },
+        getWalletList: async () => {
+          walletListLoads += 1;
+          return [];
+        },
+        listMpcInvites: async () => ({ success: true, items: [] }),
+        getMpcSessions: async (walletId, options) => {
+          sessionRequest = { walletId, options };
+          throw new Error('加载超时');
+        },
+      },
+      promptPassword: async () => 'password123',
+      onWalletUpdated: async () => {
+        refreshed += 1;
+      },
+    });
+    controller.activeMpcWalletId = 'mpc-1';
+    controller.mpcWalletsById.set('mpc-1', {
+      id: 'mpc-1',
+      name: 'mpc10',
+      type: 'mpc',
+      status: 'keygen_completed',
+      signingStatus: 'unavailable',
+      address: '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      threshold: 2,
+      participants: ['0x1', '0x2'],
+    });
+
+    await controller.handlePrepareMpcWalletSigning();
+
+    assert.deepEqual(prepareInput, {
+      walletId: 'mpc-1',
+      password: 'password123',
+    });
+    assert.equal(walletListLoads, 1);
+    assert.equal(refreshed, 1);
+    assert.deepEqual(sessionRequest, {
+      walletId: 'mpc-1',
+      options: { localOnly: true },
+    });
+    assert.doesNotMatch(document.getElementById('globalToast').textContent, /MPC 会话加载失败/);
+    assert.match(document.getElementById('globalToast').textContent, /MPC 钱包签名能力已就绪/);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test('重试 MPC 签名准备超时时不会让等待层一直阻塞', async () => {
+  const { document, elements } = createDocument({
+    walletList: { tagName: 'div' },
+    mpcWalletDetailPage: { tagName: 'div', _classes: 'page' },
+    mpcWalletDetailName: { tagName: 'h3' },
+    mpcWalletDetailStatus: { tagName: 'div' },
+    mpcWalletDetailSigningStatus: { tagName: 'div' },
+    mpcWalletDetailAddress: { tagName: 'div' },
+    mpcWalletDetailThreshold: { tagName: 'div' },
+    mpcWalletDetailParticipants: { tagName: 'div' },
+    mpcWalletDetailSessions: { tagName: 'div' },
+    cancelMpcWalletCreationBtn: { tagName: 'button', _classes: 'hidden' },
+    prepareMpcWalletSigningBtn: { tagName: 'button', _classes: 'hidden' },
+    globalWaitingOverlay: { tagName: 'div', _classes: 'hidden' },
+    globalToast: { tagName: 'div' },
+  });
+  globalThis.document = document;
+  const originalSetTimeout = globalThis.setTimeout;
+  try {
+    globalThis.setTimeout = (fn) => {
+      queueMicrotask(fn);
+      return 1;
+    };
+    const controller = new AccountListController({
+      wallet: {
+        prepareMpcWalletSigning: async () => new Promise(() => {}),
+        getWalletList: async () => [],
+        listMpcInvites: async () => ({ success: true, items: [] }),
+        getMpcSessions: async () => ({ success: true, sessions: [] }),
+      },
+      promptPassword: async () => 'password123',
+      onWalletUpdated: async () => {},
+    });
+    controller.activeMpcWalletId = 'mpc-1';
+    controller.mpcWalletsById.set('mpc-1', {
+      id: 'mpc-1',
+      name: 'mpc10',
+      type: 'mpc',
+      status: 'keygen_completed',
+      signingStatus: 'unavailable',
+      address: '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      threshold: 2,
+      participants: ['0x1', '0x2'],
+    });
+
+    await controller.handlePrepareMpcWalletSigning();
+
+    assert.equal(elements.globalWaitingOverlay.classList.contains('hidden'), true);
+    assert.match(elements.globalToast.textContent, /签名准备已启动/);
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
     delete globalThis.document;
   }
 });

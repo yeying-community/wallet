@@ -3,6 +3,18 @@ import { shortenAddress, generateAvatar } from '../../common/chain/index.js';
 import { escapeHtml } from '../../common/ui/html-ui.js';
 import { clearImportWalletForm } from '../wallet/import-wallet-controller.js';
 
+function formatMpcSigningPrepareError(message) {
+  const raw = String(message || '').trim();
+  if (!raw) return '签名准备失败';
+  if (raw.includes('MPC_COMPLETE_KEY_SHARE_NOT_FOUND')) {
+    return 'MPC 签名准备尚未完成，请保持双方钱包插件打开并解锁';
+  }
+  if (raw.includes('MPC_KEYGEN_NOT_COMPLETED')) {
+    return 'MPC 钱包密钥生成尚未完成';
+  }
+  return raw;
+}
+
 export class AccountListController {
   constructor({
     wallet,
@@ -83,6 +95,9 @@ export class AccountListController {
     });
     document.getElementById('cancelMpcWalletCreationBtn')?.addEventListener('click', () => {
       void this.handleCancelMpcWalletCreation();
+    });
+    document.getElementById('prepareMpcWalletSigningBtn')?.addEventListener('click', () => {
+      void this.handlePrepareMpcWalletSigning();
     });
   }
 
@@ -304,6 +319,16 @@ export class AccountListController {
               <div class="account-name">${escapeHtml(walletName)}</div>
               <div class="account-address">${mpcAddress ? escapeHtml(shortenAddress(mpcAddress)) : escapeHtml(mpcStatus)}</div>
             </div>
+            <div class="account-actions">
+              <button
+                class="account-action-btn danger mpc-wallet-delete-btn"
+                data-wallet-id="${escapeHtml(wallet.id)}"
+                title="删除"
+                aria-label="删除 MPC 钱包"
+              >
+                🗑️
+              </button>
+            </div>
           </div>
         ` : accounts.length ? accounts.map(account => `
           <div class="account-item ${account.isSelected ? 'active' : ''}"
@@ -477,11 +502,12 @@ export class AccountListController {
       keygen_ready: '等待密钥生成',
       keygen_running: '密钥生成中',
       keygen_interrupted: '创建中断',
-      keygen_completed: '已完成',
-      active: '可用',
+      keygen_completed: '签名准备中',
+      active: '已完成',
       failed: '密钥生成失败',
     };
-    if (wallet?.address) return statusLabels[status] || '可用';
+    if (wallet?.address && String(wallet?.signingStatus || '').trim() === 'available') return '已完成';
+    if (wallet?.address) return statusLabels[status] || '签名准备中';
     return statusLabels[status] || '地址生成中';
   }
 
@@ -496,6 +522,7 @@ export class AccountListController {
       MPC_KEY_SHARE_NOT_FOUND: '不可用',
       MPC_COMPLETE_KEY_SHARE_NOT_FOUND: '准备中',
       MPC_CGGMP24_COMPLETE_KEY_SHARE_NOT_FOUND: '准备中',
+      MPC_CGGMP24_AUX_INFO_BROWSER_BLOCKING: '准备失败',
       MPC_WALLET_NOT_SIGNABLE: '不可用',
       MPC_SIGNING_READINESS_CHECK_FAILED: '检查失败'
     };
@@ -590,7 +617,9 @@ export class AccountListController {
       }
       this.renderMpcWalletDetail(freshWallet, Array.isArray(result.sessions) ? result.sessions : []);
     } catch (error) {
-      if (container) container.innerHTML = '<div class="empty-message">会话加载失败</div>';
+      if (container && !options?.preserveOnError) {
+        container.innerHTML = '<div class="empty-message">会话加载失败</div>';
+      }
       if (!options?.silent) {
         showError('MPC 会话加载失败: ' + (error?.message || '未知错误'));
       }
@@ -611,12 +640,15 @@ export class AccountListController {
       keygen_ready: '等待密钥生成',
       keygen_running: '密钥生成中',
       keygen_interrupted: '创建中断，可移除后重新创建',
-      keygen_completed: '已完成',
-      active: '可用',
+      keygen_completed: '签名准备中',
+      active: '已完成',
       failed: '密钥生成失败',
     };
     setText('mpcWalletDetailName', wallet?.name || 'MPC 钱包');
-    setText('mpcWalletDetailStatus', statusLabels[wallet?.status] || wallet?.status || '等待参与者完成密钥生成');
+    const detailStatus = wallet?.address && String(wallet?.signingStatus || '').trim() === 'available'
+      ? '已完成'
+      : (statusLabels[wallet?.status] || wallet?.status || '等待参与者完成密钥生成');
+    setText('mpcWalletDetailStatus', detailStatus);
     setText('mpcWalletDetailSigningStatus', this.getMpcWalletSigningStatusText(wallet));
     const walletAddress = String(wallet?.address || '').trim();
     setText('mpcWalletDetailAddress', walletAddress ? shortenAddress(walletAddress) : '尚未生成');
@@ -641,6 +673,12 @@ export class AccountListController {
     if (cancelBtn) {
       const canCancel = !this.isMpcWalletCreated(wallet);
       cancelBtn.classList.toggle('hidden', !canCancel);
+    }
+    const prepareSigningBtn = document.getElementById('prepareMpcWalletSigningBtn');
+    if (prepareSigningBtn) {
+      const canPrepareSigning = Boolean(walletAddress)
+        && String(wallet?.signingStatus || '').trim() !== 'available';
+      prepareSigningBtn.classList.toggle('hidden', !canPrepareSigning);
     }
 
     const container = document.getElementById('mpcWalletDetailSessions');
@@ -723,6 +761,99 @@ export class AccountListController {
       showSuccess('MPC 钱包创建已取消');
     } catch (error) {
       showError(error?.message || '取消 MPC 创建失败');
+    } finally {
+      hideWaiting();
+    }
+  }
+
+  async handlePrepareMpcWalletSigning() {
+    const walletId = this.activeMpcWalletId;
+    const wallet = this.mpcWalletsById.get(walletId);
+    if (!wallet?.id) return;
+    if (typeof this.wallet.prepareMpcWalletSigning !== 'function') {
+      showError('当前版本不支持重试签名准备');
+      return;
+    }
+    const password = await this.promptPassword?.({
+      title: '重试签名准备',
+      confirmText: '重试',
+      placeholder: '输入钱包密码',
+      onConfirm: async (value) => {
+        if (!value || value.length < 8) throw new Error('密码至少需要8位字符');
+      }
+    });
+    if (!password) return;
+    try {
+      showWaiting();
+      console.info('[MPC_UI] prepare-signing:start', {
+        walletId,
+        status: wallet.status || '',
+        signingStatus: wallet.signingStatus || '',
+        auxInfoStatus: wallet.auxInfoStatus || '',
+        completeKeyShareStatus: wallet.completeKeyShareStatus || '',
+        hasAddress: Boolean(wallet.address)
+      });
+      let prepareTimedOut = false;
+      const result = await Promise.race([
+        this.wallet.prepareMpcWalletSigning({ walletId, password }),
+        new Promise((resolve) => {
+          setTimeout(() => {
+            prepareTimedOut = true;
+            console.info('[MPC_UI] prepare-signing:timeout', { walletId });
+            resolve({
+              success: true,
+              started: true,
+              pending: true,
+              diagnosis: { canSign: false, reason: 'MPC_SIGNING_PREPARE_PENDING' }
+            });
+          }, 8000);
+        })
+      ]);
+      if (!result?.success) {
+        throw new Error(result?.error || '签名准备失败');
+      }
+      console.info('[MPC_UI] prepare-signing:result', {
+        walletId,
+        prepareTimedOut,
+        success: Boolean(result?.success),
+        started: Boolean(result?.started),
+        resumed: Boolean(result?.resumed),
+        repaired: Boolean(result?.repaired),
+        pending: Boolean(result?.pending),
+        action: result?.action || '',
+        canSign: Boolean(result?.diagnosis?.canSign),
+        reason: result?.diagnosis?.reason || '',
+        status: result?.diagnosis?.status || '',
+        signingStatus: result?.diagnosis?.signingStatus || '',
+        auxInfoStatus: result?.diagnosis?.auxInfoStatus || '',
+        hasKeyShare: Boolean(result?.diagnosis?.hasKeyShare),
+        hasAuxInfo: Boolean(result?.diagnosis?.hasAuxInfo),
+        hasCompleteKeyShare: Boolean(result?.diagnosis?.hasCompleteKeyShare),
+        participantId: result?.diagnosis?.participantId || ''
+      });
+      await this.refreshMpcWalletDetail({ localOnly: true, silent: true, preserveOnError: true });
+      await this.loadWalletList();
+      await this.onWalletUpdated?.();
+      if (result?.diagnosis?.canSign) {
+        showSuccess('MPC 钱包签名能力已就绪');
+      } else if (prepareTimedOut || result?.pending) {
+        showSuccess('签名准备已启动，请保持双方钱包插件打开并解锁');
+      } else if (result?.started || result?.resumed) {
+        showSuccess('签名准备已启动，请保持双方钱包插件打开并解锁');
+      } else {
+        const reasonMessages = {
+          MPC_COMPLETE_KEY_SHARE_NOT_FOUND: '签名准备尚未完成，请保持双方钱包插件打开并解锁',
+          MPC_CGGMP24_AUX_INFO_BROWSER_BLOCKING: '当前 MPC 引擎无法在浏览器内完成签名材料准备'
+        };
+        const reason = String(result?.diagnosis?.reason || result?.diagnosis?.signingUnavailableReason || '').trim();
+        showError(reasonMessages[reason] || reason || 'MPC 签名能力仍未就绪');
+      }
+    } catch (error) {
+      console.warn('[MPC_UI] prepare-signing:error', {
+        walletId,
+        error: error?.message || String(error || '')
+      });
+      showError(formatMpcSigningPrepareError(error?.message || '签名准备失败'));
     } finally {
       hideWaiting();
     }
@@ -893,6 +1024,13 @@ export class AccountListController {
       });
     });
 
+    container.querySelectorAll('.mpc-wallet-delete-btn').forEach(btn => {
+      btn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        void this.handleDeleteMpcWallet(btn.dataset.walletId);
+      });
+    });
+
     container.querySelectorAll('.mpc-invite-detail-btn').forEach(btn => {
       btn.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -930,5 +1068,50 @@ export class AccountListController {
         }
       });
     });
+  }
+
+  async handleDeleteMpcWallet(walletId = this.activeMpcWalletId) {
+    const normalizedWalletId = String(walletId || '').trim();
+    const wallet = this.mpcWalletsById.get(normalizedWalletId);
+    if (!wallet?.id) {
+      showError('未找到 MPC 钱包');
+      return;
+    }
+    if (typeof this.wallet.deleteMpcWallet !== 'function') {
+      showError('当前版本不支持删除 MPC 钱包');
+      return;
+    }
+    try {
+      const password = await this.promptPassword?.({
+        title: '删除 MPC 钱包',
+        confirmText: '确认删除',
+        placeholder: '输入钱包密码',
+        onConfirm: async (input) => {
+          if (!input || input.length < 8) {
+            throw new Error('密码至少需要8位字符');
+          }
+        }
+      });
+      if (!password) return;
+      showWaiting();
+      const result = await this.wallet.deleteMpcWallet({
+        walletId: normalizedWalletId,
+        password,
+      });
+      if (!result?.success) {
+        throw new Error(result?.error || '删除 MPC 钱包失败');
+      }
+      if (this.activeMpcWalletId === normalizedWalletId) {
+        this.closeMpcWalletDetail();
+      }
+      this.mpcWalletsById.delete(normalizedWalletId);
+      await this.loadWalletList();
+      await this.onWalletUpdated?.();
+      showSuccess('MPC 钱包已删除');
+    } catch (error) {
+      showError(error?.message || '删除 MPC 钱包失败');
+    } finally {
+      hideWaiting();
+    }
   }
 }

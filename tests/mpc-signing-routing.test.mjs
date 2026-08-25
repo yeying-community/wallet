@@ -334,7 +334,7 @@ test('MPC 签名入口会继续推进 wire sign 并返回后续轮次完成的�
             sessionId: 'session-1',
             protocol: 'sign',
             senderIndex: 1,
-            audience: { oneParty: { recipientIndex: 0 } },
+            audience: { 'one-party': { recipient_index: 0 } },
             payload: { Round1: { from: 1 } },
             sequence: 1
           }),

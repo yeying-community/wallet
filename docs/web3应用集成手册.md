@@ -25,8 +25,7 @@ did:yeying:wid_*
 
 字段含义：
 
-- `walletIdentityId`：`wid_*`，钱包身份短 ID。
-- `did`：`did:yeying:<walletIdentityId>`，跨系统身份主键。
+- `did`：`did:yeying:wid_*`，跨系统身份主键。
 - `walletAddress`：已验证关联的钱包账户，不是身份主键。
 - `UsernameCredential`：Node 签发的用户名 JWT-VC。
 - `EmailCredential`：Node 签发的邮箱 JWT-VC。
@@ -59,7 +58,7 @@ identity.username
 identity.email
 ```
 
-`identity.email` 只有在用户已在 Wallet 中完成钱包身份验证和邮箱验证码确认后才可出示。应用明确需要邮箱时，应在登录失败时提示用户回到 Wallet 完成邮箱验证。
+`identity.email` 只有在用户已在 Wallet 中完成钱包身份验证和邮箱验证码确认，且可获得有效 `EmailCredential` 时才可出示。Wallet 不会把过期或临近过期的凭证放进 presentation；如果应用登录 session 提供 `issuerEndpoint`，Wallet 会先用 identity controller proof 向 Node 自动续签，再提交新的短期 JWT-VC。只有 Node 没有可续签事实、凭证已撤销或 proof 校验失败时，才提示用户回到 Wallet 完成邮箱验证。
 
 后端必须校验：
 
@@ -89,7 +88,6 @@ exchange 返回：
 ```json
 {
   "did": "did:yeying:wid_example",
-  "walletIdentityId": "wid_example",
   "walletAddress": "0x...",
   "scopes": ["identity.basic", "identity.wallet", "identity.email"],
   "credentials": []
@@ -122,7 +120,7 @@ exchange 返回：
 
 | 错误 | 处理 |
 | --- | --- |
-| `IDENTITY_SCOPE_NOT_GRANTED:identity.email` | 用户尚未完成邮箱凭证验证，提示回 Wallet 完成钱包身份和邮箱验证 |
+| `IDENTITY_SCOPE_NOT_GRANTED:identity.email` | 用户尚未完成邮箱凭证验证，或自动续签失败后仍没有有效 `EmailCredential`，提示回 Wallet 完成钱包身份和邮箱验证 |
 | `IDENTITY_EMAIL_REQUIRED` | Node 无钱包授权时发现该 DID 没有有效 `EmailCredential`，提示回 Wallet 重新验证 |
 | `IDENTITY_PRESENTATION_CONTEXT_INVALID` | `audience` 或 `nonce` 不匹配，重新创建登录 session |
 | `IDENTITY_PASSKEY_CREDENTIAL_NOT_FOUND` | 当前设备未注册该钱包身份的 Passkey，使用 Wallet 登录后重新注册 |

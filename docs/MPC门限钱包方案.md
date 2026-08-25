@@ -362,7 +362,7 @@ MPC 有三类状态，不能混用：
 
 ```text
 Keygen -> 生成 address / publicKey / share -> keygen_completed
-Aux-info -> 生成 completeKeyShare -> active
+Aux-info -> 生成 completeKeyShare -> 本地签名材料自检 -> active / available
 Sign -> 多方共同签名 -> 返回 signature
 ```
 
@@ -374,16 +374,16 @@ Sign -> 多方共同签名 -> 返回 signature
 | `invite_rejected` | 被邀请方拒绝邀请，本地可隐藏或归档 | 否 | 否 | 否 | 已拒绝 |
 | `keygen_ready` | Keygen 会话已创建，等待参与方加入或开始 | 否 | 否 | 否 | 等待参与者 |
 | `keygen_running` | Keygen 多轮协议正在进行 | 否 | 否 | 否 | 密钥生成中 |
-| `keygen_completed` | Keygen 已完成，钱包已有地址和基础 key share，但签名材料可能未完成 | 是 | 是 | 条件允许进入签名流程，但可能因缺少 `completeKeyShare` 阻断 | 已完成 |
-| `active` | 本地已有 `completeKeyShare`，可参与 MPC 签名 | 是 | 是 | 是，但仍需满足门限参与方在线/确认 | 可用 |
+| `keygen_completed` | Keygen 已完成，钱包已有地址和基础 key share，但签名材料尚未通过本地自检 | 是 | 是 | 否 | 签名准备中 |
+| `active` | 本地已有 `completeKeyShare`，且本地签名材料自检通过 | 是 | 是 | 是，但仍需满足门限参与方在线/确认 | 已完成 |
 | `keygen_failed` | Keygen 失败 | 否 | 否 | 否 | 创建失败 |
 | `cancelled` | 创建完成前被创建者取消，或本地未完成记录被移除 | 否 | 否 | 否 | 已取消 |
 | `signing_unavailable` | 钱包有地址，但本地签名材料不可用或损坏 | 是 | 是 | 否 | 签名不可用 |
 
 说明：
 
-- `keygen_completed` 不是错误状态。它表示地址已经生成，可以在账户管理和 dapp 授权中展示。
-- `active` 表示当前设备本地可参与签名，不表示一次 dapp 登录可以单方完成。2-of-2 仍然需要另一个参与方确认并在线推进签名。
+- `keygen_completed` 不是错误状态。它表示地址已经生成，但不能对用户表达为 `available`，也不能保证 dapp 登录签名可用。
+- `active` / `signingStatus === 'available'` 必须表示当前设备本地签名材料自检通过，可以发起签名。它不表示一次 dapp 登录可以单方完成，2-of-2 仍然需要另一个参与方确认并在线推进签名。
 - `signing_unavailable` 是诊断态。当前实现更多通过 `signingStatus: unavailable` 和 `signingUnavailableReason` 表达，后续可选择将其收敛为显式 `status`。
 
 ```mermaid
@@ -402,7 +402,7 @@ stateDiagram-v2
   keygen_ready --> keygen_failed: 会话失败或协议错误
   keygen_running --> keygen_failed: 会话失败或协议错误
 
-  keygen_completed --> active: Aux-info 完成并生成 completeKeyShare
+  keygen_completed --> active: Aux-info 完成、生成 completeKeyShare 且本地签名材料自检通过
   keygen_completed --> signing_unavailable: Aux-info 完成但无法生成 completeKeyShare
   signing_unavailable --> active: 重新完成 Aux-info 或修复本地签名材料
 
@@ -417,7 +417,7 @@ stateDiagram-v2
 | 已保存基础 share | 当前设备存在匹配 `walletId`、`participantId`、`shareVersion` 的 `MpcKeyShare.share` |
 | Aux-info 已完成 | `auxInfoStatus === 'completed'` 或本地 key share 已保存 `auxInfo` |
 | 已生成完整签名材料 | `MpcKeyShare.completeKeyShare` 存在，且 `completeKeyShareStatus === 'completed'` |
-| 签名状态可用 | `signingStatus === 'available'` |
+| 签名状态可用 | 本地签名材料自检通过后写入 `signingStatus === 'available'` |
 
 实现收敛规则：
 
@@ -429,7 +429,10 @@ if wallet.address && latestLocalKeyShare.completeKeyShare:
 else if wallet.address:
   wallet.status = 'keygen_completed'
   wallet.signingStatus = 'unavailable'
+  wallet.signingUnavailableReason = precise machine-readable reason
 ```
+
+这里的“本地签名材料自检”不是链上交易，也不广播签名。当前阶段至少检查当前设备是否存在匹配 `walletId`、`participantId`、`shareVersion` 的基础 share 和 `completeKeyShare`；后续如果 TSS engine 提供安全的本地 dry-run 能力，可升级为一次不出站的签名能力探测。产品上只有自检通过才能显示 `available` / “可签名”。
 
 这条规则只能根据本地材料提升当前设备的本地钱包状态，不能代表其他参与方也已经可签名。
 
@@ -492,7 +495,7 @@ Web3 登录通常不是只读取地址，而是要求钱包签名 nonce、SIWE m
 | `pending_invite` | 否 | 否 |
 | `keygen_ready` | 否 | 否 |
 | `keygen_running` | 否 | 否 |
-| `keygen_completed` | 是 | 不保证。若本地缺少 `completeKeyShare`，必须先完成 Aux-info |
+| `keygen_completed` | 是 | 否。必须先完成 Aux-info 和本地签名材料自检 |
 | `active` | 是 | 可以发起签名，但门限大于 1 时仍需等待足够参与方 |
 | `signing_unavailable` | 是 | 否 |
 
@@ -501,9 +504,18 @@ Web3 登录通常不是只读取地址，而是要求钱包签名 nonce、SIWE m
 | 错误 | 触发条件 | 用户/产品含义 |
 | --- | --- | --- |
 | `MPC_KEYGEN_NOT_COMPLETED` | 钱包无地址，或 Keygen 还未完成 | 钱包还不能作为链账户使用 |
-| `MPC_COMPLETE_KEY_SHARE_NOT_FOUND` | 钱包有地址，但当前设备没有完整签名材料 | 需要完成或修复 Aux-info |
+| `MPC_COMPLETE_KEY_SHARE_NOT_FOUND` | 钱包有地址，但当前设备没有完整签名材料 | 产品应提供“继续完成创建”或“重试签名准备”，自动完成或修复 Aux-info；用户不需要理解或手动处理密钥材料 |
 | `MPC_SIGNING_PENDING` | 签名请求已创建，但仍在等待多方确认或协议轮次 | 等待其他参与方在线确认 |
 | `MPC_SIGNER_NOT_CONFIGURED` | 本地 TSS engine 未配置或不可用 | 当前客户端不能执行 MPC 签名 |
+
+签名准备操作：
+
+| 操作 | 输入 | 行为 | 输出 |
+| --- | --- | --- | --- |
+| `MPC_DIAGNOSE_WALLET` | `walletId` 或 `address` | 只检查本地签名材料状态，不修改本地密钥材料 | `canSign`、`reason`、`hasKeyShare`、`hasAuxInfo`、`hasCompleteKeyShare` |
+| `MPC_PREPARE_WALLET_SIGNING` | `walletId` 或 `address`，必要时带 `password` | 缺 `completeKeyShare` 时，优先用本地已保存 `share + auxInfo` 重新合成；否则恢复或启动 Aux-info 会话 | `started`、`resumed`、`repaired`、`diagnosis` |
+
+`MPC_PREPARE_WALLET_SIGNING` 不能把缺失材料兜底为可用。只有重新合成 `completeKeyShare` 成功，或 Aux-info 后续完成并通过本地自检，才允许进入 `active` / `available`。
 
 ### 10.6 UI 展示约定
 
@@ -514,7 +526,7 @@ Web3 登录通常不是只读取地址，而是要求钱包签名 nonce、SIWE m
 | `pending_invite` | 待接受 | 接受、拒绝、详情 |
 | `keygen_ready` | 等待参与者 | 取消创建、详情 |
 | `keygen_running` | 密钥生成中 | 详情、刷新 |
-| `keygen_completed` 且 `signingStatus !== 'available'` | 已完成 | 详情；签名时提示签名能力准备中或材料缺失 |
+| `keygen_completed` 且 `signingStatus !== 'available'` | 签名准备中 | 详情、继续完成创建、重试签名准备 |
 | `active` 或 `signingStatus === 'available'` | 已完成 | 详情、可选择登录/签名 |
 | `keygen_failed` | 创建失败 | 详情、移除 |
 | `cancelled` | 已取消 | 本地隐藏或归档 |
@@ -522,11 +534,62 @@ Web3 登录通常不是只读取地址，而是要求钱包签名 nonce、SIWE m
 
 说明：
 
-- UI 可将 `keygen_completed` 和 `active` 都显示为“已完成”，但详情页必须展示签名能力，例如“签名可用”或“签名准备中”。
+- UI 不能把 `keygen_completed` 显示成 `available`。有地址但签名材料未通过自检时，应显示“签名准备中”；只有 `active` 或 `signingStatus === 'available'` 才显示“已完成/可签名”。
 - 创建完成前的未完成钱包可以取消或移除。已经生成地址的钱包不应通过“取消创建”入口移除，应走钱包移除/归档流程。
 - 被邀请方在接受前必须能看到钱包名称、门限、参与者和详情入口，不能只看到通用邀请标题。
 
-### 10.7 数据字段约定
+### 10.7 删除与本地移除语义
+
+MPC 钱包删除必须区分三类操作，不能混用同一个产品语义：
+
+| 操作 | 适用状态 | 影响范围 | 协议含义 |
+| --- | --- | --- | --- |
+| 取消创建 | Keygen 完成前：`keygen_ready`、`keygen_running`、`keygen_interrupted`，且尚未生成最终地址 | 当前设备本地记录；可尽力通知 coordinator 取消未完成 session | 终止尚未完成的钱包创建流程 |
+| 删除本地 MPC 钱包 / 从本机移除 | 已生成地址：`keygen_completed`、`active`，以及签名准备失败或 `signingStatus !== 'available'` 的钱包 | 仅当前设备本地记录和当前参与方本地 share | 当前参与方放弃本机继续使用该钱包，不代表全体参与方删除 |
+| 参与方变更 / 退出钱包 | 已完成钱包，需要改变参与方集合或阈值 | 需要相关参与方共同执行 refresh / resharing | 重新生成参与方集合和 share 版本，不是简单删除 |
+
+已经生成地址的 MPC 钱包，其地址和 group public key 已经存在。任意一个参与方点击删除，只能删除自己插件里的本地记录和本地密钥分片，不能自动删除其他参与方的钱包，也不能销毁链上地址。其他参与方是否还能继续签名，取决于门限配置和剩余可用参与方数量。例如 2-of-2 中一方删除本地 share 后，另一方本地钱包记录仍可存在，但无法单独完成签名。
+
+“删除本地 MPC 钱包”应清理当前设备内与该钱包相关的本地数据：
+
+| 本地存储 | 清理条件 |
+| --- | --- |
+| `MPC_WALLETS` | `walletId` 匹配 |
+| `MPC_SESSIONS` | `walletId` 匹配，或 `sessionId === wallet.keygenSessionId` |
+| `MPC_KEY_SHARES` | `walletId` 或关联 `sessionId` 匹配 |
+| `MPC_WIRE_STATES` | 关联 `sessionId` 匹配 |
+| `MPC_SIGN_REQUESTS` | `walletId` 或关联 `sessionId` 匹配 |
+| `MPC_MESSAGES` | 关联 `sessionId` 匹配 |
+| `MPC_PARTICIPANTS` | 关联 `sessionId` 匹配 |
+
+删除本地 MPC 钱包不应清理：
+
+- HD wallet / HD account。
+- 其他 MPC 钱包或其他 `sessionId` 的数据。
+- MPC device key，除非用户明确重置整个 MPC 设备身份。
+- 审计日志，除非用户单独执行清除审计。
+- 其他参与方的任何本地数据。
+
+UI 文案应避免让用户误解为“全体参与方删除”或“销毁链上地址”。建议确认弹窗使用：
+
+```text
+删除本地 MPC 钱包
+此操作只会从本机移除该 MPC 钱包和本地密钥分片，不会删除其他参与方的钱包记录，也不会销毁链上地址。删除后本机将无法再使用该 MPC 钱包签名。
+```
+
+成功提示建议使用“本地 MPC 钱包已删除”。垃圾桶图标可以保留，但后台语义必须是本地移除。
+
+授权记录可以不在删除流程中强制同步修改，但 `eth_accounts` / `eth_requestAccounts` 必须过滤当前本地不可用或已删除的 MPC 地址，避免 dapp 在旧授权中继续拿到已经移除或不可签名的钱包地址。后续可以增加授权记录修剪，将已删除的 MPC 地址从保存的 `accounts` 列表中移除。
+
+未来如果需要影响全体参与方，不能复用删除本地钱包接口，应设计独立的“取消创建”或“参与方变更/退出协议”。参与方变更必须通过 Key Refresh / Resharing 完成，并产生新的 share 版本和审计记录。
+
+### 10.8 walletId 与地址
+
+`walletId` 是插件本地 MPC 钱包记录 ID，例如 `mpc_wallet_1787369766153_bxw2k4a`。它用于关联本地钱包记录、Keygen/Aux-info/Sign 会话、本地 key share、审计日志和协调器请求。
+
+链地址是 Keygen 完成后生成的 EVM 地址，例如 `0xfd608b60f57f1cade5006faaca5f8df812a0e093`。地址是用户和 dapp 应该看到的标识；`walletId` 是内部工程标识，除调试日志和诊断页面外不应暴露为主标识。诊断接口应同时支持按 `walletId` 和按 `address` 定位本地钱包。
+
+### 10.8 数据字段约定
 
 MPCWallet：
 
@@ -687,6 +750,43 @@ MpcKeyShare：
 - dapp 签名请求进入等待态时，应保留 request id，允许 UI 显示“等待其他参与方确认”并支持刷新/取消。
 - 任何协议失败不得回退到 HD 私钥、单方私钥或模拟签名。
 
+### 16.1 当前 CGGMP24 WASM 验证参数
+
+当前插件接入的 `cggmp24` WASM 引擎使用生产级 RSA 参数，engine metadata 必须明确暴露：
+
+```json
+{
+  "engine": "cggmp24",
+  "securityProfile": "production-1536",
+  "productionSafe": true,
+  "rsaPrimeBitlen": 1536,
+  "rsaPubkeyBitlen": 3071
+}
+```
+
+生产参数下，Aux-info 在浏览器 WASM 中可能运行数分钟。`productionSafe: true` 只表示密码学参数达到当前选定 profile 的要求，不代表浏览器状态机、持久化和真实多方签名已经验收。
+
+生产化前必须完成以下任一方案，并移除 `dev-verification` profile：
+
+| 方案 | 要求 |
+| --- | --- |
+| 浏览器可接受的生产级 Aux-info 生成 | 生产参数下在 extension worker/offscreen worker 中稳定完成，不阻塞 UI，并有超时、恢复和进度提示 |
+| 受信或可验证的预生成 Aux-info | 明确定义生成、分发、验证、轮换和审计流程，不能把明文私钥或可恢复私钥材料交给协调器 |
+| 替换 TSS engine | 选用能在浏览器环境稳定运行、支持 secp256k1 threshold signing、许可和安全边界明确的实现 |
+
+验收必须包含双方独立保存 `completeKeyShare`、真实执行 2-of-2 签名、验证 ECDSA 签名与钱包地址匹配。仅有 metadata、Keygen 完成或 UI 显示“签名准备中”都不算验收通过。
+
+### 16.2 2026-08-25 暂停调试快照
+
+- 浏览器：Chrome CDP `127.0.0.1:9222` 与 Edge CDP `127.0.0.1:9223`。
+- 协调器：`http://localhost:8100`，代码位于同级 `node` 仓库。
+- 最后观测会话：`c119926a-877b-4788-8ff9-5f4e97c2a635`。
+- Keygen 已完成；Aux-info 曾进入高 CPU 计算和 wire message 交换，协调器 cursor 后期停在 `12`。
+- Chrome 和 Edge CPU 后续均回落到空闲，没有继续产生 `POST /messages`，两端 UI 仍为“签名准备中”。
+- 当前没有观测到 `aux-info:completed`，也没有持久化的 failed 终态；不能认定为仍在正常计算。
+- 当前结论：已证明生产参数 Aux-info 能启动，但该浏览器会话未完成 Aux-info，更未完成真实 2-of-2 签名验证。
+- 下次调试入口：为 offscreen/worker 补齐 completed、error、messageerror、超时和 worker 消失的终态收敛；持久化 `startedAt`、`lastWorkerResponseAt`、`lastWireProgressAt`、cursor 和具体错误；失败后使用新 request generation 双方重试。
+
 ## 17. 验收用例
 
 | 场景 | 期望 |
@@ -699,6 +799,8 @@ MpcKeyShare：
 | 本地缺少 `completeKeyShare` | 返回 `MPC_COMPLETE_KEY_SHARE_NOT_FOUND`，详情页能提示签名材料不可用 |
 | 未完成创建时取消 | 创建者和被邀请方的未完成钱包记录都可移除或归档 |
 | 已生成地址后尝试取消创建 | 不使用“取消创建”语义，应走钱包移除/归档流程 |
+| 已生成地址后删除 MPC 钱包 | 仅删除当前设备本地钱包记录、share、session、wire/sign/message/participant 缓存；其他参与方本地钱包不应被自动删除 |
+| 删除本地 MPC 钱包后 dapp 查询账户 | `eth_accounts` / `eth_requestAccounts` 不应继续返回该本机已删除的 MPC 地址 |
 
 ## 18. 后续工作
 

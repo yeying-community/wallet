@@ -23,6 +23,7 @@ import { getTimestamp } from '../common/utils/time-utils.js';
 import { generateId } from '../common/utils/index.js';
 import { buildActionPayloadHash, createActionSignature } from './action-signature.js';
 import { MpcCoordinatorClient } from './mpc-coordinator-client.js';
+import { getUnlockedCoordinatorSigningAccount } from './coordinator-signing-account.js';
 
 export const MPC_ACCOUNT_ID_PREFIX = 'mpc:';
 const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
@@ -204,7 +205,7 @@ async function syncMpcSignRequest(wallet, request) {
     chainId: Number.isFinite(chainId) ? chainId : 0
   };
   const signature = await createActionSignature({
-    account: await getSelectedAccount(),
+    account: await getUnlockedCoordinatorSigningAccount(),
     action: 'mpc_sign_request_create',
     payload
   });

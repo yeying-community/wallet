@@ -101,8 +101,17 @@ export function showSuccess(message, duration = 2000) {
   showToast(message, 'success', duration);
 }
 
+function formatUserFacingError(message) {
+  const normalized = String(message || '').trim();
+  const replacements = new Map([
+    ['MPC_COMPLETE_KEY_SHARE_NOT_FOUND', 'MPC 签名准备尚未完成，请保持双方钱包插件打开并解锁'],
+    ['MPC_KEYGEN_NOT_COMPLETED', 'MPC 钱包密钥生成尚未完成'],
+  ]);
+  return replacements.get(normalized) || normalized;
+}
+
 export function showError(message, duration = 3000) {
-  showToast(message, 'error', duration);
+  showToast(formatUserFacingError(message), 'error', duration);
 }
 
 export function showWarning(message, duration = 2000) {

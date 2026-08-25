@@ -61,7 +61,11 @@ export class IdentityClient {
     });
     const payload = await parseResponse(response);
     if (!response.ok || (payload && typeof payload.code === 'number' && payload.code !== 0)) {
-      throw new IdentityClientError(payload?.message || payload?.error || response.statusText || `HTTP ${response.status}`, { status: response.status, code: String(payload?.errorCode || payload?.code || '') });
+      const code = String(payload?.errorCode || payload?.code || '');
+      const message = code === 'IDENTITY_USERNAME_TAKEN'
+        ? '用户名已被占用，请更换用户名'
+        : (payload?.message || payload?.error || response.statusText || `HTTP ${response.status}`);
+      throw new IdentityClientError(message, { status: response.status, code });
     }
     return payload && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;
   }

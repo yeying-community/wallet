@@ -399,7 +399,7 @@ class ApprovalApp {
     document.getElementById('identityAppId').textContent = request.appId || request.audience || this.requestData.origin || '-';
     document.getElementById('identityAudience').textContent = request.audience || '-';
     document.getElementById('identityNonce').textContent = request.nonce || '-';
-    const labels = { 'identity.basic': '钱包身份', 'identity.wallet': '钱包账户', 'identity.username': '已验证用户名', 'identity.email': '已验证邮箱' };
+    const labels = { 'identity.basic': '钱包身份', 'identity.wallet': '钱包账户', 'identity.username': '已验证用户名', 'identity.email': '已验证邮箱', 'identity.avatar': '已验证头像' };
     const list = document.getElementById('identityScopeList');
     list.innerHTML = '';
     (request.scopes || []).forEach((scope) => {

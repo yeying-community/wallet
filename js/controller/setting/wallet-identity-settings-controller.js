@@ -322,8 +322,9 @@ export class WalletIdentitySettingsController {
     this.selectedIdentityAddress = document.getElementById('walletIdentityEditAddress')?.value || '';
     this.closeIdentityEdit();
     this.persistEndpoint(endpoint);
-    await this.requestAndConfirmIdentity({ username, email });
+    const completed = await this.requestAndConfirmIdentity({ username, email });
     await this.renderIdentityVerificationAction();
+    if (completed) await this.openIdentityDetails();
   }
 
   setDetailValue(id, value) {
@@ -402,7 +403,7 @@ export class WalletIdentitySettingsController {
     return username;
   }
 
-  async promptIdentityProfile({ username: defaultUsername = '', email: defaultEmail = '', endpoint: defaultEndpoint = '' } = {}) {
+  async promptIdentityProfile({ username: defaultUsername = '', email: defaultEmail = '', avatarUri: defaultAvatarUri = '', endpoint: defaultEndpoint = '' } = {}) {
     const modal = document.getElementById('identityInputModal');
     const overlay = modal?.querySelector('.modal-overlay');
     const titleEl = document.getElementById('identityInputTitle');
@@ -416,24 +417,27 @@ export class WalletIdentitySettingsController {
       if (!username) return null;
       const email = await this.promptEmail(defaultEmail);
       if (!email) return null;
-      return { username, email, endpoint: defaultEndpoint };
+      return { username, email, avatarUri: defaultAvatarUri, endpoint: defaultEndpoint };
     }
 
     const originalBody = body.innerHTML;
     if (titleEl) titleEl.textContent = '验证资料';
-    if (hintEl) hintEl.textContent = '填写用户名和邮箱，确认后将向邮箱发送验证码。';
+    if (hintEl) hintEl.textContent = '填写用户名、邮箱和头像，确认后将向邮箱发送验证码。';
     body.innerHTML = `
-      <p id="identityInputHint" class="settings-hint">填写用户名和邮箱，确认后将向邮箱发送验证码。</p>
+      <p id="identityInputHint" class="settings-hint">填写用户名、邮箱和头像，确认后将向邮箱发送验证码。</p>
       <div class="form-group"><label for="identityProfileEndpoint">身份服务地址</label><input id="identityProfileEndpoint" class="input" type="url" autocomplete="url" /></div>
       <div class="form-group"><label for="identityProfileUsername">用户名</label><input id="identityProfileUsername" class="input" autocomplete="username" /></div>
       <div class="form-group"><label for="identityProfileEmail">邮箱</label><input id="identityProfileEmail" class="input" type="email" autocomplete="email" /></div>
+      <div class="form-group"><label for="identityProfileAvatar">头像 URI</label><input id="identityProfileAvatar" class="input" type="url" autocomplete="url" /></div>
     `;
     const endpointInput = document.getElementById('identityProfileEndpoint') || body.querySelector('#identityProfileEndpoint');
     const usernameInput = document.getElementById('identityProfileUsername') || body.querySelector('#identityProfileUsername');
     const emailInput = document.getElementById('identityProfileEmail') || body.querySelector('#identityProfileEmail');
+    const avatarInput = document.getElementById('identityProfileAvatar') || body.querySelector('#identityProfileAvatar');
     if (endpointInput) endpointInput.value = defaultEndpoint || this.endpoint();
     if (usernameInput) usernameInput.value = defaultUsername;
     if (emailInput) emailInput.value = defaultEmail;
+    if (avatarInput) avatarInput.value = defaultAvatarUri;
     modal.classList.remove('hidden');
 
     return new Promise((resolve, reject) => {
@@ -444,6 +448,7 @@ export class WalletIdentitySettingsController {
         overlay?.removeEventListener('click', handleCancel);
         usernameInput?.removeEventListener('keydown', handleKeydown);
         emailInput?.removeEventListener('keydown', handleKeydown);
+        avatarInput?.removeEventListener('keydown', handleKeydown);
         modal.classList.add('hidden');
         body.innerHTML = originalBody;
       };
@@ -453,12 +458,16 @@ export class WalletIdentitySettingsController {
           const endpoint = String(endpointInput?.value || '').trim();
           const username = String(usernameInput?.value || '').trim().toLowerCase();
           const email = String(emailInput?.value || '').trim().toLowerCase();
+          const avatarUri = String(avatarInput?.value || '').trim();
           if (!endpoint) throw new Error('请输入身份服务地址');
           if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username)) throw new Error('用户名须为 3-32 位小写字母、数字、点、下划线或连字符');
           if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('请输入有效邮箱');
+          if (!avatarUri) throw new Error('请输入头像 URI');
+          const url = new URL(avatarUri);
+          if (!['https:', 'http:', 'ipfs:'].includes(url.protocol)) throw new Error('头像 URI 仅支持 HTTP、HTTPS 或 IPFS');
           cleanup();
           this.persistEndpoint(endpoint);
-          resolve({ username, email, endpoint });
+          resolve({ username, email, avatarUri, endpoint });
         } catch (error) {
           cleanup();
           reject(error);
@@ -474,6 +483,7 @@ export class WalletIdentitySettingsController {
       overlay?.addEventListener('click', handleCancel);
       usernameInput?.addEventListener('keydown', handleKeydown);
       emailInput?.addEventListener('keydown', handleKeydown);
+      avatarInput?.addEventListener('keydown', handleKeydown);
       setTimeout(() => usernameInput?.focus(), 0);
     });
   }
@@ -530,7 +540,7 @@ export class WalletIdentitySettingsController {
     });
   }
 
-  async requestAndConfirmIdentity({ username, email }) {
+  async requestAndConfirmIdentity({ username, email, avatarUri = '' }) {
     const endpoint = this.endpoint();
     if (!endpoint) throw new Error('请输入 Node 服务地址');
     this.persistEndpoint(endpoint);
@@ -577,16 +587,18 @@ export class WalletIdentitySettingsController {
       linkResult = { verifiedAt: new Date().toISOString(), duplicate: true };
     }
     if (!linkResult?.verifiedAt) throw new Error('钱包账户关联失败');
+    const verificationTypes = ['email', 'username', ...(avatarUri ? ['avatar'] : [])];
     const requested = await this.wallet.requestIdentityVerification(endpoint, {
-      types: ['email', 'username'],
+      types: verificationTypes,
       identity: identityDid,
       account: { chainKey, address: account.address },
       email,
-      username
+      username,
+      ...(avatarUri ? { avatarUri } : {})
     });
     if (!requested?.verificationId) throw new Error('Node 未返回验证事务 ID');
     this.persistVerificationState(endpoint, account.address, VERIFICATION_STATE_PENDING_EMAIL);
-    this.persistEmailVerificationState(endpoint, account.address, { verificationId: requested.verificationId, email, username, expiresAt: requested.expiresAt || '' });
+    this.persistEmailVerificationState(endpoint, account.address, { verificationId: requested.verificationId, email, username, avatarUri, types: verificationTypes, expiresAt: requested.expiresAt || '' });
     this.setEmailStatus(`验证码已发送至 ${requested.email || email}，请查收邮件后输入 6 位验证码。`);
     hideWaiting();
     const code = await this.promptVerificationCode();
@@ -595,8 +607,8 @@ export class WalletIdentitySettingsController {
       return false;
     }
     showWaiting();
-    const result = await this.wallet.confirmIdentityVerification(endpoint, requested.verificationId, code, ['email', 'username']);
-    if (!Array.isArray(result?.credentials) || result.credentials.length < 2) throw new Error('Node 未返回完整身份凭证');
+    const result = await this.wallet.confirmIdentityVerification(endpoint, requested.verificationId, code, verificationTypes);
+    if (!Array.isArray(result?.credentials) || result.credentials.length < verificationTypes.length) throw new Error('Node 未返回完整身份凭证');
     this.persistVerificationState(endpoint, account.address, VERIFICATION_STATE_COMPLETE);
     this.persistEmailVerificationState(endpoint, account.address, null);
     this.setEmailStatus(`已验证邮箱：${email}`);
@@ -639,8 +651,9 @@ export class WalletIdentitySettingsController {
         const code = await this.promptVerificationCode();
         if (!code) return;
         showWaiting();
-        const result = await this.wallet.confirmIdentityVerification(endpoint, state.verificationId, code, ['email', 'username']);
-        if (!Array.isArray(result?.credentials) || result.credentials.length < 2) throw new Error('Node 未返回完整身份凭证');
+        const verificationTypes = Array.isArray(state.types) && state.types.length > 0 ? state.types : ['email', 'username'];
+        const result = await this.wallet.confirmIdentityVerification(endpoint, state.verificationId, code, verificationTypes);
+        if (!Array.isArray(result?.credentials) || result.credentials.length < verificationTypes.length) throw new Error('Node 未返回完整身份凭证');
         this.persistVerificationState(endpoint, account.address, VERIFICATION_STATE_COMPLETE);
         this.persistEmailVerificationState(endpoint, account.address, null);
         this.setEmailStatus(`已验证邮箱：${state.email || result.email || ''}`);

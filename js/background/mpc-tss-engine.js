@@ -15,6 +15,10 @@ function requireFunction(target, name) {
   return target[name].bind(target);
 }
 
+function logMpcTssDebug(event, data = {}) {
+  console.info('[MPC_DEBUG]', event, data);
+}
+
 export class MpcTssStateMachineAdapter {
   constructor({ engine: wasmEngine, transport, stateStore, protocol = '', senderIndex = null, requestId = '' } = {}) {
     this._engine = wasmEngine || null;
@@ -26,7 +30,7 @@ export class MpcTssStateMachineAdapter {
     this._sessions = new Map();
   }
 
-  async startSign({ sessionId, requestId = '', senderIndex, parties, payload, keyShareRef } = {}) {
+  async startSign({ sessionId, requestId = '', senderIndex, parties, payload, keyShareRef, maxSteps, password } = {}) {
     const startSign = requireFunction(this._engine, 'startSign');
     const state = await startSign({
       sessionId,
@@ -34,35 +38,59 @@ export class MpcTssStateMachineAdapter {
       senderIndex,
       parties,
       payload,
-      keyShareRef
+      keyShareRef,
+      maxSteps
     });
-    return await this._rememberAndFlush({ sessionId, protocol: 'sign', senderIndex, state });
+    return await this._rememberAndFlush({ sessionId, protocol: 'sign', senderIndex, state, transportOptions: { password } });
   }
 
-  async startAuxInfo({ sessionId, senderIndex, parties, curve = 'secp256k1' } = {}) {
+  async startAuxInfo({ sessionId, senderIndex, parties, curve = 'secp256k1', maxSteps, password } = {}) {
     const startAuxInfo = requireFunction(this._engine, 'startAuxInfo');
+    const startedAt = Date.now();
+    logMpcTssDebug('tss-adapter:start-aux-info:before-engine', {
+      sessionId,
+      senderIndex,
+      partiesCount: Array.isArray(parties) ? parties.length : 0,
+      maxSteps
+    });
     const state = await startAuxInfo({
       sessionId,
       senderIndex,
       parties,
-      curve
+      curve,
+      maxSteps,
+      requestId: this._requestId || ''
     });
-    return await this._rememberAndFlush({ sessionId, protocol: 'aux-info', senderIndex, state });
+    logMpcTssDebug('tss-adapter:start-aux-info:after-engine', {
+      sessionId,
+      senderIndex,
+      durationMs: Date.now() - startedAt
+    });
+    const flushStartedAt = Date.now();
+    const result = await this._rememberAndFlush({ sessionId, protocol: 'aux-info', senderIndex, state, transportOptions: { password } });
+    logMpcTssDebug('tss-adapter:start-aux-info:after-flush', {
+      sessionId,
+      senderIndex,
+      durationMs: Date.now() - flushStartedAt,
+      messageCount: Array.isArray(result?.messages) ? result.messages.length : 0
+    });
+    return result;
   }
 
-  async startKeygen({ sessionId, senderIndex, parties, threshold, curve = 'secp256k1' } = {}) {
+  async startKeygen({ sessionId, senderIndex, parties, threshold, curve = 'secp256k1', maxSteps, password } = {}) {
     const startKeygen = requireFunction(this._engine, 'startKeygen');
     const state = await startKeygen({
       sessionId,
       senderIndex,
       parties,
       threshold,
-      curve
+      curve,
+      maxSteps
     });
-    return await this._rememberAndFlush({ sessionId, protocol: 'keygen', senderIndex, state });
+    return await this._rememberAndFlush({ sessionId, protocol: 'keygen', senderIndex, state, transportOptions: { password } });
   }
 
-  async receiveMessage({ sessionId, message } = {}) {
+  async receiveMessage({ sessionId, message, maxSteps, password } = {}) {
     const normalizedSessionId = String(sessionId || '').trim();
     if (!normalizedSessionId) {
       throw new Error('MPC_SESSION_ID_REQUIRED');
@@ -79,10 +107,10 @@ export class MpcTssStateMachineAdapter {
       message: wireMessage
     });
     await this._setSessionState(normalizedSessionId, nextState || state);
-    return await this.advance({ sessionId: normalizedSessionId });
+    return await this.advance({ sessionId: normalizedSessionId, maxSteps, password });
   }
 
-  async advance({ sessionId } = {}) {
+  async advance({ sessionId, maxSteps, password } = {}) {
     const normalizedSessionId = String(sessionId || '').trim();
     if (!normalizedSessionId) {
       throw new Error('MPC_SESSION_ID_REQUIRED');
@@ -92,9 +120,9 @@ export class MpcTssStateMachineAdapter {
       throw new Error('MPC_TSS_SESSION_NOT_STARTED');
     }
     const advance = requireFunction(this._engine, 'advance');
-    const nextState = await advance({ sessionId: normalizedSessionId, state });
+    const nextState = await advance({ sessionId: normalizedSessionId, state, maxSteps });
     await this._setSessionState(normalizedSessionId, nextState || state);
-    return await this._flushOutgoing({ sessionId: normalizedSessionId, state: nextState || state });
+    return await this._flushOutgoing({ sessionId: normalizedSessionId, state: nextState || state, transportOptions: { password } });
   }
 
   async getResult({ sessionId } = {}) {
@@ -107,7 +135,7 @@ export class MpcTssStateMachineAdapter {
     return await getResult({ sessionId: normalizedSessionId, state });
   }
 
-  async _rememberAndFlush({ sessionId, protocol, senderIndex, state }) {
+  async _rememberAndFlush({ sessionId, protocol, senderIndex, state, transportOptions = {} }) {
     const normalizedSessionId = String(sessionId || '').trim();
     if (!normalizedSessionId) {
       throw new Error('MPC_SESSION_ID_REQUIRED');
@@ -115,10 +143,11 @@ export class MpcTssStateMachineAdapter {
     const nextState = {
       ...(state && typeof state === 'object' ? state : {}),
       protocol,
-      senderIndex
+      senderIndex,
+      requestId: state?.requestId || this._requestId || ''
     };
     await this._setSessionState(normalizedSessionId, nextState);
-    return await this._flushOutgoing({ sessionId: normalizedSessionId, state: nextState });
+    return await this._flushOutgoing({ sessionId: normalizedSessionId, state: nextState, transportOptions });
   }
 
   async _getSessionState(sessionId) {
@@ -188,7 +217,7 @@ export class MpcTssStateMachineAdapter {
     return JSON.parse(JSON.stringify(state || {}));
   }
 
-  async _flushOutgoing({ sessionId, state }) {
+  async _flushOutgoing({ sessionId, state, transportOptions = {} }) {
     const getOutgoingMessages = requireFunction(this._engine, 'getOutgoingMessages');
     const outgoing = await getOutgoingMessages({ sessionId, state });
     const messages = Array.isArray(outgoing) ? outgoing : [];
@@ -205,17 +234,25 @@ export class MpcTssStateMachineAdapter {
         senderIndex: item.senderIndex ?? state.senderIndex,
         audience,
         payload: item.payload,
-        sequence: item.sequence
+        sequence: item.sequence,
+        requestId: item.requestId || state.requestId || this._requestId || ''
       });
       if (this._transport && typeof this._transport.sendWireMessage === 'function') {
-        sent.push(await this._transport.sendWireMessage({
+        const transportMessage = {
           sessionId,
           protocol: wireMessage.protocol,
           senderIndex: wireMessage.sender_index,
           audience: wireMessage.audience,
           payload: wireMessage.payload,
           sequence: wireMessage.sequence
-        }));
+        };
+        if (transportOptions.password !== undefined) {
+          transportMessage.password = transportOptions.password;
+        }
+        if (wireMessage.request_id) {
+          transportMessage.requestId = wireMessage.request_id;
+        }
+        sent.push(await this._transport.sendWireMessage(transportMessage));
       } else {
         sent.push({ message: wireMessage });
       }

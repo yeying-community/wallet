@@ -43,6 +43,8 @@ export function combineKeyShareJson(core_json: string, aux_info_json: string): s
 
 export function coreKeySharePublicMaterialJson(json: string): string;
 
+export function devTrustedAuxInfoJson(session_id: string, party_count: number, participant_index: number): string;
+
 export function normalizeAuxInfoPayloadJson(json: string): string;
 
 export function normalizeSigningPayloadJson(json: string): string;
@@ -82,6 +84,7 @@ export interface InitOutput {
     readonly cggmp24thresholdkeygensession_status: (a: number) => [number, number];
     readonly combineKeyShareJson: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly coreKeySharePublicMaterialJson: (a: number, b: number) => [number, number, number, number];
+    readonly devTrustedAuxInfoJson: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly normalizeAuxInfoPayloadJson: (a: number, b: number) => [number, number, number, number];
     readonly normalizeSigningPayloadJson: (a: number, b: number) => [number, number, number, number];
     readonly normalizeThresholdKeygenPayloadJson: (a: number, b: number) => [number, number, number, number];

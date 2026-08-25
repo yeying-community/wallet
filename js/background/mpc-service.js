@@ -40,6 +40,10 @@ import { MpcCoordinatorClient } from './mpc-coordinator-client.js';
 import { getCachedPassword } from './password-cache.js';
 import { ensureTargetUcanToken } from './target-ucan-manager.js';
 import {
+  getCoordinatorSigningAccount,
+  getUnlockedCoordinatorSigningAccount
+} from './coordinator-signing-account.js';
+import {
   MPC_SIGNING_ALG,
   MPC_E2E_ALG,
   formatKeyWithPrefix,
@@ -77,6 +81,74 @@ const INVALID_MPC_WALLET_NAMES = new Set(['MPC 钱包创建邀请', 'MPC 钱包�
 const MPC_WIRE_PUMP_INTERVAL_MS = 1000;
 const MPC_WIRE_PUMP_MAX_TICKS = 90;
 const MPC_WIRE_PUMP_MAX_IDLE_TICKS = 12;
+const MPC_AUX_INFO_WIRE_PUMP_MAX_TICKS = 900;
+const MPC_AUX_INFO_WIRE_PUMP_MAX_IDLE_TICKS = 180;
+const MPC_WIRE_START_TIMEOUT_MS = 5000;
+
+function logMpcDebug(event, data = {}) {
+  const safe = {};
+  for (const [key, value] of Object.entries(data || {})) {
+    if (['share', 'keyShare', 'completeKeyShare', 'auxInfo', 'payload', 'messagePayload', 'encryptedPayload'].includes(key)) {
+      safe[key] = '[redacted]';
+    } else {
+      safe[key] = value;
+    }
+  }
+  console.info('[MPC_DEBUG]', event, safe);
+}
+
+function getWireMessageSequence(item) {
+  const candidates = [
+    item?.seq,
+    item?.message?.seq,
+    item?.response?.seq,
+    item?.envelope?.sequence,
+    item?.message?.envelope?.sequence,
+    item?.response?.envelope?.sequence
+  ];
+  for (const candidate of candidates) {
+    const value = Number(candidate);
+    if (Number.isFinite(value) && value > 0) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function getFirstSentWireSequence(started) {
+  const messages = [
+    ...(Array.isArray(started?.messages) ? started.messages : []),
+    ...(Array.isArray(started?.sent) ? started.sent : [])
+  ];
+  const sequences = messages
+    .map(getWireMessageSequence)
+    .filter((value) => Number.isFinite(value) && value > 0);
+  return sequences.length ? Math.min(...sequences) : null;
+}
+
+function normalizeMpcVersion(value, fallback = 1) {
+  const version = Number(value);
+  if (Number.isInteger(version) && version > 0) {
+    return version;
+  }
+  return fallback;
+}
+
+function summarizeMpcWireMessages(messages = []) {
+  return (Array.isArray(messages) ? messages : []).slice(0, 8).map((message) => ({
+    seq: Number(message?.seq ?? message?.envelope?.sequence ?? 0),
+    protocol: String(message?.envelope?.protocol || message?.type || '').trim(),
+    requestId: String(message?.envelope?.request_id || '').trim(),
+    senderIndex: Number.isInteger(Number(message?.envelope?.sender_index ?? message?.from ?? message?.sender))
+      ? Number(message?.envelope?.sender_index ?? message?.from ?? message?.sender)
+      : null,
+    round: Number(message?.round ?? inferMpcWireRound(message?.envelope?.payload) ?? 0),
+    payload: message?.envelope?.payload && typeof message.envelope.payload === 'object'
+      ? Object.keys(message.envelope.payload)[0] || ''
+      : '',
+    skipReason: message?.skipReason || ''
+  }));
+}
 
 class MpcService {
   constructor() {
@@ -94,6 +166,7 @@ class MpcService {
     this._wireSessionCursors = new Map();
     this._wireSessionAdapters = new Map();
     this._wireSessionPumps = new Map();
+    this._auxInfoStartsInFlight = new Map();
   }
 
   async init() {
@@ -159,6 +232,18 @@ class MpcService {
       };
     }
 
+    // A complete share only proves local key material is structurally present.
+    // The bundled dev-verification build is not capable of completing a real
+    // CGGMP24 signing round with its reduced Paillier parameters.
+    if (this._isDevVerificationEngine()) {
+      return {
+        wallet,
+        canSign: false,
+        reason: 'MPC_CGGMP24_DEV_PROFILE_NOT_SIGNABLE',
+        keyShare
+      };
+    }
+
     return {
       wallet,
       canSign: true,
@@ -178,12 +263,24 @@ class MpcService {
     }
 
     const keyShare = readiness.keyShare;
+    const keyShareAuxInfoStatus = String(keyShare?.auxInfoStatus || '').trim();
+    const walletAuxInfoStatus = String(wallet.auxInfoStatus || '').trim();
+    const auxInfoStatus = keyShareAuxInfoStatus === 'completed'
+      ? keyShareAuxInfoStatus
+      : (walletAuxInfoStatus === 'running'
+        ? walletAuxInfoStatus
+        : (keyShareAuxInfoStatus || walletAuxInfoStatus));
+    const unavailableReason = readiness.canSign
+      ? ''
+      : (auxInfoStatus === 'failed'
+        ? String(keyShare?.signingUnavailableReason || wallet.signingUnavailableReason || readiness.reason || '').trim()
+        : readiness.reason);
     const next = {
       ...wallet,
       status: readiness.canSign ? 'active' : 'keygen_completed',
       signingStatus: readiness.canSign ? 'available' : 'unavailable',
-      signingUnavailableReason: readiness.canSign ? '' : readiness.reason,
-      auxInfoStatus: keyShare?.auxInfoStatus || wallet.auxInfoStatus || '',
+      signingUnavailableReason: unavailableReason,
+      auxInfoStatus,
       completeKeyShareStatus: readiness.canSign
         ? 'completed'
         : (keyShare?.completeKeyShareStatus || wallet.completeKeyShareStatus || 'missing'),
@@ -207,6 +304,151 @@ class MpcService {
       readiness.wallet = next;
     }
     return readiness;
+  }
+
+  async prepareWalletSigningReadiness(walletOrId, options = {}) {
+    await this.init();
+    logMpcDebug('prepare-signing:start', {
+      walletId: typeof walletOrId === 'string' ? walletOrId : walletOrId?.id || '',
+      hasPassword: Boolean(options.password)
+    });
+    const initial = await this.reconcileWalletSigningReadiness(walletOrId);
+    logMpcDebug('prepare-signing:initial-readiness', {
+      walletId: initial?.wallet?.id || '',
+      status: initial?.wallet?.status || '',
+      signingStatus: initial?.wallet?.signingStatus || '',
+      reason: initial?.reason || '',
+      canSign: Boolean(initial?.canSign),
+      hasKeyShare: Boolean(initial?.keyShare?.share),
+      hasAuxInfo: Boolean(initial?.keyShare?.auxInfo),
+      hasCompleteKeyShare: Boolean(initial?.keyShare?.completeKeyShare),
+      auxInfoStatus: initial?.keyShare?.auxInfoStatus || initial?.wallet?.auxInfoStatus || '',
+      participantId: initial?.keyShare?.participantId || '',
+      participantIndex: initial?.keyShare?.participantIndex
+    });
+    if (initial?.canSign) {
+      return {
+        ...initial,
+        action: 'ready',
+        started: false,
+        resumed: false,
+        repaired: false
+      };
+    }
+
+    const wallet = initial?.wallet || (typeof walletOrId === 'string' ? await getMpcWallet(walletOrId) : walletOrId);
+    if (!wallet?.id) {
+      throw new Error('MPC_WALLET_NOT_FOUND');
+    }
+    const reason = String(initial?.reason || '').trim();
+    if (!['MPC_COMPLETE_KEY_SHARE_NOT_FOUND', 'MPC_KEY_SHARE_NOT_FOUND'].includes(reason)) {
+      return {
+        ...initial,
+        action: 'not_startable',
+        started: false,
+        resumed: false,
+        repaired: false
+      };
+    }
+
+    const repaired = await this._completeKeyShareFromStoredAuxInfo(wallet);
+    if (repaired?.wallet) {
+      const readiness = await this.reconcileWalletSigningReadiness(repaired.wallet);
+      logMpcDebug('prepare-signing:repaired-from-local-aux-info', {
+        walletId: readiness?.wallet?.id || '',
+        canSign: Boolean(readiness?.canSign),
+        status: readiness?.wallet?.status || '',
+        signingStatus: readiness?.wallet?.signingStatus || ''
+      });
+      return {
+        ...readiness,
+        action: readiness.canSign ? 'repaired' : 'repair_failed',
+        started: false,
+        resumed: false,
+        repaired: Boolean(readiness.canSign)
+      };
+    }
+
+    const sessionId = String(wallet.keygenSessionId || '').trim();
+    const session = sessionId ? await getMpcSession(sessionId) : null;
+    logMpcDebug('prepare-signing:continue-aux-info', {
+      walletId: wallet.id,
+      sessionId,
+      sessionStatus: session?.status || '',
+      sessionAuxInfoStatus: session?.auxInfoStatus || '',
+      walletAuxInfoStatus: wallet?.auxInfoStatus || '',
+      walletParticipantCount: Array.isArray(wallet?.participants) ? wallet.participants.length : 0,
+      sessionParticipantCount: Array.isArray(session?.participants) ? session.participants.length : 0
+    });
+    const continuation = await this._maybeContinueAuxInfoForWallet({
+      session,
+      wallet,
+      password: options.password
+    });
+    const readiness = await this.reconcileWalletSigningReadiness(wallet.id);
+    const failed = Boolean(continuation?.failed);
+    const continuationError = String(
+      continuation?.error
+      || continuation?.wallet?.signingUnavailableReason
+      || continuation?.keyShare?.signingUnavailableReason
+      || readiness?.reason
+      || ''
+    ).trim();
+    const waitingForAuxInfo = !failed
+      && !readiness?.canSign
+      && Boolean(continuation)
+      && ['MPC_COMPLETE_KEY_SHARE_NOT_FOUND', 'MPC_KEY_SHARE_NOT_FOUND'].includes(String(readiness?.reason || '').trim());
+    const action = failed
+      ? 'failed'
+      : (continuation?.resumed ? 'resumed' : (continuation ? 'started' : 'not_startable'));
+    logMpcDebug('prepare-signing:done', {
+      walletId: wallet.id,
+      action,
+      started: Boolean(continuation && !continuation.resumed),
+      resumed: Boolean(continuation?.resumed),
+      pending: Boolean(continuation?.pending || waitingForAuxInfo),
+      failed,
+      error: waitingForAuxInfo ? '' : continuationError,
+      canSign: Boolean(readiness?.canSign),
+      status: readiness?.wallet?.status || '',
+      signingStatus: readiness?.wallet?.signingStatus || '',
+      reason: readiness?.reason || '',
+      auxInfoStatus: readiness?.keyShare?.auxInfoStatus || readiness?.wallet?.auxInfoStatus || '',
+      hasCompleteKeyShare: Boolean(readiness?.keyShare?.completeKeyShare)
+    });
+    return {
+      ...readiness,
+      action,
+      started: Boolean(continuation && !continuation.resumed && !failed),
+      resumed: Boolean(continuation?.resumed),
+      pending: Boolean(continuation?.pending || waitingForAuxInfo),
+      repaired: false,
+      failed,
+      error: waitingForAuxInfo ? '' : continuationError
+    };
+  }
+
+  getWireRuntimeState({ sessionId = '', protocol = '', participantIndex = null } = {}) {
+    const normalizedSessionId = String(sessionId || '').trim();
+    const normalizedProtocol = String(protocol || '').trim();
+    const index = Number(participantIndex);
+    const result = {
+      sessionId: normalizedSessionId,
+      participantIndex: Number.isInteger(index) ? index : null,
+      pumpRunning: false,
+      cursor: null
+    };
+    if (!normalizedSessionId || !normalizedProtocol || !Number.isInteger(index)) {
+      return result;
+    }
+    const key = this._buildWireSessionKey({
+      sessionId: normalizedSessionId,
+      recipientIndex: index,
+      protocol: normalizedProtocol
+    });
+    result.pumpRunning = this._wireSessionPumps.has(key);
+    result.cursor = this._wireSessionCursors.get(key) ?? null;
+    return result;
   }
 
   async ensureDeviceKeys(password) {
@@ -362,8 +604,8 @@ class MpcService {
       createdAt: input.createdAt || fallback.createdAt || getTimestamp(),
       updatedAt: getTimestamp(),
       expiresAt: input.expiresAt || fallback.expiresAt || '',
-      keyVersion: Number.isFinite(input.keyVersion) ? input.keyVersion : fallback.keyVersion,
-      shareVersion: Number.isFinite(input.shareVersion) ? input.shareVersion : fallback.shareVersion,
+      keyVersion: normalizeMpcVersion(input.keyVersion, normalizeMpcVersion(fallback.keyVersion)),
+      shareVersion: normalizeMpcVersion(input.shareVersion, normalizeMpcVersion(fallback.shareVersion)),
       result: input.result || fallback.result || null
     };
   }
@@ -383,7 +625,7 @@ class MpcService {
   async _saveLocalParticipantForSession(sessionId, options = {}) {
     const id = String(sessionId || '').trim();
     if (!id) return null;
-    const account = await getSelectedAccount();
+    const account = await getCoordinatorSigningAccount();
     const address = String(account?.address || '').trim();
     if (!address) return null;
     const participants = this._normalizeParticipantIds(options.participants || []);
@@ -408,7 +650,7 @@ class MpcService {
     return participantRecord;
   }
 
-  async _joinCoordinatorParticipant(sessionId, participantRecord) {
+  async _joinCoordinatorParticipant(sessionId, participantRecord, options = {}) {
     const id = String(sessionId || '').trim();
     if (!id || !participantRecord?.id) {
       return null;
@@ -420,10 +662,10 @@ class MpcService {
       e2ePublicKey: participantRecord.e2ePublicKey,
       signingPublicKey: participantRecord.signingPublicKey
     };
-    const joinSignature = await createActionSignature({
-      account: await getSelectedAccount(),
+    const joinSignature = await this._createCoordinatorActionSignature({
       action: 'mpc_session_join',
       payload: { sessionId: id, ...joinPayload },
+      password: options.password
     });
     return await this._coordinator.joinSession(id, joinPayload, joinSignature);
   }
@@ -509,9 +751,17 @@ class MpcService {
       changed = true;
     };
     const setNumberIfPresent = (targetKey, ...sources) => {
-      const value = sources.find(item => item !== undefined && item !== null && String(item).trim() !== '' && Number.isFinite(Number(item)));
+      const value = sources.find(item => {
+        if (item === undefined || item === null || String(item).trim() === '') return false;
+        const numberValue = Number(item);
+        if (!Number.isFinite(numberValue)) return false;
+        if ((targetKey === 'keyVersion' || targetKey === 'shareVersion') && numberValue <= 0) return false;
+        return true;
+      });
       if (value === undefined) return;
-      const numberValue = Number(value);
+      const numberValue = targetKey === 'keyVersion' || targetKey === 'shareVersion'
+        ? normalizeMpcVersion(value)
+        : Number(value);
       if (next[targetKey] === numberValue) return;
       next[targetKey] = numberValue;
       changed = true;
@@ -627,6 +877,11 @@ class MpcService {
     };
   }
 
+  async _createCoordinatorActionSignature({ action, payload, password } = {}) {
+    const account = await getUnlockedCoordinatorSigningAccount(password);
+    return await createActionSignature({ account, action, payload });
+  }
+
   async createSession(options = {}) {
     await this.init();
     await this._ensureCoordinatorToken({
@@ -662,10 +917,10 @@ class MpcService {
       keyVersion: payload.keyVersion,
       shareVersion: payload.shareVersion,
     };
-    const signature = await createActionSignature({
-      account: await getSelectedAccount(),
+    const signature = await this._createCoordinatorActionSignature({
       action: 'mpc_session_create',
       payload: actionPayload,
+      password: options.password
     });
     const response = await this._coordinator.createSession(payload, signature);
     const sessionId = response?.sessionId || response?.id || options.sessionId || generateId('mpc_session');
@@ -687,7 +942,9 @@ class MpcService {
       expiresAt: payload.expiresAt
     }, { autoStartKeygen: false });
     if (localParticipant?.id) {
-      const joinResponse = await this._joinCoordinatorParticipant(sessionId, localParticipant);
+      const joinResponse = await this._joinCoordinatorParticipant(sessionId, localParticipant, {
+        password: options.password
+      });
       const joinedSnapshot = joinResponse?.session || joinResponse;
       session = await this._syncSessionSnapshot(joinedSnapshot, session || {
         id: sessionId,
@@ -739,10 +996,10 @@ class MpcService {
       e2ePublicKey: deviceKeys.e2ePublicKeyRaw,
       signingPublicKey: deviceKeys.signingPublicKeyRaw
     };
-    const signature = await createActionSignature({
-      account: await getSelectedAccount(),
+    const signature = await this._createCoordinatorActionSignature({
       action: 'mpc_session_join',
       payload: { sessionId, ...payload },
+      password: options.password
     });
     const response = await this._coordinator.joinSession(sessionId, payload, signature);
     const now = getTimestamp();
@@ -843,14 +1100,14 @@ class MpcService {
       };
       await this._syncWalletFromSession(completedSession, completedSession);
       if (keygenResult.address && keygenResult.publicKey && typeof this._coordinator.completeSession === 'function') {
-        const signature = await createActionSignature({
-          account: await getSelectedAccount(),
+        const signature = await this._createCoordinatorActionSignature({
           action: 'mpc_keygen_complete',
           payload: {
             sessionId,
             participantId,
             result: keygenResult
-          }
+          },
+          password
         });
         const response = await this._coordinator.completeSession(sessionId, {
           participantId,
@@ -865,7 +1122,7 @@ class MpcService {
     return result;
   }
 
-  async _handleWireKeygenResult({ session, wallet, participantId, participantIndex, result } = {}) {
+  async _handleWireKeygenResult({ session, wallet, participantId, participantIndex, result, password } = {}) {
     const output = result && typeof result === 'object' ? result : {};
     const status = String(output.status || '').trim().toLowerCase();
     const share = output.keyShare || output.share || null;
@@ -880,8 +1137,8 @@ class MpcService {
       return null;
     }
 
-    const shareVersion = Number(output.shareVersion ?? session?.shareVersion ?? wallet?.shareVersion ?? 1);
-    const keyVersion = Number(output.keyVersion ?? session?.keyVersion ?? wallet?.keyVersion ?? 1);
+    const shareVersion = normalizeMpcVersion(output.shareVersion, normalizeMpcVersion(wallet?.shareVersion, normalizeMpcVersion(session?.shareVersion)));
+    const keyVersion = normalizeMpcVersion(output.keyVersion, normalizeMpcVersion(wallet?.keyVersion, normalizeMpcVersion(session?.keyVersion)));
     const publicKey = String(
       output.publicKey
       || output.groupPublicKey
@@ -961,6 +1218,33 @@ class MpcService {
       updatedAt: now
     };
     await saveMpcWallet(nextWallet);
+    if (!alreadyCompleted && address && publicKey && typeof this._coordinator.completeSession === 'function') {
+      const keygenResult = {
+        address,
+        publicKey,
+        groupPublicKey: publicKey,
+        chainCode: '',
+        curve: shareRecord.curve,
+        keyVersion,
+        shareVersion
+      };
+      const signature = await this._createCoordinatorActionSignature({
+        action: 'mpc_keygen_complete',
+        payload: {
+          sessionId,
+          participantId: localParticipantId,
+          result: keygenResult
+        },
+        password
+      });
+      const response = await this._coordinator.completeSession(sessionId, {
+        participantId: localParticipantId,
+        result: keygenResult
+      }, signature);
+      if (response) {
+        await this._syncSessionSnapshot(response, nextSession);
+      }
+    }
     if (!alreadyCompleted) {
       await this._appendAuditLog({
         sessionId,
@@ -972,7 +1256,56 @@ class MpcService {
     return { session: nextSession, wallet: nextWallet, keyShare: shareRecord };
   }
 
-  async _startAuxInfoAfterWireKeygen({ session, wallet, participantId, participantIndex, password } = {}) {
+  _isDevVerificationEngine() {
+    const tssEngine = getMpcTssEngine();
+    if (
+      typeof tssEngine?.getMetadata !== 'function'
+      || typeof tssEngine?.devTrustedAuxInfo !== 'function'
+      || typeof tssEngine?.combineKeyShare !== 'function'
+    ) {
+      return false;
+    }
+    try {
+      const metadata = tssEngine.getMetadata() || {};
+      return metadata.securityProfile === 'dev-verification'
+        && metadata.productionSafe === false;
+    } catch {
+      return false;
+    }
+  }
+
+  async _startAuxInfoAfterWireKeygen(options = {}) {
+    const sessionId = String(options?.session?.id || '').trim();
+    const walletId = String(options?.wallet?.id || options?.session?.walletId || '').trim();
+    const participantIndex = Number(options?.participantIndex);
+    const requestId = sessionId && walletId
+      ? this._buildAuxInfoRequestId({ session: options.session, wallet: options.wallet })
+      : '';
+    const lockKey = `${sessionId}:${walletId}:${participantIndex}:${requestId}`;
+    const existing = this._auxInfoStartsInFlight.get(lockKey);
+    if (existing) {
+      logMpcDebug('aux-info:start-reused-inflight', { sessionId, walletId, participantIndex, requestId });
+      return await existing;
+    }
+    const promise = this._startAuxInfoAfterWireKeygenImpl(options);
+    this._auxInfoStartsInFlight.set(lockKey, promise);
+    try {
+      const result = await promise;
+      // A timed-out start is still running in the background. Keep the lock so
+      // polling cannot create a second WASM protocol session.
+      if (result?.pending === true || result?.timedOut === true) {
+        return result;
+      }
+      this._auxInfoStartsInFlight.delete(lockKey);
+      return result;
+    } finally {
+      if (this._auxInfoStartsInFlight.get(lockKey) === promise && !this._auxInfoStartsInFlight.has(lockKey)) {
+        this._auxInfoStartsInFlight.delete(lockKey);
+      }
+    }
+  }
+
+  async _startAuxInfoAfterWireKeygenImpl({ session, wallet, participantId, participantIndex, password } = {}) {
     const sessionId = String(session?.id || '').trim();
     const walletId = String(wallet?.id || session?.walletId || '').trim();
     const localParticipantId = String(participantId || '').trim();
@@ -985,22 +1318,73 @@ class MpcService {
     if (String(session?.auxInfoStatus || wallet?.auxInfoStatus || '').trim() === 'running') {
       return null;
     }
-    const shareVersion = Number(session?.shareVersion ?? wallet?.shareVersion ?? 1);
+    const shareVersion = normalizeMpcVersion(session?.shareVersion, normalizeMpcVersion(wallet?.shareVersion));
     const shareId = `${walletId}:${localParticipantId}:${shareVersion}`;
     const keyShare = await getMpcKeyShare(shareId);
     if (!keyShare?.share || keyShare?.completeKeyShare) {
+      logMpcDebug('aux-info:start-skipped-no-core-share', {
+        sessionId,
+        walletId,
+        participantId: localParticipantId,
+        participantIndex,
+        hasKeyShare: Boolean(keyShare?.share),
+        hasCompleteKeyShare: Boolean(keyShare?.completeKeyShare)
+      });
       return null;
     }
 
-    try {
-      const started = await this.startWireSession({
+    // The bundled WASM explicitly identifies itself as a development-only
+    // verification build. Its real auxiliary-info generation is too expensive
+    // for a MV3 extension worker and leaves the wallet indefinitely in
+    // `auxInfoStatus: running`. Keep this shortcut strictly tied to that
+    // declared build profile; a production engine must run its full protocol.
+    if (this._isDevVerificationEngine()) {
+      logMpcDebug('aux-info:dev-verification-direct-complete', {
         sessionId,
+        walletId,
+        participantId: localParticipantId,
+        participantIndex
+      });
+      return await this._completeKeyShareFromDevTrustedAuxInfo({
+        session,
+        wallet,
+        participantId: localParticipantId,
+        participantIndex,
+        allowDevFallback: true
+      });
+    }
+
+    try {
+      const participants = this._normalizeParticipantIds(session?.participants || wallet?.participants || []);
+      logMpcDebug('aux-info:start-request', {
+        sessionId,
+        walletId,
+        participantId: localParticipantId,
+        participantIndex,
+        participantsCount: participants.length,
+        shareVersion,
+        sessionAuxInfoStatus: session?.auxInfoStatus || '',
+        walletAuxInfoStatus: wallet?.auxInfoStatus || ''
+      });
+      const requestId = this._buildAuxInfoRequestId({ session, wallet });
+      const startInput = {
+        sessionId,
+        session: {
+          ...session,
+          participants
+        },
         protocol: 'aux-info',
+        requestId,
         participantId: localParticipantId,
         recipientIndex: participantIndex,
+        parties: participants.map((_participant, index) => index),
         curve: session?.curve || wallet?.curve || 'secp256k1',
         password
-      });
+      };
+      // Keep the single in-flight operation alive until the WASM session has
+      // actually been created. The old five-second race returned early and
+      // allowed later wakeups to create duplicate aux-info sessions.
+      const started = await this.startWireSession(startInput);
       const now = getTimestamp();
       const nextSession = {
         ...session,
@@ -1024,23 +1408,72 @@ class MpcService {
         sessionId,
         walletId,
         protocol: 'aux-info',
+        requestId,
         participantId: localParticipantId,
         recipientIndex: participantIndex,
-        password
+        password,
+        maxTicks: MPC_AUX_INFO_WIRE_PUMP_MAX_TICKS,
+        maxIdleTicks: MPC_AUX_INFO_WIRE_PUMP_MAX_IDLE_TICKS
       });
       return {
         session: nextSession,
         wallet: nextWallet,
-        started
+        started,
+        pending: false
       };
     } catch (error) {
+      const reason = error?.message || String(error || '') || 'MPC_AUX_INFO_START_FAILED';
+      const now = getTimestamp();
+      const failedShare = keyShare
+        ? {
+          ...keyShare,
+          auxInfoStatus: 'failed',
+          completeKeyShareStatus: keyShare.completeKeyShareStatus || 'missing',
+          signingStatus: 'unavailable',
+          signingUnavailableReason: reason,
+          updatedAt: now
+        }
+        : null;
+      const nextSession = session
+        ? {
+          ...session,
+          auxInfoStatus: 'failed',
+          result: {
+            ...(session.result && typeof session.result === 'object' ? session.result : {}),
+            auxInfoStatus: 'failed',
+            signingStatus: 'unavailable',
+            signingUnavailableReason: reason
+          },
+          updatedAt: now
+        }
+        : null;
+      const nextWallet = wallet
+        ? {
+          ...wallet,
+          auxInfoStatus: 'failed',
+          completeKeyShareStatus: wallet.completeKeyShareStatus || 'missing',
+          signingStatus: 'unavailable',
+          signingUnavailableReason: reason,
+          updatedAt: now
+        }
+        : null;
+      if (failedShare) await saveMpcKeyShare(failedShare);
+      if (nextSession) await saveMpcSession(nextSession);
+      if (nextWallet) await saveMpcWallet(nextWallet);
+      logMpcDebug('aux-info:start-failed', {
+        sessionId,
+        walletId,
+        participantId: localParticipantId,
+        participantIndex,
+        error: reason
+      });
       await this._appendAuditLog({
         sessionId,
         level: 'warn',
         action: 'wire-aux-info-start-skipped',
-        message: error?.message || 'MPC wire aux-info start skipped'
+        message: reason || 'MPC wire aux-info start skipped'
       });
-      return null;
+      return nextWallet ? { session: nextSession, wallet: nextWallet, keyShare: failedShare, failed: true } : null;
     }
   }
 
@@ -1048,38 +1481,137 @@ class MpcService {
     const sessionId = String(session?.id || wallet?.keygenSessionId || '').trim();
     const walletId = String(wallet?.id || session?.walletId || '').trim();
     if (!sessionId || !walletId || !this._hasLocalKeygenMaterial(wallet)) {
+      logMpcDebug('aux-info:continue-skipped-missing-local-material', {
+        sessionId,
+        walletId,
+        hasLocalKeygenMaterial: this._hasLocalKeygenMaterial(wallet)
+      });
       return null;
     }
-    if (String(wallet?.status || '').trim() === 'active') {
+    if (
+      String(wallet?.status || '').trim() === 'active'
+      && String(session?.auxInfoStatus || wallet?.auxInfoStatus || '').trim() === 'completed'
+    ) {
+      logMpcDebug('aux-info:continue-skipped-active', { sessionId, walletId });
       return null;
     }
     if (String(session?.auxInfoStatus || wallet?.auxInfoStatus || '').trim() === 'completed') {
+      logMpcDebug('aux-info:continue-skipped-completed', {
+        sessionId,
+        walletId,
+        sessionAuxInfoStatus: session?.auxInfoStatus || '',
+        walletAuxInfoStatus: wallet?.auxInfoStatus || ''
+      });
       return null;
+    }
+    const keyShare = await this._findLatestLocalKeyShareForWallet(walletId);
+    const sessionParticipants = this._normalizeParticipantIds(session?.participants || []);
+    const walletParticipants = this._normalizeParticipantIds(wallet?.participants || []);
+    let participants = walletParticipants.length > sessionParticipants.length
+      ? walletParticipants
+      : sessionParticipants;
+    if (!participants.length) {
+      participants = walletParticipants.length ? walletParticipants : sessionParticipants;
+    }
+    const selectedParticipantId = String(await this._resolveLocalParticipantId({ participants })).trim();
+    const keyShareParticipantId = String(keyShare?.participantId || '').trim();
+    let participantId = selectedParticipantId;
+    if (
+      keyShareParticipantId
+      && participants.length
+      && !participants.some((item) => item.toLowerCase() === selectedParticipantId.toLowerCase())
+      && participants.some((item) => item.toLowerCase() === keyShareParticipantId.toLowerCase())
+    ) {
+      participantId = keyShareParticipantId;
+    }
+    if (keyShareParticipantId && !participantId) {
+      participantId = keyShareParticipantId;
     }
     const participantSession = {
       ...session,
-      participants: this._normalizeParticipantIds(session?.participants || wallet?.participants || [])
+      walletId,
+      threshold: session?.threshold || wallet?.threshold,
+      curve: session?.curve || wallet?.curve || 'secp256k1',
+      participants
     };
-    const participantId = String(await this._resolveLocalParticipantId(participantSession)).trim();
     if (!participantId) {
-      return null;
-    }
-    const participantIndex = await this._resolveLocalParticipantIndex(participantSession, { participantId });
-    const auxStatus = String(session?.auxInfoStatus || wallet?.auxInfoStatus || '').trim();
-    if (auxStatus === 'running') {
-      this._startWireSessionPump({
+      logMpcDebug('aux-info:continue-skipped-no-participant', {
         sessionId,
         walletId,
-        protocol: 'aux-info',
-        participantId,
-        recipientIndex: participantIndex,
-        password
+        selectedParticipantId,
+        keyShareParticipantId,
+        participantsCount: participants.length
       });
-      return { resumed: true };
+      return null;
+    }
+    let participantIndex = Number.isInteger(Number(keyShare?.participantIndex))
+      ? Number(keyShare.participantIndex)
+      : -1;
+    if (participantIndex < 0) {
+      participantIndex = await this._resolveLocalParticipantIndex(participantSession, { participantId });
+    }
+    if (
+      session
+      && participants.length
+      && JSON.stringify(this._normalizeParticipantIds(session.participants || [])) !== JSON.stringify(participants)
+    ) {
+      await saveMpcSession({
+        ...session,
+        participants,
+        updatedAt: getTimestamp()
+      });
+    }
+    const auxStatus = String(session?.auxInfoStatus || wallet?.auxInfoStatus || '').trim();
+    if (auxStatus === 'running') {
+      const requestId = this._buildAuxInfoRequestId({ session: participantSession, wallet });
+      const cursorKey = this._buildWireSessionKey({ sessionId, recipientIndex: participantIndex, protocol: 'aux-info' });
+      const wireState = await getMpcWireState({
+        sessionId,
+        protocol: 'aux-info',
+        participantIndex,
+        requestId
+      });
+      const canResume = this._wireSessionPumps.has(cursorKey) && this._wireSessionAdapters.has(cursorKey);
+      if (canResume) {
+        logMpcDebug('aux-info:resume-pump', {
+          sessionId,
+          walletId,
+          participantId,
+          participantIndex,
+          auxStatus,
+          participantsCount: participants.length
+        });
+        this._startWireSessionPump({
+          sessionId,
+          walletId,
+          protocol: 'aux-info',
+          participantId,
+          recipientIndex: participantIndex,
+          password
+        });
+        return { resumed: true };
+      }
+      logMpcDebug('aux-info:restart-stale-running', {
+        sessionId,
+        walletId,
+        participantId,
+        participantIndex,
+        requestId,
+        auxStatus,
+        participantsCount: participants.length,
+        hasWireState: Boolean(wireState?.snapshot),
+        wireStatePersistable: wireState?.snapshot?.persistable
+      });
+      await this._resetWireRuntimeState({
+        sessionId,
+        protocol: 'aux-info',
+        recipientIndex: participantIndex,
+        requestId
+      });
     }
     return await this._startAuxInfoAfterWireKeygen({
-      session: participantSession,
-      wallet,
+      session: auxStatus === 'running' ? { ...participantSession, auxInfoStatus: '' } : participantSession,
+      wallet: auxStatus === 'running' ? { ...wallet, auxInfoStatus: '' } : wallet,
       participantId,
       participantIndex,
       password
@@ -1091,6 +1623,14 @@ class MpcService {
     const status = String(output.status || '').trim().toLowerCase();
     const auxInfo = output.auxInfo || output.aux_info || null;
     if (status !== 'completed' || !auxInfo) {
+      logMpcDebug('aux-info:result-not-ready', {
+        sessionId: session?.id || '',
+        walletId: wallet?.id || session?.walletId || '',
+        participantId: participantId || '',
+        participantIndex,
+        status,
+        hasAuxInfo: Boolean(auxInfo)
+      });
       return null;
     }
 
@@ -1101,11 +1641,19 @@ class MpcService {
       return null;
     }
 
-    const shareVersion = Number(output.shareVersion ?? session?.shareVersion ?? wallet?.shareVersion ?? 1);
-    const keyVersion = Number(output.keyVersion ?? session?.keyVersion ?? wallet?.keyVersion ?? 1);
+    const shareVersion = normalizeMpcVersion(output.shareVersion, normalizeMpcVersion(wallet?.shareVersion, normalizeMpcVersion(session?.shareVersion)));
+    const keyVersion = normalizeMpcVersion(output.keyVersion, normalizeMpcVersion(wallet?.keyVersion, normalizeMpcVersion(session?.keyVersion)));
     const shareId = output.shareId || `${walletId}:${localParticipantId}:${shareVersion}`;
     const existingShare = await getMpcKeyShare(shareId);
     if (!existingShare?.share) {
+      logMpcDebug('aux-info:result-core-share-missing', {
+        sessionId,
+        walletId,
+        participantId: localParticipantId,
+        participantIndex,
+        shareId,
+        shareVersion
+      });
       throw new Error('MPC_CGGMP24_CORE_KEY_SHARE_NOT_FOUND');
     }
     let combinedKeyShare = null;
@@ -1125,6 +1673,19 @@ class MpcService {
         };
       }
     }
+    logMpcDebug('aux-info:combine-result', {
+      sessionId,
+      walletId,
+      participantId: localParticipantId,
+      participantIndex,
+      shareVersion,
+      keyVersion,
+      hasCombineFunction: canCombineKeyShare,
+      hasCombinedKeyShare: Boolean(combinedKeyShare),
+      hadExistingCompleteKeyShare: Boolean(existingShare.completeKeyShare),
+      combinedAddress: combinedPublicMaterial?.address || '',
+      walletAddress: wallet?.address || existingShare.address || ''
+    });
 
     const now = getTimestamp();
     const completeKeyShare = combinedKeyShare || existingShare.completeKeyShare;
@@ -1203,6 +1764,18 @@ class MpcService {
       updatedAt: now
     };
     await saveMpcWallet(nextWallet);
+    logMpcDebug('aux-info:completed', {
+      sessionId,
+      walletId,
+      participantId: localParticipantId,
+      participantIndex,
+      canSign,
+      walletStatus: nextWallet.status,
+      signingStatus,
+      completeKeyShareStatus: shareRecord.completeKeyShareStatus,
+      auxInfoStatus: nextWallet.auxInfoStatus,
+      address: nextWallet.address || ''
+    });
 
     await this._appendAuditLog({
       sessionId,
@@ -1284,10 +1857,10 @@ class MpcService {
         signatureHex: signatureHex || undefined,
         result: output
       };
-      const actionSignature = await createActionSignature({
-        account: await getSelectedAccount(),
+      const actionSignature = await this._createCoordinatorActionSignature({
         action: 'mpc_sign_request_complete',
-        payload
+        payload,
+        password
       });
       const response = await this._coordinator.completeSignRequest(signRequestId, payload, actionSignature);
       if (response) {
@@ -1341,7 +1914,9 @@ class MpcService {
       if (!localParticipant) {
         throw new Error('MPC_PARTICIPANT_NOT_JOINED');
       }
-      await this._joinCoordinatorParticipant(sessionId, localParticipant);
+      await this._joinCoordinatorParticipant(sessionId, localParticipant, {
+        password: options.password
+      });
 
       const participantIndex = await this._resolveLocalParticipantIndex(session, { participantId });
       const participants = this._normalizeParticipantIds(session.participants || wallet.participants || []);
@@ -1444,10 +2019,10 @@ class MpcService {
     if (!sessionId) {
       throw new Error('sessionId is required');
     }
-    const signature = await createActionSignature({
-      account: await getSelectedAccount(),
+    const signature = await this._createCoordinatorActionSignature({
       action: 'mpc_session_cancel',
       payload: { sessionId },
+      password: options.password
     });
     const response = await this._coordinator.cancelSession(sessionId, signature);
     const local = await getMpcSession(sessionId);
@@ -1520,8 +2095,7 @@ class MpcService {
     };
 
     await saveMpcMessage(message);
-    const signature = await createActionSignature({
-      account: await getSelectedAccount(),
+    const signature = await this._createCoordinatorActionSignature({
       action: 'mpc_message_send',
       payload: {
         sessionId,
@@ -1533,6 +2107,7 @@ class MpcService {
         seq: Number.isFinite(message.seq) ? message.seq : undefined,
         envelope: message.envelope ?? {},
       },
+      password: options.password
     });
     await this._coordinator.sendMessage(sessionId, message, signature);
 
@@ -1560,23 +2135,36 @@ class MpcService {
       senderIndex: options.senderIndex,
       audience: options.audience || 'all-parties',
       payload: options.payload,
-      sequence: options.sequence
+      sequence: options.sequence,
+      requestId: options.requestId || ''
     });
-    const signature = await createActionSignature({
-      account: await getSelectedAccount(),
+    const signature = await this._createCoordinatorActionSignature({
       action: 'mpc_message_send',
       payload: {
-        sessionId,
-        protocolVersion: message.protocol_version,
+        session_id: sessionId,
+        protocol_version: message.protocol_version,
         engine: message.engine,
-        envelopeSessionId: message.session_id,
+        envelope_session_id: message.session_id,
         protocol: message.protocol,
-        senderIndex: message.sender_index,
+        request_id: message.request_id || '',
+        sender_index: message.sender_index,
         audience: message.audience,
-        messagePayload: message.payload,
+        message_payload: message.payload,
       },
+      password: options.password
     });
     const response = await this._coordinator.sendWireMessage(sessionId, message, signature);
+    logMpcDebug('wire:send', {
+      sessionId,
+      protocol: message.protocol,
+      requestId: message.request_id || '',
+      senderIndex: message.sender_index,
+      audience: message.audience,
+      sequence: message.sequence,
+      responseId: response?.id || '',
+      responseSeq: response?.seq,
+      responseType: response?.type || ''
+    });
     const saved = {
       id: response?.id || generateId('mpc_msg'),
       sessionId,
@@ -1607,6 +2195,16 @@ class MpcService {
     const messages = Array.isArray(response?.messages)
       ? response.messages
       : (Array.isArray(response) ? response : []);
+    logMpcDebug('wire:fetch', {
+      sessionId: normalizedSessionId,
+      recipientIndex: options.recipientIndex,
+      after: options.after,
+      limit: options.limit,
+      messageCount: messages.length,
+      nextSequence: response?.nextSequence,
+      firstSeq: messages[0]?.seq ?? messages[0]?.envelope?.sequence,
+      lastSeq: messages[messages.length - 1]?.seq ?? messages[messages.length - 1]?.envelope?.sequence
+    });
     const savedMessages = [];
     for (const item of messages) {
       const saved = {
@@ -1636,6 +2234,50 @@ class MpcService {
       String(recipientIndex ?? '').trim(),
       String(protocol || '').trim()
     ].join(':');
+  }
+
+  _buildAuxInfoRequestId({ session, wallet } = {}) {
+    const sessionId = String(session?.id || wallet?.keygenSessionId || '').trim();
+    const keyVersion = normalizeMpcVersion(session?.keyVersion, normalizeMpcVersion(wallet?.keyVersion));
+    const shareVersion = normalizeMpcVersion(session?.shareVersion, normalizeMpcVersion(wallet?.shareVersion));
+    if (!sessionId) return '';
+    return `aux-info:v2:${sessionId}:${Number.isFinite(keyVersion) ? keyVersion : 1}:${Number.isFinite(shareVersion) ? shareVersion : 1}`;
+  }
+
+  async _resetWireRuntimeState({ sessionId, recipientIndex, protocol = '', requestId = '' } = {}) {
+    const normalizedSessionId = String(sessionId || '').trim();
+    const normalizedProtocol = String(protocol || '').trim();
+    const index = Number(recipientIndex);
+    if (!normalizedSessionId || !normalizedProtocol || !Number.isInteger(index) || index < 0) {
+      return { reset: false };
+    }
+    const key = this._buildWireSessionKey({
+      sessionId: normalizedSessionId,
+      recipientIndex: index,
+      protocol: normalizedProtocol
+    });
+    const pump = this._wireSessionPumps.get(key);
+    if (pump && typeof pump.stop === 'function') {
+      pump.stop();
+    }
+    this._wireSessionPumps.delete(key);
+    this._wireSessionAdapters.delete(key);
+    this._wireSessionCursors.delete(key);
+    await deleteMpcWireState({
+      sessionId: normalizedSessionId,
+      protocol: normalizedProtocol,
+      participantIndex: index,
+      requestId
+    });
+    if (requestId) {
+      await deleteMpcWireState({
+        sessionId: normalizedSessionId,
+        protocol: normalizedProtocol,
+        participantIndex: index,
+        requestId: ''
+      });
+    }
+    return { reset: true, key };
   }
 
   async _hasWireSessionAdapterForLocalParticipant(session, protocol = '') {
@@ -1705,7 +2347,7 @@ class MpcService {
     throw new Error('MPC_PARTICIPANT_INDEX_NOT_FOUND');
   }
 
-  _getWireSessionAdapter({ sessionId, recipientIndex, protocol = '', adapter } = {}) {
+  _getWireSessionAdapter({ sessionId, recipientIndex, protocol = '', requestId = '', adapter } = {}) {
     if (adapter) return adapter;
     const key = this._buildWireSessionKey({ sessionId, recipientIndex, protocol });
     let existing = this._wireSessionAdapters.get(key);
@@ -1715,7 +2357,8 @@ class MpcService {
         transport: this,
         protocol,
         senderIndex: recipientIndex,
-        stateStore: this._createWireStateStore({ protocol, senderIndex: recipientIndex })
+        requestId,
+        stateStore: this._createWireStateStore({ protocol, senderIndex: recipientIndex, requestId })
       });
       this._wireSessionAdapters.set(key, existing);
     }
@@ -1758,10 +2401,21 @@ class MpcService {
     const protocol = String(options.protocol || '').trim();
     const recipientIndex = Number(options.recipientIndex);
     if (!sessionId || !protocol || !Number.isInteger(recipientIndex) || recipientIndex < 0) {
+      logMpcDebug('wire-pump:not-started-invalid-input', {
+        sessionId,
+        protocol,
+        recipientIndex
+      });
       return { started: false };
     }
     const pumpKey = this._buildWireSessionKey({ sessionId, recipientIndex, protocol });
     if (this._wireSessionPumps.has(pumpKey)) {
+      logMpcDebug('wire-pump:already-running', {
+        sessionId,
+        protocol,
+        recipientIndex,
+        pumpKey
+      });
       return { started: false, running: true };
     }
 
@@ -1816,18 +2470,56 @@ class MpcService {
           || (tick?.outputs?.length || 0) > 0
           || Boolean(tick?.handledResult);
         idleTicks = madeProgress ? 0 : idleTicks + 1;
+        logMpcDebug('wire-pump:tick', {
+          sessionId,
+          protocol,
+          recipientIndex,
+          tickCount,
+          idleTicks,
+          madeProgress,
+          messages: tick?.messages?.length || 0,
+          messageSummary: summarizeMpcWireMessages(tick?.messages),
+          skippedMessages: tick?.skippedMessages?.length || 0,
+          skippedMessageSummary: summarizeMpcWireMessages(tick?.skippedMessages),
+          outputs: tick?.outputs?.length || 0,
+          nextSequence: tick?.nextSequence,
+          resultStatus: tick?.result?.status || '',
+          handledWalletStatus: tick?.handledResult?.wallet?.status || '',
+          handledAuxInfoStatus: tick?.handledResult?.wallet?.auxInfoStatus || ''
+        });
+        let stopReason = '';
+        if (tick?.error) stopReason = `tick-error:${tick.error}`;
+        else if (protocol === 'keygen' && ['keygen_completed', 'active'].includes(String(tick?.handledResult?.wallet?.status || '').trim())) stopReason = 'keygen-completed';
+        else if (protocol === 'aux-info' && String(tick?.handledResult?.wallet?.status || '').trim() === 'active') stopReason = 'aux-info-active';
+        else if (await shouldStopForState()) stopReason = 'state-completed';
+        else if (tickCount >= (Number(options.maxTicks) || MPC_WIRE_PUMP_MAX_TICKS)) stopReason = 'max-ticks';
+        else if (idleTicks >= (Number(options.maxIdleTicks) || MPC_WIRE_PUMP_MAX_IDLE_TICKS)) stopReason = 'max-idle';
         if (
-          tick?.error
-          || (protocol === 'keygen' && ['keygen_completed', 'active'].includes(String(tick?.handledResult?.wallet?.status || '').trim()))
-          || (protocol === 'aux-info' && String(tick?.handledResult?.wallet?.status || '').trim() === 'active')
-          || await shouldStopForState()
-          || tickCount >= (Number(options.maxTicks) || MPC_WIRE_PUMP_MAX_TICKS)
-          || idleTicks >= (Number(options.maxIdleTicks) || MPC_WIRE_PUMP_MAX_IDLE_TICKS)
+          stopReason
         ) {
+          logMpcDebug('wire-pump:stop', {
+            sessionId,
+            protocol,
+            recipientIndex,
+            tickCount,
+            idleTicks,
+            reason: stopReason
+          });
           stop();
           return;
         }
       } catch (error) {
+        logMpcDebug('wire-pump:error', {
+          sessionId,
+          protocol,
+          recipientIndex,
+          tickCount,
+          idleTicks,
+          error: error?.message || String(error || ''),
+          errorName: error?.name || '',
+          errorStack: String(error?.stack || '').split('\n').slice(0, 3).join('\n'),
+          wireMessage: error?.wireMessage || null
+        });
         await this._appendAuditLog({
           sessionId,
           level: 'warn',
@@ -1835,6 +2527,62 @@ class MpcService {
           message: error?.message || 'MPC wire pump stopped',
           metadata: { protocol, recipientIndex }
         }).catch(() => null);
+        if (protocol === 'aux-info') {
+          const session = await getMpcSession(sessionId).catch(() => null);
+          const walletId = String(session?.walletId || options.walletId || '').trim();
+          const wallet = walletId ? await getMpcWallet(walletId).catch(() => null) : null;
+          const reason = error?.message || String(error || '') || 'MPC_AUX_INFO_PUMP_FAILED';
+          const fallback = await this._completeKeyShareFromDevTrustedAuxInfo({
+            session,
+            wallet,
+            participantId: options.participantId,
+            participantIndex: recipientIndex,
+            reason
+          }).catch((fallbackError) => {
+            logMpcDebug('aux-info:dev-trusted-fallback-failed', {
+              sessionId,
+              walletId,
+              participantId: options.participantId || '',
+              participantIndex: recipientIndex,
+              error: fallbackError?.message || String(fallbackError || '')
+            });
+            return null;
+          });
+          if (fallback?.wallet?.status === 'active') {
+            logMpcDebug('wire-pump:stop', {
+              sessionId,
+              protocol,
+              recipientIndex,
+              tickCount,
+              idleTicks,
+              reason: 'aux-info-dev-trusted-fallback-completed'
+            });
+            stop();
+            return;
+          }
+          if (session && String(session.auxInfoStatus || '').trim() !== 'completed') {
+            await saveMpcSession({
+              ...session,
+              auxInfoStatus: 'failed',
+              result: {
+                ...(session.result && typeof session.result === 'object' ? session.result : {}),
+                auxInfoStatus: 'failed',
+                signingStatus: 'unavailable',
+                signingUnavailableReason: reason
+              },
+              updatedAt: getTimestamp()
+            }).catch(() => null);
+          }
+          if (wallet && String(wallet.auxInfoStatus || '').trim() !== 'completed') {
+            await saveMpcWallet({
+              ...wallet,
+              auxInfoStatus: 'failed',
+              signingStatus: 'unavailable',
+              signingUnavailableReason: reason,
+              updatedAt: getTimestamp()
+            }).catch(() => null);
+          }
+        }
         stop();
         return;
       }
@@ -1842,6 +2590,13 @@ class MpcService {
     };
 
     this._wireSessionPumps.set(pumpKey, { stop, protocol, recipientIndex, startedAt: getTimestamp() });
+    logMpcDebug('wire-pump:start', {
+      sessionId,
+      protocol,
+      recipientIndex,
+      participantId: options.participantId || '',
+      pumpKey
+    });
     timer = setTimeout(run, 0);
     timer?.unref?.();
     return { started: true };
@@ -1856,10 +2611,20 @@ class MpcService {
     const session = options.session || await getMpcSession(sessionId);
     const protocol = String(options.protocol || session?.type || 'keygen').trim();
     const senderIndex = await this._resolveLocalParticipantIndex(session, options);
+    logMpcDebug('wire-session:start', {
+      sessionId,
+      protocol,
+      requestId: options.requestId || '',
+      senderIndex,
+      participantId: options.participantId || '',
+      participantCount: Array.isArray(session?.participants) ? session.participants.length : 0,
+      partiesCount: Array.isArray(options.parties) ? options.parties.length : undefined
+    });
     const adapter = this._getWireSessionAdapter({
       sessionId,
       recipientIndex: senderIndex,
       protocol,
+      requestId: options.requestId || '',
       adapter: options.adapter
     });
     const participants = Array.isArray(options.parties)
@@ -1872,14 +2637,17 @@ class MpcService {
         senderIndex,
         parties: participants,
         threshold: options.threshold ?? session?.threshold,
-        curve: options.curve || session?.curve || 'secp256k1'
+        curve: options.curve || session?.curve || 'secp256k1',
+        password: options.password
       });
     } else if (protocol === 'aux-info') {
       started = await adapter.startAuxInfo({
         sessionId,
         senderIndex,
         parties: participants,
-        curve: options.curve || session?.curve || 'secp256k1'
+        curve: options.curve || session?.curve || 'secp256k1',
+        maxSteps: options.advanceMaxSteps || 5,
+        password: options.password
       });
     } else if (protocol === 'sign') {
       started = await adapter.startSign({
@@ -1888,13 +2656,39 @@ class MpcService {
         senderIndex,
         parties: participants,
         payload: options.payload,
-        keyShareRef: options.keyShareRef
+        keyShareRef: options.keyShareRef,
+        password: options.password
       });
     } else {
       throw new Error('UNSUPPORTED_MPC_WIRE_PROTOCOL');
     }
+    logMpcDebug('wire-session:started', {
+      sessionId,
+      protocol,
+      senderIndex,
+      requestId: options.requestId || '',
+      sentCount: Array.isArray(started?.sent) ? started.sent.length : undefined,
+      messageCount: Array.isArray(started?.messages) ? started.messages.length : undefined,
+      status: started?.status || ''
+    });
     const cursorKey = this._buildWireSessionKey({ sessionId, recipientIndex: senderIndex, protocol });
-    if (!this._wireSessionCursors.has(cursorKey)) {
+    const firstSentSequence = getFirstSentWireSequence(started);
+    if (protocol === 'aux-info' && Number.isFinite(firstSentSequence)) {
+      // A global sequence cannot be seeded from our own first message: the
+      // other participant may have published its first aux message earlier,
+      // and advancing to our seq would skip that message permanently.
+      const afterSequence = this._wireSessionCursors.get(cursorKey) || 0;
+      this._wireSessionCursors.set(cursorKey, afterSequence);
+      logMpcDebug('wire-session:cursor-preserved-for-aux-info', {
+        sessionId,
+        protocol,
+        senderIndex,
+        requestId: options.requestId || '',
+        cursorKey,
+        firstSentSequence,
+        afterSequence
+      });
+    } else if (!this._wireSessionCursors.has(cursorKey)) {
       this._wireSessionCursors.set(cursorKey, 0);
     }
     return {
@@ -1930,6 +2724,8 @@ class MpcService {
       transport: this,
       sessionId,
       recipientIndex,
+      protocol,
+      requestId: options.requestId || '',
       afterSequence,
       limit: options.limit
     });
@@ -1937,7 +2733,8 @@ class MpcService {
     try {
       poll = await runner.pollOnce({
         limit: options.limit,
-        password: options.password
+        password: options.password,
+        advanceMaxSteps: options.advanceMaxSteps || (protocol === 'aux-info' ? 5 : undefined)
       });
     } catch (error) {
       if (protocol === 'keygen') {
@@ -1970,6 +2767,19 @@ class MpcService {
         }
       }
     }
+    logMpcDebug('wire-session:tick-polled', {
+      sessionId,
+      protocol,
+      requestId: options.requestId || '',
+      recipientIndex,
+      cursorKey,
+      messages: poll.messages?.length || 0,
+      skippedMessages: poll.skippedMessages?.length || 0,
+      skippedMessageSummary: summarizeMpcWireMessages(poll.skippedMessages),
+      outputs: poll.outputs?.length || 0,
+      nextSequence: poll.nextSequence,
+      resultStatus: result?.status || ''
+    });
     let handledResult = null;
     if (protocol === 'keygen' && result?.status === 'completed') {
       const participantId = String(options.participantId || await this._resolveLocalParticipantId(session)).trim();
@@ -1980,7 +2790,8 @@ class MpcService {
         wallet,
         participantId,
         participantIndex: recipientIndex,
-        result
+        result,
+        password: options.password
       });
       if (handledResult?.session && handledResult?.wallet) {
         const auxInfoResult = await this._startAuxInfoAfterWireKeygen({
@@ -1995,6 +2806,23 @@ class MpcService {
             ...handledResult,
             auxInfo: auxInfoResult
           };
+        }
+      }
+      // Keygen completion must always trigger aux-info continuation. Some
+      // recovery paths persist the result but return no session object;
+      // relying on handledResult then leaves both wallets in "preparing".
+      if (!handledResult?.auxInfo) {
+        const continuationWalletId = String(options.walletId || session?.walletId || '').trim();
+        const continuationWallet = continuationWalletId
+          ? await getMpcWallet(continuationWalletId)
+          : null;
+        const continuation = await this._maybeContinueAuxInfoForWallet({
+          session,
+          wallet: continuationWallet,
+          password: options.password
+        });
+        if (continuation) {
+          handledResult = { ...(handledResult || {}), auxInfo: continuation };
         }
       }
     } else if (protocol === 'aux-info' && result?.status === 'completed') {
@@ -2174,10 +3002,10 @@ class MpcService {
         signature,
         result
       };
-      const actionSignature = await createActionSignature({
-        account: await getSelectedAccount(),
+      const actionSignature = await this._createCoordinatorActionSignature({
         action: 'mpc_sign_request_complete',
-        payload
+        payload,
+        password
       });
       const response = await this._coordinator.completeSignRequest(signRequest.id, payload, actionSignature);
       if (response) {
@@ -2245,6 +3073,162 @@ class MpcService {
       .filter((share) => String(share?.walletId || '').trim() === normalizedWalletId)
       .sort((a, b) => Number(b?.shareVersion || 0) - Number(a?.shareVersion || 0));
     return matches[0] || null;
+  }
+
+  async _completeKeyShareFromDevTrustedAuxInfo({
+    session,
+    wallet,
+    participantId,
+    participantIndex,
+    reason = '',
+    allowDevFallback = false
+  } = {}) {
+    if (!this._isDevVerificationEngine()) {
+      return null;
+    }
+    if (!allowDevFallback && !String(reason || '').includes('key refresh protocol failed to complete')) {
+      return null;
+    }
+    const sessionId = String(session?.id || wallet?.keygenSessionId || '').trim();
+    const walletId = String(wallet?.id || session?.walletId || '').trim();
+    const localParticipantId = String(participantId || '').trim();
+    const index = Number(participantIndex);
+    if (!sessionId || !walletId || !localParticipantId || !Number.isInteger(index) || index < 0) {
+      return null;
+    }
+    const participants = this._normalizeParticipantIds(session?.participants || wallet?.participants || []);
+    const partyCount = participants.length || Number(session?.threshold || wallet?.threshold || 0);
+    if (!Number.isInteger(partyCount) || partyCount <= index) {
+      return null;
+    }
+    const tssEngine = getMpcTssEngine();
+    if (typeof tssEngine?.devTrustedAuxInfo !== 'function') {
+      return null;
+    }
+    const auxInfo = await tssEngine.devTrustedAuxInfo({
+      sessionId,
+      partyCount,
+      participantIndex: index
+    });
+    if (!auxInfo) {
+      return null;
+    }
+    logMpcDebug('aux-info:dev-trusted-fallback', {
+      sessionId,
+      walletId,
+      participantId: localParticipantId,
+      participantIndex: index,
+      partyCount,
+      securityProfile: 'dev-verification',
+      productionSafe: false
+    });
+    return await this._handleWireAuxInfoResult({
+      session,
+      wallet,
+      participantId: localParticipantId,
+      participantIndex: index,
+      result: {
+        status: 'completed',
+        auxInfo,
+        curve: session?.curve || wallet?.curve || 'secp256k1',
+        keyVersion: normalizeMpcVersion(session?.keyVersion, normalizeMpcVersion(wallet?.keyVersion)),
+        shareVersion: normalizeMpcVersion(session?.shareVersion, normalizeMpcVersion(wallet?.shareVersion))
+      }
+    });
+  }
+
+  async _completeKeyShareFromStoredAuxInfo(walletOrId) {
+    const wallet = typeof walletOrId === 'string'
+      ? await getMpcWallet(walletOrId)
+      : walletOrId;
+    if (!wallet?.id) {
+      return null;
+    }
+    const keyShare = await this._findLatestLocalKeyShareForWallet(wallet.id);
+    if (!keyShare?.share || !keyShare?.auxInfo || keyShare?.completeKeyShare) {
+      return null;
+    }
+    const tssEngine = getMpcTssEngine();
+    const canCombineKeyShare = typeof tssEngine?.combineKeyShare === 'function'
+      && (typeof tssEngine.isLoaded !== 'function' || tssEngine.isLoaded());
+    if (!canCombineKeyShare) {
+      return null;
+    }
+
+    const combined = await tssEngine.combineKeyShare(keyShare.share, keyShare.auxInfo);
+    const completeKeyShare = combined?.keyShare || combined?.key_share || null;
+    if (!completeKeyShare) {
+      return null;
+    }
+
+    const publicMaterial = {
+      publicKey: String(combined.compressedPublicKeyHex || combined.publicKey || '').trim(),
+      uncompressedPublicKey: String(combined.uncompressedPublicKeyHex || combined.uncompressedPublicKey || '').trim(),
+      address: String(combined.ethereumAddress || combined.address || '').trim(),
+      curve: combined.curve
+    };
+    const existingAddress = String(wallet.address || keyShare.address || '').trim().toLowerCase();
+    const combinedAddress = publicMaterial.address.toLowerCase();
+    if (existingAddress && combinedAddress && existingAddress !== combinedAddress) {
+      throw new Error('MPC_COMPLETE_KEY_SHARE_ADDRESS_MISMATCH');
+    }
+    const now = getTimestamp();
+    const shareRecord = {
+      ...keyShare,
+      completeKeyShare,
+      completeKeyShareStatus: 'completed',
+      signingStatus: 'available',
+      signingUnavailableReason: '',
+      updatedAt: now
+    };
+    await saveMpcKeyShare(shareRecord);
+
+    const nextWallet = {
+      ...wallet,
+      status: 'active',
+      address: publicMaterial.address || wallet.address || '',
+      publicKey: publicMaterial.publicKey || wallet.publicKey || '',
+      uncompressedPublicKey: publicMaterial.uncompressedPublicKey || wallet.uncompressedPublicKey || '',
+      curve: publicMaterial.curve || wallet.curve || keyShare.curve || 'secp256k1',
+      auxInfoStatus: 'completed',
+      completeKeyShareStatus: 'completed',
+      signingStatus: 'available',
+      signingUnavailableReason: '',
+      updatedAt: now
+    };
+    await saveMpcWallet(nextWallet);
+
+    const sessionId = String(wallet.keygenSessionId || keyShare.sessionId || '').trim();
+    if (sessionId) {
+      const session = await getMpcSession(sessionId);
+      if (session) {
+        await saveMpcSession({
+          ...session,
+          status: 'active',
+          auxInfoStatus: 'completed',
+          result: {
+            ...(session.result && typeof session.result === 'object' ? session.result : {}),
+            signingStatus: 'available',
+            signingUnavailableReason: '',
+            completeKeyShareStatus: 'completed',
+            address: nextWallet.address,
+            publicKey: nextWallet.publicKey,
+            uncompressedPublicKey: nextWallet.uncompressedPublicKey,
+            curve: nextWallet.curve
+          },
+          updatedAt: now
+        });
+      }
+    }
+
+    await this._appendAuditLog({
+      sessionId,
+      level: 'info',
+      action: 'mpc-signing-readiness-repaired',
+      message: 'MPC 签名材料已基于本地 aux-info 修复'
+    });
+
+    return { wallet: nextWallet, keyShare: shareRecord };
   }
 
   _resolveSignRequestPayload(signRequest) {
@@ -2326,7 +3310,8 @@ class MpcService {
           recipientIndex: participantIndex,
           parties,
           payload,
-          keyShareRef: keyShare
+          keyShareRef: keyShare,
+          password: options.password
         });
         const maxTicks = Math.max(1, Math.min(Number(options.maxTicks) || 5, 20));
         let tick = null;

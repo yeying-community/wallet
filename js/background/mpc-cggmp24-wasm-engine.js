@@ -56,9 +56,24 @@ function supportsSeededSession(Session) {
   return typeof Session?.newWithSeed === 'function';
 }
 
+function logMpcCggmpDebug(event, data = {}) {
+  console.info('[MPC_DEBUG]', event, data);
+}
+
+function isBlockingWasmBindgenAuxInfoSession(Session) {
+  const source = String(Session?.newWithSeed || Session || '');
+  return source.includes('cggmp24auxinfosession_newWithSeed');
+}
+
+function isRemoteAuxInfoState(state) {
+  return Boolean(state?.remoteAuxInfo && state?.protocol === 'aux-info');
+}
+
 export class Cggmp24WasmEngine {
-  constructor({ wasm } = {}) {
+  constructor({ wasm, auxInfoDelegate = null, allowBlockingAuxInfo = false } = {}) {
     this._wasm = wasm || null;
+    this._auxInfoDelegate = auxInfoDelegate || null;
+    this._allowBlockingAuxInfo = Boolean(allowBlockingAuxInfo);
     this._sessions = new Map();
   }
 
@@ -104,7 +119,16 @@ export class Cggmp24WasmEngine {
     return parseJson(combined, {});
   }
 
-  async startKeygen({ sessionId, senderIndex, parties, threshold, curve = 'secp256k1' } = {}) {
+  devTrustedAuxInfo({ sessionId, partyCount, participantIndex } = {}) {
+    const buildAuxInfo = requireFunction(this._wasm, 'devTrustedAuxInfoJson');
+    return parseJson(buildAuxInfo(
+      String(sessionId || ''),
+      Number(partyCount),
+      Number(participantIndex)
+    ), {});
+  }
+
+  async startKeygen({ sessionId, senderIndex, parties, threshold, curve = 'secp256k1', maxSteps } = {}) {
     if (curve !== 'secp256k1') {
       throw new Error('MPC_CGGMP24_UNSUPPORTED_CURVE');
     }
@@ -146,11 +170,11 @@ export class Cggmp24WasmEngine {
       wasmSession
     };
     this._sessions.set(normalizedSessionId, state);
-    await this.advance({ sessionId: normalizedSessionId, state });
+    await this.advance({ sessionId: normalizedSessionId, state, maxSteps });
     return state;
   }
 
-  async startSign({ sessionId, requestId = '', senderIndex, parties, payload, keyShareRef } = {}) {
+  async startSign({ sessionId, requestId = '', senderIndex, parties, payload, keyShareRef, maxSteps } = {}) {
     const normalizedSessionId = String(sessionId || '').trim();
     if (!normalizedSessionId) {
       throw new Error('MPC_SESSION_ID_REQUIRED');
@@ -207,11 +231,21 @@ export class Cggmp24WasmEngine {
       wasmSession
     };
     this._sessions.set(normalizedSessionId, state);
-    await this.advance({ sessionId: normalizedSessionId, state });
+    await this.advance({ sessionId: normalizedSessionId, state, maxSteps });
     return state;
   }
 
-  async startAuxInfo({ sessionId, senderIndex, parties, curve = 'secp256k1' } = {}) {
+  async startAuxInfo({ sessionId, senderIndex, parties, curve = 'secp256k1', maxSteps = 5, requestId = '' } = {}) {
+    if (this._auxInfoDelegate && typeof this._auxInfoDelegate.startAuxInfo === 'function') {
+      return await this._auxInfoDelegate.startAuxInfo({
+        sessionId,
+        senderIndex,
+        parties,
+        curve,
+        maxSteps,
+        requestId
+      });
+    }
     if (curve !== 'secp256k1') {
       throw new Error('MPC_CGGMP24_UNSUPPORTED_CURVE');
     }
@@ -228,13 +262,28 @@ export class Cggmp24WasmEngine {
       throw new Error('INVALID_MPC_PARTICIPANT_COUNT');
     }
     const Session = requireExport(this._wasm, 'Cggmp24AuxInfoSession');
+    if (!this._allowBlockingAuxInfo && isBlockingWasmBindgenAuxInfoSession(Session)) {
+      throw new Error('MPC_CGGMP24_AUX_INFO_BROWSER_BLOCKING');
+    }
     const seedHex = generateSeedHex();
     const seeded = supportsSeededSession(Session);
+    const createStartedAt = Date.now();
+    logMpcCggmpDebug('cggmp24:start-aux-info:before-create', {
+      sessionId: normalizedSessionId,
+      senderIndex: normalizedSenderIndex,
+      partyCount,
+      seeded
+    });
     const wasmSession = createSessionWithSeed(
       Session,
       [normalizedSessionId, normalizedSenderIndex, partyCount],
       seedHex
     );
+    logMpcCggmpDebug('cggmp24:start-aux-info:after-create', {
+      sessionId: normalizedSessionId,
+      senderIndex: normalizedSenderIndex,
+      durationMs: Date.now() - createStartedAt
+    });
     const state = {
       protocol: 'aux-info',
       sessionId: normalizedSessionId,
@@ -242,17 +291,22 @@ export class Cggmp24WasmEngine {
       parties: Array.isArray(parties) ? [...parties] : [],
       partyCount,
       curve,
+      requestId: String(requestId || '').trim(),
       seedHex,
       seeded,
       processedMessages: [],
       wasmSession
     };
     this._sessions.set(normalizedSessionId, state);
-    await this.advance({ sessionId: normalizedSessionId, state });
+    await this.advance({ sessionId: normalizedSessionId, state, maxSteps });
     return state;
   }
 
   async receiveMessage({ sessionId, state, message } = {}) {
+    if (isRemoteAuxInfoState(state)) {
+      await this._auxInfoDelegate.receiveMessage({ sessionId, state, message });
+      return state;
+    }
     const sessionState = this._resolveSessionState(sessionId, state);
     if (!['keygen', 'aux-info', 'sign'].includes(sessionState.protocol)) {
       throw new Error('MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED');
@@ -267,11 +321,31 @@ export class Cggmp24WasmEngine {
   }
 
   async advance({ sessionId, state, maxSteps = 100 } = {}) {
+    if (isRemoteAuxInfoState(state)) {
+      await this._auxInfoDelegate.advance({ sessionId, state, maxSteps });
+      return state;
+    }
     const sessionState = this._resolveSessionState(sessionId, state);
     if (!['keygen', 'aux-info', 'sign'].includes(sessionState.protocol)) {
       throw new Error('MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED');
     }
-    sessionState.lastAdvance = parseJson(sessionState.wasmSession.advanceJson(maxSteps), {});
+    const normalizedMaxSteps = Math.max(1, Math.min(Number(maxSteps) || 100, 100));
+    const startedAt = Date.now();
+    logMpcCggmpDebug('cggmp24:advance:before', {
+      sessionId: sessionState.sessionId,
+      protocol: sessionState.protocol,
+      senderIndex: sessionState.senderIndex,
+      maxSteps: normalizedMaxSteps
+    });
+    sessionState.lastAdvance = parseJson(sessionState.wasmSession.advanceJson(normalizedMaxSteps), {});
+    logMpcCggmpDebug('cggmp24:advance:after', {
+      sessionId: sessionState.sessionId,
+      protocol: sessionState.protocol,
+      senderIndex: sessionState.senderIndex,
+      maxSteps: normalizedMaxSteps,
+      durationMs: Date.now() - startedAt,
+      hasError: Boolean(sessionState.lastAdvance?.error)
+    });
     if (sessionState.lastAdvance?.error) {
       throw new Error(String(sessionState.lastAdvance.error));
     }
@@ -279,6 +353,9 @@ export class Cggmp24WasmEngine {
   }
 
   async getOutgoingMessages({ sessionId, state } = {}) {
+    if (isRemoteAuxInfoState(state)) {
+      return await this._auxInfoDelegate.getOutgoingMessages({ sessionId, state });
+    }
     const sessionState = this._resolveSessionState(sessionId, state);
     if (!['keygen', 'aux-info', 'sign'].includes(sessionState.protocol)) {
       throw new Error('MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED');
@@ -288,11 +365,15 @@ export class Cggmp24WasmEngine {
       protocol: sessionState.protocol,
       senderIndex: sessionState.senderIndex,
       audience: message.audience,
-      payload: message.payload
+      payload: message.payload,
+      requestId: sessionState.requestId || ''
     }));
   }
 
   async getResult({ sessionId, state } = {}) {
+    if (isRemoteAuxInfoState(state)) {
+      return await this._auxInfoDelegate.getResult({ sessionId, state });
+    }
     const sessionState = this._resolveSessionState(sessionId, state);
     if (!['keygen', 'aux-info', 'sign'].includes(sessionState.protocol)) {
       throw new Error('MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED');
@@ -335,6 +416,24 @@ export class Cggmp24WasmEngine {
   }
 
   async exportState({ sessionId, state } = {}) {
+    if (isRemoteAuxInfoState(state)) {
+      return {
+        protocol: 'aux-info',
+        sessionId: String(sessionId || state.sessionId || ''),
+        senderIndex: state.senderIndex,
+        parties: Array.isArray(state.parties) ? [...state.parties] : [],
+        partyCount: state.partyCount,
+        curve: state.curve || 'secp256k1',
+        requestId: state.requestId || '',
+        engine: 'cggmp24',
+        version: 1,
+        remoteAuxInfo: true,
+        persistable: false,
+        requiresEngineImport: true,
+        reason: 'MPC_REMOTE_AUX_INFO_STATE_NOT_PERSISTABLE',
+        updatedAt: Date.now()
+      };
+    }
     const sessionState = this._resolveSessionState(sessionId, state);
     const {
       wasmSession,
@@ -497,8 +596,8 @@ export function getCggmp24WasmEngine() {
   return cggmp24WasmEngine;
 }
 
-export function setCggmp24WasmModuleForTests(wasm) {
-  cggmp24WasmEngine = new Cggmp24WasmEngine({ wasm });
+export function setCggmp24WasmModuleForTests(wasm, options = {}) {
+  cggmp24WasmEngine = new Cggmp24WasmEngine({ wasm, ...options });
   return cggmp24WasmEngine;
 }
 
@@ -506,8 +605,8 @@ export function resetCggmp24WasmEngineForTests() {
   cggmp24WasmEngine = new Cggmp24WasmEngine();
 }
 
-export async function installCggmp24WasmEngine({ wasm, setEngine } = {}) {
-  const engine = new Cggmp24WasmEngine({ wasm });
+export async function installCggmp24WasmEngine({ wasm, auxInfoDelegate = null, setEngine } = {}) {
+  const engine = new Cggmp24WasmEngine({ wasm, auxInfoDelegate });
   if (!engine.isLoaded()) {
     throw new Error('MPC_CGGMP24_WASM_NOT_LOADED');
   }

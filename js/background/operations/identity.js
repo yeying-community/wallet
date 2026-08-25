@@ -114,7 +114,8 @@ export async function handleRequestIdentityVerification(data = {}, dependencies 
     identity: identity.startsWith('did:') ? identity : `did:yeying:${identity}`,
     account: data.account,
     email: data.email,
-    username: data.username
+    username: data.username,
+    ...(data.avatarUri ? { avatarUri: data.avatarUri } : {})
   });
 }
 

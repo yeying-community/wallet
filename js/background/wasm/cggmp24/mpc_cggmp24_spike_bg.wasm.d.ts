@@ -28,6 +28,7 @@ export const cggmp24thresholdkeygensession_resultJson: (a: number) => [number, n
 export const cggmp24thresholdkeygensession_status: (a: number) => [number, number];
 export const combineKeyShareJson: (a: number, b: number, c: number, d: number) => [number, number, number, number];
 export const coreKeySharePublicMaterialJson: (a: number, b: number) => [number, number, number, number];
+export const devTrustedAuxInfoJson: (a: number, b: number, c: number, d: number) => [number, number, number, number];
 export const normalizeAuxInfoPayloadJson: (a: number, b: number) => [number, number, number, number];
 export const normalizeSigningPayloadJson: (a: number, b: number) => [number, number, number, number];
 export const normalizeThresholdKeygenPayloadJson: (a: number, b: number) => [number, number, number, number];

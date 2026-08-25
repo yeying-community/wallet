@@ -7,15 +7,30 @@ import {
   updateUserSettings,
   getWallet,
   getSelectedAccount,
-  getAccountList,
   getMpcWallet,
+  getMpcWalletList,
   saveMpcWallet,
   deleteMpcWallet,
+  getMpcSessionList,
   deleteMpcSession,
+  getMpcKeyShares,
+  deleteMpcKeyShare,
+  getMpcWireStates,
+  deleteMpcWireState,
+  getMpcSignRequests,
+  deleteMpcSignRequest,
+  getMpcMessages,
+  deleteMpcMessage,
+  getMpcParticipants,
+  deleteMpcParticipant,
   getMpcAuditLogs,
   clearMpcAuditLogs
 } from '../../storage/index.js';
 import { mpcService } from '../mpc-service.js';
+import {
+  getCoordinatorSigningAccount,
+  isMpcAccount
+} from '../coordinator-signing-account.js';
 import { getTimestamp } from '../../common/utils/time-utils.js';
 import { generateId } from '../../common/utils/index.js';
 import { deriveUcanAudience, normalizeBearerToken } from '../../common/ucan-utils.js';
@@ -96,10 +111,17 @@ export async function handleCreateMpcWallet(options = {}) {
       throw new Error('请输入 MPC 钱包名称');
     }
     const walletId = generateId('mpc_wallet');
-    const currentAccount = await getSelectedAccount() || (await getAccountList())[0] || null;
+    const currentAccount = await getCoordinatorSigningAccount();
     const selfAddress = String(currentAccount?.address || '').trim();
+    const selectedAccount = await getSelectedAccount();
+    const selectedMpcAddress = isMpcAccount(selectedAccount)
+      ? String(selectedAccount?.address || '').trim().toLowerCase()
+      : '';
     const participantCandidates = Array.isArray(options.participants)
-      ? options.participants.map(item => String(item).trim()).filter(Boolean)
+      ? options.participants
+        .map(item => String(item).trim())
+        .filter(Boolean)
+        .filter((item, index) => index !== 0 || !selectedMpcAddress || item.toLowerCase() !== selectedMpcAddress)
       : [];
     const participants = [];
     const seenParticipants = new Set();
@@ -410,6 +432,108 @@ export async function handleMpcCancelSession(options = {}) {
   }
 }
 
+export async function handleMpcDeleteWallet(options = {}) {
+  try {
+    const walletId = String(options?.walletId || options?.id || '').trim();
+    if (!walletId) {
+      throw new Error('walletId is required');
+    }
+    const wallet = await getMpcWallet(walletId);
+    if (!wallet) {
+      throw new Error('MPC 钱包不存在');
+    }
+
+    const sessionIds = new Set(
+      [wallet?.keygenSessionId, wallet?.sessionId]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    );
+    const sessions = await getMpcSessionList();
+    for (const session of sessions) {
+      const sessionId = String(session?.id || session?.sessionId || '').trim();
+      if (!sessionId) continue;
+      if (String(session?.walletId || '').trim() === walletId || sessionIds.has(sessionId)) {
+        sessionIds.add(sessionId);
+      }
+    }
+
+    const deleted = {
+      wallet: false,
+      sessions: 0,
+      keyShares: 0,
+      wireStates: 0,
+      signRequests: 0,
+      messages: 0,
+      participants: 0
+    };
+
+    for (const session of sessions) {
+      const sessionId = String(session?.id || session?.sessionId || '').trim();
+      if (!sessionId || !sessionIds.has(sessionId)) continue;
+      await deleteMpcSession(sessionId);
+      deleted.sessions += 1;
+    }
+
+    const keyShares = await getMpcKeyShares();
+    for (const [key, share] of Object.entries(keyShares || {})) {
+      const shareId = String(share?.id || key || '').trim();
+      const shareSessionId = String(share?.sessionId || '').trim();
+      if (!shareId) continue;
+      if (String(share?.walletId || '').trim() === walletId || sessionIds.has(shareSessionId)) {
+        await deleteMpcKeyShare(shareId);
+        deleted.keyShares += 1;
+      }
+    }
+
+    const wireStates = await getMpcWireStates();
+    for (const [key, state] of Object.entries(wireStates || {})) {
+      if (!sessionIds.has(String(state?.sessionId || '').trim())) continue;
+      await deleteMpcWireState(key);
+      deleted.wireStates += 1;
+    }
+
+    const signRequests = await getMpcSignRequests();
+    for (const [key, request] of Object.entries(signRequests || {})) {
+      const requestId = String(request?.id || key || '').trim();
+      const requestSessionId = String(request?.sessionId || '').trim();
+      if (!requestId) continue;
+      if (String(request?.walletId || '').trim() === walletId || sessionIds.has(requestSessionId)) {
+        await deleteMpcSignRequest(requestId);
+        deleted.signRequests += 1;
+      }
+    }
+
+    const messages = await getMpcMessages();
+    for (const [key, message] of Object.entries(messages || {})) {
+      const messageId = String(message?.id || key || '').trim();
+      if (!messageId || !sessionIds.has(String(message?.sessionId || '').trim())) continue;
+      await deleteMpcMessage(messageId);
+      deleted.messages += 1;
+    }
+
+    const participants = await getMpcParticipants();
+    for (const [key, participant] of Object.entries(participants || {})) {
+      const sessionId = String(participant?.sessionId || key.split(':')[0] || '').trim();
+      const participantId = String(participant?.id || key.split(':').slice(1).join(':') || '').trim();
+      if (!sessionId || !participantId || !sessionIds.has(sessionId)) continue;
+      await deleteMpcParticipant(sessionId, participantId);
+      deleted.participants += 1;
+    }
+
+    await deleteMpcWallet(walletId);
+    deleted.wallet = true;
+
+    return {
+      success: true,
+      walletId,
+      sessionIds: Array.from(sessionIds),
+      deleted
+    };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to delete MPC wallet' };
+  }
+}
+
 export async function handleMpcDismissInvite(options = {}) {
   try {
     const ids = getInviteIgnoreIds(options);
@@ -457,7 +581,7 @@ export async function handleMpcAcceptInvite(options = {}) {
       throw new Error('walletId is required');
     }
 
-    const currentAccount = await getSelectedAccount() || (await getAccountList())[0] || null;
+    const currentAccount = await getCoordinatorSigningAccount();
     const address = String(currentAccount?.address || '').trim();
     if (!address) {
       throw new Error('当前账户地址不可用');
@@ -624,39 +748,89 @@ export async function handleMpcGetSessions(options = {}) {
   }
 }
 
+async function resolveMpcWalletIdForOperation(options = {}) {
+  let walletId = String(options?.walletId || options?.id || '').trim();
+  const address = String(options?.address || '').trim().toLowerCase();
+  if (!walletId && address) {
+    const wallets = await getMpcWalletList();
+    const matchedWallet = wallets.find((wallet) => String(wallet?.address || '').trim().toLowerCase() === address);
+    walletId = String(matchedWallet?.id || '').trim();
+  }
+  if (!walletId) {
+    throw new Error(address ? '未找到该地址对应的 MPC 钱包' : 'MPC 钱包 ID 不能为空');
+  }
+  return walletId;
+}
+
+function buildMpcSigningDiagnosis(walletId, readiness) {
+  const wallet = readiness?.wallet || null;
+  const keyShare = readiness?.keyShare || null;
+  const sessionId = String(wallet?.keygenSessionId || keyShare?.sessionId || '').trim();
+  const participantIndex = Number(keyShare?.participantIndex);
+  return {
+    walletId,
+    name: String(wallet?.name || ''),
+    address: String(wallet?.address || ''),
+    status: String(wallet?.status || ''),
+    signingStatus: String(wallet?.signingStatus || ''),
+    signingUnavailableReason: String(readiness?.error || wallet?.signingUnavailableReason || readiness?.reason || ''),
+    canSign: Boolean(readiness?.canSign),
+    reason: String(readiness?.error || readiness?.reason || ''),
+    hasAddress: Boolean(String(wallet?.address || '').trim()),
+    keyVersion: wallet?.keyVersion ?? keyShare?.keyVersion ?? null,
+    shareVersion: wallet?.shareVersion ?? keyShare?.shareVersion ?? null,
+    participantId: String(keyShare?.participantId || ''),
+    hasKeyShare: Boolean(keyShare?.share),
+    hasAuxInfo: Boolean(keyShare?.auxInfo),
+    auxInfoStatus: String(keyShare?.auxInfoStatus || wallet?.auxInfoStatus || ''),
+    hasCompleteKeyShare: Boolean(keyShare?.completeKeyShare),
+    completeKeyShareStatus: String(keyShare?.completeKeyShareStatus || wallet?.completeKeyShareStatus || ''),
+    localSigningStatus: String(keyShare?.signingStatus || ''),
+    localSigningUnavailableReason: String(keyShare?.signingUnavailableReason || ''),
+    wireRuntime: mpcService.getWireRuntimeState({
+      sessionId,
+      protocol: 'aux-info',
+      participantIndex
+    })
+  };
+}
+
 export async function handleMpcDiagnoseWallet(options = {}) {
   try {
-    const walletId = String(options?.walletId || options?.id || '').trim();
-    if (!walletId) {
-      throw new Error('MPC 钱包 ID 不能为空');
-    }
+    const walletId = await resolveMpcWalletIdForOperation(options);
     const readiness = await mpcService.evaluateWalletSigningReadiness(walletId);
-    const wallet = readiness?.wallet || null;
-    const keyShare = readiness?.keyShare || null;
     return {
       success: true,
-      diagnosis: {
-        walletId,
-        status: String(wallet?.status || ''),
-        signingStatus: String(wallet?.signingStatus || ''),
-        signingUnavailableReason: String(wallet?.signingUnavailableReason || readiness?.reason || ''),
-        canSign: Boolean(readiness?.canSign),
-        reason: String(readiness?.reason || ''),
-        hasAddress: Boolean(String(wallet?.address || '').trim()),
-        keyVersion: wallet?.keyVersion ?? keyShare?.keyVersion ?? null,
-        shareVersion: wallet?.shareVersion ?? keyShare?.shareVersion ?? null,
-        participantId: String(keyShare?.participantId || ''),
-        hasKeyShare: Boolean(keyShare?.share),
-        hasAuxInfo: Boolean(keyShare?.auxInfo),
-        auxInfoStatus: String(keyShare?.auxInfoStatus || wallet?.auxInfoStatus || ''),
-        hasCompleteKeyShare: Boolean(keyShare?.completeKeyShare),
-        completeKeyShareStatus: String(keyShare?.completeKeyShareStatus || wallet?.completeKeyShareStatus || ''),
-        localSigningStatus: String(keyShare?.signingStatus || ''),
-        localSigningUnavailableReason: String(keyShare?.signingUnavailableReason || '')
-      }
+      diagnosis: buildMpcSigningDiagnosis(walletId, readiness)
     };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to diagnose MPC wallet' };
+  }
+}
+
+export async function handleMpcPrepareWalletSigning(options = {}) {
+  try {
+    const walletId = await resolveMpcWalletIdForOperation(options);
+    const readiness = await mpcService.prepareWalletSigningReadiness(walletId, { password: options?.password });
+    if (readiness?.failed) {
+      return {
+        success: false,
+        error: readiness.error || readiness.reason || 'MPC_AUX_INFO_START_FAILED',
+        action: String(readiness?.action || 'failed'),
+        diagnosis: buildMpcSigningDiagnosis(walletId, readiness)
+      };
+    }
+    return {
+      success: true,
+      action: String(readiness?.action || ''),
+      started: Boolean(readiness?.started),
+      resumed: Boolean(readiness?.resumed),
+      repaired: Boolean(readiness?.repaired),
+      pending: Boolean(readiness?.pending),
+      diagnosis: buildMpcSigningDiagnosis(walletId, readiness)
+    };
+  } catch (error) {
+    return { success: false, error: error.message || 'Failed to prepare MPC wallet signing' };
   }
 }
 

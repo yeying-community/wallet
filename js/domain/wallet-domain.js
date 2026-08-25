@@ -712,6 +712,15 @@ export class WalletDomain extends BaseDomain {
   }
 
   /**
+   * 删除本地 MPC 钱包及其关联数据
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async deleteMpcWallet(options = {}) {
+    return await this._sendMessage(WalletMessageType.MPC_DELETE_WALLET, options);
+  }
+
+  /**
    * 获取待处理 MPC 邀请
    * @param {Object} options
    * @returns {Promise<Object>}
@@ -815,11 +824,21 @@ export class WalletDomain extends BaseDomain {
 
   /**
    * 诊断 MPC 钱包本地签名材料状态
-   * @param {string} walletId
+   * @param {string|Object} input - 钱包 ID，或 { walletId, address }
    * @returns {Promise<Object>}
    */
-  async diagnoseMpcWallet(walletId) {
-    return await this._sendMessage(WalletMessageType.MPC_DIAGNOSE_WALLET, { walletId });
+  async diagnoseMpcWallet(input) {
+    const payload = input && typeof input === 'object' ? input : { walletId: input };
+    return await this._sendMessage(WalletMessageType.MPC_DIAGNOSE_WALLET, payload);
+  }
+
+  /**
+   * 准备或修复 MPC 钱包本地签名能力
+   * @param {Object} options - { walletId, address, password }
+   * @returns {Promise<Object>}
+   */
+  async prepareMpcWalletSigning(options = {}) {
+    return await this._sendMessage(WalletMessageType.MPC_PREPARE_WALLET_SIGNING, options);
   }
 
   /**

@@ -1,13 +1,9 @@
-import { createWalletInstance } from './vault.js';
 import { signMessage } from './signing.js';
-import { state } from './state.js';
 import {
-  getSelectedAccount,
-  getAccountList,
   getUserSetting,
   updateUserSettings
 } from '../storage/index.js';
-import { cachePassword, getCachedPassword, refreshPasswordCache } from './password-cache.js';
+import { getUnlockedCoordinatorSigningAccount } from './coordinator-signing-account.js';
 import {
   normalizeBearerToken,
   decodeJwtPayload,
@@ -36,35 +32,6 @@ export function resolveTargetUcanAudience({ endpoint, explicitAudience = '', sto
     || (isLocalEndpoint(endpoint) ? endpointAudience : '')
     || String(storedAudience || '').trim()
     || endpointAudience;
-}
-
-async function getSigningAccount() {
-  let account = await getSelectedAccount();
-  if (account?.id && account?.address) {
-    return account;
-  }
-  const accounts = await getAccountList();
-  return Array.isArray(accounts) && accounts.length > 0 ? accounts[0] : null;
-}
-
-async function ensureAccountUnlocked(account, passwordOverride) {
-  if (!account?.id) {
-    throw new Error('未找到当前账户');
-  }
-  if (state.keyring?.has(account.id)) {
-    refreshPasswordCache();
-    return;
-  }
-  const password = String(passwordOverride || '').trim() || getCachedPassword();
-  if (!password) {
-    throw new Error('请先解锁钱包后再试');
-  }
-  const walletInstance = await createWalletInstance(account, password);
-  if (!state.keyring) {
-    state.keyring = new Map();
-  }
-  state.keyring.set(account.id, walletInstance);
-  cachePassword(password);
 }
 
 export async function ensureTargetUcanToken(options = {}) {
@@ -127,8 +94,7 @@ export async function ensureTargetUcanToken(options = {}) {
     };
   }
 
-  const account = await getSigningAccount();
-  await ensureAccountUnlocked(account, options.password);
+  const account = await getUnlockedCoordinatorSigningAccount(options.password);
 
   const now = Date.now();
   const expiresAt = now + ttlMs;
