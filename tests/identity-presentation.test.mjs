@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { credentialIsFresh, mergeCredentials, missingCredentialTypes, selectFreshCredentials } from '../js/background/identity-presentation.js';
+import { credentialIsFresh, mergeCredentials, missingCredentialTypes, requestCredentialTypes, selectFreshCredentials } from '../js/background/identity-presentation.js';
 
 function credential(payload) {
   return {
@@ -33,17 +33,21 @@ test('credential freshness rejects malformed credentials', () => {
 test('missing credential types only includes requested stale credentials', () => {
   const credentials = [
     { type: 'EmailCredential', credential: credential({ exp: 1 }).credential },
-    { type: 'UsernameCredential', credential: credential({ exp: 9999999999 }).credential }
+    { type: 'UsernameCredential', credential: credential({ exp: 9999999999 }).credential },
+    { type: 'AvatarCredential', credential: credential({ exp: 9999999999 }).credential }
   ];
-  const selected = selectFreshCredentials(credentials, ['identity.email', 'identity.username']);
+  const selected = selectFreshCredentials(credentials, ['identity.email', 'identity.username', 'identity.avatar']);
 
-  assert.deepEqual(missingCredentialTypes(selected, ['identity.email', 'identity.username']), ['EmailCredential']);
+  assert.deepEqual(requestCredentialTypes(['identity.email', 'identity.username', 'identity.avatar']), ['EmailCredential', 'UsernameCredential', 'AvatarCredential']);
+  assert.deepEqual(missingCredentialTypes(selected, ['identity.email', 'identity.username', 'identity.avatar']), ['EmailCredential']);
 });
 
 test('merge credentials replaces stale credentials by credential type', () => {
   const oldEmail = { type: 'EmailCredential', credential: credential({ vc: { type: ['VerifiableCredential', 'EmailCredential'] }, exp: 1 }).credential };
   const username = { type: 'UsernameCredential', credential: credential({ vc: { type: ['VerifiableCredential', 'UsernameCredential'] }, exp: 1 }).credential };
+  const oldAvatar = { type: 'AvatarCredential', credential: credential({ vc: { type: ['VerifiableCredential', 'AvatarCredential'] }, exp: 1 }).credential };
   const newEmail = { type: 'EmailCredential', credential: credential({ vc: { type: ['VerifiableCredential', 'EmailCredential'] }, exp: 2 }).credential };
+  const newAvatar = { type: 'AvatarCredential', credential: credential({ vc: { type: ['VerifiableCredential', 'AvatarCredential'] }, exp: 2 }).credential };
 
-  assert.deepEqual(mergeCredentials([oldEmail, username], [newEmail]), [username, newEmail]);
+  assert.deepEqual(mergeCredentials([oldEmail, username, oldAvatar], [newEmail, newAvatar]), [username, newEmail, newAvatar]);
 });

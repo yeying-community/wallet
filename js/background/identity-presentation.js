@@ -5,7 +5,7 @@ import { createInvalidParams } from '../common/errors/index.js';
 import { signIdentityDocument } from '../common/identity/identity-document.js';
 
 const METHOD = 'yeying_identity_presentation';
-const ALLOWED_SCOPES = new Set(['identity.basic', 'identity.wallet', 'identity.username', 'identity.email']);
+const ALLOWED_SCOPES = new Set(['identity.basic', 'identity.wallet', 'identity.username', 'identity.email', 'identity.avatar']);
 const CREDENTIAL_CLOCK_SKEW_MS = 60 * 1000;
 
 function normalizeRequest(params, origin) {
@@ -29,11 +29,13 @@ function canonicalize(value) {
 }
 
 function scopeNeedsCredential(scope) {
-  return scope === 'identity.email' || scope === 'identity.username';
+  return scope === 'identity.email' || scope === 'identity.username' || scope === 'identity.avatar';
 }
 
 function credentialTypeForScope(scope) {
-  return scope === 'identity.email' ? 'EmailCredential' : 'UsernameCredential';
+  if (scope === 'identity.email') return 'EmailCredential';
+  if (scope === 'identity.username') return 'UsernameCredential';
+  return 'AvatarCredential';
 }
 
 function decodeCredentialPayload(token) {
@@ -57,7 +59,7 @@ function credentialTypes(credential) {
   const normalized = Array.isArray(types) ? [...types] : (types ? [types] : []);
   const jwt = credential?.credential || credential?.jwt || (typeof credential === 'string' ? credential : '');
   normalized.push(...decodeCredentialTypesFromJwt(jwt));
-  return [...new Set(normalized.filter((type) => type === 'EmailCredential' || type === 'UsernameCredential'))];
+  return [...new Set(normalized.filter((type) => type === 'EmailCredential' || type === 'UsernameCredential' || type === 'AvatarCredential'))];
 }
 
 function credentialToken(credential) {

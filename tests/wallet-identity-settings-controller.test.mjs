@@ -272,6 +272,57 @@ test('requestAndConfirmIdentity completes wallet identity verification without a
   assert.equal(values.get(`walletIdentityVerification:${endpoint}:${address}`), 'complete');
 });
 
+test('requestAndConfirmIdentity requests an avatar credential when avatar URI is provided', async () => {
+  const endpoint = 'http://127.0.0.1:8100';
+  const address = '0x1111111111111111111111111111111111111111';
+  elements.walletIdentityEndpointInput.value = endpoint;
+  const values = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key)
+  };
+  globalThis.fetch = async (url) => ({
+    ok: true,
+    json: async () => String(url).includes('/account-links/challenge')
+      ? { code: 0, data: { message: 'link-message', nonce: 'n1', issuedAt: 'now', expiresAt: 'later' } }
+      : { code: 0, data: { verifiedAt: 'now' } }
+  });
+  const verificationRequests = [];
+  const verificationConfirms = [];
+  const controller = new WalletIdentitySettingsController({
+    wallet: {
+      getCurrentAccount: async () => ({ address, chainId: 1 }),
+      listIdentities: async () => ({ selectedIdentityId: 'wid_1', identities: [{ document: { walletIdentityId: 'wid_1' } }] }),
+      selectIdentity: async () => {},
+      exportIdentityDocument: async () => ({ document: { id: 'did:yeying:wid_1', walletIdentityId: 'wid_1' } }),
+      signIdentityDocument: async (document) => ({ ...document, id: document.id || 'did:yeying:wid_1' }),
+      requestIdentityVerification: async (requestEndpoint, body) => {
+        verificationRequests.push([requestEndpoint, body]);
+        return { verificationId: 'verification-1', email: 'person@example.com' };
+      },
+      confirmIdentityVerification: async (...args) => {
+        verificationConfirms.push(args);
+        return { credentials: [{ type: 'EmailCredential' }, { type: 'UsernameCredential' }, { type: 'AvatarCredential' }] };
+      }
+    },
+    transaction: { signMessage: async () => 'account-signature' },
+    requestPassword: async () => 'wallet-password'
+  });
+  controller.promptVerificationCode = async () => '123456';
+
+  const completed = await controller.requestAndConfirmIdentity({
+    username: 'person',
+    email: 'person@example.com',
+    avatarUri: 'https://avatar.example/person.png'
+  });
+
+  assert.equal(completed, true);
+  assert.deepEqual(verificationRequests[0][1].types, ['email', 'username', 'avatar']);
+  assert.equal(verificationRequests[0][1].avatarUri, 'https://avatar.example/person.png');
+  assert.deepEqual(verificationConfirms[0], [endpoint, 'verification-1', '123456', ['email', 'username', 'avatar']]);
+});
+
 test('registerIdentityPasskey registers a new passkey from the verified identity detail flow', async () => {
   const endpoint = 'http://127.0.0.1:8100';
   elements.walletIdentityEndpointInput.value = endpoint;
