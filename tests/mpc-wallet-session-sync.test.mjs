@@ -33,7 +33,7 @@ globalThis.chrome = {
 };
 
 const { mpcService } = await import('../js/background/mpc-service.js');
-const { handleMpcAcceptInvite, handleMpcCancelSession, handleMpcDiagnoseWallet, handleMpcDismissInvite } = await import('../js/background/operations/mpc.js');
+const { handleCreateMpcWallet, handleMpcAcceptInvite, handleMpcCancelSession, handleMpcDeleteWallet, handleMpcDiagnoseWallet, handleMpcDismissInvite, handleMpcPrepareWalletSigning } = await import('../js/background/operations/mpc.js');
 const { setMpcTssEngineForTests, resetMpcTssEngineForTests } = await import('../js/background/mpc-tss-engine.js');
 const { state } = await import('../js/background/state.js');
 const {
@@ -48,12 +48,16 @@ const {
   getMpcSession,
   getMpcSignRequest,
   getMpcKeyShare,
+  getMpcMessage,
   getMpcParticipant,
+  getMpcWireState,
   saveAccount,
   saveMpcKeyShare,
+  saveMpcMessage,
   saveMpcParticipant,
   saveMpcSignRequest,
   saveMpcSession,
+  saveMpcWireState,
   saveMpcWallet,
   setSelectedAccountId
 } = await import('../js/storage/index.js');
@@ -64,6 +68,8 @@ test.beforeEach(async () => {
   for (const pump of mpcService._wireSessionPumps.values()) {
     pump.stop?.();
   }
+  mpcService._wireSessionCursors.clear();
+  mpcService._wireSessionAdapters.clear();
   mpcService._wireSessionPumps.clear();
   resetMpcTssEngineForTests();
 });
@@ -463,6 +469,9 @@ test('MPC 钱包诊断只返回签名材料状态，不泄露本地密钥内容'
   const result = await handleMpcDiagnoseWallet({ walletId: 'mpc-wallet-1' });
 
   assert.equal(result.success, true);
+  assert.equal(result.diagnosis.walletId, 'mpc-wallet-1');
+  assert.equal(result.diagnosis.name, 'mpc10');
+  assert.equal(result.diagnosis.address, '0x2222222222222222222222222222222222222222');
   assert.equal(result.diagnosis.canSign, true);
   assert.equal(result.diagnosis.hasAddress, true);
   assert.equal(result.diagnosis.hasKeyShare, true);
@@ -474,6 +483,568 @@ test('MPC 钱包诊断只返回签名材料状态，不泄露本地密钥内容'
   assert.equal(serialized.includes('local-share'), false);
   assert.equal(serialized.includes('aux-info'), false);
   assert.equal(serialized.includes('complete-local-share'), false);
+});
+
+test('MPC 钱包诊断支持按链地址定位本地钱包记录', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-by-address',
+    name: 'mpc-by-address',
+    type: 'mpc',
+    status: 'keygen_completed',
+    address: '0xFD608B60F57F1CaDE5006FaACa5F8DF812A0e093',
+    publicKey: '03abcdef',
+    keygenSessionId: 'session-by-address',
+    threshold: 2,
+    participants: ['0x1', '0x2'],
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcKeyShare({
+    id: 'share-by-address',
+    walletId: 'mpc-wallet-by-address',
+    sessionId: 'session-by-address',
+    participantId: '0x1',
+    share: { secret: 'local-share' },
+    auxInfo: { secret: 'aux-info' },
+    auxInfoStatus: 'completed',
+    completeKeyShare: { secret: 'complete-local-share' },
+    completeKeyShareStatus: 'completed',
+    signingStatus: 'available',
+    shareVersion: 1,
+    keyVersion: 1,
+  });
+
+  const result = await handleMpcDiagnoseWallet({ address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093' });
+
+  assert.equal(result.success, true);
+  assert.equal(result.diagnosis.walletId, 'mpc-wallet-by-address');
+  assert.equal(result.diagnosis.name, 'mpc-by-address');
+  assert.equal(result.diagnosis.address, '0xFD608B60F57F1CaDE5006FaACa5F8DF812A0e093');
+  assert.equal(result.diagnosis.canSign, true);
+  const serialized = JSON.stringify(result);
+  assert.equal(serialized.includes('local-share'), false);
+  assert.equal(serialized.includes('aux-info'), false);
+  assert.equal(serialized.includes('complete-local-share'), false);
+});
+
+test('MPC 钱包签名准备可基于已保存 aux-info 修复 completeKeyShare', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-prepare',
+    name: 'mpc-prepare',
+    type: 'mpc',
+    status: 'keygen_completed',
+    address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093',
+    publicKey: '03abcdef',
+    keygenSessionId: 'session-prepare',
+    threshold: 2,
+    participants: ['0x1', '0x2'],
+    signingStatus: 'unavailable',
+    signingUnavailableReason: 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND',
+    completeKeyShareStatus: 'missing',
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcSession({
+    id: 'session-prepare',
+    walletId: 'mpc-wallet-prepare',
+    name: 'mpc-prepare',
+    type: 'keygen',
+    status: 'keygen_completed',
+    auxInfoStatus: 'completed',
+    participants: ['0x1', '0x2'],
+    threshold: 2,
+    result: {
+      address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093'
+    },
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcKeyShare({
+    id: 'share-prepare',
+    walletId: 'mpc-wallet-prepare',
+    sessionId: 'session-prepare',
+    participantId: '0x1',
+    share: { secret: 'local-share' },
+    auxInfo: { secret: 'aux-info' },
+    auxInfoStatus: 'completed',
+    completeKeyShareStatus: 'missing',
+    signingStatus: 'unavailable',
+    signingUnavailableReason: 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND',
+    shareVersion: 1,
+    keyVersion: 1,
+  });
+  setMpcTssEngineForTests({
+    isLoaded: () => true,
+    combineKeyShare(coreKeyShare, auxInfo) {
+      assert.deepEqual(coreKeyShare, { secret: 'local-share' });
+      assert.deepEqual(auxInfo, { secret: 'aux-info' });
+      return {
+        keyShare: { secret: 'complete-local-share' },
+        compressedPublicKeyHex: '03abcdef',
+        uncompressedPublicKeyHex: '04abcdef',
+        ethereumAddress: '0xfd608b60f57f1cade5006faaca5f8df812a0e093',
+        curve: 'secp256k1'
+      };
+    }
+  });
+
+  const result = await handleMpcPrepareWalletSigning({ address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093' });
+
+  assert.equal(result.success, true);
+  assert.equal(result.repaired, true);
+  assert.equal(result.diagnosis.canSign, true);
+  assert.equal(result.diagnosis.signingStatus, 'available');
+  assert.equal(result.diagnosis.hasCompleteKeyShare, true);
+  const wallet = await getMpcWallet('mpc-wallet-prepare');
+  assert.equal(wallet.status, 'active');
+  assert.equal(wallet.signingStatus, 'available');
+  const share = await getMpcKeyShare('share-prepare');
+  assert.equal(share.completeKeyShareStatus, 'completed');
+  const serialized = JSON.stringify(result);
+  assert.equal(serialized.includes('local-share'), false);
+  assert.equal(serialized.includes('aux-info'), false);
+  assert.equal(serialized.includes('complete-local-share'), false);
+});
+
+test('MPC 钱包签名准备优先使用本地 keyShare participantIndex 恢复 aux-info', async () => {
+  await saveAccount({
+    id: 'account-non-participant',
+    walletId: 'wallet-1',
+    address: '0xffffffffffffffffffffffffffffffffffffffff',
+    name: '非参与者',
+  });
+  await setSelectedAccountId('account-non-participant');
+  await saveMpcWallet({
+    id: 'mpc-wallet-prepare-index',
+    name: 'mpc-prepare-index',
+    type: 'mpc',
+    status: 'keygen_completed',
+    address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093',
+    keygenSessionId: 'session-prepare-index',
+    threshold: 2,
+    participants: [
+      '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    ],
+    signingStatus: 'unavailable',
+    signingUnavailableReason: 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND',
+    completeKeyShareStatus: 'missing',
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcSession({
+    id: 'session-prepare-index',
+    walletId: 'mpc-wallet-prepare-index',
+    name: 'mpc-prepare-index',
+    type: 'keygen',
+    status: 'keygen_completed',
+    participants: ['0x9999999999999999999999999999999999999999'],
+    threshold: 2,
+    result: {
+      address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093'
+    },
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcKeyShare({
+    id: 'mpc-wallet-prepare-index:0x5c7bf91C493126314bb821C123Dee889FFCa3932:1',
+    walletId: 'mpc-wallet-prepare-index',
+    sessionId: 'session-prepare-index',
+    participantId: '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    participantIndex: 1,
+    share: { secret: 'local-share' },
+    auxInfoStatus: 'missing',
+    completeKeyShareStatus: 'missing',
+    signingStatus: 'unavailable',
+    signingUnavailableReason: 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND',
+    shareVersion: 1,
+    keyVersion: 1,
+  });
+  const originalStartWireSession = mpcService.startWireSession;
+  const originalStartWireSessionPump = mpcService._startWireSessionPump;
+  let startedInput = null;
+  let pumpInput = null;
+  mpcService.startWireSession = async (input) => {
+    startedInput = input;
+    return { started: true };
+  };
+  mpcService._startWireSessionPump = (input) => {
+    pumpInput = input;
+    return { started: true };
+  };
+
+  try {
+    const result = await handleMpcPrepareWalletSigning({ walletId: 'mpc-wallet-prepare-index' });
+
+    assert.equal(result.success, true);
+    assert.equal(result.started, true);
+    assert.equal(result.pending, true);
+    assert.equal(startedInput.participantId, '0x5c7bf91C493126314bb821C123Dee889FFCa3932');
+    assert.equal(startedInput.recipientIndex, 1);
+    assert.deepEqual(startedInput.parties, [0, 1]);
+    assert.deepEqual(startedInput.session.participants, [
+      '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    ]);
+    assert.equal(pumpInput.participantId, '0x5c7bf91C493126314bb821C123Dee889FFCa3932');
+    assert.equal(pumpInput.recipientIndex, 1);
+    const session = await getMpcSession('session-prepare-index');
+    assert.deepEqual(session.participants, [
+      '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    ]);
+  } finally {
+    mpcService.startWireSession = originalStartWireSession;
+    mpcService._startWireSessionPump = originalStartWireSessionPump;
+  }
+});
+
+test('MPC 钱包签名准备启动 aux-info 超时时返回 pending', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-prepare-timeout',
+    name: 'mpc-prepare-timeout',
+    type: 'mpc',
+    status: 'keygen_completed',
+    address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093',
+    keygenSessionId: 'session-prepare-timeout',
+    threshold: 2,
+    participants: [
+      '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    ],
+    signingStatus: 'unavailable',
+    signingUnavailableReason: 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND',
+    completeKeyShareStatus: 'missing',
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcSession({
+    id: 'session-prepare-timeout',
+    walletId: 'mpc-wallet-prepare-timeout',
+    name: 'mpc-prepare-timeout',
+    type: 'keygen',
+    status: 'keygen_completed',
+    participants: [
+      '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    ],
+    threshold: 2,
+    result: {
+      address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093'
+    },
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcKeyShare({
+    id: 'mpc-wallet-prepare-timeout:0x5c7bf91C493126314bb821C123Dee889FFCa3932:1',
+    walletId: 'mpc-wallet-prepare-timeout',
+    sessionId: 'session-prepare-timeout',
+    participantId: '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    participantIndex: 1,
+    share: { secret: 'local-share' },
+    auxInfoStatus: 'missing',
+    completeKeyShareStatus: 'missing',
+    signingStatus: 'unavailable',
+    signingUnavailableReason: 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND',
+    shareVersion: 1,
+    keyVersion: 1,
+  });
+  const originalStartWireSession = mpcService.startWireSession;
+  const originalStartWireSessionPump = mpcService._startWireSessionPump;
+  const originalSetTimeout = globalThis.setTimeout;
+  let pumpStarted = false;
+  mpcService.startWireSession = async () => new Promise(() => {});
+  mpcService._startWireSessionPump = () => {
+    pumpStarted = true;
+    return { started: true };
+  };
+  globalThis.setTimeout = (fn) => {
+    queueMicrotask(fn);
+    return { unref() {} };
+  };
+
+  try {
+    const result = await handleMpcPrepareWalletSigning({ walletId: 'mpc-wallet-prepare-timeout' });
+
+    assert.equal(result.success, true);
+    assert.equal(result.started, true);
+    assert.equal(result.pending, true);
+    assert.equal(result.action, 'started');
+    const wallet = await getMpcWallet('mpc-wallet-prepare-timeout');
+    assert.equal(wallet.auxInfoStatus, 'running');
+    assert.equal(pumpStarted, false);
+  } finally {
+    mpcService.startWireSession = originalStartWireSession;
+    mpcService._startWireSessionPump = originalStartWireSessionPump;
+    globalThis.setTimeout = originalSetTimeout;
+  }
+});
+
+test('MPC 钱包签名准备启动 aux-info 失败时返回错误', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-prepare-failed',
+    name: 'mpc-prepare-failed',
+    type: 'mpc',
+    status: 'keygen_completed',
+    address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093',
+    keygenSessionId: 'session-prepare-failed',
+    threshold: 2,
+    participants: [
+      '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    ],
+    signingStatus: 'unavailable',
+    signingUnavailableReason: 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND',
+    completeKeyShareStatus: 'missing',
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcSession({
+    id: 'session-prepare-failed',
+    walletId: 'mpc-wallet-prepare-failed',
+    name: 'mpc-prepare-failed',
+    type: 'keygen',
+    status: 'keygen_completed',
+    participants: [
+      '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    ],
+    threshold: 2,
+    result: {
+      address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093'
+    },
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcKeyShare({
+    id: 'mpc-wallet-prepare-failed:0x5c7bf91C493126314bb821C123Dee889FFCa3932:1',
+    walletId: 'mpc-wallet-prepare-failed',
+    sessionId: 'session-prepare-failed',
+    participantId: '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    participantIndex: 1,
+    share: { secret: 'local-share' },
+    auxInfoStatus: 'missing',
+    completeKeyShareStatus: 'missing',
+    signingStatus: 'unavailable',
+    signingUnavailableReason: 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND',
+    shareVersion: 1,
+    keyVersion: 1,
+  });
+  const originalStartWireSession = mpcService.startWireSession;
+  const originalStartWireSessionPump = mpcService._startWireSessionPump;
+  let pumpStarted = false;
+  mpcService.startWireSession = async () => {
+    throw new Error('Wallet is locked');
+  };
+  mpcService._startWireSessionPump = () => {
+    pumpStarted = true;
+    return { started: true };
+  };
+
+  try {
+    const result = await handleMpcPrepareWalletSigning({ walletId: 'mpc-wallet-prepare-failed' });
+
+    assert.equal(result.success, false);
+    assert.equal(result.action, 'failed');
+    assert.equal(result.error, 'Wallet is locked');
+    assert.equal(result.diagnosis.signingStatus, 'unavailable');
+    assert.equal(result.diagnosis.reason, 'Wallet is locked');
+    assert.equal(pumpStarted, false);
+    const wallet = await getMpcWallet('mpc-wallet-prepare-failed');
+    assert.equal(wallet.auxInfoStatus, 'failed');
+    assert.equal(wallet.signingUnavailableReason, 'Wallet is locked');
+  } finally {
+    mpcService.startWireSession = originalStartWireSession;
+    mpcService._startWireSessionPump = originalStartWireSessionPump;
+  }
+});
+
+test('MPC 钱包签名准备在 aux-info delayed start 完成后才启动 pump', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-prepare-delayed',
+    name: 'mpc-prepare-delayed',
+    type: 'mpc',
+    status: 'keygen_completed',
+    address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093',
+    keygenSessionId: 'session-prepare-delayed',
+    threshold: 2,
+    participants: [
+      '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    ],
+    signingStatus: 'unavailable',
+    signingUnavailableReason: 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND',
+    completeKeyShareStatus: 'missing',
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcSession({
+    id: 'session-prepare-delayed',
+    walletId: 'mpc-wallet-prepare-delayed',
+    name: 'mpc-prepare-delayed',
+    type: 'keygen',
+    status: 'keygen_completed',
+    participants: [
+      '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    ],
+    threshold: 2,
+    result: {
+      address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093'
+    },
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcKeyShare({
+    id: 'mpc-wallet-prepare-delayed:0x5c7bf91C493126314bb821C123Dee889FFCa3932:1',
+    walletId: 'mpc-wallet-prepare-delayed',
+    sessionId: 'session-prepare-delayed',
+    participantId: '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    participantIndex: 1,
+    share: { secret: 'local-share' },
+    auxInfoStatus: 'missing',
+    completeKeyShareStatus: 'missing',
+    signingStatus: 'unavailable',
+    signingUnavailableReason: 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND',
+    shareVersion: 1,
+    keyVersion: 1,
+  });
+  const originalStartWireSession = mpcService.startWireSession;
+  const originalStartWireSessionPump = mpcService._startWireSessionPump;
+  const originalSetTimeout = globalThis.setTimeout;
+  const realSetTimeout = originalSetTimeout;
+  let resolveStart;
+  const startPromise = new Promise((resolve) => {
+    resolveStart = resolve;
+  });
+  const pumpInputs = [];
+  mpcService.startWireSession = async () => startPromise;
+  mpcService._startWireSessionPump = (input) => {
+    pumpInputs.push(input);
+    return { started: true };
+  };
+  globalThis.setTimeout = (fn) => {
+    queueMicrotask(fn);
+    return { unref() {} };
+  };
+
+  try {
+    const result = await handleMpcPrepareWalletSigning({ walletId: 'mpc-wallet-prepare-delayed' });
+
+    assert.equal(result.success, true);
+    assert.equal(result.started, true);
+    assert.equal(pumpInputs.length, 0);
+    resolveStart({ started: true });
+    await new Promise((resolve) => realSetTimeout(resolve, 0));
+    assert.equal(pumpInputs.length, 1);
+    assert.equal(pumpInputs[0].protocol, 'aux-info');
+    assert.equal(pumpInputs[0].requestId, 'aux-info:v2:session-prepare-delayed:1:1');
+    assert.equal(pumpInputs[0].maxIdleTicks > 12, true);
+  } finally {
+    mpcService.startWireSession = originalStartWireSession;
+    mpcService._startWireSessionPump = originalStartWireSessionPump;
+    globalThis.setTimeout = originalSetTimeout;
+  }
+});
+
+test('MPC 钱包签名准备会重启旧版本遗留的 running aux-info 状态', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-prepare-stale-running',
+    name: 'mpc-prepare-stale-running',
+    type: 'mpc',
+    status: 'keygen_completed',
+    address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093',
+    keygenSessionId: 'session-prepare-stale-running',
+    threshold: 2,
+    participants: [
+      '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    ],
+    auxInfoStatus: 'running',
+    signingStatus: 'unavailable',
+    signingUnavailableReason: 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND',
+    completeKeyShareStatus: 'missing',
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcSession({
+    id: 'session-prepare-stale-running',
+    walletId: 'mpc-wallet-prepare-stale-running',
+    name: 'mpc-prepare-stale-running',
+    type: 'keygen',
+    status: 'keygen_completed',
+    auxInfoStatus: 'running',
+    participants: [
+      '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
+      '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    ],
+    threshold: 2,
+    result: {
+      address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093'
+    },
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcKeyShare({
+    id: 'mpc-wallet-prepare-stale-running:0x5c7bf91C493126314bb821C123Dee889FFCa3932:1',
+    walletId: 'mpc-wallet-prepare-stale-running',
+    sessionId: 'session-prepare-stale-running',
+    participantId: '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
+    participantIndex: 1,
+    share: { secret: 'local-share' },
+    auxInfoStatus: 'missing',
+    completeKeyShareStatus: 'missing',
+    signingStatus: 'unavailable',
+    signingUnavailableReason: 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND',
+    shareVersion: 1,
+    keyVersion: 1,
+  });
+  await saveMpcWireState({
+    sessionId: 'session-prepare-stale-running',
+    protocol: 'aux-info',
+    participantIndex: 1,
+    snapshot: {
+      persistable: true,
+      protocol: 'aux-info',
+      legacyState: true
+    },
+    updatedAt: 1000
+  });
+
+  const originalStartWireSession = mpcService.startWireSession;
+  const originalStartWireSessionPump = mpcService._startWireSessionPump;
+  let startedInput = null;
+  let pumpInput = null;
+  mpcService.startWireSession = async (input) => {
+    startedInput = input;
+    return { started: true };
+  };
+  mpcService._startWireSessionPump = (input) => {
+    pumpInput = input;
+    return { started: true };
+  };
+
+  try {
+    const result = await handleMpcPrepareWalletSigning({ walletId: 'mpc-wallet-prepare-stale-running' });
+
+    assert.equal(result.success, true);
+    assert.equal(result.started, true);
+    assert.equal(result.resumed, false);
+    assert.equal(result.pending, true);
+    assert.equal(startedInput.protocol, 'aux-info');
+    assert.equal(startedInput.recipientIndex, 1);
+    assert.equal(pumpInput.protocol, 'aux-info');
+    assert.equal(pumpInput.recipientIndex, 1);
+    const staleWireState = await getMpcWireState({
+      sessionId: 'session-prepare-stale-running',
+      protocol: 'aux-info',
+      participantIndex: 1
+    });
+    assert.equal(staleWireState, null);
+  } finally {
+    mpcService.startWireSession = originalStartWireSession;
+    mpcService._startWireSessionPump = originalStartWireSessionPump;
+  }
 });
 
 test('session 数字字段缺失时不会把本地值误同步为 0', async () => {
@@ -1067,6 +1638,87 @@ test('已生成地址的 MPC 钱包不能通过取消创建入口移除', async 
   assert.notEqual(await getMpcSession('session-active'), null);
 });
 
+test('删除 MPC 钱包会清理本地关联数据', async () => {
+  await saveMpcWallet({
+    id: 'mpc-wallet-delete',
+    name: 'delete-me',
+    type: 'mpc',
+    status: 'keygen_completed',
+    address: '0x1234567890123456789012345678901234567890',
+    keygenSessionId: 'session-delete',
+    threshold: 2,
+    participants: ['0x1', '0x2'],
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcSession({
+    id: 'session-delete',
+    walletId: 'mpc-wallet-delete',
+    type: 'keygen',
+    status: 'keygen_completed',
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  await saveMpcKeyShare({
+    id: 'share-delete',
+    walletId: 'mpc-wallet-delete',
+    sessionId: 'session-delete',
+    participantId: '0x1',
+    participantIndex: 0,
+    share: { secret: 'local-share' },
+  });
+  await saveMpcWireState({
+    sessionId: 'session-delete',
+    participantIndex: 0,
+    protocol: 'aux-info',
+    requestId: 'request-delete',
+    cursor: 10,
+  });
+  await saveMpcSignRequest({
+    id: 'sign-delete',
+    walletId: 'mpc-wallet-delete',
+    sessionId: 'session-delete',
+    status: 'pending',
+  });
+  await saveMpcMessage({
+    id: 'message-delete',
+    sessionId: 'session-delete',
+    senderIndex: 0,
+    recipientIndex: 1,
+    payload: {},
+  });
+  await saveMpcParticipant({
+    id: '0x1',
+    sessionId: 'session-delete',
+    address: '0x1',
+  });
+
+  const result = await handleMpcDeleteWallet({ walletId: 'mpc-wallet-delete', password: 'password123' });
+
+  assert.equal(result.success, true);
+  assert.deepEqual(result.deleted, {
+    wallet: true,
+    sessions: 1,
+    keyShares: 1,
+    wireStates: 1,
+    signRequests: 1,
+    messages: 1,
+    participants: 1,
+  });
+  assert.equal(await getMpcWallet('mpc-wallet-delete'), null);
+  assert.equal(await getMpcSession('session-delete'), null);
+  assert.equal(await getMpcKeyShare('share-delete'), null);
+  assert.equal(await getMpcWireState({
+    sessionId: 'session-delete',
+    participantIndex: 0,
+    protocol: 'aux-info',
+    requestId: 'request-delete',
+  }), null);
+  assert.equal(await getMpcSignRequest('sign-delete'), null);
+  assert.equal(await getMpcMessage('message-delete'), null);
+  assert.equal(await getMpcParticipant('session-delete', '0x1'), null);
+});
+
 test('创建 MPC session 后会把创建方登记为 coordinator participant', async () => {
   const actor = '0x1111111111111111111111111111111111111111';
   const invited = '0x2222222222222222222222222222222222222222';
@@ -1147,6 +1799,180 @@ test('创建 MPC session 后会把创建方登记为 coordinator participant', a
     const localParticipant = await getMpcParticipant('session-creator-join', actor);
     assert.equal(localParticipant.id, actor);
     assert.equal(localParticipant.deviceId, joinCalls[0].payload.deviceId);
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+  }
+});
+
+test('创建 MPC session 时选中 MPC 账号会使用 HD 账号登记 participant', async () => {
+  const actor = '0x1111111111111111111111111111111111111111';
+  const mpcAddress = '0x3333333333333333333333333333333333333333';
+  const invited = '0x2222222222222222222222222222222222222222';
+  await saveAccount({
+    id: 'account-1',
+    walletId: 'wallet-1',
+    address: actor,
+  });
+  await saveMpcWallet({
+    id: 'existing-mpc-wallet',
+    name: 'existing mpc',
+    type: 'mpc',
+    status: 'active',
+    address: mpcAddress,
+  });
+  await setSelectedAccountId('mpc:existing-mpc-wallet');
+  state.keyring = new Map([
+    ['account-1', { signMessage: async (message) => `signed:${message}` }],
+  ]);
+
+  const joinCalls = [];
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    createSession: async () => ({
+      id: 'session-hd-fallback',
+      name: 'mpc-hd-fallback',
+      type: 'keygen',
+      walletId: 'mpc-wallet-new',
+      threshold: 1,
+      participants: [actor, invited],
+      status: 'created',
+      round: 0,
+      curve: 'secp256k1',
+      keyVersion: 0,
+      shareVersion: 0,
+    }),
+    joinSession: async (sessionId, payload) => {
+      joinCalls.push({ sessionId, payload });
+      return {
+        id: sessionId,
+        name: 'mpc-hd-fallback',
+        type: 'keygen',
+        walletId: 'mpc-wallet-new',
+        threshold: 1,
+        participants: [actor, invited],
+        status: 'ready',
+        round: 0,
+        curve: 'secp256k1',
+        keyVersion: 0,
+        shareVersion: 0,
+        joinedParticipants: [{
+          participantId: actor,
+          deviceId: payload.deviceId,
+          identity: payload.identity,
+          e2ePublicKey: payload.e2ePublicKey,
+          signingPublicKey: payload.signingPublicKey,
+          status: 'active',
+          joinedAt: '1',
+        }],
+      };
+    },
+  };
+
+  try {
+    await mpcService.createSession({
+      type: 'keygen',
+      name: 'mpc-hd-fallback',
+      walletId: 'mpc-wallet-new',
+      threshold: 1,
+      participants: [actor, invited],
+      curve: 'secp256k1',
+      password: 'password123',
+    });
+
+    assert.equal(joinCalls.length, 1);
+    assert.equal(joinCalls[0].payload.participantId, actor);
+    assert.equal(joinCalls[0].payload.identity, `did:pkh:eth:${actor.toLowerCase()}`);
+    const localParticipant = await getMpcParticipant('session-hd-fallback', actor);
+    assert.equal(localParticipant.id, actor);
+    assert.equal(await getMpcParticipant('session-hd-fallback', mpcAddress), null);
+  } finally {
+    mpcService._ensureCoordinatorToken = originalEnsure;
+    mpcService._coordinator = originalCoordinator;
+  }
+});
+
+test('创建 MPC 钱包时会用 HD 地址替换 UI 传入的当前 MPC 地址', async () => {
+  const actor = '0x1111111111111111111111111111111111111111';
+  const mpcAddress = '0x3333333333333333333333333333333333333333';
+  const invited = '0x2222222222222222222222222222222222222222';
+  await saveAccount({
+    id: 'account-1',
+    walletId: 'wallet-1',
+    address: actor,
+  });
+  await saveMpcWallet({
+    id: 'existing-mpc-wallet',
+    name: 'existing mpc',
+    type: 'mpc',
+    status: 'active',
+    address: mpcAddress,
+  });
+  await setSelectedAccountId('mpc:existing-mpc-wallet');
+  state.keyring = new Map([
+    ['account-1', { signMessage: async (message) => `signed:${message}` }],
+  ]);
+
+  let createPayload = null;
+  const originalEnsure = mpcService._ensureCoordinatorToken;
+  const originalCoordinator = mpcService._coordinator;
+  mpcService._ensureCoordinatorToken = async () => ({ token: 'token' });
+  mpcService._coordinator = {
+    setEndpoint() {},
+    createSession: async (payload) => {
+      createPayload = payload;
+      return {
+        id: 'session-create-wallet-fallback',
+        name: payload.name,
+        type: 'keygen',
+        walletId: payload.walletId,
+        threshold: payload.threshold,
+        participants: payload.participants,
+        status: 'created',
+        round: 0,
+        curve: payload.curve,
+        keyVersion: 1,
+        shareVersion: 1,
+      };
+    },
+    joinSession: async (sessionId, payload) => ({
+      id: sessionId,
+      name: 'mpc-wallet-fallback',
+      type: 'keygen',
+      walletId: createPayload.walletId,
+      threshold: createPayload.threshold,
+      participants: createPayload.participants,
+      status: 'created',
+      round: 0,
+      curve: createPayload.curve,
+      keyVersion: 1,
+      shareVersion: 1,
+      joinedParticipants: [{
+        participantId: payload.participantId,
+        deviceId: payload.deviceId,
+        identity: payload.identity,
+        e2ePublicKey: payload.e2ePublicKey,
+        signingPublicKey: payload.signingPublicKey,
+        status: 'active',
+        joinedAt: '1',
+      }],
+    }),
+  };
+
+  try {
+    const result = await handleCreateMpcWallet({
+      name: 'mpc-wallet-fallback',
+      threshold: 2,
+      participants: [mpcAddress, invited],
+      password: 'password123',
+    });
+
+    assert.equal(result.success, true);
+    assert.deepEqual(createPayload.participants, [actor, invited]);
+    assert.equal(createPayload.participants.includes(mpcAddress), false);
   } finally {
     mpcService._ensureCoordinatorToken = originalEnsure;
     mpcService._coordinator = originalCoordinator;

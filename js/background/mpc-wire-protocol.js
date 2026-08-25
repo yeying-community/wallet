@@ -22,11 +22,11 @@ export function normalizeMpcAudience(audience) {
   if (!isObject(audience)) {
     throw new Error('INVALID_MPC_WIRE_AUDIENCE');
   }
-  const oneParty = audience['one-party'] || audience.oneParty;
+  const oneParty = audience['one-party'];
   if (!isObject(oneParty)) {
     throw new Error('INVALID_MPC_WIRE_AUDIENCE');
   }
-  const recipientIndex = Number(oneParty.recipient_index ?? oneParty.recipientIndex);
+  const recipientIndex = Number(oneParty.recipient_index);
   if (!Number.isInteger(recipientIndex) || recipientIndex < 0) {
     throw new Error('INVALID_MPC_WIRE_AUDIENCE');
   }
@@ -39,7 +39,8 @@ export function createMpcWireMessage({
   senderIndex,
   audience,
   payload,
-  sequence = 0
+  sequence = 0,
+  requestId = ''
 } = {}) {
   const normalizedSessionId = String(sessionId || '').trim();
   if (!normalizedSessionId) {
@@ -52,7 +53,7 @@ export function createMpcWireMessage({
   if (payload === undefined || payload === null) {
     throw new Error('MPC_WIRE_PAYLOAD_REQUIRED');
   }
-  return {
+  const message = {
     protocol_version: MPC_WIRE_PROTOCOL_VERSION,
     engine: MPC_WIRE_ENGINE,
     session_id: normalizedSessionId,
@@ -62,6 +63,11 @@ export function createMpcWireMessage({
     audience: normalizeMpcAudience(audience),
     payload
   };
+  const normalizedRequestId = String(requestId || '').trim();
+  if (normalizedRequestId) {
+    message.request_id = normalizedRequestId;
+  }
+  return message;
 }
 
 export function inferMpcWireRound(payload) {
@@ -82,16 +88,17 @@ export function parseMpcWireMessage(message) {
   if (!isObject(envelope)) {
     throw new Error('INVALID_MPC_WIRE_MESSAGE');
   }
-  const version = Number(envelope.protocol_version ?? envelope.protocolVersion);
+  const version = Number(envelope.protocol_version);
   if (version !== MPC_WIRE_PROTOCOL_VERSION) {
     throw new Error('INVALID_MPC_WIRE_VERSION');
   }
   if (String(envelope.engine || '').trim() !== MPC_WIRE_ENGINE) {
     throw new Error('INVALID_MPC_WIRE_ENGINE');
   }
-  const sessionId = String(envelope.session_id ?? envelope.sessionId ?? '').trim();
-  const senderIndex = Number(envelope.sender_index ?? envelope.senderIndex);
+  const sessionId = String(envelope.session_id ?? '').trim();
+  const senderIndex = Number(envelope.sender_index);
   const sequence = Number(envelope.sequence ?? message?.seq ?? 0);
+  const requestId = String(envelope.request_id ?? '').trim();
   return {
     ...envelope,
     protocol_version: MPC_WIRE_PROTOCOL_VERSION,
@@ -100,6 +107,7 @@ export function parseMpcWireMessage(message) {
     protocol: normalizeMpcProtocol(envelope.protocol),
     sequence: Number.isFinite(sequence) ? sequence : 0,
     sender_index: Number.isInteger(senderIndex) ? senderIndex : -1,
+    request_id: requestId,
     audience: normalizeMpcAudience(envelope.audience),
     payload: envelope.payload
   };

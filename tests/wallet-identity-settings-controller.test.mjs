@@ -198,6 +198,50 @@ test('changeWalletIdentity prompts for new profile data and verifies it', async 
   assert.equal(elements.globalWaitingOverlay.classList.contains('hidden'), true);
 });
 
+test('submitIdentityEdit refreshes the identity detail page after a successful profile change', async () => {
+  const dom = createDocument({
+    walletIdentityEndpointInput: { tagName: 'input', value: 'https://node.example' },
+    walletIdentityEditEndpoint: { tagName: 'input', value: 'https://node.example' },
+    walletIdentityEditAddress: { tagName: 'select', value: '0x1111111111111111111111111111111111111111' },
+    walletIdentityEditUsername: { tagName: 'input', value: 'new-person' },
+    walletIdentityEditEmail: { tagName: 'input', value: 'New@Example.com' },
+    walletIdentityDetailPage: { tagName: 'div', _classes: 'page hidden' },
+    walletIdentityEditPage: { tagName: 'div', _classes: 'page' },
+    walletIdentityDetailStatusPage: { tagName: 'span', textContent: '已验证' },
+    walletIdentityDetailUsernamePage: { tagName: 'span', textContent: 'old-person' },
+    walletIdentityDetailEmailPage: { tagName: 'span', textContent: 'old@example.com' },
+    walletIdentityDetailAddressPage: { tagName: 'span' },
+    walletIdentityDetailDidPage: { tagName: 'span' },
+    walletIdentityDetailEndpointPage: { tagName: 'span' }
+  });
+  elements = dom.elements;
+  globalThis.document = dom.document;
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const makeCredential = (subject) => `${encode({ alg: 'none' })}.${encode({ vc: { credentialSubject: subject } })}.`;
+  let credentials = [makeCredential({ username: 'old-person', email: 'old@example.com' })];
+  const controller = new WalletIdentitySettingsController({
+    wallet: {
+      getCurrentAccount: async () => ({ address: '0x1111111111111111111111111111111111111111' }),
+      listIdentities: async () => ({ selectedIdentityId: 'wid_1', identities: [{ document: { walletIdentityId: 'wid_1' } }] }),
+      getIdentity: async () => ({ document: { id: 'did:yeying:wid_1', walletIdentityId: 'wid_1' } }),
+      listIdentityCredentials: async () => ({ credentials })
+    }
+  });
+  controller.requestAndConfirmIdentity = async ({ username, email }) => {
+    credentials = [makeCredential({ username, email })];
+    return true;
+  };
+  controller.renderIdentityVerificationAction = async () => {};
+  controller.refreshIdentityPasskeySummary = async () => {};
+  controller.refreshIdentityTotpSummary = async () => {};
+
+  await controller.submitIdentityEdit();
+
+  assert.equal(elements.walletIdentityDetailUsernamePage.textContent, 'new-person');
+  assert.equal(elements.walletIdentityDetailEmailPage.textContent, 'new@example.com');
+  assert.equal(elements.walletIdentityDetailPage.classList.contains('hidden'), false);
+});
+
 test('continueEmailVerification resumes the stored verification without relinking the account', async () => {
   const endpoint = 'http://127.0.0.1:8100';
   const address = '0x1111111111111111111111111111111111111111';

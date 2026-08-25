@@ -529,6 +529,116 @@ test('Cggmp24WasmEngine drives aux-info sessions through the TSS adapter contrac
   });
 });
 
+test('Cggmp24WasmEngine rejects browser-blocking wasm-bindgen aux-info constructor', async () => {
+  class BlockingAuxInfoSession {}
+  BlockingAuxInfoSession.newWithSeed = function newWithSeed() {
+    return wasm.cggmp24auxinfosession_newWithSeed();
+  };
+
+  const engine = new Cggmp24WasmEngine({
+    wasm: {
+      Cggmp24ThresholdKeygenSession: class {},
+      Cggmp24AuxInfoSession: BlockingAuxInfoSession,
+      Cggmp24SigningSession: class {},
+      cggmp24EngineMetadataJson: () => JSON.stringify({ engine: 'cggmp24' }),
+      normalizeWireMessageJson: (json) => json,
+      normalizeSigningPayloadJson: (json) => json,
+      normalizeThresholdKeygenPayloadJson: (json) => json,
+      normalizeAuxInfoPayloadJson: (json) => json,
+      coreKeySharePublicMaterialJson: () => JSON.stringify({}),
+      combineKeyShareJson: () => JSON.stringify({ status: 'completed' }),
+    },
+  });
+
+  await assert.rejects(
+    () => engine.startAuxInfo({
+      sessionId: 'session-aux-blocking',
+      senderIndex: 1,
+      parties: [0, 1],
+      curve: 'secp256k1',
+    }),
+    /MPC_CGGMP24_AUX_INFO_BROWSER_BLOCKING/
+  );
+});
+
+test('Cggmp24WasmEngine delegates aux-info sessions to offscreen engine proxy', async () => {
+  const calls = [];
+  const auxInfoDelegate = {
+    async startAuxInfo(input) {
+      calls.push(['startAuxInfo', input]);
+      return {
+        protocol: 'aux-info',
+        sessionId: input.sessionId,
+        senderIndex: input.senderIndex,
+        parties: input.parties,
+        partyCount: input.parties.length,
+        curve: input.curve,
+        remoteAuxInfo: true,
+      };
+    },
+    async receiveMessage(input) {
+      calls.push(['receiveMessage', input.message.payload]);
+    },
+    async advance(input) {
+      calls.push(['advance', input.maxSteps]);
+    },
+    async getOutgoingMessages() {
+      calls.push(['getOutgoingMessages']);
+      return [{ protocol: 'aux-info', senderIndex: 1, audience: 'all-parties', payload: { Round1: {} } }];
+    },
+    async getResult() {
+      calls.push(['getResult']);
+      return { status: 'completed', auxInfo: { paillier: 'aux-from-worker' }, curve: 'secp256k1' };
+    },
+  };
+
+  const engine = new Cggmp24WasmEngine({
+    auxInfoDelegate,
+    wasm: {
+      Cggmp24ThresholdKeygenSession: class {},
+      Cggmp24AuxInfoSession: class {},
+      Cggmp24SigningSession: class {},
+      cggmp24EngineMetadataJson: () => JSON.stringify({ engine: 'cggmp24' }),
+      normalizeWireMessageJson: (json) => json,
+      normalizeSigningPayloadJson: (json) => json,
+      normalizeThresholdKeygenPayloadJson: (json) => json,
+      normalizeAuxInfoPayloadJson: (json) => json,
+      coreKeySharePublicMaterialJson: () => JSON.stringify({}),
+      combineKeyShareJson: () => JSON.stringify({ status: 'completed' }),
+    },
+  });
+
+  const state = await engine.startAuxInfo({
+    sessionId: 'session-remote-aux',
+    senderIndex: 1,
+    parties: [0, 1],
+    curve: 'secp256k1',
+    maxSteps: 5,
+  });
+  await engine.receiveMessage({
+    sessionId: 'session-remote-aux',
+    state,
+    message: { protocol: 'aux-info', payload: { Round1: {} } },
+  });
+  await engine.advance({ sessionId: 'session-remote-aux', state, maxSteps: 5 });
+  assert.deepEqual(await engine.getOutgoingMessages({ sessionId: 'session-remote-aux', state }), [
+    { protocol: 'aux-info', senderIndex: 1, audience: 'all-parties', payload: { Round1: {} } },
+  ]);
+  assert.deepEqual(await engine.getResult({ sessionId: 'session-remote-aux', state }), {
+    status: 'completed',
+    auxInfo: { paillier: 'aux-from-worker' },
+    curve: 'secp256k1',
+  });
+
+  assert.deepEqual(calls.map(([name]) => name), [
+    'startAuxInfo',
+    'receiveMessage',
+    'advance',
+    'getOutgoingMessages',
+    'getResult',
+  ]);
+});
+
 test('Cggmp24WasmEngine drives signing sessions through the TSS adapter contract', async () => {
   class FakeSigningSession {
     constructor(sessionId, requestId, senderIndex, partiesJson, keyShareJson, messageHex) {
@@ -619,6 +729,7 @@ test('Cggmp24WasmEngine drives signing sessions through the TSS adapter contract
     audience: 'all-parties',
     payload: { Round1a: { from: 1 } },
     sequence: 0,
+    requestId: 'request-1',
   });
 
   await adapter.receiveMessage({

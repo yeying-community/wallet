@@ -234,6 +234,33 @@
   max-height: min(640px, calc(100vh - 32px));
 }
 
+#mpcWalletDetailPage {
+  height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#mpcWalletDetailPage .page-header {
+  flex: 0 0 auto;
+}
+
+.mpc-wallet-detail-page-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 16px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.mpc-wallet-detail-page-body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
 .mpc-wallet-detail-session-title {
   margin: 18px 0 8px;
   font-size: 13px;

@@ -150,7 +150,7 @@ test('MpcTssStateMachineAdapter persists and restores wire session state', async
       sessionId: 'session-restore',
       protocol: 'keygen',
       senderIndex: 0,
-      audience: { oneParty: { recipientIndex: 1 } },
+      audience: { 'one-party': { recipient_index: 1 } },
       payload: { Round1: { from: 0 } },
       sequence: 2
     })
@@ -193,7 +193,7 @@ test('tickWireSession polls wire messages, advances adapter, and stores sequence
             sessionId: 'session-1',
             protocol: 'sign',
             senderIndex: 0,
-            audience: { oneParty: { recipientIndex: 1 } },
+            audience: { 'one-party': { recipient_index: 1 } },
             payload: { Round1a: { from: 0 } },
             sequence: 4
           }),
@@ -394,6 +394,94 @@ test('startWireSession starts keygen and sign adapters through service transport
   }
 });
 
+test('aux-info restart seeds wire cursor from current start message sequence', async () => {
+  const fetchCalls = [];
+  const originalSendWireMessage = mpcService.sendWireMessage;
+  const originalFetchWireMessages = mpcService.fetchWireMessages;
+  mpcService.sendWireMessage = async (message) => {
+    return {
+      message: {
+        id: 'aux-current-start',
+        sessionId: message.sessionId,
+        from: String(message.senderIndex),
+        to: '',
+        type: message.protocol,
+        seq: 18,
+        envelope: {
+          session_id: message.sessionId,
+          protocol: message.protocol,
+          sender_index: message.senderIndex,
+          sequence: 18,
+          payload: message.payload,
+          request_id: message.requestId || ''
+        },
+        createdAt: 18
+      }
+    };
+  };
+  mpcService.fetchWireMessages = async (_sessionId, options = {}) => {
+    fetchCalls.push(options);
+    return { messages: [], nextSequence: Number(options.after || 0) };
+  };
+
+  const adapter = new MpcTssStateMachineAdapter({
+    engine: {
+      async startAuxInfo(input) {
+        return {
+          sessionId: input.sessionId,
+          senderIndex: input.senderIndex,
+          protocol: 'aux-info',
+          outgoing: [{ payload: { Round1: { aux: true } } }]
+        };
+      },
+      async advance({ state }) {
+        return state;
+      },
+      async getOutgoingMessages({ state }) {
+        const outgoing = state.outgoing || [];
+        state.outgoing = [];
+        return outgoing;
+      },
+      async getResult() {
+        return null;
+      }
+    },
+    transport: mpcService
+  });
+
+  try {
+    await mpcService.startWireSession({
+      sessionId: 'session-stale-aux-restart',
+      protocol: 'aux-info',
+      recipientIndex: 0,
+      parties: [0, 1],
+      requestId: 'aux-info:v2:session-stale-aux-restart:1:1',
+      adapter
+    });
+
+    const runtime = mpcService.getWireRuntimeState({
+      sessionId: 'session-stale-aux-restart',
+      protocol: 'aux-info',
+      participantIndex: 0
+    });
+    assert.equal(runtime.cursor, 0);
+
+    await mpcService.tickWireSession({
+      sessionId: 'session-stale-aux-restart',
+      protocol: 'aux-info',
+      recipientIndex: 0,
+      requestId: 'aux-info:v2:session-stale-aux-restart:1:1',
+      adapter
+    });
+
+    assert.equal(fetchCalls.length, 1);
+    assert.equal(fetchCalls[0].after, 0);
+  } finally {
+    mpcService.sendWireMessage = originalSendWireMessage;
+    mpcService.fetchWireMessages = originalFetchWireMessages;
+  }
+});
+
 test('wire session pump keeps ticking until protocol state completes', async () => {
   const originalTickWireSession = mpcService.tickWireSession;
   const ticks = [];
@@ -514,7 +602,7 @@ test('tickWireSession persists completed cggmp24 wire keygen result without mark
     assert.equal(session.status, 'keygen_completed');
     assert.equal(session.result.publicKey, '03abcdef');
     assert.equal(session.result.address, '0x2222222222222222222222222222222222222222');
-    assert.equal(session.result.signingUnavailableReason, 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED');
+    assert.equal(session.result.signingUnavailableReason, 'MPC_TSS_ENGINE_NOT_CONFIGURED');
 
     const wallet = await getMpcWallet('mpc-wallet-1');
     assert.equal(wallet.status, 'keygen_completed');
@@ -628,7 +716,8 @@ test('tickWireSession starts aux-info wire session after cggmp24 keygen complete
       senderIndex: 1,
       audience: 'all-parties',
       payload: { Round1: { aux: true } },
-      sequence: 0
+      sequence: 0,
+      requestId: 'aux-info:v2:session-auto-aux:1:1'
     });
     const session = await getMpcSession('session-auto-aux');
     assert.equal(session.auxInfoStatus, 'running');
@@ -785,6 +874,110 @@ test('tickWireSession persists completed cggmp24 aux-info result and marks walle
   } finally {
     mpcService._ensureCoordinatorToken = originalEnsure;
     mpcService._coordinator = originalCoordinator;
+    resetMpcTssEngineForTests();
+  }
+});
+
+test('dev trusted aux-info fallback completes key share after cggmp24 aux proof failure', async () => {
+  await saveMpcSession({
+    id: 'session-aux-fallback',
+    type: 'keygen',
+    walletId: 'mpc-wallet-aux-fallback',
+    status: 'keygen_completed',
+    threshold: 2,
+    curve: 'secp256k1',
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222'
+    ],
+    keyVersion: 1,
+    shareVersion: 1,
+    createdAt: 1,
+    updatedAt: 1
+  });
+  await saveMpcWallet({
+    id: 'mpc-wallet-aux-fallback',
+    name: 'mpc10',
+    type: 'mpc',
+    status: 'keygen_completed',
+    keygenSessionId: 'session-aux-fallback',
+    threshold: 2,
+    curve: 'secp256k1',
+    address: '0x3333333333333333333333333333333333333333',
+    publicKey: '03abcdef',
+    participants: [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222'
+    ],
+    signingStatus: 'unavailable',
+    signingUnavailableReason: 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED',
+    createdAt: 1,
+    updatedAt: 1
+  });
+  await saveMpcKeyShare({
+    id: 'mpc-wallet-aux-fallback:0x2222222222222222222222222222222222222222:1',
+    walletId: 'mpc-wallet-aux-fallback',
+    sessionId: 'session-aux-fallback',
+    participantId: '0x2222222222222222222222222222222222222222',
+    participantIndex: 1,
+    curve: 'secp256k1',
+    publicKey: '03abcdef',
+    address: '0x3333333333333333333333333333333333333333',
+    share: { shared_public_key: '03abcdef', i: 1 },
+    keyVersion: 1,
+    shareVersion: 1,
+    engine: 'cggmp24',
+    signingStatus: 'unavailable',
+    signingUnavailableReason: 'MPC_CGGMP24_SIGNING_STATE_MACHINE_NOT_IMPLEMENTED',
+    createdAt: 1,
+    updatedAt: 1
+  });
+  setMpcTssEngineForTests({
+    isLoaded: () => true,
+    getMetadata: () => ({
+      securityProfile: 'dev-verification',
+      productionSafe: false
+    }),
+    devTrustedAuxInfo(input) {
+      assert.equal(input.sessionId, 'session-aux-fallback');
+      assert.equal(input.partyCount, 2);
+      assert.equal(input.participantIndex, 1);
+      return { devTrustedAuxInfo: true, participantIndex: input.participantIndex };
+    },
+    combineKeyShare(coreKeyShare, auxInfo) {
+      return {
+        status: 'completed',
+        curve: 'secp256k1',
+        keyShare: { core: coreKeyShare, aux: auxInfo },
+        compressedPublicKeyHex: '03abcdef',
+        uncompressedPublicKeyHex: `04${'44'.repeat(64)}`,
+        ethereumAddress: '0x4444444444444444444444444444444444444444'
+      };
+    }
+  });
+
+  try {
+    const session = await getMpcSession('session-aux-fallback');
+    const wallet = await getMpcWallet('mpc-wallet-aux-fallback');
+    const result = await mpcService._startAuxInfoAfterWireKeygen({
+      session,
+      wallet,
+      participantId: '0x2222222222222222222222222222222222222222',
+      participantIndex: 1
+    });
+
+    assert.equal(result.wallet.status, 'active');
+    assert.equal(result.wallet.signingStatus, 'available');
+    const share = await getMpcKeyShare('mpc-wallet-aux-fallback:0x2222222222222222222222222222222222222222:1');
+    assert.equal(share.auxInfo.devTrustedAuxInfo, true);
+    assert.equal(share.completeKeyShareStatus, 'completed');
+    assert.equal(share.signingStatus, 'available');
+
+    const readiness = await mpcService.reconcileWalletSigningReadiness('mpc-wallet-aux-fallback');
+    assert.equal(readiness.canSign, false);
+    assert.equal(readiness.reason, 'MPC_CGGMP24_DEV_PROFILE_NOT_SIGNABLE');
+    assert.equal(readiness.wallet.signingStatus, 'unavailable');
+  } finally {
     resetMpcTssEngineForTests();
   }
 });
@@ -1070,7 +1263,7 @@ test('processPendingWireSignRequests continues bounded ticks while wire messages
             sessionId: 'session-process-sign-loop',
             protocol: 'sign',
             senderIndex: 0,
-            audience: { oneParty: { recipientIndex: 1 } },
+            audience: { 'one-party': { recipient_index: 1 } },
             payload: { Round1: { from: 0 } },
             sequence: 1
           }),

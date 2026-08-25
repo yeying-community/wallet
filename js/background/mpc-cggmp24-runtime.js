@@ -1,4 +1,5 @@
 import initCggmp24Wasm, * as cggmp24Wasm from './wasm/cggmp24/mpc_cggmp24_spike.js';
+import { MpcAuxInfoOffscreenClient } from './mpc-cggmp24-aux-offscreen-client.js';
 import { installCggmp24WasmEngine } from './mpc-cggmp24-wasm-engine.js';
 import { installMpcTssEngine } from './mpc-tss-engine.js';
 
@@ -10,6 +11,7 @@ export async function ensureCggmp24RuntimeInstalled() {
       await initCggmp24Wasm();
       return await installCggmp24WasmEngine({
         wasm: cggmp24Wasm,
+        auxInfoDelegate: new MpcAuxInfoOffscreenClient(),
         setEngine: installMpcTssEngine
       });
     })();

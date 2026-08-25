@@ -322,8 +322,9 @@ export class WalletIdentitySettingsController {
     this.selectedIdentityAddress = document.getElementById('walletIdentityEditAddress')?.value || '';
     this.closeIdentityEdit();
     this.persistEndpoint(endpoint);
-    await this.requestAndConfirmIdentity({ username, email });
+    const completed = await this.requestAndConfirmIdentity({ username, email });
     await this.renderIdentityVerificationAction();
+    if (completed) await this.openIdentityDetails();
   }
 
   setDetailValue(id, value) {
