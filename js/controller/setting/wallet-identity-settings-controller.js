@@ -964,28 +964,69 @@ export class WalletIdentitySettingsController {
     for (const credential of credentials) {
       const item = document.createElement('div');
       item.className = 'identity-passkey-item';
-      const content = document.createElement('div');
+      const topLine = document.createElement('div');
+      topLine.className = 'identity-passkey-topline';
       const name = document.createElement('div');
       name.className = 'identity-passkey-name';
       name.textContent = credential.deviceName || credential.name || '未命名通行证';
-      const meta = document.createElement('div');
-      meta.className = 'identity-passkey-meta';
-      const created = credential.createdAt ? `创建：${credential.createdAt}` : '';
-      const used = credential.lastUsedAt ? `最近使用：${credential.lastUsedAt}` : '';
-      const id = credential.credentialId ? `ID：${this.formatCredentialId(credential.credentialId)}` : '';
-      meta.textContent = [created, used, id].filter(Boolean).join(' · ') || '未返回设备详情';
-      content.append(name, meta);
-      item.appendChild(content);
+      topLine.appendChild(name);
       if (!credential.revokedAt && credential.credentialId) {
         const revoke = document.createElement('button');
-        revoke.className = 'btn btn-danger btn-small';
+        revoke.className = 'identity-passkey-revoke-link';
         revoke.type = 'button';
         revoke.dataset.passkeyRevoke = credential.credentialId;
-        revoke.textContent = '撤销';
-        item.appendChild(revoke);
+        revoke.textContent = '撤销通行证';
+        topLine.appendChild(revoke);
+      }
+      item.appendChild(topLine);
+
+      if (credential.credentialId) {
+        const idRow = document.createElement('div');
+        idRow.className = 'identity-passkey-id-row';
+        const idLabel = document.createElement('span');
+        idLabel.className = 'identity-passkey-id-label';
+        idLabel.textContent = 'ID';
+        const idValue = document.createElement('span');
+        idValue.className = 'identity-passkey-id-value';
+        idValue.textContent = this.formatCredentialId(credential.credentialId);
+        idValue.title = credential.credentialId;
+        idRow.appendChild(idLabel);
+        idRow.appendChild(idValue);
+        item.appendChild(idRow);
+      }
+
+      const timeGrid = document.createElement('div');
+      timeGrid.className = 'identity-passkey-time-grid';
+      const timeRows = [
+        ['创建时间', this.formatPasskeyTime(credential.createdAt)],
+        ['最近使用', this.formatPasskeyTime(credential.lastUsedAt)]
+      ].filter(([, value]) => value && value !== '-');
+      timeRows.forEach(([label, value]) => timeGrid.appendChild(this.createPasskeyTimeItem(label, value)));
+      if (credential.revokedAt) timeGrid.appendChild(this.createPasskeyTimeItem('撤销时间', this.formatPasskeyTime(credential.revokedAt)));
+      if (timeGrid.children.length) {
+        item.appendChild(timeGrid);
+      } else if (!credential.credentialId) {
+        const meta = document.createElement('div');
+        meta.className = 'identity-passkey-meta';
+        meta.textContent = '未返回设备详情';
+        item.appendChild(meta);
       }
       list.appendChild(item);
     }
+  }
+
+  createPasskeyTimeItem(label, value) {
+    const item = document.createElement('div');
+    item.className = 'identity-passkey-time-item';
+    const key = document.createElement('div');
+    key.className = 'identity-passkey-time-label';
+    key.textContent = label;
+    const detailValue = document.createElement('span');
+    detailValue.className = 'identity-passkey-time-value';
+    detailValue.textContent = value || '-';
+    item.appendChild(key);
+    item.appendChild(detailValue);
+    return item;
   }
 
   setPasskeyStatus(text) {
@@ -1014,8 +1055,20 @@ export class WalletIdentitySettingsController {
 
   formatCredentialId(value) {
     const text = String(value || '');
-    if (text.length <= 18) return text || '-';
-    return `${text.slice(0, 8)}...${text.slice(-6)}`;
+    if (text.length <= 27) return text || '-';
+    return `${text.slice(0, 14)}...${text.slice(-10)}`;
+  }
+
+  formatPasskeyTime(value) {
+    const text = String(value || '').trim();
+    if (!text) return '-';
+    const date = new Date(text);
+    if (Number.isNaN(date.getTime())) return text;
+    const pad = (number) => String(number).padStart(2, '0');
+    return [
+      `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+      `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+    ].join(' ');
   }
 
   async revokeIdentityPasskey(credentialId) {

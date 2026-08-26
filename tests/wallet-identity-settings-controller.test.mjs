@@ -536,6 +536,36 @@ test('registerIdentityPasskey explains WebAuthn exclusion of a synced credential
   assert.match(status, /已同步的现有通行证/);
 });
 
+test('renderIdentityPasskeys shows structured passkey cards', () => {
+  const dom = createDocument({
+    walletIdentityPasskeyListPage: { tagName: 'div' }
+  });
+  elements = dom.elements;
+  globalThis.document = dom.document;
+  const controller = new WalletIdentitySettingsController({ wallet: {} });
+
+  controller.renderIdentityPasskeys([{
+    deviceName: '夜莺钱包身份',
+    createdAt: '2026-08-23T02:04:20.911Z',
+    lastUsedAt: '2026-08-26T15:20:19.476Z',
+    credentialId: 'xuXQCaYR1234567890abcdefghiJh9IzOM'
+  }]);
+
+  const [item] = elements.walletIdentityPasskeyListPage.children;
+  const [topLine, idRow, timeGrid] = item.children;
+  const [name, revoke] = topLine.children;
+  assert.equal(name.textContent, '夜莺钱包身份');
+  assert.equal(revoke.textContent, '撤销通行证');
+  assert.equal(revoke.dataset.passkeyRevoke, 'xuXQCaYR1234567890abcdefghiJh9IzOM');
+  assert.equal(idRow.className, 'identity-passkey-id-row');
+  assert.equal(idRow.children[0].textContent, 'ID');
+  assert.equal(idRow.children[1].textContent, 'xuXQCaYR123456...ghiJh9IzOM');
+  assert.equal(timeGrid.className, 'identity-passkey-time-grid');
+  assert.deepEqual(timeGrid.children.map(item => item.children[0].textContent), ['创建时间', '最近使用']);
+  assert.equal(timeGrid.children[0].children[1].textContent, controller.formatPasskeyTime('2026-08-23T02:04:20.911Z'));
+  assert.equal(timeGrid.children[1].children[1].textContent, controller.formatPasskeyTime('2026-08-26T15:20:19.476Z'));
+});
+
 test('setup and confirm identity TOTP from the verified identity detail flow', async () => {
   const endpoint = 'http://127.0.0.1:8100';
   elements.walletIdentityEndpointInput.value = endpoint;
