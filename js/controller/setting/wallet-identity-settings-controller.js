@@ -30,6 +30,14 @@ function arrayBufferToBase64Url(value) {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
+function passkeyRegistrationErrorMessage(error) {
+  const message = String(error?.message || '').trim();
+  if (error?.name === 'InvalidStateError' && /already registered with the relying party/i.test(message)) {
+    return '当前手机选中了已同步的现有通行证，不能重复注册。请在手机的通行证管理器中新建一个通行证后再扫码，或保留当前通行证。';
+  }
+  return message || '注册通行证失败';
+}
+
 export class WalletIdentitySettingsController {
   constructor({ wallet, transaction, requestPassword }) {
     this.wallet = wallet;
@@ -901,8 +909,9 @@ export class WalletIdentitySettingsController {
       await this.refreshIdentityPasskeySummary({ quiet: true });
     } catch (error) {
       hideWaiting();
-      showError(error?.message || '注册通行证失败');
-      this.setPasskeyStatus(error?.message || '注册通行证失败');
+      const message = passkeyRegistrationErrorMessage(error);
+      showError(message);
+      this.setPasskeyStatus(message);
     }
   }
 

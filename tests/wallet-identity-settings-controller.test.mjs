@@ -499,6 +499,43 @@ test('registerIdentityPasskey registers a new passkey from the verified identity
   assert.equal(fetchCalls.some(call => call.url.endsWith('/api/v1/public/identity/passkeys/register/confirm')), true);
 });
 
+test('registerIdentityPasskey explains WebAuthn exclusion of a synced credential', async () => {
+  const endpoint = 'http://127.0.0.1:8100';
+  elements.walletIdentityEndpointInput.value = endpoint;
+  globalThis.PublicKeyCredential = function PublicKeyCredential() {};
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: {
+      credentials: {
+        create: async () => {
+          const error = new Error('The user attempted to register an authenticator that contains one of the credentials already registered with the relying party.');
+          error.name = 'InvalidStateError';
+          throw error;
+        }
+      }
+    }
+  });
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ code: 0, data: { passkeyRequest: {
+    requestId: 'pkr_1', challenge: 'AQID', rp: { id: 'localhost', name: 'Node' },
+    user: { id: 'BAUG', name: 'did:yeying:wid_1', displayName: 'YeYing Identity' },
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }], timeout: 60000, attestation: 'none', excludeCredentials: []
+  } } }) });
+  const controller = new WalletIdentitySettingsController({
+    wallet: {
+      listIdentities: async () => ({ selectedIdentityId: 'wid_1', identities: [{ document: { walletIdentityId: 'wid_1' } }] }),
+      exportIdentityDocument: async () => ({ document: { id: 'did:yeying:wid_1', walletIdentityId: 'wid_1' } }),
+      signIdentityDocument: async (document) => document
+    },
+    requestPassword: async () => 'wallet-password'
+  });
+  let status = '';
+  controller.setPasskeyStatus = (value) => { status = value; };
+
+  await controller.registerIdentityPasskey();
+
+  assert.match(status, /已同步的现有通行证/);
+});
+
 test('setup and confirm identity TOTP from the verified identity detail flow', async () => {
   const endpoint = 'http://127.0.0.1:8100';
   elements.walletIdentityEndpointInput.value = endpoint;
