@@ -3,12 +3,14 @@ import { getValue } from '../storage/storage-base.js';
 import { IdentityStorageKeys } from '../storage/storage-keys.js';
 import { createInvalidParams } from '../common/errors/index.js';
 import { signIdentityDocument } from '../common/identity/identity-document.js';
+import { getCachedPassword, refreshPasswordCache } from './password-cache.js';
 
 const METHOD = 'yeying_identity_presentation';
+const DEFAULT_ISSUER_ENDPOINT = 'https://node.yeying.pub';
 const ALLOWED_SCOPES = new Set(['identity.basic', 'identity.wallet', 'identity.username', 'identity.email', 'identity.avatar']);
 const CREDENTIAL_CLOCK_SKEW_MS = 60 * 1000;
 
-function normalizeRequest(params, origin) {
+export function normalizeIdentityPresentationRequest(params, origin) {
   const request = Array.isArray(params) ? params[0] : params;
   if (!request || typeof request !== 'object') throw createInvalidParams('Invalid identity presentation request');
   const scopes = [...new Set((Array.isArray(request.scopes) ? request.scopes : []).map(value => String(value || '').trim()).filter(Boolean))];
@@ -36,6 +38,13 @@ function credentialTypeForScope(scope) {
   if (scope === 'identity.email') return 'EmailCredential';
   if (scope === 'identity.username') return 'UsernameCredential';
   return 'AvatarCredential';
+}
+
+function missingCredentialErrorForScope(scope) {
+  if (scope === 'identity.email') return 'IDENTITY_EMAIL_NOT_VERIFIED';
+  if (scope === 'identity.username') return 'IDENTITY_USERNAME_NOT_VERIFIED';
+  if (scope === 'identity.avatar') return 'IDENTITY_AVATAR_NOT_VERIFIED';
+  return `IDENTITY_SCOPE_NOT_GRANTED:${scope}`;
 }
 
 function decodeCredentialPayload(token) {
@@ -158,7 +167,7 @@ async function reissueMissingCredentials({ identityId, record, credentials, miss
 }
 
 export async function requestIdentityPresentation({ account, params, origin, password }) {
-  const request = normalizeRequest(params, origin);
+  const request = normalizeIdentityPresentationRequest(params, origin);
   const identityId = await getValue(IdentityStorageKeys.SELECTED_IDENTITY, null);
   if (!identityId) throw new Error('IDENTITY_NOT_SELECTED');
   const record = await getIdentity(identityId);
@@ -167,18 +176,46 @@ export async function requestIdentityPresentation({ account, params, origin, pas
   const expiresAt = request.expiresAt || new Date(Date.now() + 5 * 60 * 1000).toISOString();
   let credentials = await getIdentityCredentials(identityId);
   let selectedCredentials = selectFreshCredentials(credentials, request.scopes);
-  const keyMaterial = await decryptIdentityKeyMaterial(record, password);
+  const effectivePassword = String(password || '').trim() || getCachedPassword();
+  if (!effectivePassword) {
+    throw new Error('Wallet is locked');
+  }
+  refreshPasswordCache();
+  const keyMaterial = await decryptIdentityKeyMaterial(record, effectivePassword);
   const privateKey = await crypto.subtle.importKey('jwk', keyMaterial.privateJwk, { name: 'Ed25519' }, false, ['sign']);
   const missingTypes = missingCredentialTypes(selectedCredentials, request.scopes);
-  if (missingTypes.length > 0 && request.issuerEndpoint) {
-    credentials = await reissueMissingCredentials({ identityId, record, credentials, missingTypes, issuerEndpoint: request.issuerEndpoint, privateKey });
-    selectedCredentials = selectFreshCredentials(credentials, request.scopes);
+  const issuerEndpoint = String(request.issuerEndpoint || DEFAULT_ISSUER_ENDPOINT).trim();
+  let reissueError = null;
+  if (missingTypes.length > 0 && issuerEndpoint) {
+    try {
+      credentials = await reissueMissingCredentials({ identityId, record, credentials, missingTypes, issuerEndpoint, privateKey });
+      selectedCredentials = selectFreshCredentials(credentials, request.scopes);
+    } catch (error) {
+      reissueError = error;
+      console.warn('[IdentityPresentation] credential reissue failed:', error?.message || error);
+    }
   }
   for (const scope of request.scopes) {
     if (scopeNeedsCredential(scope) && !selectedCredentials.some((credential) => {
       const types = credentialTypes(credential);
       return types.includes(credentialTypeForScope(scope));
-    })) throw new Error(`IDENTITY_SCOPE_NOT_GRANTED:${scope}`);
+    })) {
+      const code = missingCredentialErrorForScope(scope);
+      const error = new Error(code);
+      error.code = code;
+      error.userMessage = scope === 'identity.email'
+        ? '钱包身份尚未完成邮箱验证，请先验证邮箱后再登录'
+        : scope === 'identity.username'
+          ? '钱包身份尚未完成用户名验证，请先补充用户名后再登录'
+          : scope === 'identity.avatar'
+            ? '钱包身份尚未完成头像验证，请先补充头像后再登录'
+            : code;
+      if (reissueError) {
+        error.cause = reissueError;
+        error.reissueError = reissueError?.message || String(reissueError);
+      }
+      throw error;
+    }
   }
   const unsigned = { version: 1, holder: record.document.id, audience: request.audience, nonce: request.nonce, issuedAt, expiresAt, scopes: request.scopes, identityDocument: request.scopes.includes('identity.basic') ? record.document : undefined, walletProof: request.scopes.includes('identity.wallet') ? { chainKey: account.chainKey || `eip155:${account.chainId || 1}`, address: account.address } : undefined, credentials: selectedCredentials.map(credentialToken) };
   const signature = await crypto.subtle.sign('Ed25519', privateKey, new TextEncoder().encode(canonicalize(unsigned)));

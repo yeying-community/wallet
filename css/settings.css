@@ -52,6 +52,28 @@
   padding: 20px;
 }
 
+#walletIdentityEditPage .identity-edit-footer {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 12px 20px 20px;
+  background: #ffffff;
+  border-top: 1px solid #e5e7eb;
+}
+
+#walletIdentityDetailPage .identity-detail-footer {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 12px 20px 20px;
+  background: #ffffff;
+  border-top: 1px solid #e5e7eb;
+}
+
 #sitesPage {
   padding: 0;
   height: 100vh;
@@ -298,27 +320,64 @@
 .wallet-identity-details .detail-label,
 .wallet-identity-details .detail-value { font-size: 13px; font-weight: 400; color: #374151; }
 
-.identity-security-grid {
-  display: grid;
-  gap: 10px;
-  margin-top: 18px;
+.wallet-identity-details .detail-value {
+  text-align: right;
 }
 
-.identity-management-card {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 12px;
+.wallet-identity-details .identity-avatar-value {
+  display: flex;
+  justify-content: flex-end;
   align-items: center;
-  padding: 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #f9fafb;
 }
 
-.identity-management-card h3 {
-  margin: 0 0 4px;
-  font-size: 15px;
-  color: #111827;
+.wallet-identity-details .copyable-detail-value {
+  cursor: copy;
+}
+
+.wallet-identity-details .identity-avatar-preview {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  object-fit: cover;
+}
+
+.wallet-identity-details .identity-avatar-value.copyable-detail-value:hover .identity-avatar-preview {
+  border-color: #93c5fd;
+}
+
+.wallet-identity-details .identity-management-row {
+  grid-template-columns: 72px minmax(0, 1fr);
+  column-gap: 0;
+  align-items: center;
+}
+
+.wallet-identity-details .identity-management-row .detail-value {
+  text-align: right;
+  padding-left: 4px;
+}
+
+.wallet-identity-details .identity-management-link {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: #2563eb;
+  font-size: 13px;
+  font: inherit;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.wallet-identity-details .identity-management-link:hover {
+  text-decoration: underline;
+}
+
+.wallet-identity-details .identity-management-link:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .identity-passkey-section {

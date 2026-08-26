@@ -32,9 +32,35 @@ import {
 } from './approval-flow.js';
 
 const connectInFlight = new Map();
+const RECENT_CONNECT_GRANT_WINDOW_MS = 30000;
+const recentConnectApprovals = new Map();
 
 function updateConnectedSites() {
   updateKeepAlive();
+}
+
+function getOriginTabKey(origin, tabId) {
+  return `${origin || 'unknown'}:${typeof tabId === 'number' ? tabId : 'none'}`;
+}
+
+function markRecentConnectApproval(origin, tabId) {
+  const key = getOriginTabKey(origin, tabId);
+  recentConnectApprovals.set(key, Date.now());
+  setTimeout(() => {
+    if (recentConnectApprovals.get(key) <= Date.now() - RECENT_CONNECT_GRANT_WINDOW_MS) {
+      recentConnectApprovals.delete(key);
+    }
+  }, RECENT_CONNECT_GRANT_WINDOW_MS + 1000);
+}
+
+export function hasRecentConnectApproval(origin, tabId) {
+  const key = getOriginTabKey(origin, tabId);
+  const approvedAt = recentConnectApprovals.get(key) || 0;
+  if (Date.now() - approvedAt <= RECENT_CONNECT_GRANT_WINDOW_MS) {
+    return true;
+  }
+  recentConnectApprovals.delete(key);
+  return false;
 }
 
 function buildEthAccountsPermission(accounts) {
@@ -53,6 +79,30 @@ function buildProfilePermission(fields) {
   return {
     parentCapability: 'yeying_profile',
     caveats: [{ type: 'restrictProfileFields', value: fields }]
+  };
+}
+
+const ALLOWED_IDENTITY_SCOPES = new Set(['identity.basic', 'identity.wallet', 'identity.username', 'identity.email', 'identity.avatar']);
+
+function normalizeIdentityScopes(scopes) {
+  const normalized = [...new Set(
+    (Array.isArray(scopes) ? scopes : [])
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+  )];
+  if (normalized.length === 0 || normalized.some((scope) => !ALLOWED_IDENTITY_SCOPES.has(scope))) {
+    throw createInvalidParams('Invalid yeying_identity.scopes');
+  }
+  if (!normalized.includes('identity.basic')) {
+    normalized.unshift('identity.basic');
+  }
+  return normalized;
+}
+
+function buildIdentityPermission(scopes) {
+  return {
+    parentCapability: 'yeying_identity',
+    caveats: [{ type: 'restrictIdentityScopes', value: scopes }]
   };
 }
 
@@ -144,7 +194,7 @@ export async function handleEthAccounts(origin) {
  * @returns {Promise<Array<string>>} 账户地址数组
  */
 export async function handleEthRequestAccounts(origin, tabId, clientRequestId = null) {
-  const key = `${origin || 'unknown'}:${typeof tabId === 'number' ? tabId : 'none'}`;
+  const key = getOriginTabKey(origin, tabId);
 
   if (connectInFlight.has(key)) {
     const pending = findPendingRequest(EventType.CONNECT, origin, tabId);
@@ -228,10 +278,9 @@ export async function handleEthRequestAccounts(origin, tabId, clientRequestId = 
         connectedAt: getTimestamp()
       });
       updateConnectedSites();
+      markRecentConnectApproval(origin, tabId);
 
-      saveAuthorization(origin, address, undefined, accounts).catch(err => {
-        console.error('Failed to save authorization:', err);
-      });
+      await saveAuthorization(origin, address, undefined, accounts);
 
       resetLockTimer();
       refreshPasswordCache();
@@ -281,11 +330,108 @@ export async function handleWalletGetPermissions(origin) {
     if (Array.isArray(stored?.profileFields) && stored.profileFields.length > 0) {
       permissions.push(buildProfilePermission(stored.profileFields));
     }
+    if (Array.isArray(stored?.identityScopes) && stored.identityScopes.length > 0) {
+      permissions.push(buildIdentityPermission(stored.identityScopes));
+    }
     return permissions;
   } catch (error) {
     console.error('❌ Handle wallet_getPermissions failed:', error);
     return [];
   }
+}
+
+export async function requestIdentityScopeApproval(origin, tabId, requestedScopes, account = null) {
+  const identityScopes = normalizeIdentityScopes(requestedScopes);
+  await ensureApprovalStateHydrated();
+  const pending = findPendingRequest(EventType.CONNECT, origin, tabId);
+  if (pending) {
+    focusPendingWindow(pending);
+    throw createError(-32002, 'Permission request already pending');
+  }
+
+  const selectedAccount = account || await getSelectedAccount();
+  if (!selectedAccount) {
+    throw createWalletLockedError();
+  }
+  const accounts = await getAvailableAccountAddresses(selectedAccount);
+  const requestId = `connect_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
+  addPendingRequest(requestId, {
+    type: EventType.CONNECT,
+    approvalType: 'connect',
+    origin,
+    tabId,
+    reuseSession: true,
+    expiresAt: Date.now() + TIMEOUTS.REQUEST,
+    data: {
+      origin,
+      accounts,
+      identityScopes
+    },
+    timestamp: getTimestamp()
+  });
+
+  try {
+    await ensureApprovalRequestVisible(requestId, {
+      requestType: 'connect',
+      origin,
+      tabId,
+      reuseSession: true
+    });
+
+    const response = await waitForApprovalResponse(requestId);
+    if (!response?.approved) {
+      removePendingRequest(requestId);
+      throw createUserRejectedError('User rejected the permission request');
+    }
+
+    const stored = await getAuthorization(origin);
+    const granted = await grantIdentityScopes(origin, identityScopes, selectedAccount, {
+      accounts,
+      profileFields: stored?.profileFields
+    });
+    removePendingRequest(requestId, { activateNext: true });
+    refreshPasswordCache();
+    markRecentConnectApproval(origin, tabId);
+    return {
+      accounts,
+      identityScopes: granted.identityScopes
+    };
+  } catch (error) {
+    removePendingRequest(requestId);
+    throw error;
+  }
+}
+
+export async function grantIdentityScopes(origin, requestedScopes, account = null, options = {}) {
+  const identityScopes = normalizeIdentityScopes(requestedScopes);
+  const selectedAccount = account || await getSelectedAccount();
+  if (!selectedAccount) {
+    throw createWalletLockedError();
+  }
+  const accounts = Array.isArray(options.accounts)
+    ? options.accounts
+    : await getAvailableAccountAddresses(selectedAccount);
+  const stored = await getAuthorization(origin);
+  const granted = Array.from(new Set([...(stored?.identityScopes || []), ...identityScopes]));
+  state.connectedSites.set(origin, {
+    accounts,
+    chainId: state.currentChainId,
+    connectedAt: getTimestamp(),
+    identityScopes: granted
+  });
+  updateConnectedSites();
+  await saveAuthorization(
+    origin,
+    selectedAccount.address,
+    options.profileFields !== undefined ? options.profileFields : stored?.profileFields,
+    accounts,
+    granted
+  );
+  refreshPasswordCache();
+  return {
+    accounts,
+    identityScopes: granted
+  };
 }
 
 /**
@@ -299,6 +445,17 @@ export async function handleWalletRequestPermissions(origin, tabId, params) {
   const request = params?.[0];
   if (!request || typeof request !== 'object') {
     throw createInvalidParams('Permission request is required');
+  }
+
+  if (request.yeying_identity) {
+    if (!request.eth_accounts) {
+      throw createInvalidParams('Request eth_accounts together with yeying_identity');
+    }
+    const granted = await requestIdentityScopeApproval(origin, tabId, request.yeying_identity?.scopes);
+    return [
+      buildEthAccountsPermission(granted.accounts),
+      buildIdentityPermission(granted.identityScopes)
+    ];
   }
 
   if (request.yeying_profile) {
@@ -326,7 +483,7 @@ export async function handleWalletRequestPermissions(origin, tabId, params) {
       throw createUserRejectedError('User rejected profile access');
     }
     const granted = Array.from(new Set([...(stored.profileFields || []), ...fields]));
-    await saveAuthorization(origin, stored.address, granted);
+    await saveAuthorization(origin, stored.address, granted, stored.accounts, stored.identityScopes);
     removePendingRequest(requestId, { activateNext: true });
     return [buildProfilePermission(granted)];
   }
@@ -355,7 +512,14 @@ export async function handleWalletRevokePermissions(origin, params) {
     const stored = await getAuthorization(origin);
     if (!stored?.address || !Array.isArray(stored.profileFields) || stored.profileFields.length === 0) return [];
     const revoked = buildProfilePermission(stored.profileFields);
-    await saveAuthorization(origin, stored.address, []);
+    await saveAuthorization(origin, stored.address, [], stored.accounts, stored.identityScopes);
+    return [revoked];
+  }
+  if (request && typeof request === 'object' && 'yeying_identity' in request) {
+    const stored = await getAuthorization(origin);
+    if (!stored?.address || !Array.isArray(stored.identityScopes) || stored.identityScopes.length === 0) return [];
+    const revoked = buildIdentityPermission(stored.identityScopes);
+    await saveAuthorization(origin, stored.address, stored.profileFields, stored.accounts, []);
     return [revoked];
   }
   if (request && typeof request === 'object' && !('eth_accounts' in request)) {

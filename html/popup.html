@@ -1142,29 +1142,34 @@
         <div class="page-header"><button id="walletIdentityDetailBackBtn" class="back-btn" type="button">←</button><h2>钱包身份详情</h2></div>
         <div class="settings-body wallet-identity-details">
           <p class="settings-card-description">钱包身份用于在受支持的社区应用中复用你的验证资料。地址、用户名和邮箱会作为同一身份关联进行管理。</p>
+          <div class="detail-row"><span class="detail-label">身份服务</span><span class="detail-value" id="walletIdentityDetailEndpointPage">-</span></div>
           <div class="detail-row"><span class="detail-label">状态</span><span class="detail-value" id="walletIdentityDetailStatusPage">-</span></div>
           <div class="detail-row"><span class="detail-label">用户名</span><span class="detail-value" id="walletIdentityDetailUsernamePage">-</span></div>
           <div class="detail-row"><span class="detail-label">邮箱</span><span class="detail-value" id="walletIdentityDetailEmailPage">-</span></div>
-          <div class="detail-row"><span class="detail-label">钱包地址</span><span class="detail-value" id="walletIdentityDetailAddressPage">-</span></div>
-          <div class="detail-row"><span class="detail-label">身份 DID</span><span class="detail-value" id="walletIdentityDetailDidPage">-</span></div>
-          <div class="detail-row"><span class="detail-label">身份服务</span><span class="detail-value" id="walletIdentityDetailEndpointPage">-</span></div>
-          <div class="identity-security-grid">
-            <section class="identity-management-card">
-              <div>
-                <h3>通行证</h3>
-                <p id="walletIdentityPasskeySummaryPage" class="settings-hint">正在加载通行证状态...</p>
-              </div>
-              <button id="manageWalletIdentityPasskeysBtn" class="btn btn-secondary" type="button">管理通行证</button>
-            </section>
-            <section class="identity-management-card">
-              <div>
-                <h3>验证器</h3>
-                <p id="walletIdentityTotpSummaryPage" class="settings-hint">正在加载验证器状态...</p>
-              </div>
-              <button id="manageWalletIdentityAuthenticatorsBtn" class="btn btn-secondary" type="button">管理验证器</button>
-            </section>
+          <div class="detail-row">
+            <span class="detail-label">头像</span>
+            <span class="detail-value identity-avatar-value" id="walletIdentityDetailAvatarPage">
+              <img id="walletIdentityDetailAvatarImagePage" class="identity-avatar-preview" alt="钱包身份头像" />
+            </span>
           </div>
-          <div class="settings-row identity-detail-actions"><button id="changeWalletIdentityPageBtn" class="btn btn-secondary">变更资料</button><button id="clearWalletIdentityVerificationBtn" class="btn btn-danger">解除验证</button></div>
+          <div class="detail-row"><span class="detail-label">钱包地址</span><span class="detail-value copyable-detail-value compact-identity-value" id="walletIdentityDetailAddressPage">-</span></div>
+          <div class="detail-row"><span class="detail-label">身份 DID</span><span class="detail-value copyable-detail-value compact-identity-value" id="walletIdentityDetailDidPage">-</span></div>
+          <div class="detail-row identity-management-row">
+            <span class="detail-label">通行证</span>
+            <button class="detail-value identity-management-link" id="manageWalletIdentityPasskeysBtn" type="button">
+              <span id="walletIdentityPasskeySummaryPage">正在加载通行证状态...</span>
+            </button>
+          </div>
+          <div class="detail-row identity-management-row">
+            <span class="detail-label">认证器</span>
+            <button class="detail-value identity-management-link" id="manageWalletIdentityAuthenticatorsBtn" type="button">
+              <span id="walletIdentityTotpSummaryPage">正在加载认证器状态...</span>
+            </button>
+          </div>
+        </div>
+        <div class="identity-detail-footer identity-detail-actions">
+          <button id="changeWalletIdentityPageBtn" class="btn btn-secondary">变更资料</button>
+          <button id="clearWalletIdentityVerificationBtn" class="btn btn-danger">解除验证</button>
         </div>
       </div>
 
@@ -1231,15 +1236,16 @@
           <h2>变更验证资料</h2>
         </div>
         <div class="settings-body wallet-identity-details">
-          <p class="settings-card-description">选择地址并填写用户名和邮箱，确认后将向邮箱发送验证码。</p>
+          <p class="settings-card-description">选择地址并填写用户名、邮箱和头像 URI，确认后将向邮箱发送验证码。</p>
           <div class="form-group"><label for="walletIdentityEditEndpoint">身份服务地址</label><input id="walletIdentityEditEndpoint" class="input" type="url" autocomplete="url" /></div>
           <div class="form-group"><label for="walletIdentityEditAddress">钱包地址</label><select id="walletIdentityEditAddress" class="input"></select></div>
           <div class="form-group"><label for="walletIdentityEditUsername">用户名</label><input id="walletIdentityEditUsername" class="input" autocomplete="username" /></div>
           <div class="form-group"><label for="walletIdentityEditEmail">邮箱</label><input id="walletIdentityEditEmail" class="input" type="email" autocomplete="email" /></div>
-          <div class="settings-row identity-detail-actions">
-            <button id="confirmWalletIdentityEditBtn" class="btn btn-primary" type="button">验证</button>
-            <button id="cancelWalletIdentityEditBtn" class="btn btn-secondary" type="button">取消</button>
-          </div>
+          <div class="form-group"><label for="walletIdentityEditAvatar">头像 URI</label><input id="walletIdentityEditAvatar" class="input" type="url" autocomplete="url" placeholder="自动生成，也可填写 https://... 或 ipfs://..." /></div>
+        </div>
+        <div class="identity-edit-footer identity-detail-actions">
+          <button id="confirmWalletIdentityEditBtn" class="btn btn-primary" type="button">验证</button>
+          <button id="cancelWalletIdentityEditBtn" class="btn btn-secondary" type="button">取消</button>
         </div>
       </div>
       <div id="walletIdentityClearVerificationModal" class="modal hidden">

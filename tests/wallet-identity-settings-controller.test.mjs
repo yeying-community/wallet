@@ -122,7 +122,11 @@ test('startIdentityVerification prompts for email and code before completing the
     return true;
   };
   await controller.startIdentityVerification();
-  assert.deepEqual(identityRequests, [{ username: 'person', email: 'person@example.com' }]);
+  assert.deepEqual(identityRequests, [{
+    username: 'person',
+    email: 'person@example.com',
+    avatarUri: 'https://api.dicebear.com/9.x/identicon/svg?seed=0x1111111111111111111111111111111111111111'
+  }]);
   assert.equal(elements.globalWaitingOverlay.classList.contains('hidden'), true);
 });
 
@@ -157,7 +161,11 @@ test('cancelled or missing verification code keeps the verification pending', as
     return false;
   };
   await controller.startIdentityVerification();
-  assert.deepEqual(identityRequests, [{ username: 'person', email: 'person@example.com' }]);
+  assert.deepEqual(identityRequests, [{
+    username: 'person',
+    email: 'person@example.com',
+    avatarUri: 'https://api.dicebear.com/9.x/identicon/svg?seed=0x1111111111111111111111111111111111111111'
+  }]);
   assert.equal(elements.globalWaitingOverlay.classList.contains('hidden'), true);
 });
 
@@ -194,7 +202,11 @@ test('changeWalletIdentity prompts for new profile data and verifies it', async 
     return true;
   };
   await controller.changeWalletIdentity();
-  assert.deepEqual(identityRequests, [{ username: 'new-person', email: 'new@example.com' }]);
+  assert.deepEqual(identityRequests, [{
+    username: 'new-person',
+    email: 'new@example.com',
+    avatarUri: 'https://api.dicebear.com/9.x/identicon/svg?seed=0x1111111111111111111111111111111111111111'
+  }]);
   assert.equal(elements.globalWaitingOverlay.classList.contains('hidden'), true);
 });
 
@@ -205,11 +217,14 @@ test('submitIdentityEdit refreshes the identity detail page after a successful p
     walletIdentityEditAddress: { tagName: 'select', value: '0x1111111111111111111111111111111111111111' },
     walletIdentityEditUsername: { tagName: 'input', value: 'new-person' },
     walletIdentityEditEmail: { tagName: 'input', value: 'New@Example.com' },
+    walletIdentityEditAvatar: { tagName: 'input', value: 'https://avatar.example/new.png' },
     walletIdentityDetailPage: { tagName: 'div', _classes: 'page hidden' },
     walletIdentityEditPage: { tagName: 'div', _classes: 'page' },
     walletIdentityDetailStatusPage: { tagName: 'span', textContent: '已验证' },
     walletIdentityDetailUsernamePage: { tagName: 'span', textContent: 'old-person' },
     walletIdentityDetailEmailPage: { tagName: 'span', textContent: 'old@example.com' },
+    walletIdentityDetailAvatarPage: { tagName: 'span' },
+    walletIdentityDetailAvatarImagePage: { tagName: 'img' },
     walletIdentityDetailAddressPage: { tagName: 'span' },
     walletIdentityDetailDidPage: { tagName: 'span' },
     walletIdentityDetailEndpointPage: { tagName: 'span' }
@@ -227,8 +242,8 @@ test('submitIdentityEdit refreshes the identity detail page after a successful p
       listIdentityCredentials: async () => ({ credentials })
     }
   });
-  controller.requestAndConfirmIdentity = async ({ username, email }) => {
-    credentials = [makeCredential({ username, email })];
+  controller.requestAndConfirmIdentity = async ({ username, email, avatarUri }) => {
+    credentials = [makeCredential({ username, email, avatarUri })];
     return true;
   };
   controller.renderIdentityVerificationAction = async () => {};
@@ -239,7 +254,64 @@ test('submitIdentityEdit refreshes the identity detail page after a successful p
 
   assert.equal(elements.walletIdentityDetailUsernamePage.textContent, 'new-person');
   assert.equal(elements.walletIdentityDetailEmailPage.textContent, 'new@example.com');
+  assert.equal(elements.walletIdentityDetailAvatarImagePage.src, 'https://avatar.example/new.png');
   assert.equal(elements.walletIdentityDetailPage.classList.contains('hidden'), false);
+});
+
+test('identity detail compact values copy their full values', async () => {
+  const address = '0x1111111111111111111111111111111111111111';
+  const did = 'did:yeying:wallet:1234567890abcdefghijklmnopqrstuvwxyz';
+  const avatarUri = 'https://avatar.example/person.png';
+  const dom = createDocument({
+    walletIdentityEndpointInput: { tagName: 'input', value: 'https://node.example' },
+    walletIdentityDetailPage: { tagName: 'div', _classes: 'page hidden' },
+    walletIdentityDetailStatusPage: { tagName: 'span' },
+    walletIdentityDetailUsernamePage: { tagName: 'span' },
+    walletIdentityDetailEmailPage: { tagName: 'span' },
+    walletIdentityDetailAvatarPage: { tagName: 'span' },
+    walletIdentityDetailAvatarImagePage: { tagName: 'img' },
+    walletIdentityDetailAddressPage: { tagName: 'span' },
+    walletIdentityDetailDidPage: { tagName: 'span' },
+    walletIdentityDetailEndpointPage: { tagName: 'span' }
+  });
+  elements = dom.elements;
+  globalThis.document = dom.document;
+  const copied = [];
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: { clipboard: { writeText: async (value) => copied.push(value) } }
+  });
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const makeCredential = (subject) => `${encode({ alg: 'none' })}.${encode({ vc: { credentialSubject: subject } })}.`;
+  const controller = new WalletIdentitySettingsController({
+    wallet: {
+      getCurrentAccount: async () => ({ address }),
+      listIdentities: async () => ({ selectedIdentityId: 'wid_1', identities: [{ document: { walletIdentityId: 'wid_1' } }] }),
+      getIdentity: async () => ({ document: { id: did, walletIdentityId: 'wid_1' } }),
+      listIdentityCredentials: async () => ({
+        credentials: [makeCredential({ username: 'person', email: 'person@example.com', avatarUri })]
+      })
+    }
+  });
+  controller.refreshIdentityPasskeySummary = async () => {};
+  controller.refreshIdentityTotpSummary = async () => {};
+  controller.bindEvents();
+
+  await controller.openIdentityDetails();
+
+  assert.equal(elements.walletIdentityDetailAddressPage.textContent, '0x1111111111...11111111');
+  assert.equal(elements.walletIdentityDetailAddressPage.dataset.copyValue, address);
+  assert.equal(elements.walletIdentityDetailDidPage.textContent, 'did:yeying:wallet:...qrstuvwxyz');
+  assert.equal(elements.walletIdentityDetailDidPage.dataset.copyValue, did);
+  assert.equal(elements.walletIdentityDetailAvatarPage.dataset.copyValue, avatarUri);
+
+  elements.walletIdentityDetailAddressPage.click();
+  elements.walletIdentityDetailDidPage.click();
+  elements.walletIdentityDetailAvatarPage.click();
+
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  assert.deepEqual(copied, [address, did, avatarUri]);
 });
 
 test('continueEmailVerification resumes the stored verification without relinking the account', async () => {

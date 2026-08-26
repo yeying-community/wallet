@@ -35,7 +35,24 @@ did:yeying:wid_*
 
 ## 3. 有钱包插件登录
 
-DApp 前端请求 Wallet 出示：
+DApp 前端先通过连接请求一次性申请钱包账户和身份权限：
+
+```text
+wallet_requestPermissions
+```
+
+示例参数：
+
+```json
+{
+  "eth_accounts": {},
+  "yeying_identity": {
+    "scopes": ["identity.basic", "identity.wallet", "identity.email"]
+  }
+}
+```
+
+Wallet 会在同一个连接请求页展示账户权限和身份 scope，用户只确认一次。连接完成后，再请求 Wallet 出示：
 
 ```text
 yeying_identity_presentation

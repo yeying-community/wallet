@@ -58,9 +58,6 @@ class ApprovalApp {
     if (type === 'sign_transaction') {
       return 'transaction';
     }
-    if (type === 'identity_presentation') {
-      return 'identity';
-    }
     return type;
   }
 
@@ -287,9 +284,6 @@ class ApprovalApp {
       case 'sign':
         this.renderSignRequest();
         break;
-      case 'identity':
-        this.renderIdentityRequest();
-        break;
       case 'addChain':
         this.renderAddChainRequest();
         break;
@@ -305,6 +299,50 @@ class ApprovalApp {
   renderConnectRequest() {
     document.getElementById('connectRequest').classList.remove('hidden');
     document.getElementById('connectOrigin').textContent = this.requestData.origin;
+    document.getElementById('connectTitle').textContent = '连接请求';
+    document.getElementById('connectPermissionTitle').textContent = '此网站请求以下权限：';
+    const list = document.getElementById('connectPermissionItems');
+    list.innerHTML = '';
+    [
+      ['👁️', '查看您的账户地址'],
+      ['💰', '查看您的账户余额'],
+      ['📝', '请求链下交易签名'],
+      ...this.getIdentityPermissionItems(this.getRequestedIdentityScopes())
+    ].forEach(([iconText, label]) => {
+      const item = document.createElement('div');
+      item.className = 'permission-item';
+      const icon = document.createElement('span');
+      icon.className = 'permission-icon';
+      icon.textContent = iconText;
+      const text = document.createElement('span');
+      text.textContent = label;
+      item.appendChild(icon);
+      item.appendChild(text);
+      list.appendChild(item);
+    });
+    document.getElementById('connectWarning').textContent = '⚠️ 只连接您信任的网站';
+    document.getElementById('approveConnect').textContent = '连接';
+    document.getElementById('rejectConnect').textContent = '拒绝';
+  }
+
+  getIdentityPermissionItems(scopes = []) {
+    const labels = {
+      'identity.basic': '读取钱包身份',
+      'identity.wallet': '读取钱包账户证明',
+      'identity.username': '读取已验证用户名',
+      'identity.email': '读取已验证邮箱',
+      'identity.avatar': '读取已验证头像'
+    };
+    return [...new Set(Array.isArray(scopes) ? scopes : [])]
+      .filter((scope) => labels[scope])
+      .map((scope) => ['👤', labels[scope]]);
+  }
+
+  getRequestedIdentityScopes() {
+    // 连接审批协议唯一从 requestData.identityScopes 传递身份 scope。
+    return Array.isArray(this.requestData?.identityScopes)
+      ? this.requestData.identityScopes
+      : [];
   }
 
   renderProfileRequest() {
@@ -390,24 +428,6 @@ class ApprovalApp {
       messageEl.textContent = message;
       messageEl.dataset.rendered = 'true';
     }
-  }
-
-  renderIdentityRequest() {
-    document.getElementById('identityRequest').classList.remove('hidden');
-    const request = this.requestData.request || {};
-    document.getElementById('identityOrigin').textContent = this.requestData.origin || '未知网站';
-    document.getElementById('identityAppId').textContent = request.appId || request.audience || this.requestData.origin || '-';
-    document.getElementById('identityAudience').textContent = request.audience || '-';
-    document.getElementById('identityNonce').textContent = request.nonce || '-';
-    const labels = { 'identity.basic': '钱包身份', 'identity.wallet': '钱包账户', 'identity.username': '已验证用户名', 'identity.email': '已验证邮箱', 'identity.avatar': '已验证头像' };
-    const list = document.getElementById('identityScopeList');
-    list.innerHTML = '';
-    (request.scopes || []).forEach((scope) => {
-      const item = document.createElement('div');
-      item.className = 'permission-item';
-      item.textContent = labels[scope] || scope;
-      list.appendChild(item);
-    });
   }
 
   parseRecapFromSiwe(message, siweInfo) {

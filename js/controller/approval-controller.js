@@ -65,9 +65,6 @@ export class ApprovalController {
       case 'sign':
         this.bindSignEvents();
         break;
-      case 'identity':
-        this.bindIdentityEvents();
-        break;
       case 'addChain':
         this.bindAddChainEvents();
         break;
@@ -244,15 +241,8 @@ export class ApprovalController {
         account: account
       });
 
-      showSuccess('已授权连接');
-      this.showFollowupWaitingState({
-        title: '连接成功',
-        description: this.hasQueuedFollowup
-          ? '正在切换到后续确认'
-          : '如果网站继续发起登录签名，此窗口会直接切换到下一步。',
-        hint: '没有后续请求时可以直接关闭此窗口。',
-        timeoutMs: this.hasQueuedFollowup ? 8000 : 12000
-      });
+      // 连接确认本身就是流程终点；后续请求由审批队列重新激活窗口。
+      this.closeWindow();
     } catch (error) {
       this.isProcessing = false;
       showError('授权失败: ' + error.message);
@@ -433,26 +423,6 @@ export class ApprovalController {
     } catch (error) {
       this.isProcessing = false;
       showError('签名失败: ' + error.message);
-    }
-  }
-
-  bindIdentityEvents() {
-    this.addDomListener(document.getElementById('approveIdentity'), 'click', () => this.approveIdentity());
-    this.addDomListener(document.getElementById('rejectIdentity'), 'click', () => this.reject());
-    setTimeout(() => document.getElementById('identityPassword')?.focus(), 0);
-  }
-
-  async approveIdentity() {
-    if (this.isProcessing) return;
-    const password = document.getElementById('identityPassword')?.value || '';
-    if (!password) { showError('请输入钱包密码'); return; }
-    this.isProcessing = true;
-    try {
-      await this.sendResponse({ approved: true, password });
-      this.closeWindow();
-    } catch (error) {
-      this.isProcessing = false;
-      showError('身份授权失败: ' + error.message);
     }
   }
 
