@@ -213,13 +213,6 @@ body {
   margin: 15px 0;
 }
 
-.identity-approval-details {
-  background: #f8f9fa;
-  padding: 15px;
-  border-radius: 8px;
-  margin: 15px 0;
-}
-
 .detail-row {
   display: flex;
   justify-content: space-between;

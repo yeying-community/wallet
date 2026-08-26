@@ -60,7 +60,7 @@
 
       <div id="approvalWaiting" class="request-view hidden">
         <div class="request-header">
-          <h2 id="waitingTitle">连接成功</h2>
+          <h2 id="waitingTitle">等待后续确认</h2>
         </div>
 
         <div class="request-body">
@@ -83,7 +83,7 @@
       <!-- 连接请求 -->
       <div id="connectRequest" class="request-view hidden">
         <div class="request-header">
-          <h2>连接请求</h2>
+          <h2 id="connectTitle">连接请求</h2>
           <div class="site-info">
             <div class="site-icon">🌐</div>
             <div class="site-url" id="connectOrigin"></div>
@@ -92,18 +92,20 @@
 
         <div class="request-body">
           <div class="permission-list">
-            <h3>此网站请求以下权限：</h3>
-            <div class="permission-item">
-              <span class="permission-icon">👁️</span>
-              <span>查看您的账户地址</span>
-            </div>
-            <div class="permission-item">
-              <span class="permission-icon">💰</span>
-              <span>查看您的账户余额</span>
-            </div>
-            <div class="permission-item">
-              <span class="permission-icon">📝</span>
-              <span>请求链下交易签名</span>
+            <h3 id="connectPermissionTitle">此网站请求以下权限：</h3>
+            <div id="connectPermissionItems">
+              <div class="permission-item">
+                <span class="permission-icon">👁️</span>
+                <span>查看您的账户地址</span>
+              </div>
+              <div class="permission-item">
+                <span class="permission-icon">💰</span>
+                <span>查看您的账户余额</span>
+              </div>
+              <div class="permission-item">
+                <span class="permission-icon">📝</span>
+                <span>请求链下交易签名</span>
+              </div>
             </div>
           </div>
 
@@ -111,7 +113,7 @@
         </div>
 
         <div class="request-footer">
-          <div class="warning-box">⚠️ 只连接您信任的网站</div>
+          <div class="warning-box" id="connectWarning">⚠️ 只连接您信任的网站</div>
 
           <div class="button-group">
             <button id="rejectConnect" class="btn btn-secondary">拒绝</button>
@@ -300,23 +302,6 @@
             <button id="approveSign" class="btn btn-primary">签名</button>
           </div>
         </div>
-      </div>
-
-      <div id="identityRequest" class="request-view hidden">
-        <div class="request-header">
-          <h2>身份资料授权</h2>
-          <div class="site-info"><div class="site-url" id="identityOrigin"></div></div>
-        </div>
-        <div class="request-body">
-          <div class="identity-approval-details">
-            <div class="detail-row"><span class="detail-label">应用 ID</span><span class="detail-value" id="identityAppId"></span></div>
-            <div class="detail-row"><span class="detail-label">Audience</span><span class="detail-value" id="identityAudience"></span></div>
-            <div class="detail-row"><span class="detail-label">Nonce</span><span class="detail-value" id="identityNonce"></span></div>
-          </div>
-          <div class="permission-list"><h3>此网站请求读取：</h3><div id="identityScopeList"></div></div>
-          <div class="unlock-form"><label class="unlock-label" for="identityPassword">钱包密码</label><input type="password" id="identityPassword" class="unlock-input" placeholder="输入钱包密码" /></div>
-        </div>
-        <div class="request-footer"><div class="warning-box">确认后仅向此网站返回已授权的身份资料和证明。</div><div class="button-group"><button id="rejectIdentity" class="btn btn-secondary">拒绝</button><button id="approveIdentity" class="btn btn-primary">授权</button></div></div>
       </div>
 
       <!-- 添加自定义链 -->

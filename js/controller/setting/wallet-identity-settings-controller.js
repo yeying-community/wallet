@@ -1,4 +1,4 @@
-import { showPage, showError, showSuccess, showWaiting, hideWaiting, generateQRCode } from '../../common/ui/index.js';
+import { showPage, showError, showSuccess, showWaiting, hideWaiting, generateQRCode, copyToClipboard } from '../../common/ui/index.js';
 
 const DEFAULT_NODE_ENDPOINT = 'https://node.yeying.pub';
 const ENDPOINT_STORAGE_KEY = 'walletIdentityNodeEndpoint';
@@ -7,6 +7,11 @@ const EMAIL_VERIFICATION_STORAGE_PREFIX = 'walletIdentityEmailVerification:';
 const VERIFICATION_STATE_PENDING_EMAIL = 'pending-email';
 const VERIFICATION_STATE_COMPLETE = 'complete';
 const USERNAME_NAMESPACE_SUFFIX = '@node.yeying.pub';
+
+function defaultAvatarUri(seed) {
+  const value = String(seed || 'wallet-identity').trim() || 'wallet-identity';
+  return `https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(value)}`;
+}
 
 function base64UrlToArrayBuffer(value) {
   const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
@@ -42,6 +47,9 @@ export class WalletIdentitySettingsController {
     document.getElementById('changeWalletIdentityPageBtn')?.addEventListener('click', () => this.changeWalletIdentity());
     document.getElementById('manageWalletIdentityPasskeysBtn')?.addEventListener('click', () => this.openIdentityPasskeys());
     document.getElementById('manageWalletIdentityAuthenticatorsBtn')?.addEventListener('click', () => this.openIdentityAuthenticators());
+    this.bindCopyableDetailValue('walletIdentityDetailAddressPage', '钱包地址');
+    this.bindCopyableDetailValue('walletIdentityDetailDidPage', '身份 DID');
+    this.bindCopyableDetailValue('walletIdentityDetailAvatarPage', '头像 URI');
     document.getElementById('registerWalletIdentityPasskeyBtn')?.addEventListener('click', () => this.registerIdentityPasskey());
     document.getElementById('refreshWalletIdentityPasskeysBtn')?.addEventListener('click', () => this.refreshIdentityPasskeys());
     document.getElementById('refreshWalletIdentityTotpBtn')?.addEventListener('click', () => this.refreshIdentityTotp());
@@ -204,19 +212,21 @@ export class WalletIdentitySettingsController {
       if (!identities?.selectedIdentityId) await this.wallet.selectIdentity(identityId);
       const identity = await this.wallet.getIdentity(identityId);
       const credentials = await this.wallet.listIdentityCredentials(identityId);
-      const values = { username: '-', email: '-' };
+      const values = { username: '-', email: '-', avatarUri: '' };
       for (const item of credentials?.credentials || []) {
         const token = item?.credential || item?.jwt || item;
         const payload = this.decodeCredentialPayload(token);
         const subject = payload?.vc?.credentialSubject || {};
         if (subject.usernameQualified || subject.username) values.username = this.displayUsername(subject.username || subject.usernameQualified);
         if (subject.email) values.email = subject.email;
+        if (subject.avatar || subject.avatarUri) values.avatarUri = subject.avatar || subject.avatarUri;
       }
       this.setDetailValue('walletIdentityDetailStatusPage', '已验证');
       this.setDetailValue('walletIdentityDetailUsernamePage', values.username);
       this.setDetailValue('walletIdentityDetailEmailPage', values.email);
-      this.setDetailValue('walletIdentityDetailAddressPage', account?.address || '-');
-      this.setDetailValue('walletIdentityDetailDidPage', identity?.document?.id || '-');
+      this.setDetailAvatar(values.avatarUri || defaultAvatarUri(identityId || account?.address));
+      this.setCopyableDetailValue('walletIdentityDetailAddressPage', account?.address || '-', this.formatCompactIdentityValue(account?.address, 12, 8));
+      this.setCopyableDetailValue('walletIdentityDetailDidPage', identity?.document?.id || '-', this.formatCompactIdentityValue(identity?.document?.id, 18, 10));
       this.setDetailValue('walletIdentityDetailEndpointPage', this.endpoint() || DEFAULT_NODE_ENDPOINT);
       showPage('walletIdentityDetailPage');
       await Promise.all([
@@ -269,7 +279,7 @@ export class WalletIdentitySettingsController {
     if (selector) {
       this.renderIdentityAddressOptions(selector, options, current);
     }
-    let username = '', email = '';
+    let username = '', email = '', avatarUri = '';
     const identities = typeof this.wallet.listIdentities === 'function'
       ? await this.wallet.listIdentities()
       : null;
@@ -281,20 +291,24 @@ export class WalletIdentitySettingsController {
       const subject = this.decodeCredentialPayload(item?.credential || item)?.vc?.credentialSubject || {};
       username = this.displayUsername(subject.username || subject.usernameQualified) || username;
       email = subject.email || email;
+      avatarUri = subject.avatar || subject.avatarUri || avatarUri;
     }
+    if (!avatarUri) avatarUri = defaultAvatarUri(identityId || current?.address);
     const endpointInput = document.getElementById('walletIdentityEditEndpoint');
     const usernameInput = document.getElementById('walletIdentityEditUsername');
     const emailInput = document.getElementById('walletIdentityEditEmail');
     if (!document.getElementById('walletIdentityEditPage')) {
-      const profile = await this.promptIdentityProfile({ username, email, endpoint: this.endpoint() });
+      const profile = await this.promptIdentityProfile({ username, email, avatarUri, endpoint: this.endpoint() });
       if (!profile) return;
-      ({ username, email } = profile);
-      await this.requestAndConfirmIdentity({ username, email });
+      ({ username, email, avatarUri } = profile);
+      await this.requestAndConfirmIdentity({ username, email, avatarUri });
       return;
     }
     if (endpointInput) endpointInput.value = this.endpoint();
     if (usernameInput) usernameInput.value = username;
     if (emailInput) emailInput.value = email;
+    const avatarInput = document.getElementById('walletIdentityEditAvatar');
+    if (avatarInput) avatarInput.value = avatarUri;
     showPage('walletIdentityEditPage');
   }
 
@@ -316,13 +330,17 @@ export class WalletIdentitySettingsController {
     const endpoint = String(document.getElementById('walletIdentityEditEndpoint')?.value || '').trim();
     const username = String(document.getElementById('walletIdentityEditUsername')?.value || '').trim().toLowerCase();
     const email = String(document.getElementById('walletIdentityEditEmail')?.value || '').trim().toLowerCase();
+    const avatarUri = String(document.getElementById('walletIdentityEditAvatar')?.value || '').trim();
     if (!endpoint) throw new Error('请输入身份服务地址');
     if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username)) throw new Error('用户名须为 3-32 位小写字母、数字、点、下划线或连字符');
     if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('请输入有效邮箱');
+    if (!avatarUri) throw new Error('请输入头像 URI');
+    const avatarUrl = new URL(avatarUri);
+    if (!['https:', 'http:', 'ipfs:'].includes(avatarUrl.protocol)) throw new Error('头像 URI 仅支持 HTTP、HTTPS 或 IPFS');
     this.selectedIdentityAddress = document.getElementById('walletIdentityEditAddress')?.value || '';
     this.closeIdentityEdit();
     this.persistEndpoint(endpoint);
-    const completed = await this.requestAndConfirmIdentity({ username, email });
+    const completed = await this.requestAndConfirmIdentity({ username, email, avatarUri });
     await this.renderIdentityVerificationAction();
     if (completed) await this.openIdentityDetails();
   }
@@ -330,6 +348,71 @@ export class WalletIdentitySettingsController {
   setDetailValue(id, value) {
     const element = document.getElementById(id);
     if (element) element.textContent = value || '-';
+  }
+
+  setCopyableDetailValue(id, value, displayValue = '') {
+    const element = document.getElementById(id);
+    if (!element) return;
+    const fullValue = String(value || '').trim();
+    const hasValue = !!fullValue && fullValue !== '-';
+    element.textContent = hasValue ? (displayValue || fullValue) : '-';
+    element.title = hasValue ? fullValue : '';
+    element.dataset.copyValue = hasValue ? fullValue : '';
+    element.classList.toggle('copyable-detail-value', hasValue);
+    if (hasValue) {
+      element.setAttribute('role', 'button');
+      element.setAttribute('tabindex', '0');
+      element.setAttribute('aria-label', `复制${element.dataset.copyLabel || '内容'}`);
+    } else {
+      element.setAttribute('tabindex', '-1');
+      element.setAttribute('aria-label', '');
+    }
+  }
+
+  bindCopyableDetailValue(id, label) {
+    const element = document.getElementById(id);
+    if (!element) return;
+    element.dataset.copyLabel = label;
+    element.addEventListener('click', () => this.copyDetailValue(id, label));
+    element.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      this.copyDetailValue(id, label);
+    });
+  }
+
+  async copyDetailValue(id, label = '内容') {
+    const element = document.getElementById(id);
+    const value = String(element?.dataset?.copyValue || '').trim();
+    if (!value) return false;
+    const copied = await copyToClipboard(value);
+    if (copied) showSuccess(`已复制${label}`);
+    else showError('复制失败');
+    return copied;
+  }
+
+  setDetailAvatar(value) {
+    const uri = String(value || '').trim();
+    const image = document.getElementById('walletIdentityDetailAvatarImagePage');
+    const container = document.getElementById('walletIdentityDetailAvatarPage');
+    if (!image || !container) return;
+    if (!uri) {
+      image.removeAttribute('src');
+      image.classList.add('hidden');
+      container.title = '';
+      container.dataset.copyValue = '';
+      container.classList.remove('copyable-detail-value');
+      return;
+    }
+    image.src = uri;
+    image.title = uri;
+    container.title = uri;
+    container.dataset.copyValue = uri;
+    container.classList.add('copyable-detail-value');
+    container.setAttribute('role', 'button');
+    container.setAttribute('tabindex', '0');
+    container.setAttribute('aria-label', '复制头像 URI');
+    image.classList.remove('hidden');
   }
 
   decodeCredentialPayload(token) {
@@ -697,6 +780,14 @@ export class WalletIdentitySettingsController {
     const value = String(address || '').trim();
     if (value.length <= 12) return value || '-';
     return `${value.slice(0, 6)}...${value.slice(-4)}`;
+  }
+
+  formatCompactIdentityValue(value, head = 18, tail = 12) {
+    const text = String(value || '').trim();
+    if (!text) return '-';
+    const minLength = head + tail + 3;
+    if (text.length <= minLength) return text;
+    return `${text.slice(0, head)}...${text.slice(-tail)}`;
   }
 
   displayUsername(value) {

@@ -15,6 +15,8 @@ function setupApprovalDom() {
     transactionRequest: { tagName: 'div', _classes: 'request-view' },
     approveSign: { tagName: 'button' },
     approveTx: { tagName: 'button' },
+    approveConnect: { tagName: 'button' },
+    rejectConnect: { tagName: 'button' },
     globalWaitingOverlay: { tagName: 'div', _classes: 'hidden' },
     globalToast: { tagName: 'div', _classes: 'hidden' },
   });
@@ -100,6 +102,43 @@ test('HD 消息签名确认后保持立即关闭', async () => {
   assert.equal(closed, true);
   assert.equal(elements.approvalWaiting.classList.contains('hidden'), true);
   assert.equal(sendMessages.length, 1);
+});
+
+test('连接确认只提交一次授权响应', async () => {
+  const elements = setupApprovalDom();
+  const sendMessages = [];
+  let closed = false;
+  globalThis.window = { close: () => { closed = true; } };
+  setupChrome(sendMessages);
+
+  const controller = new ApprovalController({
+    wallet: {
+      async getCurrentAccount() {
+        return { id: 'wallet-1', address: '0x1111111111111111111111111111111111111111' };
+      }
+    },
+    transaction: {},
+    network: {},
+    token: {},
+    requestId: 'request-connect',
+    requestType: 'connect',
+    requestData: {
+      origin: 'https://chat.example'
+    }
+  });
+
+  await controller.approveConnect();
+
+  assert.equal(closed, true);
+  assert.equal(elements.approvalWaiting.classList.contains('hidden'), true);
+  assert.deepEqual(sendMessages, [{
+    type: ApprovalMessageType.APPROVAL_RESPONSE,
+    requestId: 'request-connect',
+    approved: true,
+    account: { id: 'wallet-1', address: '0x1111111111111111111111111111111111111111' }
+  }]);
+
+  controller.dispose();
 });
 
 test('MPC 交易确认后展示多签等待提示', async () => {

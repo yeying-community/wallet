@@ -40,8 +40,8 @@ function hasUnlockedAccount(accountId = null) {
   return Boolean(state.keyring && state.keyring.size > 0);
 }
 
-function waitForUnlock(accountId = null, timeout = 0) {
-  if (hasUnlockedAccount(accountId)) {
+function waitForUnlock(accountId = null, timeout = 0, force = false) {
+  if (!force && hasUnlockedAccount(accountId)) {
     return Promise.resolve(true);
   }
 
@@ -85,7 +85,8 @@ export function notifyUnlocked(source = 'approval') {
 
 export function requestUnlock(context = {}) {
   const accountId = context?.accountId || null;
-  if (hasUnlockedAccount(accountId)) {
+  const force = context?.force === true;
+  if (!force && hasUnlockedAccount(accountId)) {
     return Promise.resolve(true);
   }
 
@@ -122,7 +123,7 @@ export function requestUnlock(context = {}) {
           }
         }).catch(() => { });
 
-        waitForUnlockWithWindow(accountId)
+        waitForUnlockWithWindow(accountId, force)
           .then(resolve)
           .catch(reject);
       });
@@ -132,7 +133,7 @@ export function requestUnlock(context = {}) {
   return unlockPromise;
 }
 
-function waitForUnlockWithWindow(accountId = null) {
+function waitForUnlockWithWindow(accountId = null, force = false) {
   return new Promise((resolve, reject) => {
     const cleanup = (options = {}) => {
       const { closeWindow = false } = options;
@@ -155,7 +156,7 @@ function waitForUnlockWithWindow(accountId = null) {
 
     chrome.windows.onRemoved.addListener(windowRemovedListener);
 
-    waitForUnlock(accountId, 0)
+    waitForUnlock(accountId, 0, force)
       .then(() => {
         cleanup();
         resolve(true);

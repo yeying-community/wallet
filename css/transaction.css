@@ -183,27 +183,33 @@
 
 .wallet-identity-details .detail-row {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr);
+  grid-template-columns: 72px minmax(0, 1fr);
   column-gap: 0;
   align-items: start;
 }
 
 .wallet-identity-details .detail-label {
   display: block;
-  text-align: right;
+  text-align: left;
   white-space: nowrap;
 }
 
 .wallet-identity-details .detail-label::after {
   display: inline-block;
-  width: 12px;
-  margin: 0;
-  text-align: center;
+  width: auto;
+  margin: 0 0 0 2px;
+  text-align: left;
 }
 
 .wallet-identity-details .detail-value {
   padding-left: 4px;
+  text-align: right;
   overflow-wrap: anywhere;
+}
+
+.wallet-identity-details .copyable-detail-value {
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .detail-copy-icon {

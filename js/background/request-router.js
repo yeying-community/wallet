@@ -15,7 +15,7 @@ import {
   createError,
   createUnauthorizedError
 } from '../common/errors/index.js';
-import { handleEthAccounts, handleEthRequestAccounts, handleWalletGetPermissions, handleWalletRequestPermissions, handleWalletRevokePermissions } from './account-handler.js';
+import { grantIdentityScopes, handleEthAccounts, handleEthRequestAccounts, handleWalletGetPermissions, handleWalletRequestPermissions, handleWalletRevokePermissions, hasRecentConnectApproval, requestIdentityScopeApproval } from './account-handler.js';
 import { handleEthChainId, handleNetVersion, handleSwitchChain, handleAddEthereumChain } from './chain-handler.js';
 import { handleRpcMethod } from './rpc-handler.js';
 import {
@@ -26,14 +26,15 @@ import {
   signTypedData,
   isMpcAccountId
 } from './signing.js';
-import { getSelectedAccount, isAuthorized, updateUserSetting, getNetworkByChainId, getNetworkConfigByKey, getMpcSignRequest } from '../storage/index.js';
+import { getSelectedAccount, isAuthorized, updateUserSetting, getNetworkByChainId, getNetworkConfigByKey, getMpcSignRequest, getAuthorization } from '../storage/index.js';
 import { focusUnlockWindow, requestUnlock } from './unlock-flow.js';
+import { getCachedPassword } from './password-cache.js';
 import { mpcService } from './mpc-service.js';
 import { withPopupBoundsAsync } from './window-utils.js';
 import { DEFAULT_NETWORK, POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { handleUcanSession, handleUcanSign } from './ucan.js';
-import { requestIdentityPresentation as handleIdentityPresentation } from './identity-presentation.js';
+import { normalizeIdentityPresentationRequest, requestIdentityPresentation as handleIdentityPresentation } from './identity-presentation.js';
 import { handleYeyingGetProfile } from './profile-handler.js';
 import {
   handleYeyingEncrypt,
@@ -394,6 +395,7 @@ export async function routeRequest(method, params, metadata) {
     'wallet_addEthereumChain',
     'wallet_switchEthereumChain'
   ]);
+  blockedWhilePopupOpenMethods.delete('yeying_identity_presentation');
 
   if (blockedWhilePopupOpenMethods.has(method) && await isWalletPopupOpen()) {
     throw createError(-32002, 'Wallet popup is currently open. Close it and retry.');
@@ -405,8 +407,10 @@ export async function routeRequest(method, params, metadata) {
   const selectedAccountUnlocked = Boolean(
     selectedAccountBeforeUnlock?.id && state.keyring?.has(selectedAccountBeforeUnlock.id)
   );
+  const identityPresentationNeedsPasswordCache =
+    method === 'yeying_identity_presentation' && !getCachedPassword();
 
-  if (unlockMethods.has(method) && !selectedAccountUnlocked) {
+  if (unlockMethods.has(method) && (!selectedAccountUnlocked || identityPresentationNeedsPasswordCache)) {
     const active = await isActiveTab(tabId);
     if (!active) {
       throw createUserRejectedError('Unlock requires active tab');
@@ -421,7 +425,8 @@ export async function routeRequest(method, params, metadata) {
       origin,
       tabId,
       method,
-      accountId: selectedAccountBeforeUnlock?.id || null
+      accountId: selectedAccountBeforeUnlock?.id || null,
+      force: method === 'yeying_identity_presentation' && identityPresentationNeedsPasswordCache
     });
   }
 
@@ -519,41 +524,19 @@ export async function routeRequest(method, params, metadata) {
 }
 
 
-async function handleIdentityPresentationApproval(account, params, origin, tabId, clientRequestId) {
-  const request = Array.isArray(params) ? (params[0] || {}) : (params || {});
-  if (!request || typeof request !== 'object') throw createInvalidParams('Invalid identity presentation parameters');
-  const pending = findPendingRequest('identity_presentation', origin, tabId);
-  const clientRequestKey = getClientRequestKey(origin, tabId, 'yeying_identity_presentation', clientRequestId);
-  const existingPending = findPendingRequestByClientKey(clientRequestKey);
-  if (pending && !existingPending) {
-    focusPendingWindow(pending);
-    throw createError(-32002, 'Identity presentation request already pending');
+async function handleIdentityPresentationApproval(account, params, origin, tabId) {
+  const request = normalizeIdentityPresentationRequest(params, origin);
+  const stored = await getAuthorization(origin);
+  const grantedScopes = Array.isArray(stored?.identityScopes) ? stored.identityScopes : [];
+  const missingScopes = request.scopes.filter((scope) => !grantedScopes.includes(scope));
+  if (missingScopes.length > 0) {
+    if (hasRecentConnectApproval(origin, tabId)) {
+      await grantIdentityScopes(origin, request.scopes, account);
+    } else {
+      await requestIdentityScopeApproval(origin, tabId, request.scopes, account);
+    }
   }
-  return waitForApprovalAndExecute({
-    existingPending,
-    requestType: 'identity_presentation',
-    origin,
-    tabId,
-    reuseSession: true,
-    clientRequestKey,
-    createPending: () => {
-      const requestId = `identity_presentation_${getTimestamp()}_${Math.random().toString(36).slice(2, 11)}`;
-      addPendingRequest(requestId, {
-        type: 'identity_presentation',
-        approvalType: 'identity_presentation',
-        origin,
-        tabId,
-        reuseSession: true,
-        clientRequestKey,
-        expiresAt: Date.now() + TIMEOUTS.REQUEST,
-        data: { origin, accountId: account.id, address: account.address, request },
-        timestamp: getTimestamp()
-      });
-      return requestId;
-    },
-    onApproved: async (response) => handleIdentityPresentation({ account, params: request, origin, password: response?.password }),
-    onRejectedMessage: 'User rejected the identity presentation request'
-  });
+  return handleIdentityPresentation({ account, params: request, origin });
 }
 
 // ==================== 代币相关 ====================
