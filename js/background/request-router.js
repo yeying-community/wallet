@@ -425,7 +425,8 @@ export async function routeRequest(method, params, metadata) {
       origin,
       tabId,
       method,
-      accountId: selectedAccountBeforeUnlock?.id || null
+      accountId: selectedAccountBeforeUnlock?.id || null,
+      force: method === 'yeying_identity_presentation' && identityPresentationNeedsPasswordCache
     });
   }
 
