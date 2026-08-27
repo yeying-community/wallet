@@ -321,9 +321,9 @@
   border-top: 1px solid #f3f4f6;
 }
 
-.custody-summary-row strong {
+.custody-summary-value {
   color: #1f2937;
-  font-weight: 600;
+  font-weight: 400;
   text-align: right;
   word-break: break-word;
 }
