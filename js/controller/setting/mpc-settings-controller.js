@@ -483,13 +483,18 @@ export class MpcSettingsController {
     const passkeyStatus = document.getElementById('custodyPasskeyStatus');
     const recordSummary = document.getElementById('custodyRecordSummary');
     const lastSyncSummary = document.getElementById('custodyLastSyncSummary');
+    const syncButton = document.getElementById('custodySyncBtn');
 
     const endpoint = settings.endpoint || DEFAULT_CUSTODY_ENDPOINT;
+    const status = settings.lastStatus || {};
     if (enabledToggle) enabledToggle.checked = Boolean(settings.enabled);
     if (endpointInput) endpointInput.value = endpoint;
+    if (syncButton) {
+      syncButton.disabled = !settings.enabled;
+      syncButton.title = settings.enabled ? '立即同步托管数据' : '请先开启密钥托管';
+    }
 
     if (statusText) {
-      const status = settings.lastStatus || {};
       statusText.textContent = settings.enabled ? '已开启' : '未开启';
       if (passkeyStatus) {
         passkeyStatus.textContent = status.passkeyBound ? '已绑定，可用于恢复' : '尚未绑定';

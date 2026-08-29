@@ -110,6 +110,19 @@ test('renderTokenBalances：渲染 symbol/balance/原生标记', () => {
   assert.match(html, /native/, '原生项应有 native class');
 });
 
+test('renderTokenBalances：每行左侧显示通证图标并转义图片地址', () => {
+  const c = new TokenController({});
+  c.renderTokenBalances([
+    { symbol: 'USDC', name: 'USD Coin', image: 'https://example.test/usdc.png?x=<tag>', balance: '100' }
+  ]);
+  const html = elements.tokenList.innerHTML;
+  assert.match(html, /token-main/);
+  assert.match(html, /token-icon/);
+  assert.match(html, /<img/);
+  assert.match(html, /https:\/\/example\.test\/usdc\.png\?x=&lt;tag&gt;/);
+  assert.match(html, />U<\/span>/);
+});
+
 test('renderTokenBalances：缺 balance 显示 0', () => {
   const c = new TokenController({});
   c.renderTokenBalances([{ symbol: 'FOO', name: 'Foo' }]);

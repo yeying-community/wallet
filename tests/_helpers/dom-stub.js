@@ -32,6 +32,9 @@
  * @property {(event: any) => boolean} dispatchEvent
  * @property {(type: string, listener: Function) => void} addEventListener
  * @property {(type: string, listener: Function) => void} removeEventListener
+ * @property {(child: DomElement) => DomElement} appendChild
+ * @property {(...children: DomElement[]) => void} append
+ * @property {(...children: DomElement[]) => void} replaceChildren
  * @property {(name: string) => string|null} getAttribute
  * @property {(name: string, value: string) => void} setAttribute
  * @property {(name: string) => boolean} hasAttribute
@@ -180,6 +183,19 @@ export function createElement(init = {}) {
   };
   el.removeEventListener = (type, fn) => {
     if (el.listeners[type]) el.listeners[type] = el.listeners[type].filter((f) => f !== fn);
+  };
+  el.appendChild = (child) => {
+    child.parent = el;
+    el.children.push(child);
+    return child;
+  };
+  el.append = (...children) => {
+    children.forEach((child) => el.appendChild(child));
+  };
+  el.replaceChildren = (...children) => {
+    el.children.forEach((child) => { child.parent = null; });
+    el.children = [];
+    el.append(...children);
   };
   el.getAttribute = (name) => el.attrs[name] ?? null;
   el.setAttribute = (name, value) => { el.attrs[name] = String(value); };

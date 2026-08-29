@@ -5,7 +5,7 @@ import { createInvalidParams } from '../common/errors/index.js';
 import { signIdentityDocument } from '../common/identity/identity-document.js';
 import { getCachedPassword, refreshPasswordCache } from './password-cache.js';
 
-const METHOD = 'yeying_identity_presentation';
+const METHOD = 'wallet_identity_presentation';
 const DEFAULT_ISSUER_ENDPOINT = 'https://node.yeying.pub';
 const ALLOWED_SCOPES = new Set(['identity.basic', 'identity.wallet', 'identity.username', 'identity.email', 'identity.avatar']);
 const CREDENTIAL_CLOCK_SKEW_MS = 60 * 1000;
@@ -31,16 +31,18 @@ function canonicalize(value) {
 }
 
 function scopeNeedsCredential(scope) {
-  return scope === 'identity.email' || scope === 'identity.username' || scope === 'identity.avatar';
+  return scope === 'identity.wallet' || scope === 'identity.email' || scope === 'identity.username' || scope === 'identity.avatar';
 }
 
 function credentialTypeForScope(scope) {
+  if (scope === 'identity.wallet') return 'WalletAccountCredential';
   if (scope === 'identity.email') return 'EmailCredential';
   if (scope === 'identity.username') return 'UsernameCredential';
   return 'AvatarCredential';
 }
 
 function missingCredentialErrorForScope(scope) {
+  if (scope === 'identity.wallet') return 'IDENTITY_WALLET_NOT_VERIFIED';
   if (scope === 'identity.email') return 'IDENTITY_EMAIL_NOT_VERIFIED';
   if (scope === 'identity.username') return 'IDENTITY_USERNAME_NOT_VERIFIED';
   if (scope === 'identity.avatar') return 'IDENTITY_AVATAR_NOT_VERIFIED';
@@ -68,7 +70,7 @@ function credentialTypes(credential) {
   const normalized = Array.isArray(types) ? [...types] : (types ? [types] : []);
   const jwt = credential?.credential || credential?.jwt || (typeof credential === 'string' ? credential : '');
   normalized.push(...decodeCredentialTypesFromJwt(jwt));
-  return [...new Set(normalized.filter((type) => type === 'EmailCredential' || type === 'UsernameCredential' || type === 'AvatarCredential'))];
+  return [...new Set(normalized.filter((type) => type === 'WalletAccountCredential' || type === 'EmailCredential' || type === 'UsernameCredential' || type === 'AvatarCredential'))];
 }
 
 function credentialToken(credential) {
@@ -98,11 +100,19 @@ function requestCredentialTypes(scopes) {
   return [...new Set(scopes.filter(scopeNeedsCredential).map(credentialTypeForScope))];
 }
 
-function selectFreshCredentials(credentials, scopes) {
+function credentialMatchesAccount(credential, account) {
+  const subject = credentialPayload(credential)?.vc?.credentialSubject;
+  const expectedChainKey = account?.chainKey || `eip155:${account?.chainId || 1}`;
+  return subject?.chainKey === expectedChainKey
+    && String(subject?.address || '').toLowerCase() === String(account?.address || '').toLowerCase();
+}
+
+function selectFreshCredentials(credentials, scopes, account) {
   const requestedTypes = requestCredentialTypes(scopes);
   return credentials.filter((credential) => {
     const types = credentialTypes(credential);
-    return credentialIsFresh(credential) && requestedTypes.some((type) => types.includes(type));
+    if (!credentialIsFresh(credential) || !requestedTypes.some((type) => types.includes(type))) return false;
+    return !types.includes('WalletAccountCredential') || credentialMatchesAccount(credential, account);
   });
 }
 
@@ -175,7 +185,7 @@ export async function requestIdentityPresentation({ account, params, origin, pas
   const issuedAt = new Date().toISOString();
   const expiresAt = request.expiresAt || new Date(Date.now() + 5 * 60 * 1000).toISOString();
   let credentials = await getIdentityCredentials(identityId);
-  let selectedCredentials = selectFreshCredentials(credentials, request.scopes);
+  let selectedCredentials = selectFreshCredentials(credentials, request.scopes, account);
   const effectivePassword = String(password || '').trim() || getCachedPassword();
   if (!effectivePassword) {
     throw new Error('Wallet is locked');
@@ -183,13 +193,17 @@ export async function requestIdentityPresentation({ account, params, origin, pas
   refreshPasswordCache();
   const keyMaterial = await decryptIdentityKeyMaterial(record, effectivePassword);
   const privateKey = await crypto.subtle.importKey('jwk', keyMaterial.privateJwk, { name: 'Ed25519' }, false, ['sign']);
+  const signedIdentityDocument = await signIdentityDocument(record.document, privateKey, {
+    verificationMethod: `${record.document.id}#${record.controllerId}`,
+    purpose: 'manage'
+  });
   const missingTypes = missingCredentialTypes(selectedCredentials, request.scopes);
   const issuerEndpoint = String(request.issuerEndpoint || DEFAULT_ISSUER_ENDPOINT).trim();
   let reissueError = null;
   if (missingTypes.length > 0 && issuerEndpoint) {
     try {
       credentials = await reissueMissingCredentials({ identityId, record, credentials, missingTypes, issuerEndpoint, privateKey });
-      selectedCredentials = selectFreshCredentials(credentials, request.scopes);
+      selectedCredentials = selectFreshCredentials(credentials, request.scopes, account);
     } catch (error) {
       reissueError = error;
       console.warn('[IdentityPresentation] credential reissue failed:', error?.message || error);
@@ -217,7 +231,7 @@ export async function requestIdentityPresentation({ account, params, origin, pas
       throw error;
     }
   }
-  const unsigned = { version: 1, holder: record.document.id, audience: request.audience, nonce: request.nonce, issuedAt, expiresAt, scopes: request.scopes, identityDocument: request.scopes.includes('identity.basic') ? record.document : undefined, walletProof: request.scopes.includes('identity.wallet') ? { chainKey: account.chainKey || `eip155:${account.chainId || 1}`, address: account.address } : undefined, credentials: selectedCredentials.map(credentialToken) };
+  const unsigned = { version: 1, holder: record.document.id, audience: request.audience, nonce: request.nonce, issuedAt, expiresAt, scopes: request.scopes, identityDocument: request.scopes.includes('identity.basic') ? signedIdentityDocument : undefined, walletProof: request.scopes.includes('identity.wallet') ? { chainKey: account.chainKey || `eip155:${account.chainId || 1}`, address: account.address } : undefined, credentials: selectedCredentials.map(credentialToken) };
   const signature = await crypto.subtle.sign('Ed25519', privateKey, new TextEncoder().encode(canonicalize(unsigned)));
   return { ...unsigned, proof: { type: 'YeyingIdentityPresentationProofV1', verificationMethod: `${record.document.id}#${record.controllerId}`, purpose: 'authentication', proofValue: toBase64Url(new Uint8Array(signature)) } };
 }

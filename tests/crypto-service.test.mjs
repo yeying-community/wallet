@@ -36,7 +36,7 @@ async function decryptText(ciphertext, options) {
   return decoder.decode(Buffer.from(result.plaintext, 'base64'));
 }
 
-test('yeying_encrypt/decrypt manual password remains compatible', async () => {
+test('wallet_encrypt/decrypt supports a manually supplied password', async () => {
   resetState();
   unlockTestAccount();
 
@@ -54,7 +54,7 @@ test('yeying_encrypt/decrypt manual password remains compatible', async () => {
   );
 });
 
-test('yeying_encrypt manual source requires password', async () => {
+test('wallet_encrypt manual source requires password', async () => {
   resetState();
   unlockTestAccount();
 
@@ -67,7 +67,7 @@ test('yeying_encrypt manual source requires password', async () => {
   );
 });
 
-test('yeying_encrypt/decrypt can derive password from wallet key', async () => {
+test('wallet_encrypt/decrypt can derive password from wallet key', async () => {
   resetState();
   unlockTestAccount();
 

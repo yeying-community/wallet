@@ -75,13 +75,6 @@ function buildEthAccountsPermission(accounts) {
   };
 }
 
-function buildProfilePermission(fields) {
-  return {
-    parentCapability: 'yeying_profile',
-    caveats: [{ type: 'restrictProfileFields', value: fields }]
-  };
-}
-
 const ALLOWED_IDENTITY_SCOPES = new Set(['identity.basic', 'identity.wallet', 'identity.username', 'identity.email', 'identity.avatar']);
 
 function normalizeIdentityScopes(scopes) {
@@ -91,7 +84,7 @@ function normalizeIdentityScopes(scopes) {
       .filter(Boolean)
   )];
   if (normalized.length === 0 || normalized.some((scope) => !ALLOWED_IDENTITY_SCOPES.has(scope))) {
-    throw createInvalidParams('Invalid yeying_identity.scopes');
+    throw createInvalidParams('Invalid wallet_identity.scopes');
   }
   if (!normalized.includes('identity.basic')) {
     normalized.unshift('identity.basic');
@@ -101,7 +94,7 @@ function normalizeIdentityScopes(scopes) {
 
 function buildIdentityPermission(scopes) {
   return {
-    parentCapability: 'yeying_identity',
+    parentCapability: 'wallet_identity',
     caveats: [{ type: 'restrictIdentityScopes', value: scopes }]
   };
 }
@@ -327,9 +320,6 @@ export async function handleWalletGetPermissions(origin) {
     }
 
     const permissions = [buildEthAccountsPermission(accounts)];
-    if (Array.isArray(stored?.profileFields) && stored.profileFields.length > 0) {
-      permissions.push(buildProfilePermission(stored.profileFields));
-    }
     if (Array.isArray(stored?.identityScopes) && stored.identityScopes.length > 0) {
       permissions.push(buildIdentityPermission(stored.identityScopes));
     }
@@ -447,45 +437,12 @@ export async function handleWalletRequestPermissions(origin, tabId, params) {
     throw createInvalidParams('Permission request is required');
   }
 
-  if (request.yeying_identity) {
-    if (!request.eth_accounts) {
-      throw createInvalidParams('Request eth_accounts together with yeying_identity');
-    }
-    const granted = await requestIdentityScopeApproval(origin, tabId, request.yeying_identity?.scopes);
-    return [
-      buildEthAccountsPermission(granted.accounts),
-      buildIdentityPermission(granted.identityScopes)
-    ];
-  }
-
-  if (request.yeying_profile) {
-    const stored = await getAuthorization(origin);
-    if (!stored?.address) throw createError(4100, 'Connect the site before requesting profile access');
-    const requestedFields = request.yeying_profile?.fields;
-    if (!Array.isArray(requestedFields) || requestedFields.length === 0) {
-      throw createInvalidParams('yeying_profile.fields is required');
-    }
-    const fields = Array.from(new Set(requestedFields.map(String)));
-    if (fields.some(field => field !== 'username' && field !== 'email')) {
-      throw createInvalidParams('Only username and email profile fields are supported');
-    }
-
-    const requestId = `profile_${getTimestamp()}_${Math.random().toString(36).slice(2, 11)}`;
-    addPendingRequest(requestId, {
-      type: 'profile', approvalType: 'profile', origin, tabId,
-      expiresAt: Date.now() + TIMEOUTS.REQUEST,
-      data: { origin, fields }, timestamp: getTimestamp()
-    });
-    await ensureApprovalRequestVisible(requestId, { requestType: 'profile', origin, tabId });
-    const response = await waitForApprovalResponse(requestId);
-    if (!response?.approved) {
-      removePendingRequest(requestId);
-      throw createUserRejectedError('User rejected profile access');
-    }
-    const granted = Array.from(new Set([...(stored.profileFields || []), ...fields]));
-    await saveAuthorization(origin, stored.address, granted, stored.accounts, stored.identityScopes);
-    removePendingRequest(requestId, { activateNext: true });
-    return [buildProfilePermission(granted)];
+  const identityRequest = request.wallet_identity;
+  if (identityRequest) {
+    const granted = await requestIdentityScopeApproval(origin, tabId, identityRequest?.scopes);
+    return request.eth_accounts
+      ? [buildEthAccountsPermission(granted.accounts), buildIdentityPermission(granted.identityScopes)]
+      : [buildIdentityPermission(granted.identityScopes)];
   }
 
   if (!request.eth_accounts) throw createInvalidParams('Unsupported permission');
@@ -508,14 +465,7 @@ export async function handleWalletRequestPermissions(origin, tabId, params) {
  */
 export async function handleWalletRevokePermissions(origin, params) {
   const request = params?.[0];
-  if (request && typeof request === 'object' && 'yeying_profile' in request) {
-    const stored = await getAuthorization(origin);
-    if (!stored?.address || !Array.isArray(stored.profileFields) || stored.profileFields.length === 0) return [];
-    const revoked = buildProfilePermission(stored.profileFields);
-    await saveAuthorization(origin, stored.address, [], stored.accounts, stored.identityScopes);
-    return [revoked];
-  }
-  if (request && typeof request === 'object' && 'yeying_identity' in request) {
+  if (request && typeof request === 'object' && 'wallet_identity' in request) {
     const stored = await getAuthorization(origin);
     if (!stored?.address || !Array.isArray(stored.identityScopes) || stored.identityScopes.length === 0) return [];
     const revoked = buildIdentityPermission(stored.identityScopes);

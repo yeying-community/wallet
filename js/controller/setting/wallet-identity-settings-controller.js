@@ -30,6 +30,14 @@ function arrayBufferToBase64Url(value) {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
+function passkeyRegistrationErrorMessage(error) {
+  const message = String(error?.message || '').trim();
+  if (error?.name === 'InvalidStateError' && /already registered with the relying party/i.test(message)) {
+    return '当前手机选中了已同步的现有通行证，不能重复注册。请在手机的通行证管理器中新建一个通行证后再扫码，或保留当前通行证。';
+  }
+  return message || '注册通行证失败';
+}
+
 export class WalletIdentitySettingsController {
   constructor({ wallet, transaction, requestPassword }) {
     this.wallet = wallet;
@@ -213,15 +221,22 @@ export class WalletIdentitySettingsController {
       const identity = await this.wallet.getIdentity(identityId);
       const credentials = await this.wallet.listIdentityCredentials(identityId);
       const values = { username: '-', email: '-', avatarUri: '' };
+      let hasAccountCredential = false;
+      let hasEmailCredential = false;
+      let hasUsernameCredential = false;
       for (const item of credentials?.credentials || []) {
         const token = item?.credential || item?.jwt || item;
         const payload = this.decodeCredentialPayload(token);
         const subject = payload?.vc?.credentialSubject || {};
-        if (subject.usernameQualified || subject.username) values.username = this.displayUsername(subject.username || subject.usernameQualified);
-        if (subject.email) values.email = subject.email;
+        const types = Array.isArray(payload?.vc?.type) ? payload.vc.type : [];
+        if (types.includes('WalletAccountCredential')) hasAccountCredential = true;
+        if (subject.usernameQualified || subject.username) { hasUsernameCredential = true; values.username = this.displayUsername(subject.username || subject.usernameQualified); }
+        if (subject.email) { hasEmailCredential = true; values.email = subject.email; }
         if (subject.avatar || subject.avatarUri) values.avatarUri = subject.avatar || subject.avatarUri;
       }
-      this.setDetailValue('walletIdentityDetailStatusPage', '已验证');
+      const verified = this.loadVerificationState(this.endpoint(), account?.address) === VERIFICATION_STATE_COMPLETE
+        && hasAccountCredential && hasEmailCredential && hasUsernameCredential;
+      this.setDetailValue('walletIdentityDetailStatusPage', verified ? '已验证' : '未验证');
       this.setDetailValue('walletIdentityDetailUsernamePage', values.username);
       this.setDetailValue('walletIdentityDetailEmailPage', values.email);
       this.setDetailAvatar(values.avatarUri || defaultAvatarUri(identityId || account?.address));
@@ -669,7 +684,18 @@ export class WalletIdentitySettingsController {
       if (!this.isDuplicateAccountLinkError(error)) throw error;
       linkResult = { verifiedAt: new Date().toISOString(), duplicate: true };
     }
-    if (!linkResult?.verifiedAt) throw new Error('钱包账户关联失败');
+    if (!linkResult?.verifiedAt || !linkResult?.credential?.credential) throw new Error('Node 未返回钱包账户关联凭证');
+    const storedCredentials = await this.wallet.listIdentityCredentials(identityId);
+    const linkSubject = this.decodeCredentialPayload(linkResult.credential.credential)?.vc?.credentialSubject || {};
+    const mergedCredentials = (storedCredentials?.credentials || []).filter(item => {
+      const subject = this.decodeCredentialPayload(item?.credential || item)?.vc?.credentialSubject || {};
+      const types = this.decodeCredentialPayload(item?.credential || item)?.vc?.type || [];
+      return !types.includes('WalletAccountCredential')
+        || subject.chainKey !== linkSubject.chainKey
+        || String(subject.address || '').toLowerCase() !== String(linkSubject.address || '').toLowerCase();
+    });
+    mergedCredentials.push(linkResult.credential);
+    await this.wallet.saveIdentityCredentials(mergedCredentials, identityId);
     const verificationTypes = ['email', 'username', ...(avatarUri ? ['avatar'] : [])];
     const requested = await this.wallet.requestIdentityVerification(endpoint, {
       types: verificationTypes,
@@ -770,7 +796,8 @@ export class WalletIdentitySettingsController {
       this.persistVerificationState(endpoint, account.address, false);
       this.persistEmailVerificationState(endpoint, account.address, null);
       await this.renderIdentityVerificationAction();
-      showSuccess('已移除本地钱包身份验证状态');
+      showSuccess('已解除本地钱包身份验证状态');
+      await this.openIdentityDetails();
     } catch (error) {
       showError(error.message || '移除本地钱包身份验证状态失败');
     } finally { hideWaiting(); }
@@ -901,8 +928,9 @@ export class WalletIdentitySettingsController {
       await this.refreshIdentityPasskeySummary({ quiet: true });
     } catch (error) {
       hideWaiting();
-      showError(error?.message || '注册通行证失败');
-      this.setPasskeyStatus(error?.message || '注册通行证失败');
+      const message = passkeyRegistrationErrorMessage(error);
+      showError(message);
+      this.setPasskeyStatus(message);
     }
   }
 
@@ -955,28 +983,69 @@ export class WalletIdentitySettingsController {
     for (const credential of credentials) {
       const item = document.createElement('div');
       item.className = 'identity-passkey-item';
-      const content = document.createElement('div');
+      const topLine = document.createElement('div');
+      topLine.className = 'identity-passkey-topline';
       const name = document.createElement('div');
       name.className = 'identity-passkey-name';
       name.textContent = credential.deviceName || credential.name || '未命名通行证';
-      const meta = document.createElement('div');
-      meta.className = 'identity-passkey-meta';
-      const created = credential.createdAt ? `创建：${credential.createdAt}` : '';
-      const used = credential.lastUsedAt ? `最近使用：${credential.lastUsedAt}` : '';
-      const id = credential.credentialId ? `ID：${this.formatCredentialId(credential.credentialId)}` : '';
-      meta.textContent = [created, used, id].filter(Boolean).join(' · ') || '未返回设备详情';
-      content.append(name, meta);
-      item.appendChild(content);
+      topLine.appendChild(name);
       if (!credential.revokedAt && credential.credentialId) {
         const revoke = document.createElement('button');
-        revoke.className = 'btn btn-danger btn-small';
+        revoke.className = 'identity-passkey-revoke-link';
         revoke.type = 'button';
         revoke.dataset.passkeyRevoke = credential.credentialId;
-        revoke.textContent = '撤销';
-        item.appendChild(revoke);
+        revoke.textContent = '撤销通行证';
+        topLine.appendChild(revoke);
+      }
+      item.appendChild(topLine);
+
+      if (credential.credentialId) {
+        const idRow = document.createElement('div');
+        idRow.className = 'identity-passkey-id-row';
+        const idLabel = document.createElement('span');
+        idLabel.className = 'identity-passkey-id-label';
+        idLabel.textContent = 'ID';
+        const idValue = document.createElement('span');
+        idValue.className = 'identity-passkey-id-value';
+        idValue.textContent = this.formatCredentialId(credential.credentialId);
+        idValue.title = credential.credentialId;
+        idRow.appendChild(idLabel);
+        idRow.appendChild(idValue);
+        item.appendChild(idRow);
+      }
+
+      const timeGrid = document.createElement('div');
+      timeGrid.className = 'identity-passkey-time-grid';
+      const timeRows = [
+        ['创建时间', this.formatPasskeyTime(credential.createdAt)],
+        ['最近使用', this.formatPasskeyTime(credential.lastUsedAt)]
+      ].filter(([, value]) => value && value !== '-');
+      timeRows.forEach(([label, value]) => timeGrid.appendChild(this.createPasskeyTimeItem(label, value)));
+      if (credential.revokedAt) timeGrid.appendChild(this.createPasskeyTimeItem('撤销时间', this.formatPasskeyTime(credential.revokedAt)));
+      if (timeGrid.children.length) {
+        item.appendChild(timeGrid);
+      } else if (!credential.credentialId) {
+        const meta = document.createElement('div');
+        meta.className = 'identity-passkey-meta';
+        meta.textContent = '未返回设备详情';
+        item.appendChild(meta);
       }
       list.appendChild(item);
     }
+  }
+
+  createPasskeyTimeItem(label, value) {
+    const item = document.createElement('div');
+    item.className = 'identity-passkey-time-item';
+    const key = document.createElement('div');
+    key.className = 'identity-passkey-time-label';
+    key.textContent = label;
+    const detailValue = document.createElement('span');
+    detailValue.className = 'identity-passkey-time-value';
+    detailValue.textContent = value || '-';
+    item.appendChild(key);
+    item.appendChild(detailValue);
+    return item;
   }
 
   setPasskeyStatus(text) {
@@ -1005,8 +1074,20 @@ export class WalletIdentitySettingsController {
 
   formatCredentialId(value) {
     const text = String(value || '');
-    if (text.length <= 18) return text || '-';
-    return `${text.slice(0, 8)}...${text.slice(-6)}`;
+    if (text.length <= 27) return text || '-';
+    return `${text.slice(0, 14)}...${text.slice(-10)}`;
+  }
+
+  formatPasskeyTime(value) {
+    const text = String(value || '').trim();
+    if (!text) return '-';
+    const date = new Date(text);
+    if (Number.isNaN(date.getTime())) return text;
+    const pad = (number) => String(number).padStart(2, '0');
+    return [
+      `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+      `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+    ].join(' ');
   }
 
   async revokeIdentityPasskey(credentialId) {

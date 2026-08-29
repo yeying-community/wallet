@@ -31,8 +31,6 @@ did:yeying:wid_*
 - `EmailCredential`：Node 签发的邮箱 JWT-VC。
 - Passkey：身份认证器，用于无钱包插件登录或高风险确认。
 
-新接入不得使用旧断言、`subjectId`、`sub_xxx` 或 Web3 应用侧 Passport binding 表。
-
 ## 3. 有钱包插件登录
 
 DApp 前端先通过连接请求一次性申请钱包账户和身份权限：
@@ -46,7 +44,7 @@ wallet_requestPermissions
 ```json
 {
   "eth_accounts": {},
-  "yeying_identity": {
+  "wallet_identity": {
     "scopes": ["identity.basic", "identity.wallet", "identity.email"]
   }
 }
@@ -55,7 +53,7 @@ wallet_requestPermissions
 Wallet 会在同一个连接请求页展示账户权限和身份 scope，用户只确认一次。连接完成后，再请求 Wallet 出示：
 
 ```text
-yeying_identity_presentation
+wallet_identity_presentation
 ```
 
 请求需要包含：
@@ -75,7 +73,7 @@ identity.username
 identity.email
 ```
 
-`identity.email` 只有在用户已在 Wallet 中完成钱包身份验证和邮箱验证码确认，且可获得有效 `EmailCredential` 时才可出示。Wallet 不会把过期或临近过期的凭证放进 presentation；如果应用登录 session 提供 `issuerEndpoint`，Wallet 会先用 identity controller proof 向 Node 自动续签，再提交新的短期 JWT-VC。只有 Node 没有可续签事实、凭证已撤销或 proof 校验失败时，才提示用户回到 Wallet 完成邮箱验证。
+`identity.email` 只有在用户已在 Wallet 中完成钱包身份验证和邮箱验证码确认，且可获得有效 `EmailCredential` 时才可出示。正常登录直接使用 Wallet 本地有效凭证，不访问 Node。Wallet 不会把过期或临近过期的凭证放进 presentation；如果应用登录 session 提供 `issuerEndpoint`，Wallet 仅在需要续签时用 identity controller proof 向 Node 自动换取新的短期 JWT-VC。只有 Node 没有可续签事实、凭证已撤销或 proof 校验失败时，才提示用户回到 Wallet 完成邮箱验证。
 
 后端必须校验：
 
@@ -84,7 +82,7 @@ identity.email
 3. presentation Ed25519 签名有效。
 4. `audience`、`nonce`、scope 和有效期与本地登录 session 一致。
 5. `identity.wallet` 的账户已由 Node 账户关联 proof 验证过。
-6. 如使用邮箱或用户名，必须验证 JWT-VC issuer、JWKS、`sub`、type、有效期和 credential status。
+6. 如使用邮箱或用户名，必须验证 JWT-VC issuer、JWKS、`sub`、type 和有效期；credential status 按业务撤销策略使用本地缓存或在线 Node 查询，高风险流程必须在线查询。
 
 ## 4. 无钱包插件登录
 
@@ -149,4 +147,4 @@ exchange 返回：
 3. 未验证邮箱时，应用拒绝登录并给出可操作提示。
 4. 无钱包插件时，`verifyUrl -> Passkey -> exchange` 能返回同一 DID。
 5. nonce 重放、audience 不匹配、过期 presentation、缺少 scope 都会被拒绝。
-6. 应用后端不保存或依赖 `subjectId`。
+6. 应用后端以 DID 作为身份主键，不以钱包地址、邮箱或用户名替代。

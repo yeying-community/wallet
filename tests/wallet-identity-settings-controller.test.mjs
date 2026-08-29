@@ -499,6 +499,73 @@ test('registerIdentityPasskey registers a new passkey from the verified identity
   assert.equal(fetchCalls.some(call => call.url.endsWith('/api/v1/public/identity/passkeys/register/confirm')), true);
 });
 
+test('registerIdentityPasskey explains WebAuthn exclusion of a synced credential', async () => {
+  const endpoint = 'http://127.0.0.1:8100';
+  elements.walletIdentityEndpointInput.value = endpoint;
+  globalThis.PublicKeyCredential = function PublicKeyCredential() {};
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: {
+      credentials: {
+        create: async () => {
+          const error = new Error('The user attempted to register an authenticator that contains one of the credentials already registered with the relying party.');
+          error.name = 'InvalidStateError';
+          throw error;
+        }
+      }
+    }
+  });
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ code: 0, data: { passkeyRequest: {
+    requestId: 'pkr_1', challenge: 'AQID', rp: { id: 'localhost', name: 'Node' },
+    user: { id: 'BAUG', name: 'did:yeying:wid_1', displayName: 'YeYing Identity' },
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }], timeout: 60000, attestation: 'none', excludeCredentials: []
+  } } }) });
+  const controller = new WalletIdentitySettingsController({
+    wallet: {
+      listIdentities: async () => ({ selectedIdentityId: 'wid_1', identities: [{ document: { walletIdentityId: 'wid_1' } }] }),
+      exportIdentityDocument: async () => ({ document: { id: 'did:yeying:wid_1', walletIdentityId: 'wid_1' } }),
+      signIdentityDocument: async (document) => document
+    },
+    requestPassword: async () => 'wallet-password'
+  });
+  let status = '';
+  controller.setPasskeyStatus = (value) => { status = value; };
+
+  await controller.registerIdentityPasskey();
+
+  assert.match(status, /已同步的现有通行证/);
+});
+
+test('renderIdentityPasskeys shows structured passkey cards', () => {
+  const dom = createDocument({
+    walletIdentityPasskeyListPage: { tagName: 'div' }
+  });
+  elements = dom.elements;
+  globalThis.document = dom.document;
+  const controller = new WalletIdentitySettingsController({ wallet: {} });
+
+  controller.renderIdentityPasskeys([{
+    deviceName: '夜莺钱包身份',
+    createdAt: '2026-08-23T02:04:20.911Z',
+    lastUsedAt: '2026-08-26T15:20:19.476Z',
+    credentialId: 'xuXQCaYR1234567890abcdefghiJh9IzOM'
+  }]);
+
+  const [item] = elements.walletIdentityPasskeyListPage.children;
+  const [topLine, idRow, timeGrid] = item.children;
+  const [name, revoke] = topLine.children;
+  assert.equal(name.textContent, '夜莺钱包身份');
+  assert.equal(revoke.textContent, '撤销通行证');
+  assert.equal(revoke.dataset.passkeyRevoke, 'xuXQCaYR1234567890abcdefghiJh9IzOM');
+  assert.equal(idRow.className, 'identity-passkey-id-row');
+  assert.equal(idRow.children[0].textContent, 'ID');
+  assert.equal(idRow.children[1].textContent, 'xuXQCaYR123456...ghiJh9IzOM');
+  assert.equal(timeGrid.className, 'identity-passkey-time-grid');
+  assert.deepEqual(timeGrid.children.map(item => item.children[0].textContent), ['创建时间', '最近使用']);
+  assert.equal(timeGrid.children[0].children[1].textContent, controller.formatPasskeyTime('2026-08-23T02:04:20.911Z'));
+  assert.equal(timeGrid.children[1].children[1].textContent, controller.formatPasskeyTime('2026-08-26T15:20:19.476Z'));
+});
+
 test('setup and confirm identity TOTP from the verified identity detail flow', async () => {
   const endpoint = 'http://127.0.0.1:8100';
   elements.walletIdentityEndpointInput.value = endpoint;

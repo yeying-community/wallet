@@ -14,6 +14,22 @@ import { getValue, setValue } from '../../storage/storage-base.js';
 import { IdentityStorageKeys } from '../../storage/storage-keys.js';
 import { IdentityClient } from '../identity-client.js';
 
+function credentialTypes(item) {
+  const token = item?.credential || item?.jwt || (typeof item === 'string' ? item : '');
+  try {
+    const encoded = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(`${encoded}${'='.repeat((4 - encoded.length % 4) % 4)}`));
+    return Array.isArray(payload?.vc?.type) ? payload.vc.type : [];
+  } catch {
+    return Array.isArray(item?.type) ? item.type : [item?.type].filter(Boolean);
+  }
+}
+
+function mergeIdentityCredentials(current, incoming) {
+  const incomingTypes = new Set(incoming.flatMap(credentialTypes).filter(type => type !== 'VerifiableCredential'));
+  return [...current.filter(item => !credentialTypes(item).some(type => incomingTypes.has(type))), ...incoming];
+}
+
 function publicRecord(record) {
   if (!record) return null;
   const { encryptedKeyMaterial, privateJwk, recoveryPrivateJwk, ...safe } = record;
@@ -125,6 +141,7 @@ export async function handleConfirmIdentityVerification(data = {}, dependencies 
   const client = new IdentityClient({ endpoint: data.endpoint, fetchImpl: dependencies.fetchImpl });
   const result = await client.confirmIdentityVerification({ verificationId: data.verificationId, code: data.code, types: data.types });
   if (!Array.isArray(result?.credentials) || result.credentials.length === 0) throw new Error('IDENTITY_CREDENTIALS_MISSING');
-  await saveIdentityCredentials(identityId, result.credentials);
+  const current = await getIdentityCredentials(identityId);
+  await saveIdentityCredentials(identityId, mergeIdentityCredentials(current, result.credentials));
   return result;
 }

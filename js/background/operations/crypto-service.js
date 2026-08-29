@@ -2,9 +2,9 @@
  * YeYing Wallet - 加密服务（DApp-facing）
  *
  * 暴露三个 EIP-1193 自定义方法给已授权站点：
- *   - yeying_encrypt          : 用命名安全套件加密
- *   - yeying_decrypt          : 解密密文
- *   - yeying_getCipherSuites  : 列出可用套件
+ *   - wallet_encrypt          : 用命名安全套件加密
+ *   - wallet_decrypt          : 解密密文
+ *   - wallet_getCipherSuites  : 列出可用套件
  *
  * 模式同 ucan.js：站点已授权 + 钱包已解锁后静默执行（unlockMethods 兜底）。
  * 安全模型：站点授权即信任（DApp 责任，UCAN 同模型）；数据密码与钱包密码独立。
@@ -116,7 +116,7 @@ async function resolveEncryptionPassword(origin, account, options) {
 }
 
 /**
- * yeying_encrypt
+ * wallet_encrypt
  * @param {string} origin
  * @param {Object} account
  * @param {Array|Object} params
@@ -136,7 +136,7 @@ export async function handleYeyingEncrypt(origin, account, params) {
 }
 
 /**
- * yeying_decrypt
+ * wallet_decrypt
  * 返回的 plaintext 是明文 Uint8Array 的 base64 字符串，由 SDK 端还原。
  * @param {string} origin
  * @param {Object} account
@@ -155,7 +155,7 @@ export async function handleYeyingDecrypt(origin, account, params) {
 }
 
 /**
- * yeying_getCipherSuites
+ * wallet_getCipherSuites
  * @returns {Promise<{suites: Array<{name: string, description: string, mode: string}>}>}
  */
 export async function handleYeyingGetCipherSuites(origin, account, params) {

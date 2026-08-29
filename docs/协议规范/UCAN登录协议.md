@@ -1,12 +1,65 @@
-# UCAN 协议说明
+# UCAN 登录协议
 
-> 状态：规范与项目约定
+> 状态：规范、登录授权和跨服务部署约定
 >
 > 适用版本：Wallet `1.4.18` 当前 UCAN RPC；协议能力以正文明确说明为准
 >
 > 目标读者：钱包、SDK 和资源服务开发者。本文会明确区分 UCAN 通用语义、本项目 capability 约定及当前实现。
 
-本文档只聚焦 UCAN 协议本身，以及它在钱包插件接入 DApp 场景中的使用方式。
+本文档定义 UCAN 在登录授权、能力委托和跨服务部署中的完整使用方式。UCAN 不替代 SIWE：SIWE 负责地址登录声明，UCAN 负责登录后能力委托和资源访问授权。
+
+本文后半部分的 Node、业务应用、Router、Warehouse 约束属于本项目的跨服务实现规范；通用 UCAN 语义与项目落地规则统一在本文维护。
+
+```plantuml
+@startuml ucan-login-flow
+actor User
+participant Wallet
+participant App
+participant Node
+participant Resource
+User -> Wallet : 确认登录或授权
+Wallet --> App : 主体证明
+App -> Node : 请求 audience / capability
+Node --> App : UCAN
+App -> Resource : 携带 UCAN 请求资源
+Resource -> Resource : 验签、校验 audience 和 capability
+Resource --> App : 结果
+@enduml
+```
+
+## 跨服务登录授权约束
+
+Node 负责认证主体和签发短期能力，业务应用持有并使用能力，Router 与 Warehouse 独立完成验签和授权。Node 登录会话不是资源访问令牌，Wallet 只负责用户确认和根证明，不替资源服务作授权决定。
+
+### 服务角色
+
+| 服务 | 责任 |
+| --- | --- |
+| Node | 认证主体、签发短期 UCAN、记录撤销状态 |
+| 业务应用 | 保存用户会话，向具体服务请求并转发受限能力 |
+| Router | 校验 issuer、audience、capability 和委托链 |
+| Warehouse | 仅接受发给自身 audience 的 UCAN，并独立验签 |
+
+### 跨服务约束
+
+1. 每个资源服务使用唯一 `aud`，不得使用跨服务通配 audience。
+2. 发给 Router 的 UCAN 不得直接发送给 Warehouse；业务应用必须取得目标服务对应的能力。
+3. 每个请求都必须校验签名、issuer、audience、capability、有效期和委托链。
+4. `grantId` 用于审计和撤销关联；撤销状态传播完成前，不得宣称跨服务撤销即时生效。
+5. Node 会话、SIWE 签名和 UCAN 不能互相替代。
+6. audience 或 capability 不匹配时，资源服务必须拒绝请求。
+
+### 跨服务流程
+
+```text
+Wallet -> 应用：主体确认
+应用 -> Node：请求目标服务能力
+Node -> 应用：发放限定 audience 的 UCAN
+应用 -> Router/Warehouse：携带目标服务 UCAN
+资源服务：独立验签、校验 audience 和 capability
+```
+
+跨服务实现的验收重点是：令牌不能跨服务复用、能力必须最小化、过期和撤销按约定生效，并且每次资源访问可追溯到主体、grant 和 audience。
 
 目标有两个：
 
@@ -21,10 +74,10 @@
 
 ## 阅读导航
 
-- 文档总入口：[README.md](./README.md)。
+- 文档总入口：[文档中心](../README.md)。
 - 当前文档：UCAN 协议语义、能力建模、钱包插件场景示例。
-- 前置建议阅读：[SIWE协议说明.md](./SIWE协议说明.md)。
-- Web3 应用集成方式参考：[web3应用集成手册.md](./web3应用集成手册.md)。
+- 前置建议阅读：[SIWE 登录协议](./SIWE登录协议.md)。
+- Web3 应用集成方式参考：[Web3 应用集成手册](../用户交互/Web3应用集成手册.md)。
 
 ## 约定示例
 
@@ -176,7 +229,7 @@ DApp 先通过 `eth_requestAccounts` 完成连接授权。这个动作的语义�
 
 ### 4.2 UCAN Session
 
-当前钱包实现里，DApp 调用 `yeying_ucan_session` 后，钱包会为：
+当前钱包实现里，DApp 调用 `wallet_ucan_session` 后，钱包会为：
 
 - 当前 `origin`
 - 当前账户地址
@@ -810,13 +863,13 @@ Invocation UCAN 是请求级令牌。它的典型特征：
 
 ## 10. 当前钱包相关 RPC
 
-### 10.1 `yeying_ucan_session`
+### 10.1 `wallet_ucan_session`
 
 请求：
 
 ```json
 {
-  "method": "yeying_ucan_session",
+  "method": "wallet_ucan_session",
   "params": [{ "sessionId": "default", "forceNew": false }]
 }
 ```
@@ -837,13 +890,13 @@ Invocation UCAN 是请求级令牌。它的典型特征：
 - 这是获取或创建 UCAN Session
 - 当前钱包实现按 `origin + address + sessionId` 维度存储
 
-### 10.2 `yeying_ucan_sign`
+### 10.2 `wallet_ucan_sign`
 
 请求：
 
 ```json
 {
-  "method": "yeying_ucan_sign",
+  "method": "wallet_ucan_sign",
   "params": [
     {
       "sessionId": "default",
@@ -881,7 +934,7 @@ sequenceDiagram
   A->>W: eth_requestAccounts
   W-->>A: accounts
 
-  A->>W: yeying_ucan_session
+  A->>W: wallet_ucan_session
   W-->>A: session.did
 
   A->>W: 确认 Root UCAN 授权
@@ -1024,7 +1077,7 @@ const storageToken = await createInvocationUcan({
 - 钱包 UCAN 请求路由：[js/background/request-router.js](../js/background/request-router.js)
 - 钱包授权页能力展示：[js/app/approval.js](../js/app/approval.js)
 - 钱包目标服务 UCAN 管理：[js/background/target-ucan-manager.js](../js/background/target-ucan-manager.js)
-- Web3 应用集成说明：[web3应用集成手册.md](./web3应用集成手册.md)
+- Web3 应用集成说明：[Web3 应用集成手册](../用户交互/Web3应用集成手册.md)
 
 ## 16. 官方参考
 

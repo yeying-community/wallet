@@ -23,6 +23,7 @@ function setupDom() {
     walletPage: { tagName: 'div' },
     accountsPage: { tagName: 'div' },
     settingsPage: { tagName: 'div' },
+    backupSyncLogsPage: { tagName: 'div' },
     sitesPage: { tagName: 'div' },
     contactsPage: { tagName: 'div' },
     transferPage: { tagName: 'div' },
@@ -127,16 +128,16 @@ test('openContactsPage：调 contactsController.loadContacts', async () => {
   assert.equal(called, 1);
 });
 
-test('openBackupSyncSettings：先 openSettingsPage 再请求 scrollIntoView', async () => {
+test('openBackupSyncLogsPageFromHeader：直接打开日志审计并返回钱包页', async () => {
   const wallet = fakeWallet();
   const c = new PopupController({ wallet, transaction: {}, network: {}, token: {} });
-  c.settingController.loadBackupSyncSettings = async () => {};
-  c.settingController.loadMpcSettings = async () => {};
-  elements.backupSyncSection.scrollIntoView = () => { c.__scrolled = true; };
-  await c.openBackupSyncSettings();
-  // requestAnimationFrame stub uses setTimeout(0), so wait for the timer queue.
-  await new Promise((r) => setTimeout(r, 0));
-  assert.equal(c.__scrolled, true, '应调用 backupSyncSection.scrollIntoView');
+  c.stopTransactionPolling = () => { c.__stoppedPolling = true; };
+  c.settingController.backupController.openBackupSyncLogsPage = async (returnPage) => {
+    c.__returnPage = returnPage;
+  };
+  await c.openBackupSyncLogsPageFromHeader();
+  assert.equal(c.__stoppedPolling, true);
+  assert.equal(c.__returnPage, 'walletPage');
 });
 
 test('lockWallet：调 wallet.lock + 清空 unlockPassword', async () => {

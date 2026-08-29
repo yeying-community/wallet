@@ -28,6 +28,19 @@ async function parseResponse(response) {
   }
 }
 
+function identityErrorCode(payload) {
+  const candidates = [
+    payload?.errorCode,
+    payload?.data?.errorCode,
+    payload?.message,
+    payload?.data?.message,
+    payload?.error
+  ];
+  return candidates
+    .map(value => String(value || '').trim())
+    .find(value => /^IDENTITY_[A-Z0-9_]+$/.test(value)) || '';
+}
+
 export class IdentityClientError extends Error {
   constructor(message, { status = 0, code = '' } = {}) {
     super(message);
@@ -61,7 +74,7 @@ export class IdentityClient {
     });
     const payload = await parseResponse(response);
     if (!response.ok || (payload && typeof payload.code === 'number' && payload.code !== 0)) {
-      const code = String(payload?.errorCode || payload?.code || '');
+      const code = identityErrorCode(payload);
       const message = code === 'IDENTITY_USERNAME_TAKEN'
         ? '用户名已被占用，请更换用户名'
         : (payload?.message || payload?.error || response.statusText || `HTTP ${response.status}`);
