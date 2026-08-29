@@ -1,4 +1,4 @@
-# SIWE 协议说明
+# SIWE 登录协议
 
 > 状态：规范与当前实现指南
 >
@@ -21,11 +21,11 @@
 
 ## 阅读导航
 
-- 文档总入口：[README.md](./README.md)。
+- 文档总入口：[文档中心](../README.md)。
 - 当前文档：SIWE 标准、钱包展示与风险提示、与授权协议的边界。
-- 无插件身份演进见：[钱包身份方案.md](./钱包身份方案.md)。
-- 建议下一步阅读：[UCAN协议说明.md](./UCAN协议说明.md)。
-- Web3 应用集成方式参考：[web3应用集成手册.md](./web3应用集成手册.md)。
+- 无插件身份演进见：[钱包身份模型](../身份系统/钱包身份模型.md)。
+- 建议下一步阅读：[UCAN 登录协议](./UCAN登录协议.md)。
+- Web3 应用集成方式参考：[Web3 应用集成手册](../用户交互/Web3应用集成手册.md)。
 
 ## 约定示例
 
@@ -135,6 +135,24 @@ ReCap 可以理解成：
 - UCAN：在登录之后真正承载能力委托和请求级令牌
 
 ## 4. SIWE 标准消息结构
+
+```plantuml
+@startuml siwe-login-flow
+actor User
+participant DApp
+participant Wallet
+participant Backend
+DApp -> Backend : 请求一次性 nonce
+Backend --> DApp : SIWE challenge
+DApp -> Wallet : personal_sign(SIWE message)
+Wallet -> User : 展示域名、地址和有效期
+User --> Wallet : 确认
+Wallet --> DApp : message + signature
+DApp -> Backend : 提交签名
+Backend -> Backend : 验证 EIP-4361 和 nonce
+Backend --> DApp : 登录会话
+@enduml
+```
 
 EIP-4361 定义的 SIWE 消息有一套标准结构。核心组成如下：
 
@@ -511,8 +529,8 @@ const signature = await provider.request({
 
 - 钱包 SIWE 展示与解析：[js/app/approval.js](../js/app/approval.js)
 - 钱包签名请求路由：[js/background/request-router.js](../js/background/request-router.js)
-- UCAN 说明：[UCAN协议说明.md](./UCAN协议说明.md)
-- Web3 应用集成说明：[web3应用集成手册.md](./web3应用集成手册.md)
+- UCAN 说明：[UCAN 登录协议](./UCAN登录协议.md)
+- Web3 应用集成说明：[Web3 应用集成手册](../用户交互/Web3应用集成手册.md)
 
 ## 14. 官方参考
 

@@ -154,9 +154,9 @@ export class ApprovalController {
       return { label: '请求', detail: '-' };
     }
     const map = {
-      yeying_ucan_sign: { label: 'UCAN', detail: 'UCAN 签名' },
-      yeying_ucan_session: { label: 'UCAN', detail: 'UCAN 会话' },
-      yeying_identity_presentation: { label: '身份', detail: '身份资料授权' },
+      wallet_ucan_sign: { label: 'UCAN', detail: 'UCAN 签名' },
+      wallet_ucan_session: { label: 'UCAN', detail: 'UCAN 会话' },
+      wallet_identity_presentation: { label: '身份', detail: '身份资料授权' },
       eth_requestAccounts: { label: '连接', detail: '连接钱包' },
       eth_sendTransaction: { label: '交易', detail: '发送交易' },
       eth_signTransaction: { label: '交易', detail: '签名交易' },

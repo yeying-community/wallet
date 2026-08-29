@@ -35,7 +35,6 @@ import { DEFAULT_NETWORK, POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js'
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { handleUcanSession, handleUcanSign } from './ucan.js';
 import { normalizeIdentityPresentationRequest, requestIdentityPresentation as handleIdentityPresentation } from './identity-presentation.js';
-import { handleYeyingGetProfile } from './profile-handler.js';
 import {
   handleYeyingEncrypt,
   handleYeyingDecrypt,
@@ -366,11 +365,6 @@ export async function routeRequest(method, params, metadata) {
     return handleWalletRevokePermissions(origin, paramsArray);
   }
 
-  if (method === 'yeying_getProfile') {
-    await ensureSiteAuthorized(origin);
-    return handleYeyingGetProfile(origin, paramsArray);
-  }
-
   // ==================== 需要解锁的方法 ====================
 
   const unlockMethods = new Set([
@@ -381,11 +375,11 @@ export async function routeRequest(method, params, metadata) {
     'eth_sign',
     'eth_signTypedData',
     'eth_signTypedData_v4',
-    'yeying_ucan_session',
-    'yeying_ucan_sign',
-    'yeying_identity_presentation',
-    'yeying_encrypt',
-    'yeying_decrypt'
+    'wallet_ucan_session',
+    'wallet_ucan_sign',
+    'wallet_identity_presentation',
+    'wallet_encrypt',
+    'wallet_decrypt'
   ]);
 
   const blockedWhilePopupOpenMethods = new Set([
@@ -395,7 +389,7 @@ export async function routeRequest(method, params, metadata) {
     'wallet_addEthereumChain',
     'wallet_switchEthereumChain'
   ]);
-  blockedWhilePopupOpenMethods.delete('yeying_identity_presentation');
+  blockedWhilePopupOpenMethods.delete('wallet_identity_presentation');
 
   if (blockedWhilePopupOpenMethods.has(method) && await isWalletPopupOpen()) {
     throw createError(-32002, 'Wallet popup is currently open. Close it and retry.');
@@ -408,7 +402,7 @@ export async function routeRequest(method, params, metadata) {
     selectedAccountBeforeUnlock?.id && state.keyring?.has(selectedAccountBeforeUnlock.id)
   );
   const identityPresentationNeedsPasswordCache =
-    method === 'yeying_identity_presentation' && !getCachedPassword();
+    method === 'wallet_identity_presentation' && !getCachedPassword();
 
   if (unlockMethods.has(method) && (!selectedAccountUnlocked || identityPresentationNeedsPasswordCache)) {
     const active = await isActiveTab(tabId);
@@ -426,7 +420,7 @@ export async function routeRequest(method, params, metadata) {
       tabId,
       method,
       accountId: selectedAccountBeforeUnlock?.id || null,
-      force: method === 'yeying_identity_presentation' && identityPresentationNeedsPasswordCache
+      force: method === 'wallet_identity_presentation' && identityPresentationNeedsPasswordCache
     });
   }
 
@@ -453,34 +447,34 @@ export async function routeRequest(method, params, metadata) {
 
   // ==================== UCAN 相关 ====================
 
-  if (method === 'yeying_ucan_session') {
+  if (method === 'wallet_ucan_session') {
     await ensureSiteAuthorized(origin);
     return handleUcanSession(origin, account, params);
   }
 
-  if (method === 'yeying_ucan_sign') {
+  if (method === 'wallet_ucan_sign') {
     await ensureSiteAuthorized(origin);
     return handleUcanSign(origin, account, params);
   }
 
-  if (method === 'yeying_identity_presentation') {
+  if (method === 'wallet_identity_presentation') {
     await ensureSiteAuthorized(origin);
     return handleIdentityPresentationApproval(account, paramsArray, origin, tabId, clientRequestId);
   }
 
   // ==================== 加密服务 ====================
 
-  if (method === 'yeying_getCipherSuites') {
+  if (method === 'wallet_getCipherSuites') {
     // 读取套件列表（只读元数据，无需 unlock / site auth）
     return handleYeyingGetCipherSuites(origin, account, params);
   }
 
-  if (method === 'yeying_encrypt') {
+  if (method === 'wallet_encrypt') {
     await ensureSiteAuthorized(origin);
     return handleYeyingEncrypt(origin, account, params);
   }
 
-  if (method === 'yeying_decrypt') {
+  if (method === 'wallet_decrypt') {
     await ensureSiteAuthorized(origin);
     return handleYeyingDecrypt(origin, account, params);
   }

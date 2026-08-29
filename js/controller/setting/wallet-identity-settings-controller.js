@@ -221,15 +221,22 @@ export class WalletIdentitySettingsController {
       const identity = await this.wallet.getIdentity(identityId);
       const credentials = await this.wallet.listIdentityCredentials(identityId);
       const values = { username: '-', email: '-', avatarUri: '' };
+      let hasAccountCredential = false;
+      let hasEmailCredential = false;
+      let hasUsernameCredential = false;
       for (const item of credentials?.credentials || []) {
         const token = item?.credential || item?.jwt || item;
         const payload = this.decodeCredentialPayload(token);
         const subject = payload?.vc?.credentialSubject || {};
-        if (subject.usernameQualified || subject.username) values.username = this.displayUsername(subject.username || subject.usernameQualified);
-        if (subject.email) values.email = subject.email;
+        const types = Array.isArray(payload?.vc?.type) ? payload.vc.type : [];
+        if (types.includes('WalletAccountCredential')) hasAccountCredential = true;
+        if (subject.usernameQualified || subject.username) { hasUsernameCredential = true; values.username = this.displayUsername(subject.username || subject.usernameQualified); }
+        if (subject.email) { hasEmailCredential = true; values.email = subject.email; }
         if (subject.avatar || subject.avatarUri) values.avatarUri = subject.avatar || subject.avatarUri;
       }
-      this.setDetailValue('walletIdentityDetailStatusPage', '已验证');
+      const verified = this.loadVerificationState(this.endpoint(), account?.address) === VERIFICATION_STATE_COMPLETE
+        && hasAccountCredential && hasEmailCredential && hasUsernameCredential;
+      this.setDetailValue('walletIdentityDetailStatusPage', verified ? '已验证' : '未验证');
       this.setDetailValue('walletIdentityDetailUsernamePage', values.username);
       this.setDetailValue('walletIdentityDetailEmailPage', values.email);
       this.setDetailAvatar(values.avatarUri || defaultAvatarUri(identityId || account?.address));
@@ -677,7 +684,18 @@ export class WalletIdentitySettingsController {
       if (!this.isDuplicateAccountLinkError(error)) throw error;
       linkResult = { verifiedAt: new Date().toISOString(), duplicate: true };
     }
-    if (!linkResult?.verifiedAt) throw new Error('钱包账户关联失败');
+    if (!linkResult?.verifiedAt || !linkResult?.credential?.credential) throw new Error('Node 未返回钱包账户关联凭证');
+    const storedCredentials = await this.wallet.listIdentityCredentials(identityId);
+    const linkSubject = this.decodeCredentialPayload(linkResult.credential.credential)?.vc?.credentialSubject || {};
+    const mergedCredentials = (storedCredentials?.credentials || []).filter(item => {
+      const subject = this.decodeCredentialPayload(item?.credential || item)?.vc?.credentialSubject || {};
+      const types = this.decodeCredentialPayload(item?.credential || item)?.vc?.type || [];
+      return !types.includes('WalletAccountCredential')
+        || subject.chainKey !== linkSubject.chainKey
+        || String(subject.address || '').toLowerCase() !== String(linkSubject.address || '').toLowerCase();
+    });
+    mergedCredentials.push(linkResult.credential);
+    await this.wallet.saveIdentityCredentials(mergedCredentials, identityId);
     const verificationTypes = ['email', 'username', ...(avatarUri ? ['avatar'] : [])];
     const requested = await this.wallet.requestIdentityVerification(endpoint, {
       types: verificationTypes,
@@ -778,7 +796,8 @@ export class WalletIdentitySettingsController {
       this.persistVerificationState(endpoint, account.address, false);
       this.persistEmailVerificationState(endpoint, account.address, null);
       await this.renderIdentityVerificationAction();
-      showSuccess('已移除本地钱包身份验证状态');
+      showSuccess('已解除本地钱包身份验证状态');
+      await this.openIdentityDetails();
     } catch (error) {
       showError(error.message || '移除本地钱包身份验证状态失败');
     } finally { hideWaiting(); }

@@ -17,8 +17,34 @@
 
 #settingsPage .settings-body {
   flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 20px;
+}
+
+#backupSyncLogsPage {
+  padding: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#backupSyncLogsPage .page-header {
+  margin: 0;
+  padding: 20px 20px 15px;
+  flex: 0 0 auto;
+  background: #ffffff;
+  z-index: 10;
+}
+
+#backupSyncLogsPage .sync-log-toolbar,
+#backupSyncLogsPage .sync-log-config,
+#backupSyncLogsPage .sync-log-config-actions,
+#backupSyncLogsPage .sync-log-title {
+  flex: 0 0 auto;
+  margin-left: 20px;
+  margin-right: 20px;
 }
 
 #walletIdentityDetailPage,
@@ -1182,13 +1208,17 @@
 }
 
 .sync-log-list {
-  max-height: 420px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  margin: 0 20px;
   padding-right: 2px;
 }
 
 .sync-log-footer {
+  flex: 0 0 auto;
   margin-top: 12px;
+  padding: 0 20px 16px;
   text-align: center;
   font-size: 12px;
   color: #6b7280;

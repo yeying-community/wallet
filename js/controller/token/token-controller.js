@@ -1,4 +1,5 @@
 import { shortenAddress } from '../../common/chain/index.js';
+import { escapeHtml } from '../../common/ui/html-ui.js';
 import { TransferTokenController } from './transfer-token-controller.js';
 
 export class TokenController {
@@ -79,20 +80,32 @@ export class TokenController {
       return;
     }
 
-    container.innerHTML = tokens.map(token => `
+    container.innerHTML = tokens.map(token => {
+      const symbol = String(token.symbol || '-');
+      const name = token.name || (token.address ? shortenAddress(token.address) : '');
+      const image = token.image || token.icon || token.logoURI || token.logo || '';
+      const iconLabel = symbol.replace(/[^A-Za-z0-9]/g, '').slice(0, 1).toUpperCase() || '?';
+      return `
       <div class="token-item ${token.isNative ? 'native' : ''}">
-        <div class="token-info">
-          <div class="token-symbol">
-            ${token.symbol || '-'}
-            ${token.isNative ? '<span class="token-badge">原生</span>' : ''}
+        <div class="token-main">
+          <div class="token-icon" aria-hidden="true">
+            ${image ? `<img src="${escapeHtml(image)}" alt="" loading="lazy" onerror="this.classList.add('hidden')">` : ''}
+            <span>${escapeHtml(iconLabel)}</span>
           </div>
-          <div class="token-name">${token.name || (token.address ? shortenAddress(token.address) : '')}</div>
+          <div class="token-info">
+            <div class="token-symbol">
+              ${escapeHtml(symbol)}
+              ${token.isNative ? '<span class="token-badge">原生</span>' : ''}
+            </div>
+            <div class="token-name">${escapeHtml(name)}</div>
+          </div>
         </div>
         <div class="token-balance">
-          ${token.balance ?? '0'}
-          <span>${token.symbol || ''}</span>
+          ${escapeHtml(token.balance ?? '0')}
+          <span>${escapeHtml(token.symbol || '')}</span>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
   }
 }

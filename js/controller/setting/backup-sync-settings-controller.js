@@ -405,8 +405,8 @@ export class BackupSyncSettingsController {
     }).join('');
   }
 
-  async openBackupSyncLogsPage() {
-    document.getElementById('backupSyncLogsPage').dataset.returnPage = 'backupSyncDetailPage';
+  async openBackupSyncLogsPage(returnPage = 'backupSyncDetailPage') {
+    document.getElementById('backupSyncLogsPage').dataset.returnPage = returnPage;
     showPage('backupSyncLogsPage');
     await this.loadBackupSyncLogs();
   }

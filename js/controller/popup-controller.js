@@ -318,8 +318,8 @@ export class PopupController {
       return { label: '请求', detail: '-' };
     }
     const map = {
-      yeying_ucan_sign: { label: 'UCAN', detail: 'UCAN 签名' },
-      yeying_ucan_session: { label: 'UCAN', detail: 'UCAN 会话' },
+      wallet_ucan_sign: { label: 'UCAN', detail: 'UCAN 签名' },
+      wallet_ucan_session: { label: 'UCAN', detail: 'UCAN 会话' },
       eth_requestAccounts: { label: '连接', detail: '连接钱包' },
       eth_sendTransaction: { label: '交易', detail: '发送交易' },
       eth_signTransaction: { label: '交易', detail: '签名交易' },
@@ -761,14 +761,9 @@ export class PopupController {
     await this.settingController.loadCustodySettings();
   }
 
-  async openBackupSyncSettings() {
-    await this.openSettingsPage();
-    requestAnimationFrame(() => {
-      const section = document.getElementById('backupSyncSection');
-      if (section?.scrollIntoView) {
-        section.scrollIntoView({ block: 'start', behavior: 'smooth' });
-      }
-    });
+  async openBackupSyncLogsPageFromHeader() {
+    this.stopTransactionPolling();
+    await this.settingController.backupController.openBackupSyncLogsPage('walletPage');
   }
 
   async openSitesPage() {
@@ -909,7 +904,7 @@ export class PopupController {
     if (syncBadge) {
       syncBadge.addEventListener('click', async (event) => {
         event.preventDefault();
-        await this.openBackupSyncSettings();
+        await this.openBackupSyncLogsPageFromHeader();
       });
     }
 

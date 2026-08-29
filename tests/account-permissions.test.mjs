@@ -45,7 +45,7 @@ test('wallet_getPermissions exposes granted identity scopes', async () => {
       ]
     },
     {
-      parentCapability: 'yeying_identity',
+      parentCapability: 'wallet_identity',
       caveats: [
         {
           type: 'restrictIdentityScopes',
