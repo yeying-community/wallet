@@ -1169,7 +1169,7 @@
         </div>
         <div class="identity-detail-footer identity-detail-actions">
           <button id="changeWalletIdentityPageBtn" class="btn btn-secondary">变更资料</button>
-          <button id="clearWalletIdentityVerificationBtn" class="btn btn-danger">解除验证</button>
+          <button id="clearWalletIdentityVerificationBtn" class="btn btn-secondary">清除本地验证状态</button>
         </div>
       </div>
 
@@ -1253,9 +1253,9 @@
       <div id="walletIdentityClearVerificationModal" class="modal hidden">
         <div class="modal-overlay"></div>
         <div class="modal-content">
-          <div class="modal-header"><h3>解除钱包身份验证</h3><button class="btn-close" id="closeWalletIdentityClearVerificationModal" type="button">✕</button></div>
-          <div class="modal-body"><p class="settings-card-description">解除后，此验证服务签发的通行证和未完成授权将被撤销。钱包地址和本地身份资料不会被删除。</p></div>
-          <div class="modal-footer"><button id="confirmWalletIdentityClearVerificationBtn" class="btn btn-danger">确认解除</button><button id="cancelWalletIdentityClearVerificationBtn" class="btn btn-secondary">取消</button></div>
+          <div class="modal-header"><h3>清除本地验证状态</h3><button class="btn-close" id="closeWalletIdentityClearVerificationModal" type="button">✕</button></div>
+          <div class="modal-body"><p>此操作只清除当前设备的本地验证状态和未完成的验证码会话。</p><p>不会删除钱包身份、撤销身份凭证、解除钱包账户关联，也不会影响通行证和 TOTP。</p></div>
+          <div class="modal-footer"><button id="confirmWalletIdentityClearVerificationBtn" class="btn btn-secondary">确认清除</button><button id="cancelWalletIdentityClearVerificationBtn" class="btn btn-secondary">取消</button></div>
         </div>
       </div>
 

@@ -199,9 +199,8 @@ export class ApprovalController {
       showWaiting();
       const currentAccount = await this.wallet.getCurrentAccount();
       await this.wallet.unlock(password, currentAccount?.id, { source: 'approval' });
-      showSuccess('解锁成功');
       this.enterTransitionState({
-        closeAfterMs: 1500
+        closeAfterMs: 0
       });
     } catch (error) {
       this.isProcessing = false;
@@ -591,6 +590,8 @@ export class ApprovalController {
       this.followupTimer = setTimeout(() => {
         this.closeWindow();
       }, closeAfterMs);
+    } else {
+      this.closeWindow();
     }
   }
 

@@ -796,7 +796,7 @@ export class WalletIdentitySettingsController {
       this.persistVerificationState(endpoint, account.address, false);
       this.persistEmailVerificationState(endpoint, account.address, null);
       await this.renderIdentityVerificationAction();
-      showSuccess('已解除本地钱包身份验证状态');
+      showSuccess('已清除本地验证状态');
       await this.openIdentityDetails();
     } catch (error) {
       showError(error.message || '移除本地钱包身份验证状态失败');
