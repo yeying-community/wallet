@@ -102,7 +102,10 @@ body {
 }
 
 .permission-icon {
-  font-size: 20px;
+  flex: 0 0 28px;
+  width: 28px;
+  text-align: center;
+  font-size: 19px;
 }
 
 .flow-hint {

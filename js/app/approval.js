@@ -303,12 +303,14 @@ class ApprovalApp {
     document.getElementById('connectPermissionTitle').textContent = '此网站请求以下权限：';
     const list = document.getElementById('connectPermissionItems');
     list.innerHTML = '';
-    [
-      ['👁️', '查看您的账户地址'],
-      ['💰', '查看您的账户余额'],
-      ['📝', '请求链下交易签名'],
-      ...this.getIdentityPermissionItems(this.getRequestedIdentityScopes())
-    ].forEach(([iconText, label]) => {
+    const identityScopes = this.getRequestedIdentityScopes();
+    const requestedMethod = String(this.requestData?.method || this.requestData?.requestMethod || '').trim();
+    const permissions = identityScopes.length > 0
+      ? this.getIdentityPermissionItems(identityScopes)
+      : (requestedMethod === 'eth_requestAccounts' || this.requestData?.eth_accounts
+        ? [['👁️', '查看您的账户地址']]
+        : []);
+    permissions.forEach(([iconText, label]) => {
       const item = document.createElement('div');
       item.className = 'permission-item';
       const icon = document.createElement('span');
@@ -326,16 +328,17 @@ class ApprovalApp {
   }
 
   getIdentityPermissionItems(scopes = []) {
-    const labels = {
-      'identity.basic': '读取钱包身份',
-      'identity.wallet': '读取钱包账户证明',
-      'identity.username': '读取已验证用户名',
-      'identity.email': '读取已验证邮箱',
-      'identity.avatar': '读取已验证头像'
-    };
-    return [...new Set(Array.isArray(scopes) ? scopes : [])]
-      .filter((scope) => labels[scope])
-      .map((scope) => ['👤', labels[scope]]);
+    const requested = new Set(Array.isArray(scopes) ? scopes : []);
+    const items = [];
+    if (requested.has('identity.basic')) items.push(['🪪', '读取钱包身份']);
+    if (requested.has('identity.wallet')) items.push(['🔗', '读取钱包账户关联证明']);
+    const profileLabels = [
+      ['identity.username', '用户名'],
+      ['identity.email', '邮箱'],
+      ['identity.avatar', '头像']
+    ].filter(([scope]) => requested.has(scope)).map(([, label]) => label);
+    if (profileLabels.length > 0) items.push(['✅', `读取已验证资料：${profileLabels.join('、')}`]);
+    return items;
   }
 
   getRequestedIdentityScopes() {
