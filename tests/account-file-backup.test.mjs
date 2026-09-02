@@ -17,6 +17,13 @@ const PASSWORD = 'Backup-Pass-123';
 const { createHDWallet, deriveSubAccount } = await import('../js/background/vault.js');
 const { handleExportAccountsFile, handleImportAccountsFile } = await import('../js/background/operations/wallet.js');
 const { saveWallet, saveAccount, getAccountList, clearAllData } = await import('../js/storage/index.js');
+const { createWalletIdentity } = await import('../js/common/identity/identity-document.js');
+const {
+  saveEncryptedIdentity,
+  saveIdentityCredentials,
+  getIdentity,
+  decryptIdentityKeyMaterial
+} = await import('../js/storage/identity-storage.js');
 
 test('encrypted account file restores HD accounts and metadata', async () => {
   await clearAllData();
@@ -54,4 +61,36 @@ test('wrong password cannot import encrypted account file', async () => {
   await clearAllData();
   const result = await handleImportAccountsFile(exported.file, 'Wrong-Pass-123');
   assert.equal(result.success, false);
+});
+
+test('encrypted account file restores Wallet Identity control material and credentials', async () => {
+  await clearAllData();
+  const { wallet, mainAccount } = await createHDWallet('Primary', PASSWORD);
+  await saveWallet(wallet);
+  await saveAccount(mainAccount);
+
+  const identity = await createWalletIdentity();
+  const identityId = identity.document.walletIdentityId;
+  await saveEncryptedIdentity(identityId, identity, PASSWORD);
+  await saveIdentityCredentials(identityId, [{
+    credential: 'header.payload.signature',
+    type: ['VerifiableCredential', 'UsernameCredential']
+  }]);
+
+  const exported = await handleExportAccountsFile(PASSWORD);
+  assert.equal(exported.success, true);
+  await clearAllData();
+
+  const imported = await handleImportAccountsFile(exported.file, PASSWORD);
+  assert.equal(imported.success, true);
+
+  const restored = await getIdentity(identityId);
+  assert.equal(restored.document.id, identity.document.id);
+  assert.deepEqual(restored.credentials, [{
+    credential: 'header.payload.signature',
+    type: ['VerifiableCredential', 'UsernameCredential']
+  }]);
+  const material = await decryptIdentityKeyMaterial(restored, PASSWORD);
+  assert.equal(material.privateJwk.d, identity.privateJwk.d);
+  assert.equal(material.recoveryPrivateJwk.d, identity.recoveryPrivateJwk.d);
 });

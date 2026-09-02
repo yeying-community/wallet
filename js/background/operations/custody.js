@@ -12,6 +12,10 @@ import {
   getSelectedAccount,
   getWalletAccounts
 } from '../../storage/index.js';
+import { getIdentities, decryptIdentityKeyMaterial } from '../../storage/identity-storage.js';
+import { IdentityStorageKeys } from '../../storage/storage-keys.js';
+import { getValue, setValue } from '../../storage/storage-base.js';
+import { validateIdentityDocument } from '../../common/identity/identity-document.js';
 import { getWalletMnemonic, getAccountPrivateKey } from '../vault.js';
 import { ensureTargetUcanToken } from '../target-ucan-manager.js';
 import { CustodyClient } from '../custody-client.js';
@@ -110,7 +114,7 @@ async function buildCustodyPayload(password) {
   }
 
   const secret = {
-    version: 1,
+    version: 2,
     wallet: {
       id: wallet.id,
       name: wallet.name || '',
@@ -120,6 +124,11 @@ async function buildCustodyPayload(password) {
     },
     mnemonic: wallet.type === 'hd' ? await getWalletMnemonic(wallet, password) : '',
     accounts: keyItems,
+    identities: Object.fromEntries(await Promise.all(Object.entries(await getIdentities()).map(async ([id, record]) => {
+      await decryptIdentityKeyMaterial(record, password);
+      return [id, record];
+    }))),
+    selectedIdentityId: await getValue(IdentityStorageKeys.SELECTED_IDENTITY),
     exportedAt: getTimestamp()
   };
 
@@ -129,9 +138,11 @@ async function buildCustodyPayload(password) {
     address: account.address || '',
     ciphertext: await encryptObject(secret, password),
     metadata: {
-      version: 1,
+      version: 2,
       walletType: wallet.type || '',
       accountCount: keyItems.length,
+      identityCount: Object.keys(secret.identities).length,
+      hasWalletIdentity: Object.keys(secret.identities).length > 0,
       exportedAt: secret.exportedAt
     }
   };
@@ -238,8 +249,8 @@ export async function handleGetCustodySecret(options = {}) {
   }
 }
 
-function validateCustodySecret(secret) {
-  if (!secret || secret.version !== 1 || !secret.wallet || !Array.isArray(secret.accounts) || !secret.accounts.length) {
+function validateCustodySecret(secret, password) {
+  if (!secret || secret.version !== 2 || !secret.wallet || !Array.isArray(secret.accounts) || !secret.accounts.length || !secret.identities || typeof secret.identities !== 'object') {
     throw new Error('托管记录格式不受支持');
   }
   const first = secret.accounts[0];
@@ -251,13 +262,13 @@ function validateCustodySecret(secret) {
     const path = first.derivationPath || "m/44'/60'/0'/0/0";
     const derived = ethers.HDNodeWallet.fromPhrase(secret.mnemonic, undefined, path).address.toLowerCase();
     if (derived !== expected) throw new Error('托管记录地址校验失败');
-    return { type: 'hd', key: secret.mnemonic, name: secret.wallet.name || '恢复的钱包' };
+    return { type: 'hd', key: secret.mnemonic, name: secret.wallet.name || '恢复的钱包', identities: secret.identities || {}, selectedIdentityId: secret.selectedIdentityId || '' };
   }
 
   if (!first.privateKey) throw new Error('托管记录缺少私钥');
   const derived = new ethers.Wallet(first.privateKey).address.toLowerCase();
   if (derived !== expected) throw new Error('托管记录地址校验失败');
-  return { type: 'privateKey', key: first.privateKey, name: secret.wallet.name || '恢复的钱包' };
+  return { type: 'privateKey', key: first.privateKey, name: secret.wallet.name || '恢复的钱包', identities: secret.identities || {}, selectedIdentityId: secret.selectedIdentityId || '' };
 }
 
 export async function handleRestoreCustodySecret(options = {}) {
@@ -275,11 +286,22 @@ export async function handleRestoreCustodySecret(options = {}) {
       ? await client.getRecoverySecret(walletId, recoveryToken)
       : await client.getSecret(walletId);
     if (!record?.ciphertext) throw new Error('托管记录缺少密文');
-    const material = validateCustodySecret(await decryptObject(record.ciphertext, password));
+    const material = validateCustodySecret(await decryptObject(record.ciphertext, password), password);
+    for (const [identityId, identity] of Object.entries(material.identities)) {
+      if (!identity?.document || identity.document.id !== identityId || !identity.encryptedKeyMaterial) throw new Error('托管记录身份材料无效');
+      validateIdentityDocument(identity.document);
+      const keys = await decryptIdentityKeyMaterial(identity, password);
+      if (!keys?.privateJwk || !keys?.recoveryPrivateJwk) throw new Error('托管记录身份密钥材料无效');
+    }
     const result = material.type === 'hd'
       ? await handleImportHDWallet(material.name, material.key, password)
       : await handleImportPrivateKeyWallet(material.name, material.key, password);
     if (!result?.success) throw new Error(result?.error || '恢复钱包失败');
+    for (const [identityId, identity] of Object.entries(material.identities)) {
+      const { saveIdentity } = await import('../../storage/identity-storage.js');
+      await saveIdentity(identityId, identity);
+    }
+    if (material.selectedIdentityId) await setValue(IdentityStorageKeys.SELECTED_IDENTITY, material.selectedIdentityId);
     return { success: true, wallet: result.wallet, account: result.account };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to restore custody secret' };
