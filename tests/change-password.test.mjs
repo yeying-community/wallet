@@ -39,6 +39,8 @@ globalThis.chrome = {
 
 const ops = await import('../js/background/operations/wallet.js');
 const keyring = await import('../js/background/keyring.js');
+const { createWalletIdentity } = await import('../js/common/identity/identity-document.js');
+const identityStorage = await import('../js/storage/identity-storage.js');
 
 const P = 'Pass-1111';
 const Q = 'Pass-2222';
@@ -51,6 +53,10 @@ test('多钱包+子账户改密后全部账户只认新密码、旧密码失效'
   assert.equal(created.success, true);
   const walletId = created.wallet.id;
   const mainId = created.account.id;
+
+  const identity = await createWalletIdentity();
+  const identityId = identity.document.walletIdentityId;
+  await identityStorage.saveEncryptedIdentity(identityId, identity, P);
 
   // 解锁建立密码缓存，派生一个子账户（用缓存密码加密）
   await keyring.unlockWallet(P, mainId, 'popup');
@@ -76,6 +82,15 @@ test('多钱包+子账户改密后全部账户只认新密码、旧密码失效'
   }
   const mnemonic = await ops.handleExportMnemonic(walletId, Q);
   assert.equal(mnemonic.success, true, '应能用新密码导出助记词');
+
+  const rewrappedIdentity = await identityStorage.getIdentity(identityId);
+  const newMaterial = await identityStorage.decryptIdentityKeyMaterial(rewrappedIdentity, Q);
+  assert.equal(newMaterial.privateJwk.d, identity.privateJwk.d, '身份控制密钥应使用新密码重加密');
+  await assert.rejects(
+    () => identityStorage.decryptIdentityKeyMaterial(rewrappedIdentity, P),
+    () => true,
+    '身份控制密钥不应继续接受旧密码'
+  );
 
   // 旧密码：全部失效（不再存在新旧混杂）
   for (const id of [mainId, subId, importedId]) {

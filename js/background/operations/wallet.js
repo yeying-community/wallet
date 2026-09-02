@@ -55,9 +55,10 @@ import { notifyUnlocked } from '../unlock-flow.js';
 import { updateKeepAlive } from '../offscreen.js';
 import { getTimestamp } from '../../common/utils/time-utils.js';
 import { mpcService } from '../mpc-service.js';
-import { getIdentities, saveIdentity } from '../../storage/identity-storage.js';
+import { decryptIdentityKeyMaterial, getIdentities, saveIdentity } from '../../storage/identity-storage.js';
 import { IdentityStorageKeys } from '../../storage/storage-keys.js';
 import { getValue, setValue } from '../../storage/storage-base.js';
+import { validateIdentityDocument } from '../../common/identity/identity-document.js';
 
 const MIN_PASSWORD_LENGTH = 8;
 const INVALID_MPC_WALLET_NAMES = new Set(['', 'MPC 钱包创建邀请', 'MPC 钱包邀请', '名称缺失']);
@@ -844,15 +845,19 @@ export async function handleImportAccountsFile(file, password) {
     let imported = 0;
     let skipped = 0;
     let firstImportedAccountId = '';
+    const identitiesToImport = [];
     for (const identity of Array.isArray(payload.identities) ? payload.identities : []) {
-      if (identity?.document?.walletIdentityId && identity?.encryptedKeyMaterial) {
-        await saveIdentity(identity.document.walletIdentityId, identity);
+      if (!identity?.document?.walletIdentityId) continue;
+      if (!identity.encryptedKeyMaterial) {
+        throw new Error(`钱包身份 ${identity.document.walletIdentityId} 缺少加密密钥材料`);
       }
+      validateIdentityDocument(identity.document);
+      const keyMaterial = await decryptIdentityKeyMaterial(identity, password);
+      if (!keyMaterial?.privateJwk || !keyMaterial?.recoveryPrivateJwk) {
+        throw new Error(`钱包身份 ${identity.document.walletIdentityId} 的密钥材料不完整`);
+      }
+      identitiesToImport.push(identity);
     }
-    if (payload.selectedIdentityId && payload.identities?.some(item => item?.document?.walletIdentityId === payload.selectedIdentityId)) {
-      await setValue(IdentityStorageKeys.SELECTED_IDENTITY, payload.selectedIdentityId);
-    }
-
     for (const source of payload.wallets) {
       const sourceAccounts = Array.isArray(source.accounts) ? source.accounts : [];
       if (source.type === WALLET_TYPE.HD && source.mnemonic) {
@@ -901,6 +906,12 @@ export async function handleImportAccountsFile(file, password) {
       }
     }
     if (imported === 0 && skipped === 0) return { success: false, error: '备份文件中没有可导入的账户' };
+    for (const identity of identitiesToImport) {
+      await saveIdentity(identity.document.walletIdentityId, identity);
+    }
+    if (payload.selectedIdentityId && identitiesToImport.some(item => item?.document?.walletIdentityId === payload.selectedIdentityId)) {
+      await setValue(IdentityStorageKeys.SELECTED_IDENTITY, payload.selectedIdentityId);
+    }
     if (payload.selectedAddress) {
       const importedAccounts = await getAccountList();
       const selected = importedAccounts.find(item => String(item.address || '').toLowerCase() === String(payload.selectedAddress).toLowerCase());
@@ -1056,8 +1067,30 @@ export async function changePassword(oldPassword, newPassword) {
   //    状态保持旧密码不变（天然回滚）。
   const nextWalletsMap = { ...walletsMap };
   const nextAccountsMap = { ...(await getAccounts()) };
+  const identitiesMap = await getIdentities();
+  const nextIdentitiesMap = { ...identitiesMap };
   let updatedWallets = 0;
   let updatedAccounts = 0;
+
+  // Identity controller keys are protected by the same wallet password. Re-wrap
+  // them before the atomic storage write so a password change cannot leave an
+  // identity that only accepts the old password.
+  for (const [identityId, identity] of Object.entries(identitiesMap || {})) {
+    if (!identity?.encryptedKeyMaterial) {
+      throw new Error(`钱包身份 ${identityId} 缺少加密密钥材料`);
+    }
+    const keyMaterial = await decryptIdentityKeyMaterial(identity, oldPassword);
+    if (!keyMaterial?.privateJwk || !keyMaterial?.recoveryPrivateJwk) {
+      throw new Error(`钱包身份 ${identityId} 的密钥材料不完整`);
+    }
+    nextIdentitiesMap[identityId] = {
+      ...identity,
+      encryptedKeyMaterial: await encryptObject({
+        privateJwk: keyMaterial.privateJwk,
+        recoveryPrivateJwk: keyMaterial.recoveryPrivateJwk
+      }, newPassword)
+    };
+  }
 
   for (const wallet of wallets) {
     if (!wallet?.id) continue;
@@ -1087,7 +1120,8 @@ export async function changePassword(oldPassword, newPassword) {
   //    造成新旧密码混杂导致导出/解锁失败。chrome.storage.local.set 单次写多个 key 即为原子。
   await setStorage({
     [WalletStorageKeys.WALLETS]: nextWalletsMap,
-    [WalletStorageKeys.ACCOUNTS]: nextAccountsMap
+    [WalletStorageKeys.ACCOUNTS]: nextAccountsMap,
+    [IdentityStorageKeys.IDENTITIES]: nextIdentitiesMap
   });
 
   // 3) 钱包密钥一致后再迁移 MPC 设备密钥。MPC 为独立存储，失败不应回退已成功的钱包改密，
