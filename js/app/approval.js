@@ -304,12 +304,12 @@ class ApprovalApp {
     const list = document.getElementById('connectPermissionItems');
     list.innerHTML = '';
     const identityScopes = this.getRequestedIdentityScopes();
-    const requestedMethod = String(this.requestData?.method || this.requestData?.requestMethod || '').trim();
-    const permissions = identityScopes.length > 0
-      ? this.getIdentityPermissionItems(identityScopes)
-      : (requestedMethod === 'eth_requestAccounts' || this.requestData?.eth_accounts
-        ? [['👁️', '查看您的账户地址']]
-        : []);
+    const requestedPermissions = this.requestData?.requestedPermissions || {};
+    const permissions = [];
+    if (requestedPermissions.eth_accounts === true) {
+      permissions.push(['👁️', '查看您的账户地址']);
+    }
+    permissions.push(...this.getIdentityPermissionItems(identityScopes));
     permissions.forEach(([iconText, label]) => {
       const item = document.createElement('div');
       item.className = 'permission-item';

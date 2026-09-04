@@ -244,7 +244,10 @@ export async function handleEthRequestAccounts(origin, tabId, clientRequestId = 
           expiresAt: Date.now() + TIMEOUTS.REQUEST,
           data: {
             origin,
-            accounts
+            accounts,
+            requestedPermissions: {
+              eth_accounts: true
+            }
           },
           timestamp: getTimestamp()
         });
@@ -330,7 +333,13 @@ export async function handleWalletGetPermissions(origin) {
   }
 }
 
-export async function requestIdentityScopeApproval(origin, tabId, requestedScopes, account = null) {
+export async function requestIdentityScopeApproval(
+  origin,
+  tabId,
+  requestedScopes,
+  account = null,
+  includeAccountPermission = false
+) {
   const identityScopes = normalizeIdentityScopes(requestedScopes);
   await ensureApprovalStateHydrated();
   const pending = findPendingRequest(EventType.CONNECT, origin, tabId);
@@ -355,7 +364,11 @@ export async function requestIdentityScopeApproval(origin, tabId, requestedScope
     data: {
       origin,
       accounts,
-      identityScopes
+      identityScopes,
+      requestedPermissions: {
+        eth_accounts: includeAccountPermission,
+        wallet_identity: true
+      }
     },
     timestamp: getTimestamp()
   });
@@ -439,7 +452,14 @@ export async function handleWalletRequestPermissions(origin, tabId, params) {
 
   const identityRequest = request.wallet_identity;
   if (identityRequest) {
-    const granted = await requestIdentityScopeApproval(origin, tabId, identityRequest?.scopes);
+    const includeAccountPermission = 'eth_accounts' in request;
+    const granted = await requestIdentityScopeApproval(
+      origin,
+      tabId,
+      identityRequest?.scopes,
+      null,
+      includeAccountPermission
+    );
     return request.eth_accounts
       ? [buildEthAccountsPermission(granted.accounts), buildIdentityPermission(granted.identityScopes)]
       : [buildIdentityPermission(granted.identityScopes)];
