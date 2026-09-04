@@ -1,6 +1,7 @@
 import {
   createWalletIdentity,
-  signIdentityDocument
+  signIdentityDocument,
+  canonicalize
 } from '../../common/identity/identity-document.js';
 import {
   decryptIdentityKeyMaterial,
@@ -106,6 +107,20 @@ export async function handleSignIdentityDocument({ identityId, document, passwor
     verificationMethod: `${record.document.id}#${record.controllerId}`,
     purpose: 'assertionMethod'
   });
+}
+
+export async function handleSignIdentityAction({ identityId, signingPayload, password } = {}) {
+  requirePassword(password);
+  if (!signingPayload || typeof signingPayload !== 'object') throw new Error('Identity action payload is required');
+  const id = identityId || await getValue(IdentityStorageKeys.SELECTED_IDENTITY, null);
+  const record = await getIdentity(id);
+  if (!record || signingPayload.identity !== record.document.id) throw new Error('Identity action context mismatch');
+  const keyMaterial = await decryptIdentityKeyMaterial(record, password);
+  const privateKey = await crypto.subtle.importKey('jwk', keyMaterial.privateJwk, { name: 'Ed25519' }, false, ['sign']);
+  const signature = new Uint8Array(await crypto.subtle.sign('Ed25519', privateKey, new TextEncoder().encode(canonicalize(signingPayload))));
+  let binary = '';
+  for (const byte of signature) binary += String.fromCharCode(byte);
+  return { challengeId: signingPayload.challengeId, signature: btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '') };
 }
 
 export async function handleSaveIdentityCredentials({ identityId, credentials } = {}) {
