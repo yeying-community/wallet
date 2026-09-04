@@ -364,7 +364,7 @@ test('requestAndConfirmIdentity completes wallet identity verification without a
     ok: true,
     json: async () => String(url).includes('/account-links/challenge')
       ? { code: 0, data: { message: 'link-message', nonce: 'n1', issuedAt: 'now', expiresAt: 'later' } }
-      : { code: 0, data: { verifiedAt: 'now' } }
+      : { code: 0, data: { verifiedAt: 'now', credential: { credential: 'a.b.c' } } }
   });
   const controller = new WalletIdentitySettingsController({
     wallet: {
@@ -373,6 +373,8 @@ test('requestAndConfirmIdentity completes wallet identity verification without a
       selectIdentity: async () => {},
       exportIdentityDocument: async () => ({ document: { id: 'did:yeying:wid_1', walletIdentityId: 'wid_1' } }),
       signIdentityDocument: async (document) => ({ ...document, id: document.id || 'did:yeying:wid_1' }),
+      listIdentityCredentials: async () => ({ credentials: [] }),
+      saveIdentityCredentials: async () => ({}),
       requestIdentityVerification: async () => ({ verificationId: 'verification-1', email: 'person@example.com' }),
       confirmIdentityVerification: async () => ({ credentials: [{ type: 'EmailCredential' }, { type: 'UsernameCredential' }] })
     },
@@ -402,7 +404,7 @@ test('requestAndConfirmIdentity requests an avatar credential when avatar URI is
     ok: true,
     json: async () => String(url).includes('/account-links/challenge')
       ? { code: 0, data: { message: 'link-message', nonce: 'n1', issuedAt: 'now', expiresAt: 'later' } }
-      : { code: 0, data: { verifiedAt: 'now' } }
+      : { code: 0, data: { verifiedAt: 'now', credential: { credential: 'a.b.c' } } }
   });
   const verificationRequests = [];
   const verificationConfirms = [];
@@ -413,6 +415,8 @@ test('requestAndConfirmIdentity requests an avatar credential when avatar URI is
       selectIdentity: async () => {},
       exportIdentityDocument: async () => ({ document: { id: 'did:yeying:wid_1', walletIdentityId: 'wid_1' } }),
       signIdentityDocument: async (document) => ({ ...document, id: document.id || 'did:yeying:wid_1' }),
+      listIdentityCredentials: async () => ({ credentials: [] }),
+      saveIdentityCredentials: async () => ({}),
       requestIdentityVerification: async (requestEndpoint, body) => {
         verificationRequests.push([requestEndpoint, body]);
         return { verificationId: 'verification-1', email: 'person@example.com' };
@@ -464,6 +468,9 @@ test('registerIdentityPasskey registers a new passkey from the verified identity
   const fetchCalls = [];
   globalThis.fetch = async (url, options = {}) => {
     fetchCalls.push({ url: String(url), body: options.body ? JSON.parse(options.body) : null });
+    if (String(url).includes('/identity/actions/challenge')) {
+      return { ok: true, json: async () => ({ code: 0, data: { signingPayload: { challengeId: 'iac_1', identity: 'did:yeying:wid_1' } } }) };
+    }
     if (String(url).includes('/passkeys/register/request')) {
       return { ok: true, json: async () => ({ code: 0, data: { passkeyRequest: {
         requestId: 'pkr_1',
@@ -488,7 +495,8 @@ test('registerIdentityPasskey registers a new passkey from the verified identity
     wallet: {
       listIdentities: async () => ({ selectedIdentityId: 'wid_1', identities: [{ document: { walletIdentityId: 'wid_1' } }] }),
       exportIdentityDocument: async () => ({ document: { id: 'did:yeying:wid_1', walletIdentityId: 'wid_1' } }),
-      signIdentityDocument: async (document) => ({ ...document, id: document.id || 'did:yeying:wid_1' })
+      signIdentityDocument: async (document) => ({ ...document, id: document.id || 'did:yeying:wid_1' }),
+      signIdentityAction: async () => ({ challengeId: 'iac_1', signature: 'signature' })
     },
     requestPassword: async () => 'wallet-password'
   });
@@ -515,16 +523,19 @@ test('registerIdentityPasskey explains WebAuthn exclusion of a synced credential
       }
     }
   });
-  globalThis.fetch = async () => ({ ok: true, json: async () => ({ code: 0, data: { passkeyRequest: {
-    requestId: 'pkr_1', challenge: 'AQID', rp: { id: 'localhost', name: 'Node' },
-    user: { id: 'BAUG', name: 'did:yeying:wid_1', displayName: 'YeYing Identity' },
-    pubKeyCredParams: [{ type: 'public-key', alg: -7 }], timeout: 60000, attestation: 'none', excludeCredentials: []
-  } } }) });
+  globalThis.fetch = async (url) => String(url).includes('/identity/actions/challenge')
+    ? ({ ok: true, json: async () => ({ code: 0, data: { signingPayload: { challengeId: 'iac_1', identity: 'did:yeying:wid_1' } } }) })
+    : ({ ok: true, json: async () => ({ code: 0, data: { passkeyRequest: {
+      requestId: 'pkr_1', challenge: 'AQID', rp: { id: 'localhost', name: 'Node' },
+      user: { id: 'BAUG', name: 'did:yeying:wid_1', displayName: 'YeYing Identity' },
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }], timeout: 60000, attestation: 'none', excludeCredentials: []
+    } } }) });
   const controller = new WalletIdentitySettingsController({
     wallet: {
       listIdentities: async () => ({ selectedIdentityId: 'wid_1', identities: [{ document: { walletIdentityId: 'wid_1' } }] }),
       exportIdentityDocument: async () => ({ document: { id: 'did:yeying:wid_1', walletIdentityId: 'wid_1' } }),
-      signIdentityDocument: async (document) => document
+      signIdentityDocument: async (document) => document,
+      signIdentityAction: async () => ({ challengeId: 'iac_1', signature: 'signature' })
     },
     requestPassword: async () => 'wallet-password'
   });
@@ -572,6 +583,9 @@ test('setup and confirm identity TOTP from the verified identity detail flow', a
   const fetchCalls = [];
   globalThis.fetch = async (url, options = {}) => {
     fetchCalls.push({ url: String(url), body: options.body ? JSON.parse(options.body) : null });
+    if (String(url).includes('/identity/actions/challenge')) {
+      return { ok: true, json: async () => ({ code: 0, data: { signingPayload: { challengeId: 'iac_1', identity: 'did:yeying:wid_1' } } }) };
+    }
     if (String(url).includes('/identity/totp/setup')) {
       return { ok: true, json: async () => ({ code: 0, data: { totp: { secret: 'JBSWY3DPEHPK3PXP', otpauthUri: 'otpauth://totp/YeYing' } } }) };
     }
@@ -587,7 +601,8 @@ test('setup and confirm identity TOTP from the verified identity detail flow', a
     wallet: {
       listIdentities: async () => ({ selectedIdentityId: 'wid_1', identities: [{ document: { walletIdentityId: 'wid_1' } }] }),
       exportIdentityDocument: async () => ({ document: { id: 'did:yeying:wid_1', walletIdentityId: 'wid_1' } }),
-      signIdentityDocument: async (document) => ({ ...document, id: document.id || 'did:yeying:wid_1' })
+      signIdentityDocument: async (document) => ({ ...document, id: document.id || 'did:yeying:wid_1' }),
+      signIdentityAction: async () => ({ challengeId: 'iac_1', signature: 'signature' })
     },
     requestPassword: async () => 'wallet-password'
   });

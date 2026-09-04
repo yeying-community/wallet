@@ -824,15 +824,20 @@ export class WalletIdentitySettingsController {
       : username;
   }
 
-  async ensureIdentityPasskey(endpoint, identityDid, identityDocument, _password) {
+  async ensureIdentityPasskey(endpoint, identityDid, identityDocument, password) {
     if (!globalThis.PublicKeyCredential || !navigator.credentials) {
       this.setStatus('钱包身份已验证；当前浏览器不支持 Passkey，暂不能用于无钱包登录');
       return null;
     }
+    const deviceName = '夜莺钱包身份';
+    const identities = await this.wallet.listIdentities();
+    const context = { identityId: identities?.selectedIdentityId, identityDid, identityDocument, password };
+    const auth = await this.authorizeIdentityAction(endpoint, context, 'identity.passkey.register', { deviceName });
     const requested = await this.requestIdentityPasskeyRegistration(endpoint, {
       identity: identityDid,
       identityDocument,
-      deviceName: '夜莺钱包身份'
+      deviceName,
+      ...auth
     });
     const passkeyRequest = requested?.passkeyRequest;
     if (!passkeyRequest?.challenge || !passkeyRequest?.requestId) throw new Error('Node 未返回 Passkey 注册请求');
@@ -903,6 +908,18 @@ export class WalletIdentitySettingsController {
     if (!password) throw new Error('需要钱包密码才能管理身份认证器');
     const signed = await this.wallet.signIdentityDocument(document, password, identityId);
     return { identityId, identityDid: signed?.id || identityDid, identityDocument: signed, password };
+  }
+
+  async authorizeIdentityAction(endpoint, context, action, payload) {
+    const audience = new URL(endpoint).origin;
+    const response = await fetch(new URL('/api/v1/public/identity/actions/challenge', endpoint), {
+      method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identity: context.identityDid, action, audience, payload })
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || json.code !== 0 || !json.data?.signingPayload) throw new Error(json.message || '创建身份操作授权失败');
+    const authorization = await this.wallet.signIdentityAction(json.data.signingPayload, context.password, context.identityId);
+    return { audience, authorization };
   }
 
   async openIdentityPasskeys() {
@@ -1096,9 +1113,11 @@ export class WalletIdentitySettingsController {
       if (!id) throw new Error('缺少通行证凭证标识');
       if (typeof globalThis.confirm === 'function' && !globalThis.confirm('确认撤销这个通行证？撤销后该设备不能再用于无钱包插件登录。')) return;
       const endpoint = this.endpoint();
-      const { identityDid, identityDocument } = await this.selectedIdentityContext({ requireSigned: true });
+      const context = await this.selectedIdentityContext({ requireSigned: true });
+      const { identityDid, identityDocument } = context;
+      const auth = await this.authorizeIdentityAction(endpoint, context, 'identity.passkey.revoke', { credentialId: id });
       showWaiting();
-      await this.revokeIdentityPasskeyCredential(endpoint, { identity: identityDid, identityDocument, credentialId: id });
+      await this.revokeIdentityPasskeyCredential(endpoint, { identity: identityDid, identityDocument, credentialId: id, ...auth });
       hideWaiting();
       showSuccess('通行证已撤销');
       await this.refreshIdentityPasskeys({ quiet: true });
@@ -1146,9 +1165,12 @@ export class WalletIdentitySettingsController {
   async setupIdentityTotp() {
     try {
       const endpoint = this.endpoint();
-      const { identityDid, identityDocument } = await this.selectedIdentityContext({ requireSigned: true });
+      const context = await this.selectedIdentityContext({ requireSigned: true });
+      const { identityDid, identityDocument } = context;
+      const deviceName = 'TOTP 验证器';
+      const auth = await this.authorizeIdentityAction(endpoint, context, 'identity.totp.setup', { deviceName });
       showWaiting();
-      const result = await this.setupIdentityTotpAuthenticator(endpoint, { identity: identityDid, identityDocument, deviceName: 'TOTP 验证器' });
+      const result = await this.setupIdentityTotpAuthenticator(endpoint, { identity: identityDid, identityDocument, deviceName, ...auth });
       hideWaiting();
       const totp = result?.totp || {};
       const qrContainer = document.getElementById('walletIdentityTotpQrPage');
@@ -1193,9 +1215,11 @@ export class WalletIdentitySettingsController {
     try {
       if (typeof globalThis.confirm === 'function' && !globalThis.confirm('确认撤销 TOTP 验证器？撤销后验证码不能再用于钱包身份确认。')) return;
       const endpoint = this.endpoint();
-      const { identityDid, identityDocument } = await this.selectedIdentityContext({ requireSigned: true });
+      const context = await this.selectedIdentityContext({ requireSigned: true });
+      const { identityDid, identityDocument } = context;
+      const auth = await this.authorizeIdentityAction(endpoint, context, 'identity.totp.revoke', {});
       showWaiting();
-      await this.revokeIdentityTotpAuthenticator(endpoint, { identity: identityDid, identityDocument });
+      await this.revokeIdentityTotpAuthenticator(endpoint, { identity: identityDid, identityDocument, ...auth });
       hideWaiting();
       this.setTotpSetupVisible(false);
       showSuccess('TOTP 已撤销');

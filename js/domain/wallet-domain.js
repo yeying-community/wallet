@@ -67,6 +67,10 @@ export class WalletDomain extends BaseDomain {
     return this._sendMessage(WalletMessageType.IDENTITY_SIGN_DOCUMENT, { document, password, identityId });
   }
 
+  async signIdentityAction(signingPayload, password, identityId) {
+    return this._sendMessage(WalletMessageType.IDENTITY_SIGN_ACTION, { signingPayload, password, identityId });
+  }
+
   async saveIdentityCredentials(credentials, identityId) {
     return this._sendMessage(WalletMessageType.IDENTITY_SAVE_CREDENTIALS, { credentials, identityId });
   }
