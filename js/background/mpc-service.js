@@ -1289,6 +1289,29 @@ class MpcService {
     }
   }
 
+  // Independent belt-and-suspenders gate for the dev-trusted aux-info
+  // shortcut. `_isDevVerificationEngine` requires `productionSafe === false`
+  // today, but the deeper invariant we must defend is: **a productionSafe
+  // build must never invoke the dev shortcut, regardless of how
+  // `_isDevVerificationEngine` is later refactored**. This helper encodes
+  // only that invariant; keep it minimal and do not consult the same
+  // metadata path as `_isDevVerificationEngine`. Any relaxation requires a
+  // security review and a new architecture decision document.
+  _isDevFallbackAllowed() {
+    const tssEngine = getMpcTssEngine();
+    try {
+      const metadata = tssEngine?.getMetadata?.() || {};
+      // Explicit denial on productionSafe=true. Absence / failure closes the
+      // shortcut (fail-closed).
+      if (metadata.productionSafe === true) return false;
+      // If metadata is missing or unreadable, refuse the shortcut.
+      if (metadata.securityProfile === undefined) return false;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async _startAuxInfoAfterWireKeygen(options = {}) {
     const sessionId = String(options?.session?.id || '').trim();
     const walletId = String(options?.wallet?.id || options?.session?.walletId || '').trim();
@@ -3539,7 +3562,7 @@ class MpcService {
     reason = '',
     allowDevFallback = false
   } = {}) {
-    if (!this._isDevVerificationEngine()) {
+    if (!this._isDevVerificationEngine() || !this._isDevFallbackAllowed()) {
       return null;
     }
     if (!allowDevFallback && !String(reason || '').includes('key refresh protocol failed to complete')) {
