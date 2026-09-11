@@ -56,7 +56,15 @@ function supportsSeededSession(Session) {
   return typeof Session?.newWithSeed === 'function';
 }
 
-function logMpcCggmpDebug(event, data = {}) {
+function supportsPreGeneratedPrimes(Session) {
+  return typeof Session?.newWithPrimes === 'function';
+}
+
+function createSessionWithPrimes(Session, args, primesJson, seedHex) {
+  return Session.newWithPrimes(...args, primesJson, seedHex);
+}
+
+export function logMpcCggmpDebug(event, data = {}) {
   console.info('[MPC_DEBUG]', event, data);
 }
 
@@ -235,7 +243,7 @@ export class Cggmp24WasmEngine {
     return state;
   }
 
-  async startAuxInfo({ sessionId, senderIndex, parties, curve = 'secp256k1', maxSteps = 5, requestId = '' } = {}) {
+  async startAuxInfo({ sessionId, senderIndex, parties, curve = 'secp256k1', maxSteps = 5, requestId = '', primes = null } = {}) {
     if (this._auxInfoDelegate && typeof this._auxInfoDelegate.startAuxInfo === 'function') {
       return await this._auxInfoDelegate.startAuxInfo({
         sessionId,
@@ -267,18 +275,29 @@ export class Cggmp24WasmEngine {
     }
     const seedHex = generateSeedHex();
     const seeded = supportsSeededSession(Session);
+    const hasPreGeneratedPrimes = Array.isArray(primes)
+      && primes.length === 4
+      && supportsPreGeneratedPrimes(Session);
     const createStartedAt = Date.now();
     logMpcCggmpDebug('cggmp24:start-aux-info:before-create', {
       sessionId: normalizedSessionId,
       senderIndex: normalizedSenderIndex,
       partyCount,
-      seeded
+      seeded,
+      preGeneratedPrimes: hasPreGeneratedPrimes
     });
-    const wasmSession = createSessionWithSeed(
-      Session,
-      [normalizedSessionId, normalizedSenderIndex, partyCount],
-      seedHex
-    );
+    const wasmSession = hasPreGeneratedPrimes
+      ? createSessionWithPrimes(
+          Session,
+          [normalizedSessionId, normalizedSenderIndex, partyCount],
+          `[${primes.join(',')}]`,
+          seedHex
+        )
+      : createSessionWithSeed(
+          Session,
+          [normalizedSessionId, normalizedSenderIndex, partyCount],
+          seedHex
+        );
     logMpcCggmpDebug('cggmp24:start-aux-info:after-create', {
       sessionId: normalizedSessionId,
       senderIndex: normalizedSenderIndex,

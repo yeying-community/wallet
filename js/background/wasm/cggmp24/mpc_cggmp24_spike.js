@@ -77,6 +77,30 @@ export class Cggmp24AuxInfoSession {
         return this;
     }
     /**
+     * Constructs an aux-info session from four pre-generated safe primes (JSON array),
+     * bypassing the serial `PregeneratedPrimes::generate`. Pair with `generateAuxPrimeJson`
+     * run across parallel workers to cut construction wall-clock.
+     * @param {string} session_id
+     * @param {number} sender_index
+     * @param {number} party_count
+     * @param {string} primes_json
+     * @param {string} seed_hex
+     * @returns {Cggmp24AuxInfoSession}
+     */
+    static newWithPrimes(session_id, sender_index, party_count, primes_json, seed_hex) {
+        const ptr0 = passStringToWasm0(session_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(primes_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(seed_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.cggmp24auxinfosession_newWithPrimes(ptr0, len0, sender_index, party_count, ptr1, len1, ptr2, len2);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return Cggmp24AuxInfoSession.__wrap(ret[0]);
+    }
+    /**
      * @param {string} session_id
      * @param {number} sender_index
      * @param {number} party_count
@@ -583,6 +607,39 @@ export function devTrustedAuxInfoJson(session_id, party_count, participant_index
         const ptr0 = passStringToWasm0(session_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.devTrustedAuxInfoJson(ptr0, len0, party_count, participant_index);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * Generates a single RSA safe prime (RSA_PRIME_BITLEN) seeded deterministically.
+ *
+ * Aux-info needs four such primes (`PregeneratedPrimes`). `PregeneratedPrimes::generate`
+ * searches all four serially, which dominates aux-info wall-clock. This export lets the
+ * four searches run in parallel Web Workers; the results are assembled via
+ * `Cggmp24AuxInfoSession::newWithPrimes`. Any four independently-generated safe primes of
+ * the correct size are valid (`try_from` only checks size), so parallel search is sound
+ * and does not change the security profile.
+ * @param {string} seed_hex
+ * @returns {string}
+ */
+export function generateAuxPrimeJson(seed_hex) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(seed_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.generateAuxPrimeJson(ptr0, len0);
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {

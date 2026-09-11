@@ -7,6 +7,12 @@ export class Cggmp24AuxInfoSession {
     advanceJson(max_steps: number): string;
     drainOutgoingJson(): string;
     constructor(session_id: string, sender_index: number, party_count: number);
+    /**
+     * Constructs an aux-info session from four pre-generated safe primes (JSON array),
+     * bypassing the serial `PregeneratedPrimes::generate`. Pair with `generateAuxPrimeJson`
+     * run across parallel workers to cut construction wall-clock.
+     */
+    static newWithPrimes(session_id: string, sender_index: number, party_count: number, primes_json: string, seed_hex: string): Cggmp24AuxInfoSession;
     static newWithSeed(session_id: string, sender_index: number, party_count: number, seed_hex: string): Cggmp24AuxInfoSession;
     receiveWireMessageJson(json: string): string;
     resultJson(): string;
@@ -45,6 +51,18 @@ export function coreKeySharePublicMaterialJson(json: string): string;
 
 export function devTrustedAuxInfoJson(session_id: string, party_count: number, participant_index: number): string;
 
+/**
+ * Generates a single RSA safe prime (RSA_PRIME_BITLEN) seeded deterministically.
+ *
+ * Aux-info needs four such primes (`PregeneratedPrimes`). `PregeneratedPrimes::generate`
+ * searches all four serially, which dominates aux-info wall-clock. This export lets the
+ * four searches run in parallel Web Workers; the results are assembled via
+ * `Cggmp24AuxInfoSession::newWithPrimes`. Any four independently-generated safe primes of
+ * the correct size are valid (`try_from` only checks size), so parallel search is sound
+ * and does not change the security profile.
+ */
+export function generateAuxPrimeJson(seed_hex: string): string;
+
 export function normalizeAuxInfoPayloadJson(json: string): string;
 
 export function normalizeSigningPayloadJson(json: string): string;
@@ -58,37 +76,39 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_cggmp24auxinfosession_free: (a: number, b: number) => void;
-    readonly __wbg_cggmp24signingsession_free: (a: number, b: number) => void;
-    readonly __wbg_cggmp24thresholdkeygensession_free: (a: number, b: number) => void;
     readonly cggmp24EngineMetadataJson: () => [number, number, number, number];
     readonly cggmp24auxinfosession_advanceJson: (a: number, b: number) => [number, number, number, number];
     readonly cggmp24auxinfosession_drainOutgoingJson: (a: number) => [number, number, number, number];
     readonly cggmp24auxinfosession_new: (a: number, b: number, c: number, d: number) => [number, number, number];
+    readonly cggmp24auxinfosession_newWithPrimes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number];
     readonly cggmp24auxinfosession_newWithSeed: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
     readonly cggmp24auxinfosession_receiveWireMessageJson: (a: number, b: number, c: number) => [number, number, number, number];
     readonly cggmp24auxinfosession_resultJson: (a: number) => [number, number, number, number];
     readonly cggmp24auxinfosession_status: (a: number) => [number, number];
     readonly cggmp24signingsession_advanceJson: (a: number, b: number) => [number, number, number, number];
-    readonly cggmp24signingsession_drainOutgoingJson: (a: number) => [number, number, number, number];
     readonly cggmp24signingsession_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number, number];
     readonly cggmp24signingsession_newWithSeed: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => [number, number, number];
     readonly cggmp24signingsession_receiveWireMessageJson: (a: number, b: number, c: number) => [number, number, number, number];
-    readonly cggmp24signingsession_resultJson: (a: number) => [number, number, number, number];
-    readonly cggmp24signingsession_status: (a: number) => [number, number];
     readonly cggmp24thresholdkeygensession_advanceJson: (a: number, b: number) => [number, number, number, number];
-    readonly cggmp24thresholdkeygensession_drainOutgoingJson: (a: number) => [number, number, number, number];
     readonly cggmp24thresholdkeygensession_new: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
     readonly cggmp24thresholdkeygensession_newWithSeed: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number];
     readonly cggmp24thresholdkeygensession_receiveWireMessageJson: (a: number, b: number, c: number) => [number, number, number, number];
-    readonly cggmp24thresholdkeygensession_resultJson: (a: number) => [number, number, number, number];
-    readonly cggmp24thresholdkeygensession_status: (a: number) => [number, number];
     readonly combineKeyShareJson: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly coreKeySharePublicMaterialJson: (a: number, b: number) => [number, number, number, number];
     readonly devTrustedAuxInfoJson: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly generateAuxPrimeJson: (a: number, b: number) => [number, number, number, number];
     readonly normalizeAuxInfoPayloadJson: (a: number, b: number) => [number, number, number, number];
     readonly normalizeSigningPayloadJson: (a: number, b: number) => [number, number, number, number];
     readonly normalizeThresholdKeygenPayloadJson: (a: number, b: number) => [number, number, number, number];
     readonly normalizeWireMessageJson: (a: number, b: number) => [number, number, number, number];
+    readonly __wbg_cggmp24signingsession_free: (a: number, b: number) => void;
+    readonly __wbg_cggmp24thresholdkeygensession_free: (a: number, b: number) => void;
+    readonly cggmp24signingsession_status: (a: number) => [number, number];
+    readonly cggmp24signingsession_resultJson: (a: number) => [number, number, number, number];
+    readonly cggmp24signingsession_drainOutgoingJson: (a: number) => [number, number, number, number];
+    readonly cggmp24thresholdkeygensession_status: (a: number) => [number, number];
+    readonly cggmp24thresholdkeygensession_resultJson: (a: number) => [number, number, number, number];
+    readonly cggmp24thresholdkeygensession_drainOutgoingJson: (a: number) => [number, number, number, number];
     readonly __wbindgen_exn_store: (a: number) => void;
     readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;

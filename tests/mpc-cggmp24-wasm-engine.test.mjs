@@ -753,3 +753,214 @@ test('Cggmp24WasmEngine drives signing sessions through the TSS adapter contract
     requestId: 'request-1',
   });
 });
+
+test('Cggmp24WasmEngine.startAuxInfo uses newWithPrimes when primes are supplied', async () => {
+  const calls = [];
+  class FakeAuxInfoSession {
+    constructor(sessionId, senderIndex, partyCount) {
+      this.sessionId = sessionId;
+      this.senderIndex = senderIndex;
+      this.partyCount = partyCount;
+      this.outgoing = [];
+      this.result = null;
+    }
+
+    static newWithPrimes(sessionId, senderIndex, partyCount, primesJson, seedHex) {
+      calls.push(['newWithPrimes', sessionId, senderIndex, partyCount, primesJson, seedHex]);
+      const instance = new FakeAuxInfoSession(sessionId, senderIndex, partyCount);
+      instance.builtWithPrimes = true;
+      return instance;
+    }
+
+    static newWithSeed() {
+      calls.push(['newWithSeed']);
+      throw new Error('should-not-reach');
+    }
+
+    advanceJson() {
+      return JSON.stringify({ status: 'waiting', outgoing: this.outgoing, result: null, error: null });
+    }
+
+    receiveWireMessageJson() {
+      return JSON.stringify({ status: 'waiting', outgoing: this.outgoing, result: null, error: null });
+    }
+
+    drainOutgoingJson() {
+      return JSON.stringify(this.outgoing);
+    }
+
+    resultJson() {
+      return JSON.stringify(this.result);
+    }
+  }
+
+  const engine = new Cggmp24WasmEngine({
+    wasm: {
+      Cggmp24ThresholdKeygenSession: class {},
+      Cggmp24AuxInfoSession: FakeAuxInfoSession,
+      Cggmp24SigningSession: class {},
+      cggmp24EngineMetadataJson: () => JSON.stringify({ engine: 'cggmp24' }),
+      normalizeWireMessageJson: (json) => json,
+      normalizeSigningPayloadJson: (json) => json,
+      normalizeThresholdKeygenPayloadJson: (json) => json,
+      normalizeAuxInfoPayloadJson: (json) => json,
+      coreKeySharePublicMaterialJson: () => JSON.stringify({}),
+      combineKeyShareJson: () => JSON.stringify({}),
+    },
+  });
+
+  const primes = ['"primeA"', '"primeB"', '"primeC"', '"primeD"'];
+  const state = await engine.startAuxInfo({
+    sessionId: 'session-primes',
+    senderIndex: 1,
+    parties: [0, 1],
+    curve: 'secp256k1',
+    primes
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], 'newWithPrimes');
+  assert.equal(calls[0][1], 'session-primes');
+  assert.equal(calls[0][2], 1);
+  assert.equal(calls[0][3], 2);
+  assert.equal(calls[0][4], `["primeA","primeB","primeC","primeD"]`);
+  assert.match(calls[0][5], /^[0-9a-f]{64}$/);
+
+  assert.equal(state.sessionId, 'session-primes');
+  assert.equal(state.senderIndex, 1);
+  assert.equal(state.protocol, 'aux-info');
+  assert.equal(state.partyCount, 2);
+  assert.deepEqual(state.parties, [0, 1]);
+  assert.equal(state.curve, 'secp256k1');
+});
+
+test('Cggmp24WasmEngine.startAuxInfo falls back to newWithSeed when primes are missing or wrong length', async () => {
+  const calls = [];
+  class FakeAuxInfoSession {
+    constructor(sessionId, senderIndex, partyCount, seedHex) {
+      this.sessionId = sessionId;
+      this.senderIndex = senderIndex;
+      this.partyCount = partyCount;
+      this.outgoing = [];
+      this.result = null;
+    }
+
+    static newWithSeed(sessionId, senderIndex, partyCount, seedHex) {
+      calls.push(['newWithSeed']);
+      return new FakeAuxInfoSession(sessionId, senderIndex, partyCount, seedHex);
+    }
+
+    static newWithPrimes() {
+      calls.push(['newWithPrimes']);
+      throw new Error('should-not-reach');
+    }
+
+    advanceJson() {
+      return JSON.stringify({ status: 'waiting', outgoing: this.outgoing, result: null, error: null });
+    }
+
+    receiveWireMessageJson() {
+      return JSON.stringify({ status: 'waiting', outgoing: this.outgoing, result: null, error: null });
+    }
+
+    drainOutgoingJson() {
+      return JSON.stringify(this.outgoing);
+    }
+
+    resultJson() {
+      return JSON.stringify(this.result);
+    }
+  }
+
+  const engine = new Cggmp24WasmEngine({
+    wasm: {
+      Cggmp24ThresholdKeygenSession: class {},
+      Cggmp24AuxInfoSession: FakeAuxInfoSession,
+      Cggmp24SigningSession: class {},
+      cggmp24EngineMetadataJson: () => JSON.stringify({ engine: 'cggmp24' }),
+      normalizeWireMessageJson: (json) => json,
+      normalizeSigningPayloadJson: (json) => json,
+      normalizeThresholdKeygenPayloadJson: (json) => json,
+      normalizeAuxInfoPayloadJson: (json) => json,
+      coreKeySharePublicMaterialJson: () => JSON.stringify({}),
+      combineKeyShareJson: () => JSON.stringify({}),
+    },
+  });
+
+  // (1) primes is null.
+  await engine.startAuxInfo({
+    sessionId: 'session-no-primes',
+    senderIndex: 0,
+    parties: [0, 1],
+    curve: 'secp256k1',
+    primes: null
+  });
+  // (2) primes wrong length.
+  await engine.startAuxInfo({
+    sessionId: 'session-short-primes',
+    senderIndex: 0,
+    parties: [0, 1],
+    curve: 'secp256k1',
+    primes: ['"p1"', '"p2"', '"p3"']
+  });
+
+  assert.deepEqual(calls.map((c) => c[0]), ['newWithSeed', 'newWithSeed']);
+});
+
+test('Cggmp24WasmEngine.startAuxInfo falls back to newWithSeed when newWithPrimes is absent', async () => {
+  const calls = [];
+  class SeededOnlyAuxInfoSession {
+    constructor(sessionId, senderIndex, partyCount, seedHex) {
+      this.sessionId = sessionId;
+      this.outgoing = [];
+      this.result = null;
+    }
+
+    static newWithSeed() {
+      calls.push(['newWithSeed']);
+      return new SeededOnlyAuxInfoSession();
+    }
+
+    advanceJson() {
+      return JSON.stringify({ status: 'waiting', outgoing: this.outgoing, result: null, error: null });
+    }
+
+    receiveWireMessageJson() {
+      return JSON.stringify({ status: 'waiting', outgoing: this.outgoing, result: null, error: null });
+    }
+
+    drainOutgoingJson() {
+      return JSON.stringify(this.outgoing);
+    }
+
+    resultJson() {
+      return JSON.stringify(this.result);
+    }
+  }
+  // No newWithPrimes on the session class.
+
+  const engine = new Cggmp24WasmEngine({
+    wasm: {
+      Cggmp24ThresholdKeygenSession: class {},
+      Cggmp24AuxInfoSession: SeededOnlyAuxInfoSession,
+      Cggmp24SigningSession: class {},
+      cggmp24EngineMetadataJson: () => JSON.stringify({ engine: 'cggmp24' }),
+      normalizeWireMessageJson: (json) => json,
+      normalizeSigningPayloadJson: (json) => json,
+      normalizeThresholdKeygenPayloadJson: (json) => json,
+      normalizeAuxInfoPayloadJson: (json) => json,
+      coreKeySharePublicMaterialJson: () => JSON.stringify({}),
+      combineKeyShareJson: () => JSON.stringify({}),
+    },
+  });
+
+  await engine.startAuxInfo({
+    sessionId: 'session-legacy',
+    senderIndex: 0,
+    parties: [0, 1],
+    curve: 'secp256k1',
+    primes: ['"p0"', '"p1"', '"p2"', '"p3"'] // would otherwise qualify
+  });
+
+  assert.deepEqual(calls.map((c) => c[0]), ['newWithSeed']);
+});
