@@ -717,7 +717,7 @@ test('tickWireSession starts aux-info wire session after cggmp24 keygen complete
       audience: 'all-parties',
       payload: { Round1: { aux: true } },
       sequence: 0,
-      requestId: 'aux-info:v2:session-auto-aux:1:1'
+      requestId: 'aux-info:v3:session-auto-aux:1:1:1'
     });
     const session = await getMpcSession('session-auto-aux');
     assert.equal(session.auxInfoStatus, 'running');

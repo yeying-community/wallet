@@ -40,6 +40,17 @@ async function init() {
       console.warn('[MPC] cggmp24 WASM runtime not available:', error?.message || error);
     });
     await mpcService.init();
+    // Watchdog: a periodic alarm + a one-shot invocation on init covers the
+    // Service Worker restart window (alarm lag up to 1 minute). The alarm is
+    // created idempotently so onInstalled/onStartup handlers do not race.
+    await mpcService._recoverStaleAuxInfoSessions().catch(() => null);
+    if (chrome?.alarms?.create) {
+      try {
+        await chrome.alarms.create('mpc-aux-info-watchdog', { periodInMinutes: 1 });
+      } catch (error) {
+        console.warn('[MPC] failed to register aux-info watchdog alarm:', error?.message || error);
+      }
+    }
     const seededNetworks = await ensureDefaultNetworks(NETWORKS);
 
     // 加载保存的网络选择
@@ -137,4 +148,15 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 chrome.runtime.onStartup.addListener(() => {
   console.log('🚀 Extension startup');
+});
+
+// Aux-info wall-clock watchdog. Each tick reconverges any aux-info `running`
+// wallets whose deadline elapsed without a live pump (e.g. after a Service
+// Worker restart) and triggers a generational retry via the service. The
+// alarm name is hardcoded here and mirrored in `mpc-service.js`.
+chrome?.alarms?.onAlarm?.addListener?.((alarm) => {
+  if (!alarm || alarm.name !== 'mpc-aux-info-watchdog') return;
+  mpcService._recoverStaleAuxInfoSessions().catch((error) => {
+    console.warn('[MPC] aux-info watchdog recovery failed:', error?.message || error);
+  });
 });

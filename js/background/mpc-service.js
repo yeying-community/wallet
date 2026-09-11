@@ -16,6 +16,7 @@ import {
   saveMpcParticipant,
   getMpcWallet,
   saveMpcWallet,
+  getMpcWalletList,
   getMpcKeyShares,
   getMpcKeyShare,
   saveMpcKeyShare,
@@ -84,6 +85,20 @@ const MPC_WIRE_PUMP_MAX_IDLE_TICKS = 12;
 const MPC_AUX_INFO_WIRE_PUMP_MAX_TICKS = 900;
 const MPC_AUX_INFO_WIRE_PUMP_MAX_IDLE_TICKS = 180;
 const MPC_WIRE_START_TIMEOUT_MS = 5000;
+// Aux-info wall-clock deadline. Kept shorter than the offscreen single-request
+// timeout (15 min) so production CGGMP24 aux-info is guaranteed to converge to
+// a terminal `failed` state (with reason `MPC_AUX_INFO_DEADLINE_EXCEEDED`)
+// rather than stall indefinitely under the dev-verification/profile WASM.
+const MPC_AUX_INFO_DEADLINE_MS = 10 * 60 * 1000;
+// Maximum number of generational aux-info retries before giving up with
+// `wire-aux-info-retry-exhausted` audit. Bounds retry storms when the remote
+// aux-info WASM cannot converge.
+const MPC_AUX_INFO_MAX_GENERATIONS = 3;
+const MPC_AUX_INFO_WATCHDOG_ALARM = 'mpc-aux-info-watchdog';
+const MPC_AUX_INFO_DEADLINE_EXCEEDED = 'MPC_AUX_INFO_DEADLINE_EXCEEDED';
+const MPC_AUX_INFO_PUMP_BUDGET_EXCEEDED = 'MPC_AUX_INFO_PUMP_BUDGET_EXCEEDED';
+const MPC_AUX_INFO_IDLE_TIMEOUT = 'MPC_AUX_INFO_IDLE_TIMEOUT';
+const MPC_AUX_INFO_RETRY_EXHAUSTED = 'MPC_AUX_INFO_RETRY_EXHAUSTED';
 
 function logMpcDebug(event, data = {}) {
   const safe = {};
@@ -1386,14 +1401,27 @@ class MpcService {
       // allowed later wakeups to create duplicate aux-info sessions.
       const started = await this.startWireSession(startInput);
       const now = getTimestamp();
+      // Carry the current persisted generation forward (or initialize to 1 for
+      // the first attempt). Increments happen later in `_failAuxInfoForDeadline`
+      // and `_maybeContinueAuxInfoForWallet`; `_buildAuxInfoRequestId` reads the
+      // value we persist here.
+      const auxInfoGeneration = normalizeMpcVersion(
+        session?.auxInfoGeneration,
+        normalizeMpcVersion(wallet?.auxInfoGeneration)
+      );
       const nextSession = {
         ...session,
         auxInfoStatus: 'running',
+        auxInfoStartedAt: now,
+        auxInfoGeneration,
+        lastWireProgressAt: now,
         updatedAt: now
       };
       const nextWallet = {
         ...wallet,
         auxInfoStatus: 'running',
+        auxInfoStartedAt: now,
+        auxInfoGeneration,
         updatedAt: now
       };
       await saveMpcSession(nextSession);
@@ -1402,7 +1430,8 @@ class MpcService {
         sessionId,
         level: 'info',
         action: 'wire-aux-info-started',
-        message: 'MPC wire aux-info 已自动启动'
+        message: 'MPC wire aux-info 已自动启动',
+        metadata: { generation: auxInfoGeneration }
       });
       this._startWireSessionPump({
         sessionId,
@@ -1413,7 +1442,8 @@ class MpcService {
         recipientIndex: participantIndex,
         password,
         maxTicks: MPC_AUX_INFO_WIRE_PUMP_MAX_TICKS,
-        maxIdleTicks: MPC_AUX_INFO_WIRE_PUMP_MAX_IDLE_TICKS
+        maxIdleTicks: MPC_AUX_INFO_WIRE_PUMP_MAX_IDLE_TICKS,
+        deadlineMs: MPC_AUX_INFO_DEADLINE_MS
       });
       return {
         session: nextSession,
@@ -1424,13 +1454,19 @@ class MpcService {
     } catch (error) {
       const reason = error?.message || String(error || '') || 'MPC_AUX_INFO_START_FAILED';
       const now = getTimestamp();
+      const auxInfoGeneration = normalizeMpcVersion(
+        session?.auxInfoGeneration,
+        normalizeMpcVersion(wallet?.auxInfoGeneration)
+      );
       const failedShare = keyShare
         ? {
           ...keyShare,
           auxInfoStatus: 'failed',
+          auxInfoGeneration,
           completeKeyShareStatus: keyShare.completeKeyShareStatus || 'missing',
           signingStatus: 'unavailable',
           signingUnavailableReason: reason,
+          auxInfoFailedAt: now,
           updatedAt: now
         }
         : null;
@@ -1438,6 +1474,8 @@ class MpcService {
         ? {
           ...session,
           auxInfoStatus: 'failed',
+          auxInfoGeneration,
+          auxInfoFailedAt: now,
           result: {
             ...(session.result && typeof session.result === 'object' ? session.result : {}),
             auxInfoStatus: 'failed',
@@ -1451,6 +1489,8 @@ class MpcService {
         ? {
           ...wallet,
           auxInfoStatus: 'failed',
+          auxInfoGeneration,
+          auxInfoFailedAt: now,
           completeKeyShareStatus: wallet.completeKeyShareStatus || 'missing',
           signingStatus: 'unavailable',
           signingUnavailableReason: reason,
@@ -1602,11 +1642,98 @@ class MpcService {
         hasWireState: Boolean(wireState?.snapshot),
         wireStatePersistable: wireState?.snapshot?.persistable
       });
+      // Bump generation before restarting so the new attempt's requestId is
+      // disjoint from the previous WASM session's requestId; any orphan
+      // in-flight messages on the wire will fail to decode against the new id.
+      const bumpedGeneration = await this._bumpAuxInfoGeneration({
+        session,
+        wallet,
+        participantSession,
+        keyShare,
+        reason: 'aux-info:restart-stale-running'
+      });
+      // Carry the freshly bumped generation into the in-memory objects handed to
+      // `_startAuxInfoAfterWireKeygen`; otherwise the stale `participantSession`
+      // (built above from the pre-bump session) would re-persist the old
+      // generation and defeat the requestId fencing we just established.
+      participantSession.auxInfoGeneration = bumpedGeneration;
+      participantSession.auxInfoStartedAt = undefined;
+      participantSession.auxInfoFailedAt = undefined;
+      if (wallet) {
+        wallet.auxInfoGeneration = bumpedGeneration;
+        wallet.auxInfoStartedAt = undefined;
+        wallet.auxInfoFailedAt = undefined;
+      }
       await this._resetWireRuntimeState({
         sessionId,
         protocol: 'aux-info',
         recipientIndex: participantIndex,
         requestId
+      });
+    }
+    if (auxStatus === 'failed') {
+      const currentGeneration = normalizeMpcVersion(
+        session?.auxInfoGeneration,
+        normalizeMpcVersion(wallet?.auxInfoGeneration)
+      );
+      if (currentGeneration >= MPC_AUX_INFO_MAX_GENERATIONS) {
+        await this._appendAuditLog({
+          sessionId,
+          walletId,
+          level: 'warn',
+          action: 'wire-aux-info-retry-exhausted',
+          message: MPC_AUX_INFO_RETRY_EXHAUSTED,
+          metadata: { generation: currentGeneration, max: MPC_AUX_INFO_MAX_GENERATIONS }
+        }).catch(() => null);
+        logMpcDebug('aux-info:retry-exhausted', {
+          sessionId,
+          walletId,
+          generation: currentGeneration,
+          max: MPC_AUX_INFO_MAX_GENERATIONS
+        });
+        return { exhausted: true, generation: currentGeneration };
+      }
+      const nextGeneration = currentGeneration + 1;
+      const now = getTimestamp();
+      const nextSession = {
+        ...participantSession,
+        auxInfoStatus: '',
+        auxInfoGeneration: nextGeneration,
+        auxInfoStartedAt: undefined,
+        auxInfoFailedAt: undefined,
+        updatedAt: now
+      };
+      const nextWallet = {
+        ...wallet,
+        auxInfoStatus: '',
+        auxInfoGeneration: nextGeneration,
+        auxInfoStartedAt: undefined,
+        auxInfoFailedAt: undefined,
+        updatedAt: now
+      };
+      const nextKeyShare = keyShare
+        ? {
+            ...keyShare,
+            auxInfoGeneration: nextGeneration,
+            updatedAt: now
+          }
+        : null;
+      await saveMpcSession(nextSession);
+      await saveMpcWallet(nextWallet);
+      if (nextKeyShare) await saveMpcKeyShare(nextKeyShare);
+      logMpcDebug('aux-info:continue-bumped-generation', {
+        sessionId,
+        walletId,
+        previousGeneration: currentGeneration,
+        nextGeneration,
+        auxStatus
+      });
+      return await this._startAuxInfoAfterWireKeygen({
+        session: nextSession,
+        wallet: nextWallet,
+        participantId,
+        participantIndex,
+        password
       });
     }
     return await this._startAuxInfoAfterWireKeygen({
@@ -2241,7 +2368,16 @@ class MpcService {
     const keyVersion = normalizeMpcVersion(session?.keyVersion, normalizeMpcVersion(wallet?.keyVersion));
     const shareVersion = normalizeMpcVersion(session?.shareVersion, normalizeMpcVersion(wallet?.shareVersion));
     if (!sessionId) return '';
-    return `aux-info:v2:${sessionId}:${Number.isFinite(keyVersion) ? keyVersion : 1}:${Number.isFinite(shareVersion) ? shareVersion : 1}`;
+    // Aux-info generation is bumped on every retry so that wire peers isolate
+    // stale in-flight WASM sessions from a fresh attempt. The current value is
+    // read from the persisted session/wallet (last write wins) and stays
+    // stable for the lifetime of a single attempt — generation increments
+    // happen in `_failAuxInfoForDeadline` / `_maybeContinueAuxInfoForWallet`.
+    const generation = normalizeMpcVersion(
+      session?.auxInfoGeneration,
+      normalizeMpcVersion(wallet?.auxInfoGeneration)
+    );
+    return `aux-info:v3:${sessionId}:${Number.isFinite(keyVersion) ? keyVersion : 1}:${Number.isFinite(shareVersion) ? shareVersion : 1}:${generation}`;
   }
 
   async _resetWireRuntimeState({ sessionId, recipientIndex, protocol = '', requestId = '' } = {}) {
@@ -2278,6 +2414,247 @@ class MpcService {
       });
     }
     return { reset: true, key };
+  }
+
+  async _bumpAuxInfoGeneration({ session, wallet, participantSession, keyShare, reason = '' } = {}) {
+    const current = normalizeMpcVersion(
+      session?.auxInfoGeneration,
+      normalizeMpcVersion(wallet?.auxInfoGeneration)
+    );
+    const next = current + 1;
+    const now = getTimestamp();
+    if (session || participantSession) {
+      const base = participantSession || session;
+      await saveMpcSession({
+        ...base,
+        auxInfoGeneration: next,
+        updatedAt: now
+      }).catch(() => null);
+    }
+    if (wallet) {
+      await saveMpcWallet({
+        ...wallet,
+        auxInfoGeneration: next,
+        updatedAt: now
+      }).catch(() => null);
+    }
+    if (keyShare) {
+      await saveMpcKeyShare({
+        ...keyShare,
+        auxInfoGeneration: next,
+        updatedAt: now
+      }).catch(() => null);
+    }
+    logMpcDebug('aux-info:generation-bumped', {
+      sessionId: String(session?.id || participantSession?.id || wallet?.keygenSessionId || '').trim(),
+      walletId: String(wallet?.id || session?.walletId || '').trim(),
+      previousGeneration: current,
+      nextGeneration: next,
+      reason
+    });
+    return next;
+  }
+
+  // Converge an aux-info attempt to a persisted terminal `failed` state instead
+  // of the historical silent `stop()`. Generation-fenced: if the persisted
+  // generation has already moved past `generation` (a concurrent restart) or
+  // the wallet already reached `completed`, the write is skipped so a stale
+  // pump cannot clobber a newer attempt. Always resets wire runtime so the next
+  // generation starts from a clean cursor.
+  async _failAuxInfoForDeadline({
+    sessionId,
+    walletId,
+    recipientIndex,
+    requestId = '',
+    reason = MPC_AUX_INFO_DEADLINE_EXCEEDED,
+    generation
+  } = {}) {
+    const normalizedSessionId = String(sessionId || '').trim();
+    if (!normalizedSessionId) return { failed: false };
+    const session = await getMpcSession(normalizedSessionId).catch(() => null);
+    const resolvedWalletId = String(walletId || session?.walletId || '').trim();
+    const wallet = resolvedWalletId ? await getMpcWallet(resolvedWalletId).catch(() => null) : null;
+    const currentStatus = String(session?.auxInfoStatus || wallet?.auxInfoStatus || '').trim();
+    if (currentStatus === 'completed' || String(wallet?.status || '').trim() === 'active') {
+      return { failed: false, skipped: 'completed' };
+    }
+    if (Number.isInteger(Number(generation))) {
+      const persistedGeneration = normalizeMpcVersion(
+        session?.auxInfoGeneration,
+        normalizeMpcVersion(wallet?.auxInfoGeneration)
+      );
+      if (persistedGeneration !== Number(generation)) {
+        logMpcDebug('aux-info:deadline-fenced-stale-generation', {
+          sessionId: normalizedSessionId,
+          walletId: resolvedWalletId,
+          expectedGeneration: Number(generation),
+          persistedGeneration,
+          reason
+        });
+        return { failed: false, skipped: 'stale-generation' };
+      }
+    }
+    const now = getTimestamp();
+    const generationToPersist = normalizeMpcVersion(
+      session?.auxInfoGeneration,
+      normalizeMpcVersion(wallet?.auxInfoGeneration)
+    );
+    if (session && currentStatus !== 'failed') {
+      await saveMpcSession({
+        ...session,
+        auxInfoStatus: 'failed',
+        auxInfoGeneration: generationToPersist,
+        auxInfoFailedAt: now,
+        lastWireProgressAt: now,
+        signingStatus: 'unavailable',
+        signingUnavailableReason: reason,
+        result: {
+          ...(session.result && typeof session.result === 'object' ? session.result : {}),
+          auxInfoStatus: 'failed',
+          signingStatus: 'unavailable',
+          signingUnavailableReason: reason
+        },
+        updatedAt: now
+      }).catch(() => null);
+    }
+    if (wallet && String(wallet.auxInfoStatus || '').trim() !== 'failed') {
+      await saveMpcWallet({
+        ...wallet,
+        auxInfoStatus: 'failed',
+        auxInfoGeneration: generationToPersist,
+        auxInfoFailedAt: now,
+        signingStatus: 'unavailable',
+        signingUnavailableReason: reason,
+        updatedAt: now
+      }).catch(() => null);
+    }
+    const keyShare = resolvedWalletId
+      ? await this._findLatestLocalKeyShareForWallet(resolvedWalletId).catch(() => null)
+      : null;
+    if (keyShare && String(keyShare.auxInfoStatus || '').trim() !== 'completed') {
+      await saveMpcKeyShare({
+        ...keyShare,
+        auxInfoStatus: 'failed',
+        auxInfoGeneration: generationToPersist,
+        signingStatus: 'unavailable',
+        signingUnavailableReason: reason,
+        auxInfoFailedAt: now,
+        updatedAt: now
+      }).catch(() => null);
+    }
+    const index = Number(recipientIndex);
+    if (Number.isInteger(index) && index >= 0) {
+      await this._resetWireRuntimeState({
+        sessionId: normalizedSessionId,
+        protocol: 'aux-info',
+        recipientIndex: index,
+        requestId
+      }).catch(() => null);
+    }
+    logMpcDebug('aux-info:deadline-failed', {
+      sessionId: normalizedSessionId,
+      walletId: resolvedWalletId,
+      recipientIndex: index,
+      reason,
+      generation: generationToPersist
+    });
+    await this._appendAuditLog({
+      sessionId: normalizedSessionId,
+      walletId: resolvedWalletId,
+      level: 'warn',
+      action: 'wire-aux-info-timeout',
+      message: reason,
+      metadata: { reason, generation: generationToPersist, recipientIndex: index }
+    }).catch(() => null);
+    return { failed: true, reason, generation: generationToPersist };
+  }
+
+  // Watchdog entry point (invoked from the SW alarm and once during init).
+  // Enumerates wallets stuck in aux-info `running`, and for any whose persisted
+  // wall-clock deadline has elapsed and that has no live in-memory pump (e.g.
+  // after a Service Worker restart dropped the pump/adapter maps), converges
+  // them to `failed` then triggers a generational retry.
+  async _recoverStaleAuxInfoSessions() {
+    let wallets = [];
+    try {
+      wallets = await getMpcWalletList();
+    } catch (error) {
+      logMpcDebug('aux-info:watchdog-list-failed', {
+        error: error?.message || String(error || '')
+      });
+      return { checked: 0, recovered: 0 };
+    }
+    const now = Date.now();
+    let recovered = 0;
+    let checked = 0;
+    for (const wallet of Array.isArray(wallets) ? wallets : []) {
+      const walletId = String(wallet?.id || '').trim();
+      if (!walletId) continue;
+      if (String(wallet?.auxInfoStatus || '').trim() !== 'running') continue;
+      if (String(wallet?.status || '').trim() === 'active') continue;
+      checked += 1;
+      const sessionId = String(wallet?.keygenSessionId || '').trim();
+      const session = sessionId ? await getMpcSession(sessionId).catch(() => null) : null;
+      const startedAt = Number(session?.auxInfoStartedAt ?? wallet?.auxInfoStartedAt ?? 0);
+      const deadlineAt = Number.isFinite(startedAt) && startedAt > 0
+        ? startedAt + MPC_AUX_INFO_DEADLINE_MS
+        : 0;
+      if (!deadlineAt || now < deadlineAt) {
+        continue;
+      }
+      const keyShare = await this._findLatestLocalKeyShareForWallet(walletId).catch(() => null);
+      const participantIndex = Number.isInteger(Number(keyShare?.participantIndex))
+        ? Number(keyShare.participantIndex)
+        : -1;
+      const pumpKey = sessionId && participantIndex >= 0
+        ? this._buildWireSessionKey({ sessionId, recipientIndex: participantIndex, protocol: 'aux-info' })
+        : '';
+      if (pumpKey && this._wireSessionPumps.has(pumpKey)) {
+        // A live pump owns this attempt; let it converge on its own deadline.
+        continue;
+      }
+      const generation = normalizeMpcVersion(
+        session?.auxInfoGeneration,
+        normalizeMpcVersion(wallet?.auxInfoGeneration)
+      );
+      logMpcDebug('aux-info:watchdog-recover', {
+        sessionId,
+        walletId,
+        participantIndex,
+        generation,
+        startedAt: session?.auxInfoStartedAt || wallet?.auxInfoStartedAt || '',
+        overdueMs: now - deadlineAt
+      });
+      await this._failAuxInfoForDeadline({
+        sessionId,
+        walletId,
+        recipientIndex: participantIndex,
+        reason: `${MPC_AUX_INFO_DEADLINE_EXCEEDED}:recoveredAfterRestart`,
+        generation
+      }).catch(() => null);
+      recovered += 1;
+      // Re-read the now-failed records and let the shared retry path decide
+      // whether to bump generation and restart, or mark retry-exhausted.
+      const refreshedSession = sessionId ? await getMpcSession(sessionId).catch(() => null) : null;
+      const refreshedWallet = await getMpcWallet(walletId).catch(() => null);
+      if (refreshedWallet) {
+        await this._maybeContinueAuxInfoForWallet({
+          session: refreshedSession || session,
+          wallet: refreshedWallet
+        }).catch((error) => {
+          logMpcDebug('aux-info:watchdog-retry-failed', {
+            sessionId,
+            walletId,
+            error: error?.message || String(error || '')
+          });
+          return null;
+        });
+      }
+    }
+    if (checked) {
+      logMpcDebug('aux-info:watchdog-summary', { checked, recovered });
+    }
+    return { checked, recovered };
   }
 
   async _hasWireSessionAdapterForLocalParticipant(session, protocol = '') {
@@ -2423,6 +2800,12 @@ class MpcService {
     let tickCount = 0;
     let idleTicks = 0;
     let stopped = false;
+    // Aux-info wall-clock deadline state, resolved lazily on the first tick from
+    // the persisted `auxInfoStartedAt` so it survives across resume/restart.
+    let deadlineResolved = false;
+    let deadlineAt = 0;
+    let auxInfoGeneration = normalizeMpcVersion(options.auxInfoGeneration);
+    let lastProgressPersistedAt = 0;
     const stop = () => {
       stopped = true;
       if (timer) {
@@ -2437,6 +2820,23 @@ class MpcService {
         timer?.unref?.();
       }
     };
+    const resolveAuxInfoDeadline = async () => {
+      if (deadlineResolved) return;
+      deadlineResolved = true;
+      if (protocol !== 'aux-info') return;
+      const session = await getMpcSession(sessionId).catch(() => null);
+      const walletId = String(session?.walletId || options.walletId || '').trim();
+      const wallet = walletId ? await getMpcWallet(walletId).catch(() => null) : null;
+      auxInfoGeneration = normalizeMpcVersion(
+        session?.auxInfoGeneration,
+        normalizeMpcVersion(wallet?.auxInfoGeneration)
+      );
+      const startedAt = Number(session?.auxInfoStartedAt ?? wallet?.auxInfoStartedAt ?? 0);
+      const deadlineMs = Number(options.deadlineMs) || MPC_AUX_INFO_DEADLINE_MS;
+      deadlineAt = Number.isFinite(startedAt) && startedAt > 0
+        ? startedAt + deadlineMs
+        : Date.now() + deadlineMs;
+    };
     const shouldStopForState = async () => {
       const session = await getMpcSession(sessionId);
       const walletId = String(session?.walletId || options.walletId || '').trim();
@@ -2447,7 +2847,11 @@ class MpcService {
           || String(wallet?.status || '').trim() === 'active';
       }
       if (protocol === 'aux-info') {
-        return String(session?.auxInfoStatus || wallet?.auxInfoStatus || '').trim() === 'completed'
+        const auxInfoStatus = String(session?.auxInfoStatus || wallet?.auxInfoStatus || '').trim();
+        // `failed` lets an externally-written terminal state (e.g. from the
+        // watchdog) cleanly stop a pump that is otherwise still ticking.
+        return auxInfoStatus === 'completed'
+          || auxInfoStatus === 'failed'
           || String(wallet?.status || '').trim() === 'active';
       }
       return false;
@@ -2456,6 +2860,7 @@ class MpcService {
       if (stopped) return;
       tickCount += 1;
       try {
+        await resolveAuxInfoDeadline();
         const tick = await this.tickWireSession({
           sessionId,
           protocol,
@@ -2470,6 +2875,23 @@ class MpcService {
           || (tick?.outputs?.length || 0) > 0
           || Boolean(tick?.handledResult);
         idleTicks = madeProgress ? 0 : idleTicks + 1;
+        // Persist a wall-clock progress marker for aux-info so the watchdog and
+        // future diagnostics can reason about liveness. Only written on an
+        // actual progress jump (throttled to once per 5s) to avoid hot writes.
+        if (protocol === 'aux-info' && madeProgress) {
+          const nowMs = Date.now();
+          if (nowMs - lastProgressPersistedAt >= 5000) {
+            lastProgressPersistedAt = nowMs;
+            const session = await getMpcSession(sessionId).catch(() => null);
+            if (session && String(session.auxInfoStatus || '').trim() === 'running') {
+              await saveMpcSession({
+                ...session,
+                lastWireProgressAt: getTimestamp(),
+                updatedAt: getTimestamp()
+              }).catch(() => null);
+            }
+          }
+        }
         logMpcDebug('wire-pump:tick', {
           sessionId,
           protocol,
@@ -2492,6 +2914,7 @@ class MpcService {
         else if (protocol === 'keygen' && ['keygen_completed', 'active'].includes(String(tick?.handledResult?.wallet?.status || '').trim())) stopReason = 'keygen-completed';
         else if (protocol === 'aux-info' && String(tick?.handledResult?.wallet?.status || '').trim() === 'active') stopReason = 'aux-info-active';
         else if (await shouldStopForState()) stopReason = 'state-completed';
+        else if (protocol === 'aux-info' && deadlineAt && Date.now() >= deadlineAt) stopReason = 'aux-info-deadline';
         else if (tickCount >= (Number(options.maxTicks) || MPC_WIRE_PUMP_MAX_TICKS)) stopReason = 'max-ticks';
         else if (idleTicks >= (Number(options.maxIdleTicks) || MPC_WIRE_PUMP_MAX_IDLE_TICKS)) stopReason = 'max-idle';
         if (
@@ -2505,6 +2928,39 @@ class MpcService {
             idleTicks,
             reason: stopReason
           });
+          // Aux-info must always converge to a persisted terminal state.
+          // Historically `max-ticks` / `max-idle` performed a bare `stop()`,
+          // leaving `auxInfoStatus: running` forever (docs §16.2). Route those
+          // budget/deadline exhaustions — but not the genuine completion
+          // reasons — through `_failAuxInfoForDeadline`.
+          if (
+            protocol === 'aux-info'
+            && ['aux-info-deadline', 'max-ticks', 'max-idle'].includes(stopReason)
+          ) {
+            const reason = stopReason === 'aux-info-deadline'
+              ? MPC_AUX_INFO_DEADLINE_EXCEEDED
+              : stopReason === 'max-ticks'
+                ? MPC_AUX_INFO_PUMP_BUDGET_EXCEEDED
+                : MPC_AUX_INFO_IDLE_TIMEOUT;
+            stop();
+            await this._failAuxInfoForDeadline({
+              sessionId,
+              walletId: options.walletId,
+              recipientIndex,
+              requestId: options.requestId,
+              reason,
+              generation: auxInfoGeneration
+            }).catch((failError) => {
+              logMpcDebug('aux-info:deadline-fail-error', {
+                sessionId,
+                recipientIndex,
+                reason,
+                error: failError?.message || String(failError || '')
+              });
+              return null;
+            });
+            return;
+          }
           stop();
           return;
         }
