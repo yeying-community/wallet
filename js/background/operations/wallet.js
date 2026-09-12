@@ -59,6 +59,7 @@ import { decryptIdentityKeyMaterial, getIdentities, saveIdentity } from '../../s
 import { IdentityStorageKeys } from '../../storage/storage-keys.js';
 import { getValue, setValue } from '../../storage/storage-base.js';
 import { validateIdentityDocument } from '../../common/identity/identity-document.js';
+import { normalizeIdentityNodeEndpoint } from '../../config/identity-config.js';
 
 const MIN_PASSWORD_LENGTH = 8;
 const INVALID_MPC_WALLET_NAMES = new Set(['', 'MPC 钱包创建邀请', 'MPC 钱包邀请', '名称缺失']);
@@ -767,7 +768,7 @@ export async function handleGetProfile() {
   return { success: true, profile: { email: '', emailUpdatedAt: 0, emailVerified: false } };
 }
 
-export async function handleExportAccountsFile(password) {
+export async function handleExportAccountsFile(password, identityEndpoint = '') {
   if (!password || password.length < MIN_PASSWORD_LENGTH) {
     return { success: false, error: 'password is required' };
   }
@@ -811,6 +812,8 @@ export async function handleExportAccountsFile(password) {
       selectedIdentityId,
       selectedAddress: selectedAccount?.address || ''
     };
+    const normalizedIdentityEndpoint = normalizeIdentityNodeEndpoint(identityEndpoint);
+    if (normalizedIdentityEndpoint) payload.identityEndpoint = normalizedIdentityEndpoint;
     return {
       success: true,
       file: {
@@ -940,7 +943,10 @@ export async function handleImportAccountsFile(file, password) {
     if (preferredIdentityId) {
       await setValue(IdentityStorageKeys.SELECTED_IDENTITY, preferredIdentityId);
     }
-    return { success: true, imported, skipped };
+    const result = { success: true, imported, skipped };
+    const importedIdentityEndpoint = normalizeIdentityNodeEndpoint(payload.identityEndpoint);
+    if (importedIdentityEndpoint) result.identityEndpoint = importedIdentityEndpoint;
+    return result;
   } catch (error) {
     return { success: false, error: error.message || '密码错误或备份文件损坏' };
   }

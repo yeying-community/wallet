@@ -1,7 +1,9 @@
 import { showPage, showError, showSuccess, showWaiting, hideWaiting, generateQRCode, copyToClipboard } from '../../common/ui/index.js';
+import {
+  DEFAULT_IDENTITY_NODE_ENDPOINT,
+  IDENTITY_NODE_ENDPOINT_STORAGE_KEY
+} from '../../config/identity-config.js';
 
-const DEFAULT_NODE_ENDPOINT = 'https://node.yeying.pub';
-const ENDPOINT_STORAGE_KEY = 'walletIdentityNodeEndpoint';
 const VERIFICATION_STORAGE_PREFIX = 'walletIdentityVerification:';
 const EMAIL_VERIFICATION_STORAGE_PREFIX = 'walletIdentityEmailVerification:';
 const VERIFICATION_STATE_PENDING_EMAIL = 'pending-email';
@@ -93,16 +95,16 @@ export class WalletIdentitySettingsController {
 
   endpoint() {
     return String(
-      document.getElementById('walletIdentityEndpointInput')?.value || this.loadStoredEndpoint() || DEFAULT_NODE_ENDPOINT
+      document.getElementById('walletIdentityEndpointInput')?.value || this.loadStoredEndpoint() || DEFAULT_IDENTITY_NODE_ENDPOINT
     ).trim();
   }
 
   loadStoredEndpoint() {
-    try { return String(globalThis.localStorage?.getItem(ENDPOINT_STORAGE_KEY) || '').trim(); } catch { return ''; }
+    try { return String(globalThis.localStorage?.getItem(IDENTITY_NODE_ENDPOINT_STORAGE_KEY) || '').trim(); } catch { return ''; }
   }
 
   persistEndpoint(endpoint) {
-    try { globalThis.localStorage?.setItem(ENDPOINT_STORAGE_KEY, endpoint); } catch { /* storage may be unavailable */ }
+    try { globalThis.localStorage?.setItem(IDENTITY_NODE_ENDPOINT_STORAGE_KEY, endpoint); } catch { /* storage may be unavailable */ }
   }
 
   verificationStorageKey(endpoint, address) {
@@ -294,7 +296,7 @@ export class WalletIdentitySettingsController {
       this.setDetailAvatar(values.avatarUri || defaultAvatarUri(identityId || account?.address));
       this.setCopyableDetailValue('walletIdentityDetailAddressPage', account?.address || '-', this.formatCompactIdentityValue(account?.address, 12, 8));
       this.setCopyableDetailValue('walletIdentityDetailDidPage', identity?.document?.id || '-', this.formatCompactIdentityValue(identity?.document?.id, 18, 10));
-      this.setDetailValue('walletIdentityDetailEndpointPage', this.endpoint() || DEFAULT_NODE_ENDPOINT);
+      this.setDetailValue('walletIdentityDetailEndpointPage', this.endpoint() || DEFAULT_IDENTITY_NODE_ENDPOINT);
       showPage('walletIdentityDetailPage');
       await Promise.all([
         this.refreshIdentityPasskeySummary({ quiet: true }),
@@ -511,7 +513,7 @@ export class WalletIdentitySettingsController {
 
   async load() {
     const input = document.getElementById('walletIdentityEndpointInput');
-    if (input && !input.value) input.value = this.loadStoredEndpoint() || DEFAULT_NODE_ENDPOINT;
+    if (input && !input.value) input.value = this.loadStoredEndpoint() || DEFAULT_IDENTITY_NODE_ENDPOINT;
     await this.renderIdentityVerificationAction();
   }
 

@@ -1,5 +1,6 @@
 import { showPage, showError, showSuccess, showWaiting, getPageOrigin } from '../../common/ui/index.js';
 import { savePopupSessionState } from '../../common/ui/popup-session-state.js';
+import { IDENTITY_NODE_ENDPOINT_STORAGE_KEY, normalizeIdentityNodeEndpoint } from '../../config/identity-config.js';
 
 const IMPORT_FIELD_IDS = [
   'importAccountName',
@@ -152,6 +153,12 @@ export class ImportWalletController {
           throw new Error('备份文件不是有效的 JSON');
         }
         const result = await this.wallet.importAccountsFile(parsed, password);
+        const identityEndpoint = normalizeIdentityNodeEndpoint(result?.identityEndpoint);
+        if (identityEndpoint) {
+          try { globalThis.localStorage?.setItem(IDENTITY_NODE_ENDPOINT_STORAGE_KEY, identityEndpoint); } catch { /* storage may be unavailable */ }
+          const endpointInput = document.getElementById('walletIdentityEndpointInput');
+          if (endpointInput) endpointInput.value = identityEndpoint;
+        }
         showSuccess(`导入 ${result.imported} 个账户，跳过 ${result.skipped} 个重复账户`);
       }
 

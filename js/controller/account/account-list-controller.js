@@ -2,6 +2,10 @@ import { showPage, showError, showSuccess, setPageOrigin, showWaiting, hideWaiti
 import { shortenAddress, generateAvatar } from '../../common/chain/index.js';
 import { escapeHtml } from '../../common/ui/html-ui.js';
 import { clearImportWalletForm } from '../wallet/import-wallet-controller.js';
+import {
+  IDENTITY_NODE_ENDPOINT_STORAGE_KEY,
+  normalizeIdentityNodeEndpoint
+} from '../../config/identity-config.js';
 
 function formatMpcSigningPrepareError(message) {
   const raw = String(message || '').trim();
@@ -114,7 +118,13 @@ export class AccountListController {
     if (!password) return;
     try {
       showWaiting();
-      const result = await this.wallet.exportAccountsFile(password);
+      let storedIdentityEndpoint = '';
+      try { storedIdentityEndpoint = globalThis.localStorage?.getItem(IDENTITY_NODE_ENDPOINT_STORAGE_KEY) || ''; } catch { /* storage may be unavailable */ }
+      const identityEndpoint = normalizeIdentityNodeEndpoint(
+        document.getElementById('walletIdentityEndpointInput')?.value
+          || storedIdentityEndpoint
+      );
+      const result = await this.wallet.exportAccountsFile(password, identityEndpoint);
       const blob = new Blob([JSON.stringify(result.file, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
