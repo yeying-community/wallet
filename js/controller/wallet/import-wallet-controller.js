@@ -1,4 +1,5 @@
 import { showPage, showError, showSuccess, showWaiting, getPageOrigin } from '../../common/ui/index.js';
+import { savePopupSessionState } from '../../common/ui/popup-session-state.js';
 
 const IMPORT_FIELD_IDS = [
   'importAccountName',
@@ -76,6 +77,11 @@ export class ImportWalletController {
           nameGroup?.classList.add('hidden');
           if (importBtn) importBtn.textContent = '导入备份';
         }
+        // The popup may be recreated while the native file chooser is open.
+        // Persist the selected mode without persisting secrets or file data.
+        void savePopupSessionState('importPage').catch(error => {
+          console.warn('[ImportWalletController] 保存导入页面状态失败:', error);
+        });
       });
     });
 

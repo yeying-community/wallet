@@ -42,6 +42,22 @@ test('转账页面只保存白名单字段', async () => {
   assert.equal(sessionData[POPUP_SESSION_STATE_KEY].fields.amount, '2.5');
 });
 
+test('导入页面只保存来源和导入类型，不保存敏感字段', async () => {
+  const { document } = createDocument({
+    importPage: { tagName: 'div', dataset: { origin: 'accounts' } },
+    importAccountName: { tagName: 'input', value: '导入账户' },
+    importMnemonic: { tagName: 'textarea', value: 'secret mnemonic' },
+    importPrivateKey: { tagName: 'input', value: '0xsecret' },
+    importWalletPassword: { tagName: 'input', value: 'password' },
+    importAccountsFile: { tagName: 'input', value: 'file' },
+  });
+  const state = buildPopupSessionState('importPage', document);
+  assert.equal(state.origin, 'accounts');
+  assert.equal(state.importType, 'mnemonic');
+  assert.deepEqual(state.fields, {});
+  assert.equal(JSON.stringify(state).includes('secret'), false);
+});
+
 test('恢复字段时忽略非当前页面字段和敏感字段', () => {
   const { document, elements } = createDocument({
     networkNameInput: { tagName: 'input', value: '' },

@@ -3,6 +3,7 @@ const POPUP_SESSION_TTL_MS = 30 * 60 * 1000;
 
 const RESTORABLE_PAGES = new Set([
   'walletPage',
+  'importPage',
   'accountsPage',
   'settingsPage',
   'sitesPage',
@@ -49,7 +50,7 @@ function readFieldValues(pageId, documentRef) {
 export function buildPopupSessionState(pageId, documentRef = globalThis.document) {
   if (!RESTORABLE_PAGES.has(pageId)) return null;
   const contactModal = documentRef?.getElementById?.('contactEditorModal');
-  return {
+  const state = {
     version: 1,
     pageId,
     updatedAt: Date.now(),
@@ -58,6 +59,18 @@ export function buildPopupSessionState(pageId, documentRef = globalThis.document
       contactModal && !contactModal.classList?.contains?.('hidden')
     ),
   };
+
+  // File inputs and secrets cannot be restored after the popup is recreated.
+  // Keep only the non-sensitive UI context needed to reopen the import page.
+  if (pageId === 'importPage') {
+    const page = documentRef?.getElementById?.('importPage');
+    const activeTab = documentRef?.querySelector?.('.import-tab.active');
+    state.origin = page?.dataset?.origin || 'welcome';
+    state.importType = activeTab?.dataset?.type || 'mnemonic';
+    state.fields = {};
+  }
+
+  return state;
 }
 
 export async function savePopupSessionState(pageId, documentRef = globalThis.document) {
