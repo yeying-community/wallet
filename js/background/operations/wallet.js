@@ -909,13 +909,36 @@ export async function handleImportAccountsFile(file, password) {
     for (const identity of identitiesToImport) {
       await saveIdentity(identity.document.walletIdentityId, identity);
     }
-    if (payload.selectedIdentityId && identitiesToImport.some(item => item?.document?.walletIdentityId === payload.selectedIdentityId)) {
-      await setValue(IdentityStorageKeys.SELECTED_IDENTITY, payload.selectedIdentityId);
-    }
+    let selectedImportedAccount = null;
     if (payload.selectedAddress) {
       const importedAccounts = await getAccountList();
-      const selected = importedAccounts.find(item => String(item.address || '').toLowerCase() === String(payload.selectedAddress).toLowerCase());
-      if (selected?.id) await setSelectedAccountId(selected.id);
+      selectedImportedAccount = importedAccounts.find(item => String(item.address || '').toLowerCase() === String(payload.selectedAddress).toLowerCase()) || null;
+      if (selectedImportedAccount?.id) await setSelectedAccountId(selectedImportedAccount.id);
+    }
+    const selectedAddress = String(selectedImportedAccount?.address || payload.selectedAddress || '').toLowerCase();
+    const selectedChainKey = selectedImportedAccount?.chainKey || `eip155:${selectedImportedAccount?.chainId || 1}`;
+    const linkedIdentity = identitiesToImport.find(identity => (identity.credentials || []).some(item => {
+      const token = item?.credential || item?.jwt || (typeof item === 'string' ? item : '');
+      const encoded = String(token).split('.')[1];
+      if (!encoded) return false;
+      try {
+        const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/');
+        const credentialPayload = JSON.parse(atob(`${normalized}${'='.repeat((4 - normalized.length % 4) % 4)}`));
+        const types = Array.isArray(credentialPayload?.vc?.type)
+          ? credentialPayload.vc.type
+          : [credentialPayload?.vc?.type];
+        const subject = credentialPayload?.vc?.credentialSubject || {};
+        return types.includes('WalletAccountCredential')
+          && subject.chainKey === selectedChainKey
+          && String(subject.address || '').toLowerCase() === selectedAddress;
+      } catch { return false; }
+    }));
+    const preferredIdentityId = linkedIdentity?.document?.walletIdentityId
+      || (payload.selectedIdentityId && identitiesToImport.some(item => item?.document?.walletIdentityId === payload.selectedIdentityId)
+        ? payload.selectedIdentityId
+        : '');
+    if (preferredIdentityId) {
+      await setValue(IdentityStorageKeys.SELECTED_IDENTITY, preferredIdentityId);
     }
     return { success: true, imported, skipped };
   } catch (error) {

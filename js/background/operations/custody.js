@@ -271,6 +271,24 @@ function validateCustodySecret(secret, password) {
   return { type: 'privateKey', key: first.privateKey, name: secret.wallet.name || '恢复的钱包', identities: secret.identities || {}, selectedIdentityId: secret.selectedIdentityId || '' };
 }
 
+function identityHasAccountCredential(record, address, chainKey = 'eip155:1') {
+  const expectedAddress = String(address || '').toLowerCase();
+  return (record?.credentials || []).some(item => {
+    const token = item?.credential || item?.jwt || (typeof item === 'string' ? item : '');
+    const encoded = String(token).split('.')[1];
+    if (!encoded) return false;
+    try {
+      const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(`${normalized}${'='.repeat((4 - normalized.length % 4) % 4)}`));
+      const types = Array.isArray(payload?.vc?.type) ? payload.vc.type : [payload?.vc?.type];
+      const subject = payload?.vc?.credentialSubject || {};
+      return types.includes('WalletAccountCredential')
+        && subject.chainKey === chainKey
+        && String(subject.address || '').toLowerCase() === expectedAddress;
+    } catch { return false; }
+  });
+}
+
 export async function handleRestoreCustodySecret(options = {}) {
   try {
     const walletId = String(options.walletId || '').trim();
@@ -301,7 +319,12 @@ export async function handleRestoreCustodySecret(options = {}) {
       const { saveIdentity } = await import('../../storage/identity-storage.js');
       await saveIdentity(identityId, identity);
     }
-    if (material.selectedIdentityId) await setValue(IdentityStorageKeys.SELECTED_IDENTITY, material.selectedIdentityId);
+    const restoredAddress = result?.account?.address || material.accounts?.[0]?.address || '';
+    const restoredChainKey = result?.account?.chainKey || `eip155:${result?.account?.chainId || 1}`;
+    const linkedIdentity = Object.entries(material.identities || {})
+      .find(([, identity]) => identityHasAccountCredential(identity, restoredAddress, restoredChainKey));
+    const preferredIdentityId = linkedIdentity?.[0] || material.selectedIdentityId || '';
+    if (preferredIdentityId) await setValue(IdentityStorageKeys.SELECTED_IDENTITY, preferredIdentityId);
     return { success: true, wallet: result.wallet, account: result.account };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to restore custody secret' };

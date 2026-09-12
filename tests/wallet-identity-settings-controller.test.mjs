@@ -86,6 +86,48 @@ test('load restores a locally configured Node endpoint', async () => {
   assert.equal(elements.walletIdentityEndpointInput.value, 'http://127.0.0.1:8100');
 });
 
+test('imported identity credentials restore verified status without browser-local state', async () => {
+  const endpoint = 'http://127.0.0.1:8100';
+  const address = '0x1111111111111111111111111111111111111111';
+  elements.walletIdentityEndpointInput.value = endpoint;
+  const values = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key)
+  };
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const credential = (type, subject) => `${encode({ alg: 'EdDSA' })}.${encode({
+    iss: 'did:yeying:node',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    vc: { type: ['VerifiableCredential', type], credentialSubject: subject }
+  })}.signature`;
+  const credentials = [
+    credential('WalletAccountCredential', { id: 'did:yeying:wid_1', chainKey: 'eip155:1', address }),
+    credential('UsernameCredential', { id: 'did:yeying:wid_1', username: 'person' }),
+    credential('EmailCredential', { id: 'did:yeying:wid_1', email: 'person@example.com' })
+  ];
+  let selectedIdentity = '';
+  const controller = new WalletIdentitySettingsController({
+    wallet: {
+      getCurrentAccount: async () => ({ address, chainId: 1 }),
+      getWalletList: async () => [],
+      listIdentities: async () => ({
+        selectedIdentityId: 'wid_1',
+        identities: [{ document: { walletIdentityId: 'wid_1' } }]
+      }),
+      listIdentityCredentials: async () => ({ credentials }),
+      selectIdentity: async (identityId) => { selectedIdentity = identityId; }
+    }
+  });
+
+  await controller.load();
+
+  assert.equal(elements.walletIdentityVerifyBtn.dataset.state, 'complete');
+  assert.equal(values.get(`walletIdentityVerification:${endpoint}:${address.toLowerCase()}`), 'complete');
+  assert.equal(selectedIdentity, '');
+});
+
 test('startIdentityVerification prompts for email and code before completing the verification', async () => {
   elements.walletIdentityEndpointInput.value = 'https://node.example';
   const values = new Map();
