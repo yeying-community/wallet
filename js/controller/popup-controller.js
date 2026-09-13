@@ -43,7 +43,19 @@ export class PopupController {
     this.transactionPollingTimer = null;
     this.storageUnsubscribe = null;
 
-    this.welcomeController = new WelcomeController({ wallet: this.wallet });
+    this.welcomeController = new WelcomeController({
+      wallet: this.wallet,
+      onRecoverySuccess: async (result) => {
+        if (result?.account) {
+          this.accountHeaderController?.updateHeader?.(result.account);
+        }
+        await Promise.allSettled([
+          this.refreshWalletData(),
+          this.accountListController?.loadWalletList()
+        ]);
+        window.refreshWalletSelects?.();
+      }
+    });
     this.unlockWalletController = new UnlockWalletController({
       wallet: this.wallet,
       onUnlocked: async () => {
@@ -169,6 +181,10 @@ export class PopupController {
     }
 
     if (startupState?.initialized === false) {
+      if (popupSessionState?.pageId === 'importPage') {
+        await this.restorePopupSessionState(popupSessionState);
+        return;
+      }
       showPage('welcomePage');
       return;
     }
@@ -207,6 +223,27 @@ export class PopupController {
       case 'mpcWalletDetailPage':
         await this.openAccountsPage();
         break;
+      case 'importPage': {
+        showPage('importPage');
+        const importPage = document.getElementById('importPage');
+        if (state.origin === 'accounts' || state.origin === 'welcome') {
+          importPage?.dataset && (importPage.dataset.origin = state.origin);
+        }
+        const type = state.importType || 'mnemonic';
+        const tab = document.querySelector(`.import-tab[data-type="${type}"]`);
+        const mnemonicSection = document.getElementById('mnemonicImportSection');
+        const privateKeySection = document.getElementById('privateKeyImportSection');
+        const fileSection = document.getElementById('fileImportSection');
+        const nameGroup = document.getElementById('importWalletNameGroup');
+        const importBtn = document.getElementById('importBtn');
+        document.querySelectorAll('.import-tab').forEach(item => item.classList.toggle('active', item === tab));
+        mnemonicSection?.classList.toggle('hidden', type !== 'mnemonic');
+        privateKeySection?.classList.toggle('hidden', type !== 'privateKey');
+        fileSection?.classList.toggle('hidden', type !== 'file');
+        nameGroup?.classList.toggle('hidden', type === 'file');
+        if (importBtn) importBtn.textContent = type === 'file' ? '导入备份' : '导入钱包';
+        break;
+      }
       case 'settingsPage':
         await this.openSettingsPage();
         break;

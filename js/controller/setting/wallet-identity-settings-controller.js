@@ -1,7 +1,9 @@
 import { showPage, showError, showSuccess, showWaiting, hideWaiting, generateQRCode, copyToClipboard } from '../../common/ui/index.js';
+import {
+  DEFAULT_IDENTITY_NODE_ENDPOINT,
+  IDENTITY_NODE_ENDPOINT_STORAGE_KEY
+} from '../../config/identity-config.js';
 
-const DEFAULT_NODE_ENDPOINT = 'https://node.yeying.pub';
-const ENDPOINT_STORAGE_KEY = 'walletIdentityNodeEndpoint';
 const VERIFICATION_STORAGE_PREFIX = 'walletIdentityVerification:';
 const EMAIL_VERIFICATION_STORAGE_PREFIX = 'walletIdentityEmailVerification:';
 const VERIFICATION_STATE_PENDING_EMAIL = 'pending-email';
@@ -93,16 +95,16 @@ export class WalletIdentitySettingsController {
 
   endpoint() {
     return String(
-      document.getElementById('walletIdentityEndpointInput')?.value || this.loadStoredEndpoint() || DEFAULT_NODE_ENDPOINT
+      document.getElementById('walletIdentityEndpointInput')?.value || this.loadStoredEndpoint() || DEFAULT_IDENTITY_NODE_ENDPOINT
     ).trim();
   }
 
   loadStoredEndpoint() {
-    try { return String(globalThis.localStorage?.getItem(ENDPOINT_STORAGE_KEY) || '').trim(); } catch { return ''; }
+    try { return String(globalThis.localStorage?.getItem(IDENTITY_NODE_ENDPOINT_STORAGE_KEY) || '').trim(); } catch { return ''; }
   }
 
   persistEndpoint(endpoint) {
-    try { globalThis.localStorage?.setItem(ENDPOINT_STORAGE_KEY, endpoint); } catch { /* storage may be unavailable */ }
+    try { globalThis.localStorage?.setItem(IDENTITY_NODE_ENDPOINT_STORAGE_KEY, endpoint); } catch { /* storage may be unavailable */ }
   }
 
   verificationStorageKey(endpoint, address) {
@@ -145,6 +147,52 @@ export class WalletIdentitySettingsController {
     } catch { return null; }
   }
 
+  credentialPayload(item) {
+    return this.decodeCredentialPayload(item?.credential || item?.jwt || item);
+  }
+
+  credentialTypes(item) {
+    const payload = this.credentialPayload(item);
+    const types = payload?.vc?.type || item?.type || [];
+    return new Set(Array.isArray(types) ? types : [types].filter(Boolean));
+  }
+
+  walletAccountCredentialMatches(item, account) {
+    if (!this.credentialTypes(item).has('WalletAccountCredential')) return false;
+    const subject = this.credentialPayload(item)?.vc?.credentialSubject || {};
+    const expectedChainKey = account?.chainKey || `eip155:${account?.chainId || 1}`;
+    return subject.chainKey === expectedChainKey
+      && String(subject.address || '').toLowerCase() === String(account?.address || '').toLowerCase();
+  }
+
+  identityCredentialsVerified(credentials, account) {
+    const items = Array.isArray(credentials) ? credentials : [];
+    const hasAccount = items.some(item => this.walletAccountCredentialMatches(item, account));
+    const hasEmail = items.some(item => this.credentialTypes(item).has('EmailCredential'));
+    const hasUsername = items.some(item => this.credentialTypes(item).has('UsernameCredential'));
+    return hasAccount && hasEmail && hasUsername;
+  }
+
+  async findIdentityLinkedToAccount(identities, account) {
+    if (typeof this.wallet.listIdentityCredentials !== 'function') return null;
+    const records = Array.isArray(identities?.identities) ? identities.identities : [];
+    const selectedId = identities?.selectedIdentityId || '';
+    const ordered = [...records].sort((left, right) => {
+      const leftSelected = left?.document?.walletIdentityId === selectedId ? 0 : 1;
+      const rightSelected = right?.document?.walletIdentityId === selectedId ? 0 : 1;
+      return leftSelected - rightSelected;
+    });
+    for (const record of ordered) {
+      const identityId = record?.document?.walletIdentityId;
+      if (!identityId) continue;
+      const result = await this.wallet.listIdentityCredentials(identityId);
+      if ((result?.credentials || []).some(item => this.walletAccountCredentialMatches(item, account))) {
+        return { identityId, credentials: result.credentials || [] };
+      }
+    }
+    return null;
+  }
+
   async renderIdentityVerificationAction() {
     const button = document.getElementById('walletIdentityVerifyBtn');
     if (!button) return;
@@ -155,13 +203,20 @@ export class WalletIdentitySettingsController {
       await this.renderAddressPicker(account);
       state = this.loadVerificationState(this.endpoint(), account?.address);
       const identities = await this.wallet.listIdentities();
-      const identityId = identities?.selectedIdentityId || identities?.identities?.[0]?.document?.walletIdentityId;
+      const linked = account ? await this.findIdentityLinkedToAccount(identities, account) : null;
+      if (linked && linked.identityId !== identities?.selectedIdentityId) {
+        await this.wallet.selectIdentity(linked.identityId);
+      }
+      const identityId = linked?.identityId || identities?.selectedIdentityId || identities?.identities?.[0]?.document?.walletIdentityId;
       if (!identityId) {
         state = '';
         this.persistVerificationState(this.endpoint(), account?.address, null);
-      } else if (state === VERIFICATION_STATE_COMPLETE) {
+      } else {
         const credentials = await this.wallet.listIdentityCredentials(identityId);
-        if (!Array.isArray(credentials?.credentials) || credentials.credentials.length === 0) {
+        if (this.identityCredentialsVerified(credentials?.credentials, account)) {
+          state = VERIFICATION_STATE_COMPLETE;
+          this.persistVerificationState(this.endpoint(), account?.address, state);
+        } else if (state === VERIFICATION_STATE_COMPLETE) {
           state = '';
           this.persistVerificationState(this.endpoint(), account?.address, null);
         }
@@ -234,15 +289,14 @@ export class WalletIdentitySettingsController {
         if (subject.email) { hasEmailCredential = true; values.email = subject.email; }
         if (subject.avatar || subject.avatarUri) values.avatarUri = subject.avatar || subject.avatarUri;
       }
-      const verified = this.loadVerificationState(this.endpoint(), account?.address) === VERIFICATION_STATE_COMPLETE
-        && hasAccountCredential && hasEmailCredential && hasUsernameCredential;
+      const verified = this.identityCredentialsVerified(credentials?.credentials, account);
       this.setDetailValue('walletIdentityDetailStatusPage', verified ? '已验证' : '未验证');
       this.setDetailValue('walletIdentityDetailUsernamePage', values.username);
       this.setDetailValue('walletIdentityDetailEmailPage', values.email);
       this.setDetailAvatar(values.avatarUri || defaultAvatarUri(identityId || account?.address));
       this.setCopyableDetailValue('walletIdentityDetailAddressPage', account?.address || '-', this.formatCompactIdentityValue(account?.address, 12, 8));
       this.setCopyableDetailValue('walletIdentityDetailDidPage', identity?.document?.id || '-', this.formatCompactIdentityValue(identity?.document?.id, 18, 10));
-      this.setDetailValue('walletIdentityDetailEndpointPage', this.endpoint() || DEFAULT_NODE_ENDPOINT);
+      this.setDetailValue('walletIdentityDetailEndpointPage', this.endpoint() || DEFAULT_IDENTITY_NODE_ENDPOINT);
       showPage('walletIdentityDetailPage');
       await Promise.all([
         this.refreshIdentityPasskeySummary({ quiet: true }),
@@ -459,7 +513,7 @@ export class WalletIdentitySettingsController {
 
   async load() {
     const input = document.getElementById('walletIdentityEndpointInput');
-    if (input && !input.value) input.value = this.loadStoredEndpoint() || DEFAULT_NODE_ENDPOINT;
+    if (input && !input.value) input.value = this.loadStoredEndpoint() || DEFAULT_IDENTITY_NODE_ENDPOINT;
     await this.renderIdentityVerificationAction();
   }
 
@@ -654,7 +708,12 @@ export class WalletIdentitySettingsController {
       await this.wallet.switchAccount(account.id, password);
     }
     const identities = await this.wallet.listIdentities();
+    const linkedIdentity = await this.findIdentityLinkedToAccount(identities, account);
+    if (linkedIdentity && linkedIdentity.identityId !== identities?.selectedIdentityId) {
+      await this.wallet.selectIdentity(linkedIdentity.identityId);
+    }
     let identityId = identities?.selectedIdentityId || identities?.identities?.[0]?.document?.walletIdentityId;
+    if (linkedIdentity?.identityId) identityId = linkedIdentity.identityId;
     if (!identityId) {
       const created = await this.wallet.createIdentity(password);
       identityId = created?.document?.walletIdentityId;
@@ -681,20 +740,30 @@ export class WalletIdentitySettingsController {
         accountSignature
       });
     } catch (error) {
+      if (String(error?.message || error || '').includes('IDENTITY_ACCOUNT_ALREADY_LINKED')) {
+        throw new Error('当前钱包地址已关联其他钱包身份，请切换到已关联该地址的钱包身份');
+      }
       if (!this.isDuplicateAccountLinkError(error)) throw error;
       linkResult = { verifiedAt: new Date().toISOString(), duplicate: true };
     }
-    if (!linkResult?.verifiedAt || !linkResult?.credential?.credential) throw new Error('Node 未返回钱包账户关联凭证');
     const storedCredentials = await this.wallet.listIdentityCredentials(identityId);
-    const linkSubject = this.decodeCredentialPayload(linkResult.credential.credential)?.vc?.credentialSubject || {};
+    let linkCredential = linkResult?.credential;
+    if (!linkCredential?.credential) {
+      linkCredential = (storedCredentials?.credentials || []).find(item => this.walletAccountCredentialMatches(item, account));
+    }
+    if (!linkResult?.verifiedAt || !linkCredential) throw new Error('Node 未返回钱包账户关联凭证');
+    const linkToken = linkCredential?.credential || linkCredential?.jwt || linkCredential;
+    const linkSubject = this.decodeCredentialPayload(linkToken)?.vc?.credentialSubject || {};
     const mergedCredentials = (storedCredentials?.credentials || []).filter(item => {
-      const subject = this.decodeCredentialPayload(item?.credential || item)?.vc?.credentialSubject || {};
-      const types = this.decodeCredentialPayload(item?.credential || item)?.vc?.type || [];
+      const token = item?.credential || item?.jwt || item;
+      const decoded = this.decodeCredentialPayload(token);
+      const subject = decoded?.vc?.credentialSubject || {};
+      const types = decoded?.vc?.type || [];
       return !types.includes('WalletAccountCredential')
         || subject.chainKey !== linkSubject.chainKey
         || String(subject.address || '').toLowerCase() !== String(linkSubject.address || '').toLowerCase();
     });
-    mergedCredentials.push(linkResult.credential);
+    mergedCredentials.push(linkCredential);
     await this.wallet.saveIdentityCredentials(mergedCredentials, identityId);
     const verificationTypes = ['email', 'username', ...(avatarUri ? ['avatar'] : [])];
     const requested = await this.wallet.requestIdentityVerification(endpoint, {

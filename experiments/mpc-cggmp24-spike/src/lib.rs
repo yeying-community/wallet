@@ -1,3 +1,5 @@
+use cggmp24::backend::Integer;
+use cggmp24::key_refresh::PregeneratedPrimes;
 use cggmp24::key_share::AnyKeyShare;
 use cggmp24::supported_curves::Secp256k1;
 use cggmp24::{aux_info_gen, signing, trusted_dealer, DataToSign, ExecutionId, KeyShare, Signature};
@@ -638,6 +640,21 @@ impl Cggmp24ThresholdKeygenSession {
     }
 }
 
+/// Generates a single RSA safe prime (RSA_PRIME_BITLEN) seeded deterministically.
+///
+/// Aux-info needs four such primes (`PregeneratedPrimes`). `PregeneratedPrimes::generate`
+/// searches all four serially, which dominates aux-info wall-clock. This export lets the
+/// four searches run in parallel Web Workers; the results are assembled via
+/// `Cggmp24AuxInfoSession::newWithPrimes`. Any four independently-generated safe primes of
+/// the correct size are valid (`try_from` only checks size), so parallel search is sound
+/// and does not change the security profile.
+#[wasm_bindgen(js_name = generateAuxPrimeJson)]
+pub fn generate_aux_prime_json(seed_hex: String) -> Result<String, JsValue> {
+    let mut rng = rng_from_seed_hex(&seed_hex)?;
+    let prime = Integer::generate_safe_prime(&mut rng, RSA_PRIME_BITLEN);
+    serde_json::to_string(&prime).map_err(to_js_error)
+}
+
 #[wasm_bindgen]
 pub struct Cggmp24AuxInfoSession {
     session_id: String,
@@ -709,6 +726,52 @@ impl Cggmp24AuxInfoSession {
         let rng: &'static mut StdRng = Box::leak(Box::new(rng_from_seed_hex(&seed_hex)?));
         let pregenerated =
             cggmp24::key_refresh::PregeneratedPrimes::<SpikeSecurityLevel>::generate(rng);
+        let state = aux_info_gen::<SpikeSecurityLevel>(
+            ExecutionId::new(eid_bytes),
+            sender_index,
+            party_count,
+            pregenerated,
+        )
+        .set_digest::<Sha256>()
+        .enforce_reliable_broadcast(false)
+        .into_state_machine(rng);
+
+        Ok(Cggmp24AuxInfoSession {
+            session_id,
+            sender_index,
+            state: Some(Box::new(state)),
+            outgoing: Vec::new(),
+            result: None,
+            status: "running".to_string(),
+            error: None,
+        })
+    }
+
+    /// Constructs an aux-info session from four pre-generated safe primes (JSON array),
+    /// bypassing the serial `PregeneratedPrimes::generate`. Pair with `generateAuxPrimeJson`
+    /// run across parallel workers to cut construction wall-clock.
+    #[wasm_bindgen(js_name = newWithPrimes)]
+    pub fn new_with_primes(
+        session_id: String,
+        sender_index: u16,
+        party_count: u16,
+        primes_json: String,
+        seed_hex: String,
+    ) -> Result<Cggmp24AuxInfoSession, JsValue> {
+        if session_id.trim().is_empty() {
+            return Err(JsValue::from_str("MPC_SESSION_ID_REQUIRED"));
+        }
+        if party_count == 0 || sender_index >= party_count {
+            return Err(JsValue::from_str("INVALID_MPC_PARTICIPANT_INDEX"));
+        }
+
+        let primes: [Integer; 4] = serde_json::from_str(&primes_json).map_err(to_js_error)?;
+        let pregenerated = PregeneratedPrimes::<SpikeSecurityLevel>::try_from(primes)
+            .map_err(|_| JsValue::from_str("MPC_AUX_PRIME_SIZE_INVALID"))?;
+
+        let eid_bytes = format!("{}:aux-info:0", session_id).into_bytes();
+        let eid_bytes: &'static [u8] = Box::leak(eid_bytes.into_boxed_slice());
+        let rng: &'static mut StdRng = Box::leak(Box::new(rng_from_seed_hex(&seed_hex)?));
         let state = aux_info_gen::<SpikeSecurityLevel>(
             ExecutionId::new(eid_bytes),
             sender_index,

@@ -19,6 +19,10 @@ function setupDom() {
   const doc = createDocument({
     importPage: { tagName: 'div' },
     welcomePage: { tagName: 'div' },
+    custodyRecoveryPage: { tagName: 'div' },
+    custodyRecoveryCount: { tagName: 'div' },
+    custodyRecoveryList: { tagName: 'div' },
+    custodyRecoveryPassword: { tagName: 'input' },
     accountsPage: { tagName: 'div' },
     walletPage: { tagName: 'div' },
     importAccountName: { tagName: 'input' },
@@ -97,6 +101,155 @@ test('首次导入入口：打开导入页前清空上次残留的敏感输入',
   assert.equal(elements.importPasswordLabel.textContent, '密码');
   assert.equal(elements.importWalletPassword.placeholder, '至少8位字符');
   assertImportFormCleared();
+});
+
+test('托管恢复读取当前身份服务地址', () => {
+  const previousStorage = globalThis.localStorage;
+  globalThis.localStorage = {
+    getItem(key) {
+      return key === 'walletIdentityNodeEndpoint' ? 'http://localhost:8100/' : '';
+    }
+  };
+  try {
+    const c = new WelcomeController();
+    assert.equal(c.identityNodeEndpoint(), 'http://localhost:8100');
+  } finally {
+    if (previousStorage === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = previousStorage;
+  }
+});
+
+test('云端密钥恢复列表展示钱包数量、名称、账户数和 Wallet Identity DID', async () => {
+  const previousChrome = globalThis.chrome;
+  const identityDid = 'did:yeying:wid_1234567890123456789012';
+  globalThis.chrome = {
+    storage: {
+      local: {
+        async get() {
+          return {
+            walletRecoveryAuthorization: {
+              token: 'recovery-token',
+              endpoint: 'http://localhost:8100',
+              identityDid
+            }
+          };
+        }
+      }
+    }
+  };
+  try {
+    const c = new WelcomeController({
+      wallet: {
+        async listCustodySecrets() {
+          return {
+            success: true,
+            secrets: {
+              identityDid,
+              records: [{
+                walletId: 'wallet_1782978556067_sroz69v',
+                metadata: { walletName: '工作钱包', accountCount: 3 }
+              }]
+            }
+          };
+        }
+      }
+    });
+    await c.loadCustodyRecoveryRecords();
+
+    assert.equal(elements.custodyRecoveryList.children.length, 1);
+    assert.equal(elements.custodyRecoveryCount.textContent, '共 1 个云端托管钱包');
+    assert.equal(elements.custodyRecoveryList.children[0].children[0].textContent, '工作钱包');
+    assert.equal(elements.custodyRecoveryList.children[0].children[1].textContent, '3 个账户');
+    assert.equal(elements.custodyRecoveryList.children[0].children[2].textContent, identityDid);
+    assert.equal(c.recoveryWalletId, 'wallet_1782978556067_sroz69v');
+  } finally {
+    if (previousChrome === undefined) delete globalThis.chrome;
+    else globalThis.chrome = previousChrome;
+  }
+});
+
+test('云端恢复拒绝授权 DID 和托管服务 DID 不一致', async () => {
+  const previousChrome = globalThis.chrome;
+  globalThis.chrome = {
+    storage: {
+      local: {
+        async get() {
+          return {
+            walletRecoveryAuthorization: {
+              token: 'recovery-token',
+              endpoint: 'http://localhost:8100',
+              identityDid: 'did:yeying:wid_1234567890123456789012'
+            }
+          };
+        }
+      }
+    }
+  };
+  try {
+    const c = new WelcomeController({
+      wallet: {
+        async listCustodySecrets() {
+          return {
+            success: true,
+            secrets: {
+              identityDid: 'did:yeying:wid_abcdefghijklmnopqrstuv',
+              records: [{ walletId: 'wallet-1' }]
+            }
+          };
+        }
+      }
+    });
+    await assert.rejects(
+      () => c.loadCustodyRecoveryRecords(),
+      error => error?.message === '恢复授权的钱包身份不匹配'
+    );
+  } finally {
+    if (previousChrome === undefined) delete globalThis.chrome;
+    else globalThis.chrome = previousChrome;
+  }
+});
+
+test('云端恢复成功后刷新钱包首页数据', async () => {
+  const previousChrome = globalThis.chrome;
+  let restored = 0;
+  let refreshed = 0;
+  globalThis.chrome = {
+    storage: {
+      local: {
+        async get() {
+          return {
+            walletRecoveryAuthorization: {
+              token: 'recovery-token',
+              endpoint: 'http://localhost:8100'
+            }
+          };
+        },
+        async remove() {}
+      }
+    }
+  };
+  elements.custodyRecoveryPassword.value = 'Custody-Test-Password';
+  try {
+    const c = new WelcomeController({
+      wallet: {
+        async restoreCustodySecret() {
+          restored += 1;
+          return { account: { address: '0x1111111111111111111111111111111111111111' } };
+        }
+      },
+      onRecoverySuccess: async () => { refreshed += 1; }
+    });
+    c.recoveryWalletId = 'wallet-1';
+
+    await c.restoreSelectedCustodyWallet();
+
+    assert.equal(restored, 1);
+    assert.equal(refreshed, 1);
+    assert.equal(elements.custodyRecoveryPassword.value, '');
+  } finally {
+    if (previousChrome === undefined) delete globalThis.chrome;
+    else globalThis.chrome = previousChrome;
+  }
 });
 
 test('账户管理导入入口：打开导入页前清空首次导入残留的敏感输入', () => {

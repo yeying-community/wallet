@@ -52,6 +52,35 @@ test('encrypted account file restores HD accounts and metadata', async () => {
   assert.equal(restored.find(account => account.index === 1)?.name, 'Savings');
 });
 
+test('encrypted account file carries the identity service endpoint and restores it', async () => {
+  await clearAllData();
+  const { wallet, mainAccount } = await createHDWallet('Primary', PASSWORD);
+  await saveWallet(wallet);
+  await saveAccount(mainAccount);
+
+  const exported = await handleExportAccountsFile(PASSWORD, 'http://localhost:8100/');
+  assert.equal(exported.success, true);
+
+  await clearAllData();
+  const imported = await handleImportAccountsFile(exported.file, PASSWORD);
+  assert.equal(imported.success, true);
+  assert.equal(imported.identityEndpoint, 'http://localhost:8100');
+});
+
+test('legacy encrypted account file without an identity endpoint remains importable', async () => {
+  await clearAllData();
+  const { wallet, mainAccount } = await createHDWallet('Primary', PASSWORD);
+  await saveWallet(wallet);
+  await saveAccount(mainAccount);
+
+  const exported = await handleExportAccountsFile(PASSWORD);
+  assert.equal(exported.success, true);
+
+  await clearAllData();
+  const imported = await handleImportAccountsFile(exported.file, PASSWORD);
+  assert.deepEqual(imported, { success: true, imported: 1, skipped: 0 });
+});
+
 test('wrong password cannot import encrypted account file', async () => {
   await clearAllData();
   const { wallet, mainAccount } = await createHDWallet('Primary', PASSWORD);

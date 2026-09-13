@@ -194,6 +194,22 @@ test('refreshWalletData：tokensContent 隐藏时不调 loadTokenBalances', asyn
   assert.equal(tokens, 0);
 });
 
+test('云端恢复成功后立即更新账户头部并刷新首页数据', async () => {
+  const c = new PopupController({ wallet: fakeWallet(), transaction: {}, network: {}, token: {} });
+  const calls = { header: 0, refresh: 0, list: 0 };
+  const account = { id: 'account-1', name: '恢复账户', address: '0x1111111111111111111111111111111111111111' };
+  c.accountHeaderController.updateHeader = (value) => {
+    assert.equal(value, account);
+    calls.header += 1;
+  };
+  c.refreshWalletData = async () => { calls.refresh += 1; };
+  c.accountListController.loadWalletList = async () => { calls.list += 1; };
+
+  await c.welcomeController.onRecoverySuccess({ account });
+
+  assert.deepEqual(calls, { header: 1, refresh: 1, list: 1 });
+});
+
 test('startTransactionPolling：开启 setInterval，stopTransactionPolling 清理', () => {
   const c = new PopupController({ wallet: fakeWallet(), transaction: {}, network: {}, token: {} });
   c.startTransactionPolling();

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { credentialIsFresh, mergeCredentials, missingCredentialTypes, requestCredentialTypes, selectFreshCredentials } from '../js/background/identity-presentation.js';
+import { credentialIsFresh, mergeCredentials, missingCredentialTypes, requestCredentialTypes, selectFreshCredentials, credentialIssuerEndpoint } from '../js/background/identity-presentation.js';
 
 function credential(payload) {
   return {
@@ -50,4 +50,20 @@ test('merge credentials replaces stale credentials by credential type', () => {
   const newAvatar = { type: 'AvatarCredential', credential: credential({ vc: { type: ['VerifiableCredential', 'AvatarCredential'] }, exp: 2 }).credential };
 
   assert.deepEqual(mergeCredentials([oldEmail, username, oldAvatar], [newEmail, newAvatar]), [username, newEmail, newAvatar]);
+});
+
+test('restored credentials determine the issuer endpoint for renewal', () => {
+  const token = credential({
+    iss: 'http://localhost:8100',
+    vc: { type: ['VerifiableCredential', 'WalletAccountCredential'] },
+    exp: 9999999999
+  }).credential;
+  assert.equal(credentialIssuerEndpoint([{ credential: token }]), 'http://localhost:8100');
+  const didToken = credential({
+    iss: 'did:web:localhost:8100',
+    vc: { type: ['VerifiableCredential', 'WalletAccountCredential'] },
+    exp: 9999999999
+  }).credential;
+  assert.equal(credentialIssuerEndpoint([{ credential: didToken }]), 'http://localhost:8100');
+  assert.equal(credentialIssuerEndpoint([{ credential: 'invalid' }]), '');
 });

@@ -81,6 +81,34 @@ function credentialPayload(credential) {
   return credential?.payload || decodeCredentialPayload(credentialToken(credential));
 }
 
+function credentialIssuerEndpoint(credentials) {
+  for (const credential of credentials || []) {
+    const issuer = String(credentialPayload(credential)?.iss || '').trim();
+    if (!issuer) continue;
+    if (issuer.startsWith('did:web:')) {
+      const host = issuer.slice('did:web:'.length).split(':');
+      if (host.length >= 1 && host[0]) {
+        const hostname = host[0];
+        const port = host.length > 1 ? Number(host[1]) : 0;
+        if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+          return `http://${hostname}${Number.isInteger(port) && port > 0 ? `:${port}` : ''}`;
+        }
+        return `https://${issuer.slice('did:web:'.length)}`;
+      }
+    }
+    try {
+      const url = new URL(issuer);
+      if ((url.protocol === 'http:' || url.protocol === 'https:') && url.hostname) {
+        url.hash = '';
+        url.search = '';
+        url.pathname = url.pathname.replace(/\/+$/, '');
+        return url.toString().replace(/\/$/, '');
+      }
+    } catch { /* Ignore malformed issuer claims and continue. */ }
+  }
+  return '';
+}
+
 function credentialIsFresh(credential, now = Date.now()) {
   const payload = credentialPayload(credential);
   const exp = Number(payload?.exp || 0);
@@ -198,7 +226,9 @@ export async function requestIdentityPresentation({ account, params, origin, pas
     purpose: 'manage'
   });
   const missingTypes = missingCredentialTypes(selectedCredentials, request.scopes);
-  const issuerEndpoint = String(request.issuerEndpoint || DEFAULT_ISSUER_ENDPOINT).trim();
+  // Restored credentials carry the authoritative issuer URL. Use it for
+  // renewal unless the DApp explicitly supplies an issuer endpoint.
+  const issuerEndpoint = String(request.issuerEndpoint || credentialIssuerEndpoint(credentials) || DEFAULT_ISSUER_ENDPOINT).trim();
   let reissueError = null;
   if (missingTypes.length > 0 && issuerEndpoint) {
     try {
@@ -236,4 +266,4 @@ export async function requestIdentityPresentation({ account, params, origin, pas
   return { ...unsigned, proof: { type: 'YeyingIdentityPresentationProofV1', verificationMethod: `${record.document.id}#${record.controllerId}`, purpose: 'authentication', proofValue: toBase64Url(new Uint8Array(signature)) } };
 }
 
-export { METHOD, credentialIsFresh, requestCredentialTypes, selectFreshCredentials, missingCredentialTypes, mergeCredentials };
+export { METHOD, credentialIsFresh, requestCredentialTypes, selectFreshCredentials, missingCredentialTypes, mergeCredentials, credentialIssuerEndpoint };

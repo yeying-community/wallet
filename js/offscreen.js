@@ -50,6 +50,17 @@ function ensureMpcAuxWorker() {
       pending.reject(new Error(event?.message || 'MPC_AUX_INFO_WORKER_FAILED'));
     }
   };
+  // A structured-clone failure on an inbound worker message would otherwise be
+  // silently dropped, stalling aux-info. Reject all pending requests so the
+  // error bubbles up to the pump and triggers a generational retry.
+  mpcAuxWorker.onmessageerror = (event) => {
+    console.warn('[MPC_AUX_WORKER] worker message error', event);
+    for (const [id, pending] of pendingMpcAuxRequests.entries()) {
+      pendingMpcAuxRequests.delete(id);
+      clearTimeout(pending.timer);
+      pending.reject(new Error('MPC_AUX_INFO_WORKER_MESSAGE_ERROR'));
+    }
+  };
   return mpcAuxWorker;
 }
 
@@ -73,6 +84,22 @@ async function requestMpcAuxWorker(operation, payload) {
 function initMpcAuxChannel() {
   if (typeof BroadcastChannel === 'undefined' || mpcAuxChannel) return;
   mpcAuxChannel = new BroadcastChannel(MPC_AUX_CHANNEL_NAME);
+  mpcAuxChannel.onmessageerror = (event) => {
+    // A request that cannot be structured-cloned across the channel is
+    // undeliverable. Best-effort notify the requester so it fails fast instead
+    // of waiting for the 15-minute request timeout.
+    const message = event?.data || {};
+    console.warn('[MPC_AUX_WORKER] channel message error', message?.id || '');
+    if (message?.id) {
+      mpcAuxChannel.postMessage({
+        scope: 'mpc-aux-info',
+        kind: 'response',
+        id: message.id,
+        success: false,
+        error: 'MPC_AUX_INFO_CHANNEL_MESSAGE_ERROR'
+      });
+    }
+  };
   mpcAuxChannel.onmessage = async (event) => {
     const message = event?.data || {};
     if (message.scope !== 'mpc-aux-info' || message.kind !== 'request') return;

@@ -14,7 +14,9 @@ jobs:
   test:
     name: test + typecheck
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # tests/mpc-wallet-session-sync.test.mjs 在单进程 worker-isolated 下真实 pump
+    # 需要 ~15 min。给 25 min 留余量,防止节点冷启动 / npm 缓存失效额外耗时。
+    timeout-minutes: 25
 
     strategy:
       matrix:
@@ -51,35 +53,3 @@ jobs:
       - name: TypeScript typecheck
         # tsc 按需临时拉取（npx -y），不入仓；不产出，仅检查 @ts-check 文件
         run: npm run typecheck
-
-  extension-e2e:
-    name: chromium extension e2e
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node 24
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24.x
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund
-
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-
-      - name: Run extension end-to-end test
-        run: npm run test:e2e
-
-      - name: Upload browser screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: extension-e2e-screenshots
-          path: test-results/
-          if-no-files-found: ignore

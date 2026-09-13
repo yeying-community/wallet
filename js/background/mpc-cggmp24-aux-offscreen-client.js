@@ -91,6 +91,27 @@ export class MpcAuxInfoOffscreenClient {
   _ensureChannel() {
     if (this.channel) return;
     this.channel = new BroadcastChannel(CHANNEL_NAME);
+    // A structured-clone failure on an inbound message would otherwise be
+    // silently dropped, stalling aux-info forever. Reject matching pending
+    // requests so the error propagates into the aux-info pump and triggers
+    // a generational retry. If `data.id` is unreadable (clone failure), reject
+    // every outstanding pending request as a last-resort fail-fast.
+    this.channel.onmessageerror = (event) => {
+      const message = event?.data || {};
+      const pendingId = message?.id;
+      if (pendingId && this.pending.has(pendingId)) {
+        const pending = this.pending.get(pendingId);
+        this.pending.delete(pendingId);
+        clearTimeout(pending.timer);
+        pending.reject(new Error('MPC_AUX_INFO_OFFSCREEN_MESSAGE_ERROR'));
+        return;
+      }
+      for (const [id, pending] of this.pending.entries()) {
+        this.pending.delete(id);
+        clearTimeout(pending.timer);
+        pending.reject(new Error('MPC_AUX_INFO_OFFSCREEN_MESSAGE_ERROR'));
+      }
+    };
     this.channel.onmessage = (event) => {
       const message = event?.data || {};
       if (message.scope !== 'mpc-aux-info' || message.kind !== 'response') return;
