@@ -12,6 +12,7 @@ import {
   getAccountList,
   getSelectedAccount,
   getWalletAccounts,
+  setSelectedAccountId,
   saveWallet,
   saveAccount
 } from '../../storage/index.js';
@@ -460,6 +461,13 @@ export async function handleRestoreCustodySecret(options = {}) {
     await validateCustodyIdentityMaterials(material.identities, password);
     const result = await importOrReuseCustodyWallet(material, password);
     if (!result?.success) throw new Error(result?.error || '恢复钱包失败');
+    // Recovery must make the restored primary account the active account.
+    // Otherwise presentation requests can continue using the account that
+    // happened to be selected before recovery, which has no matching wallet
+    // credential and yields IDENTITY_WALLET_NOT_VERIFIED.
+    if (result.account?.id) {
+      await setSelectedAccountId(result.account.id);
+    }
     for (const [identityId, identity] of Object.entries(material.identities)) {
       await saveIdentity(identityId, identity);
     }
