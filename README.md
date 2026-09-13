@@ -82,5 +82,6 @@ curl -o qrcode.min.js https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js
 - 一键全部跑：`npm run test:all`
 - CI：`.github/workflows/ci.yml` 自动跑 `npm test` + `npm run test:sync` + `npm run test:approval` + `npm run typecheck`（Node 22.x）。
 - 审批弹窗复用回归脚本：`node --experimental-vm-modules tests/test-approval-flow.mjs`
+- 端到端测试(MV3 extension 在真实 Chromium 下驱动 popup + dApp):已下放到同仓 `../tester/products/wallet/`(`yeying-tester` 仓的 Playwright 项目)。设 `WALLET_EXTENSION_PATH` 指向本仓根目录,跑 `pnpm test:wallet`。
 - 类型检查（JSDoc + `// @ts-check`，按需临时拉 tsc，不入库 node_modules）：`npx -y -p typescript@5 tsc -p tsconfig.json`
   - `tsconfig.json` 设 `checkJs:false`，仅检查带 `// @ts-check` 的文件；新增注解文件自动纳入。
