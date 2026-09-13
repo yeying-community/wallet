@@ -43,7 +43,19 @@ export class PopupController {
     this.transactionPollingTimer = null;
     this.storageUnsubscribe = null;
 
-    this.welcomeController = new WelcomeController({ wallet: this.wallet });
+    this.welcomeController = new WelcomeController({
+      wallet: this.wallet,
+      onRecoverySuccess: async (result) => {
+        if (result?.account) {
+          this.accountHeaderController?.updateHeader?.(result.account);
+        }
+        await Promise.allSettled([
+          this.refreshWalletData(),
+          this.accountListController?.loadWalletList()
+        ]);
+        window.refreshWalletSelects?.();
+      }
+    });
     this.unlockWalletController = new UnlockWalletController({
       wallet: this.wallet,
       onUnlocked: async () => {

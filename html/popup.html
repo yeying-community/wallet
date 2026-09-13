@@ -35,23 +35,45 @@
           导入钱包
         </button>
         <button id="welcomeRecoverWalletBtn" class="btn btn-secondary">
-          恢复托管钱包
+          云端密钥恢复
         </button>
+      </div>
+
+      <div id="custodyRecoveryEndpointModal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>选择身份服务</h3>
+            <button id="closeCustodyRecoveryEndpointModal" class="btn-close" type="button">✕</button>
+          </div>
+          <div class="modal-body">
+            <p class="settings-hint">恢复授权和托管记录都将访问此身份服务。请使用保存托管记录的 Node 地址。</p>
+            <div class="form-group">
+              <label for="custodyRecoveryEndpointInput">身份服务地址</label>
+              <input id="custodyRecoveryEndpointInput" class="input" type="url" autocomplete="url" placeholder="https://node.yeying.pub" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="cancelCustodyRecoveryEndpointBtn" class="btn btn-secondary" type="button">取消</button>
+            <button id="confirmCustodyRecoveryEndpointBtn" class="btn btn-primary" type="button">继续</button>
+          </div>
+        </div>
       </div>
 
       <div id="custodyRecoveryPage" class="page hidden">
         <div class="page-header">
           <button id="custodyRecoveryBackBtn" class="back-btn" type="button">←</button>
-          <h2>恢复托管钱包</h2>
+          <h2>云端密钥恢复</h2>
         </div>
         <div class="settings-body">
-          <p class="settings-card-description">选择要恢复的钱包，并输入创建托管记录时使用的钱包密码。</p>
+          <p class="settings-card-description">确认要恢复的钱包身份，并输入创建云端托管记录时使用的钱包密码。</p>
+          <div id="custodyRecoveryCount" class="custody-recovery-count"></div>
           <div id="custodyRecoveryList" class="custody-summary"></div>
           <div class="form-group">
-            <label for="custodyRecoveryPassword">原钱包密码</label>
+            <label for="custodyRecoveryPassword">托管钱包密码</label>
             <input id="custodyRecoveryPassword" class="input" type="password" autocomplete="current-password" />
           </div>
-          <button id="custodyRecoveryConfirmBtn" class="btn btn-primary btn-block" type="button">恢复钱包</button>
+          <button id="custodyRecoveryConfirmBtn" class="btn btn-primary btn-block" type="button">开始恢复</button>
         </div>
       </div>
 
@@ -972,15 +994,15 @@
             <p class="settings-hint">查看同步日志，支持搜索与翻页</p>
           </div>
 
-          <!-- 密钥托管 -->
+          <!-- 云端密钥托管 -->
           <div class="settings-section" id="custodySettingsSection">
             <div class="settings-section-heading">
-              <h3>🛡️ 密钥托管</h3>
+              <h3>🛡️ 云端密钥托管</h3>
               <div class="settings-section-heading-actions">
-                <label class="settings-toggle settings-section-toggle" title="启用密钥托管">
+                <label class="settings-toggle settings-section-toggle" title="启用云端密钥托管">
                   <input type="checkbox" id="custodyEnabledToggle" />
                   <span class="settings-switch" aria-hidden="true"></span>
-                  <span class="sr-only">启用密钥托管</span>
+                  <span class="sr-only">启用云端密钥托管</span>
                 </label>
               </div>
             </div>
@@ -1454,14 +1476,14 @@
           </div>
       </div>
 
-      <!-- 密钥托管详情 -->
+      <!-- 云端密钥托管详情 -->
       <div id="custodyDetailPage" class="page hidden">
           <div class="page-header">
             <button class="back-btn" type="button">←</button>
-            <h2>密钥托管</h2>
+            <h2>云端密钥托管</h2>
           </div>
           <div class="settings-body">
-            <p class="settings-card-description">密钥托管会把加密后的恢复资料交给受信服务，方便你在新设备恢复钱包；服务不会看到你的明文私钥。</p>
+            <p class="settings-card-description">云端密钥托管会把加密后的恢复资料交给受信服务，方便你在新设备恢复钱包；服务不会看到你的明文私钥。</p>
             <div class="custody-summary" aria-live="polite">
               <div class="custody-summary-row"><span>托管服务</span><span class="custody-summary-value" id="custodyServiceName">夜莺密钥托管服务</span></div>
               <div class="custody-summary-row"><span>当前状态</span><span class="custody-summary-value" id="custodyStatusText">尚未配置</span></div>
@@ -1553,12 +1575,12 @@
         </div>
       </div>
 
-      <!-- 密钥托管服务配置 -->
+      <!-- 云端密钥托管服务配置 -->
       <div id="custodyConfigModal" class="modal hidden">
         <div class="modal-overlay"></div>
         <div class="modal-content">
           <div class="modal-header">
-            <h3>密钥托管配置</h3>
+            <h3>云端密钥托管配置</h3>
             <button class="btn-close" id="closeCustodyConfigModal">✕</button>
           </div>
           <div class="modal-body">

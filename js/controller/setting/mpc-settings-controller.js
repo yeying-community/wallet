@@ -491,7 +491,7 @@ export class MpcSettingsController {
     if (endpointInput) endpointInput.value = endpoint;
     if (syncButton) {
       syncButton.disabled = !settings.enabled;
-      syncButton.title = settings.enabled ? '立即同步托管数据' : '请先开启密钥托管';
+      syncButton.title = settings.enabled ? '立即同步托管数据' : '请先开启云端密钥托管';
     }
 
     if (statusText) {
@@ -539,7 +539,7 @@ export class MpcSettingsController {
   async handleCustodySave() {
     try {
       await this.saveCustodyFormSettings();
-      showSuccess('托管配置已保存');
+      showSuccess('云端密钥托管配置已保存');
       this.closeCustodyConfigModal();
     } catch (error) {
       console.error('[MpcSettings] 保存托管配置失败:', error);
@@ -576,7 +576,7 @@ export class MpcSettingsController {
   async handleCustodySync() {
     try {
       const settings = this.custodySettings || {};
-      if (!settings.enabled) throw new Error('请先开启密钥托管');
+      if (!settings.enabled) throw new Error('请先开启云端密钥托管');
       const password = await this.requestPassword?.();
       if (!password) return;
       showWaiting();
@@ -613,7 +613,7 @@ export class MpcSettingsController {
         this.custodySettings = result.settings;
         this.renderCustodySettings(result.settings);
       }
-      showSuccess(enabled ? '密钥托管已开启' : '密钥托管已关闭');
+      showSuccess(enabled ? '云端密钥托管已开启' : '云端密钥托管已关闭');
     } catch (error) {
       console.error('[MpcSettings] 更新托管开关失败:', error);
       if (toggle) toggle.checked = !enabled;
