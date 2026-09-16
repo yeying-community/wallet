@@ -75,13 +75,18 @@ select.input,
   letter-spacing: 0;
 }
 
+html {
+  height: 100%;
+}
+
 body {
   width: 380px;
-  min-height: 600px;
+  height: 100%;
+  min-height: 100vh;
   font-family: var(--font-sans);
   /* 余额/地址/价格等数字在等宽数字下对齐：避免「100」「1000」参差 */
   font-variant-numeric: tabular-nums;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #ffffff;
   color: #111827;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -90,7 +95,8 @@ body {
 
 .container {
   background: white;
-  min-height: 600px;
+  min-height: 100vh;
+  height: 100%;
 }
 
 .page {
