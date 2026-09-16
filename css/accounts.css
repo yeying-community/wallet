@@ -50,7 +50,8 @@
 .account-manage-container {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 91px); /* 71px(page-header) + 20px(top padding) */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .wallet-list-wrapper {
@@ -231,11 +232,11 @@
 }
 
 .mpc-wallet-detail-modal {
-  max-height: min(640px, calc(100vh - 32px));
+  max-height: calc(var(--popup-height) - 32px);
 }
 
 #mpcWalletDetailPage {
-  height: 100vh;
+  height: 100%;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -696,7 +697,7 @@
 
 #accountDetailPage {
   display: block;
-  height: 100vh;
+  height: 100%;
   box-sizing: border-box;
   overflow-y: auto;
   overscroll-behavior: contain;

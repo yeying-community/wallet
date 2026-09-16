@@ -38,6 +38,9 @@
 }
 
 :root {
+  --popup-width: 380px;
+  --popup-height: 600px;
+
   /* 英文观感统一：跨平台系统字体兜底，中文走各平台原生中文栈。
      解决旧栈 'SF Pro Text'（仅 macOS）在 Windows/Linux 上完全回退到 Segoe UI
      导致中英文字重/字距不齐的问题。 */
@@ -76,10 +79,10 @@ select.input,
 }
 
 body {
-  width: 380px;
+  width: var(--popup-width);
   /* Chrome action popups size themselves from intrinsic content. A
      percentage/viewport height collapses during the initial layout. */
-  min-height: 600px;
+  min-height: var(--popup-height);
   font-family: var(--font-sans);
   /* 余额/地址/价格等数字在等宽数字下对齐：避免「100」「1000」参差 */
   font-variant-numeric: tabular-nums;
@@ -92,7 +95,7 @@ body {
 
 .container {
   background: white;
-  min-height: 600px;
+  min-height: var(--popup-height);
 }
 
 .page {
