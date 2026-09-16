@@ -649,7 +649,21 @@
         <div id="fileImportSection" class="hidden">
           <div class="form-group">
             <label for="importAccountsFile">加密账户文件</label>
-            <input id="importAccountsFile" type="file" accept="application/json,.json" />
+            <label class="file-picker" for="importAccountsFile">
+              <span class="file-picker-icon" aria-hidden="true">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <path d="M14 2v6h6"></path>
+                  <path d="M12 18v-6"></path>
+                  <path d="m9 15 3-3 3 3"></path>
+                </svg>
+              </span>
+              <span class="file-picker-copy">
+                <strong>选择备份文件</strong>
+                <span id="importAccountsFileName">支持 JSON 格式的加密备份文件</span>
+              </span>
+              <input id="importAccountsFile" type="file" accept="application/json,.json" />
+            </label>
           </div>
         </div>
 

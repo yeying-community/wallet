@@ -18,6 +18,12 @@ export function clearImportWalletForm({ resetType = true } = {}) {
     }
   });
 
+  const fileName = document.getElementById('importAccountsFileName');
+  if (fileName) {
+    fileName.textContent = '支持 JSON 格式的加密备份文件';
+    fileName.title = '';
+  }
+
   if (!resetType) {
     return;
   }
@@ -92,6 +98,16 @@ export class ImportWalletController {
         await this.handleImportWallet();
       });
     }
+
+    const fileInput = document.getElementById('importAccountsFile');
+    fileInput?.addEventListener('change', () => {
+      const name = fileInput.files?.[0]?.name;
+      const nameEl = document.getElementById('importAccountsFileName');
+      if (nameEl) {
+        nameEl.textContent = name || '支持 JSON 格式的加密备份文件';
+        nameEl.title = name || '';
+      }
+    });
 
     const cancelImportBtn = document.getElementById('cancelImportBtn');
     if (cancelImportBtn) {
