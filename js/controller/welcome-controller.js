@@ -13,6 +13,7 @@ export class WelcomeController {
     this.wallet = wallet;
     this.onRecoverySuccess = typeof onRecoverySuccess === 'function' ? onRecoverySuccess : null;
     this.recoveryWalletId = '';
+    this.recoveryReturnPage = 'welcomePage';
   }
 
   identityNodeEndpoint() {
@@ -110,22 +111,29 @@ export class WelcomeController {
       });
     }
 
-    document.getElementById('welcomeRecoverWalletBtn')?.addEventListener('click', async () => {
+    const beginRecovery = async (returnPage = 'welcomePage') => {
       try {
+        this.recoveryReturnPage = returnPage;
         const endpoint = await this.promptRecoveryEndpoint();
         if (!endpoint) return;
         await this.startCustodyRecovery(endpoint);
       } catch (error) {
         showError(`无法发起恢复：${error.message}`);
       }
-    });
-    document.getElementById('custodyRecoveryBackBtn')?.addEventListener('click', () => showPage('welcomePage'));
+    };
+    document.getElementById('welcomeRecoverWalletBtn')?.addEventListener('click', () => beginRecovery('welcomePage'));
+    document.getElementById('settingsRecoverCustodyBtn')?.addEventListener('click', () => beginRecovery('settingsPage'));
+    document.getElementById('custodyRecoveryBackBtn')?.addEventListener('click', () => showPage(this.recoveryReturnPage || 'welcomePage'));
     document.getElementById('custodyRecoveryConfirmBtn')?.addEventListener('click', () => {
       this.restoreSelectedCustodyWallet().catch((error) => showError(`恢复失败：${error.message}`));
     });
   }
 
   async resumeCustodyRecovery() {
+    const { custodyRecoveryReturnPage } = await chrome.storage.local.get('custodyRecoveryReturnPage');
+    if (custodyRecoveryReturnPage === 'settingsPage' || custodyRecoveryReturnPage === 'welcomePage') {
+      this.recoveryReturnPage = custodyRecoveryReturnPage;
+    }
     const callback = await this.wallet?.getWalletRecoveryCallback?.();
     if (!callback?.code) {
       const { walletRecoveryAuthorization } = await chrome.storage.local.get('walletRecoveryAuthorization');
@@ -253,6 +261,7 @@ export class WelcomeController {
     });
     if (passwordInput) passwordInput.value = '';
     await chrome.storage.local.remove('walletRecoveryAuthorization');
+    await chrome.storage.local.remove('custodyRecoveryReturnPage');
     showPage('walletPage');
     await this.onRecoverySuccess?.(result);
     showSuccess('钱包恢复成功');
@@ -265,7 +274,10 @@ export class WelcomeController {
     const challenge = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
     const state = this.base64Url(crypto.getRandomValues(new Uint8Array(24)));
     const redirectUri = `chrome-extension://${chrome.runtime.id}/html/recovery-callback.html`;
-    await chrome.storage.local.set({ walletRecoveryPkce: { verifier, state, redirectUri, endpoint: recoveryEndpoint, createdAt: Date.now() } });
+    await chrome.storage.local.set({
+      walletRecoveryPkce: { verifier, state, redirectUri, endpoint: recoveryEndpoint, createdAt: Date.now() },
+      custodyRecoveryReturnPage: this.recoveryReturnPage || 'welcomePage'
+    });
     const response = await fetch(`${recoveryEndpoint}/api/v1/public/identity/authorize/request`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
