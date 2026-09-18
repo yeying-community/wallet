@@ -14,6 +14,8 @@ import {
   buildUnsignedTransaction,
   assembleSignedTransaction
 } from './transaction.js';
+import { evmRpcCall } from './rpc.js';
+import { getNativeBalance, getTokenBalance } from './balance.js';
 
 const NOT_IMPLEMENTED = 'CHAIN_ADAPTER_NOT_IMPLEMENTED';
 
@@ -50,14 +52,25 @@ export const evmAdapter = {
   },
 
   /**
-   * 广播 rawTx。Step 2 接入 adapters/evm/rpc.js 后实现。
-   * @param {string} _rawTx
-   * @param {import('../../types.d.ts').ChainCtx} _ctx
+   * 广播 rawTx，返回交易哈希。复刻 request-router.broadcastSignedTransaction 的校验。
+   * @param {string} rawTx
+   * @param {import('../../types.d.ts').ChainCtx} ctx
    * @returns {Promise<string>}
    */
-  async broadcast(_rawTx, _ctx) {
-    throw new Error(`${NOT_IMPLEMENTED}: broadcast`);
-  }
+  async broadcast(rawTx, ctx) {
+    const raw = String(rawTx || '').trim();
+    if (!/^0x[0-9a-fA-F]+$/.test(raw)) {
+      throw new Error('Invalid signed transaction');
+    }
+    const hash = String(await evmRpcCall(ctx.chainKey, 'eth_sendRawTransaction', [raw]) || '').trim();
+    if (!/^0x[0-9a-fA-F]{64}$/.test(hash)) {
+      throw new Error('Invalid transaction hash returned by RPC');
+    }
+    return hash;
+  },
+
+  getNativeBalance,
+  getTokenBalance
 };
 
 export default evmAdapter;

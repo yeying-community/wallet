@@ -45,3 +45,29 @@ export function normalizeMpcSignatureParts(source) {
     : 27;
   return ethers.Signature.from({ r, s, v });
 }
+
+/**
+ * r/s(+recovery) 签名对象 → 65 字节 hex（r‖s‖v）。
+ *
+ * 从 mpc-service.js `_handleWireSignResult` 的内联 IIFE 忠实搬迁，输出逐字节一致：
+ * r/s 必须是 0x + 64 hex，否则返回空串；recovery 缺省 0，v = recovery>=27?recovery:recovery+27。
+ * @param {*} signatureObject r/s 载体（如 output.signature 对象）
+ * @param {*} [fallback] recovery 兜底来源（如 output 本身）
+ * @returns {string} 0x + 130 hex，或空串
+ */
+export function rsvToSignatureHex(signatureObject, fallback = {}) {
+  if (!signatureObject || typeof signatureObject !== 'object') return '';
+  const r = String(signatureObject.r || '').trim();
+  const s = String(signatureObject.s || '').trim();
+  if (!/^0x[0-9a-fA-F]{64}$/.test(r) || !/^0x[0-9a-fA-F]{64}$/.test(s)) {
+    return '';
+  }
+  const recovery = Number(
+    signatureObject.recoveryId ?? signatureObject.recid ?? signatureObject.v
+    ?? fallback?.recoveryId ?? fallback?.recid ?? fallback?.v ?? 0
+  );
+  const v = Number.isInteger(recovery)
+    ? (recovery >= 27 ? recovery : recovery + 27)
+    : 27;
+  return `${r}${s.slice(2)}${v.toString(16).padStart(2, '0')}`;
+}

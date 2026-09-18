@@ -102,6 +102,6 @@ test('evmAdapter.buildUnsigned + assembleSigned 端到端与旧逻辑一致', as
   assert.equal(rawNew, rawOld);
 });
 
-test('evmAdapter.broadcast 阶段 0 抛 NOT_IMPLEMENTED', async () => {
-  await assert.rejects(() => evmAdapter.broadcast('0x00', { chainKey: 'eip155:1' }), /NOT_IMPLEMENTED/);
+test('evmAdapter.broadcast 对非法 rawTx 抛错（不触网）', async () => {
+  await assert.rejects(() => evmAdapter.broadcast('not-hex', { chainKey: 'eip155:1' }), /Invalid signed transaction/);
 });

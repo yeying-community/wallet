@@ -67,6 +67,7 @@ import {
 } from './mpc-tss-engine.js';
 import { createMpcWireMessage, inferMpcWireRound } from './mpc-wire-protocol.js';
 import { MpcWireSessionRunner } from './mpc-wire-session-runner.js';
+import { rsvToSignatureHex } from '../chain/adapters/evm/secp256k1-utils.js';
 
 const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
 const DEFAULT_MPC_UCAN_RESOURCE = 'mpc';
@@ -1960,20 +1961,10 @@ class MpcService {
       throw new Error('MPC_SIGN_REQUEST_NOT_FOUND');
     }
 
-    const objectSignatureHex = (() => {
-      const signatureObject = output.signature && typeof output.signature === 'object' ? output.signature : null;
-      if (!signatureObject) return '';
-      const r = String(signatureObject.r || '').trim();
-      const s = String(signatureObject.s || '').trim();
-      if (!/^0x[0-9a-fA-F]{64}$/.test(r) || !/^0x[0-9a-fA-F]{64}$/.test(s)) {
-        return '';
-      }
-      const recovery = Number(signatureObject.recoveryId ?? signatureObject.recid ?? signatureObject.v ?? output.recoveryId ?? output.recid ?? output.v ?? 0);
-      const v = Number.isInteger(recovery)
-        ? (recovery >= 27 ? recovery : recovery + 27)
-        : 27;
-      return `${r}${s.slice(2)}${v.toString(16).padStart(2, '0')}`;
-    })();
+    const objectSignatureHex = rsvToSignatureHex(
+      output.signature && typeof output.signature === 'object' ? output.signature : null,
+      output
+    );
     const signatureHex = typeof output.signatureHex === 'string'
       ? output.signatureHex.trim()
       : (typeof output.signature_hex === 'string' ? output.signature_hex.trim() : objectSignatureHex);
