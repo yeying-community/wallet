@@ -2,16 +2,17 @@
 /**
  * 链适配器 / 签名器注册表
  *
- * getAdapter(chainKey)：按 CAIP-2 namespace 选适配器；阶段 0 仅 eip155→evmAdapter。
+ * getAdapter(chainKey)：按 CAIP-2 namespace 选适配器；阶段 0 仅 eip155→evmAdapter，
+ * 阶段 1+ 加入 tron→tronAdapter。
  * getSigner(account)：按账户来源（本地 / MPC）选签名器，并校验 adapter.curve 落在
  * signer.supportedCurves 内（secp256k1 ⊥ ed25519 的守门点）。
  *
- * 阶段 0 Step 1 为纯新增、暂不被引用；mpc-cggmp24 签名器在 Step 2 接入，此处对 MPC
- * 账户暂抛 NOT_IMPLEMENTED。
+ * MPC 账户不返回 Signer：其编排走 signing-service，此处抛 MPC_REDIRECT。
  */
 
 import { namespaceOf } from './chain-key.js';
 import { evmAdapter } from './adapters/evm/index.js';
+import { tronAdapter } from './adapters/tron/index.js';
 import { localKeyringSigner } from './signers/local-keyring.js';
 import { isMpcAccountId } from '../background/signing.js';
 
@@ -30,6 +31,9 @@ export function getAdapter(chainKey) {
   const ns = namespaceOf(chainKey);
   if (ns === 'eip155') {
     return evmAdapter;
+  }
+  if (ns === 'tron') {
+    return tronAdapter;
   }
   throw new Error(`${UNSUPPORTED_CHAIN}: ${chainKey}`);
 }
