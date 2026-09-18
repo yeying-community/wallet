@@ -67,9 +67,17 @@ export async function createWalletInstance(account, password) {
     // 创建钱包实例
     const wallet = new ethers.Wallet(decryptedPrivateKey);
 
-    // 验证地址
-    if (wallet.address.toLowerCase() !== account.address.toLowerCase()) {
-      throw createInvalidAddressError('解密后的地址与账户地址不匹配');
+    // 验证地址：仅当账户是 EVM 形态（0x...）时才做 EVM 校验；Tron 账户的
+    // account.address 是 Base58Check（T...），与 ethers 推出的 EVM 地址属于
+    // 不同编码体系，不能直接比较。Tron 路径的解密还原正确性由
+    // getAccountPrivateKey + address helper 的单元测试
+    // （tests/tron-vault.test.mjs）守门；返回的 ethers.Wallet 仍可被
+    // signing-service.js:signTronTransactionLocal 读取 .privateKey 后用
+    // ethers.SigningKey 重做 secp256k1 ECDSA（两条链同曲线，私钥字节等价）。
+    if (account.namespace !== 'tron') {
+      if (wallet.address.toLowerCase() !== account.address.toLowerCase()) {
+        throw createInvalidAddressError('解密后的地址与账户地址不匹配');
+      }
     }
 
     return wallet;

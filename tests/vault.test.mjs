@@ -14,6 +14,7 @@ import {
   createHDWallet,
   importHDWallet,
   importPrivateKeyWallet,
+  importTronPrivateKeyWallet,
   deriveSubAccount,
   getAccountPrivateKey,
   getWalletMnemonic,
@@ -163,4 +164,34 @@ test('changeWalletPassword 用错误旧密码应拒绝', async () => {
   await assert.rejects(
     () => changeWalletPassword(wallet, [mainAccount], WRONG_PASSWORD, 'Brand-New-Pass-1')
   );
+});
+
+// ==================== Tron 路径：createWalletInstance 跳过 EVM 地址比较 ====================
+//
+// Tron 账户的 account.address 是 Base58Check（T...），与 ethers 推出的 EVM 地址
+// （0x...）属于不同编码体系。createWalletInstance 必须对 namespace==='tron'
+// 的账户跳过 EVM 形态比较，否则所有 Tron 账户的"解锁后写 keyring"路径都会断
+// （包括 handleCreateTronHDWallet / handleImportTronHDWallet /
+// handleImportTronPrivateKeyWallet / ensureCoordinatorSigningAccountUnlocked）。
+// 这里守门的是：跳过比较后仍能正确还原私钥，返回的 ethers.Wallet 仍可用于
+// signing-service.js:signTronTransactionLocal（它读 .privateKey 后用
+// ethers.SigningKey 重做 ECDSA）。
+
+test('createWalletInstance 对 Tron 账户跳过 EVM 地址比较且还原私钥', async () => {
+  const { mainAccount } = await importTronPrivateKeyWallet('Tron PK Instance', TEST_PRIVKEY_0, PASSWORD);
+  // Tron 账户标识
+  assert.equal(mainAccount.namespace, 'tron');
+  assert.match(mainAccount.address, /^T[1-9A-HJ-NP-Za-km-z]{33}$/);
+
+  // 不应抛"解密后的地址与账户地址不匹配"
+  const instance = await createWalletInstance(mainAccount, PASSWORD);
+  // 返回的 ethers.Wallet 仍按 EVM 路径还原：私钥字节等价（secp256k1 同曲线）
+  assert.equal(instance.privateKey.toLowerCase(), TEST_PRIVKEY_0.toLowerCase());
+  // wallet.address 是 EVM 形态（0x...），与 Tron account.address 形态不同
+  assert.match(instance.address, /^0x[0-9a-fA-F]{40}$/);
+});
+
+test('createWalletInstance 对 Tron 账户用错误密码仍走 invalid-password 分支', async () => {
+  const { mainAccount } = await importTronPrivateKeyWallet('Tron PK Instance', TEST_PRIVKEY_0, PASSWORD);
+  await assert.rejects(() => createWalletInstance(mainAccount, WRONG_PASSWORD));
 });

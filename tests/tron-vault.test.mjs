@@ -230,9 +230,11 @@ test('withAccountDefaults 模拟：Tron 账户读出后链身份字段仍是 tro
 
 // ==================== Tron 解密私钥还原 → 用 address helper 派生同一地址 ====================
 //
-// createWalletInstance 是 EVM 路径（校验 ethers.Wallet.address 与 account.address 同为 0x 形态）；
-// Tron 账户 account.address 是 T... 形态，不能直接走 createWalletInstance。
-// signing-service 在 Step 6 直接调 getAccountPrivateKey + address helper 派生地址。
+// createWalletInstance 对 Tron 账户跳过 EVM 形态校验（account.address 是 T...）
+// 但仍返回 ethers.Wallet；signTronTransactionLocal 直接从 keyring 读
+// .privateKey 后用 ethers.SigningKey 重构做 ECDSA，不需要 EVM 地址校验。
+// 这里守门的是"解密还原得到原私钥"+"用同一私钥能派生回同一 Tron 地址"——
+// 即 vault 加解密边界的正确性。
 
 test('Tron 账户：getAccountPrivateKey 还原私钥 → address helper 派生同一地址', async () => {
   const { mainAccount } = await importTronPrivateKeyWallet('PK', TEST_PRIVKEY_0, PASSWORD);
