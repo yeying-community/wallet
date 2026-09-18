@@ -13,6 +13,11 @@ export const DEFAULT_NAMESPACE = 'eip155';
 export const DEFAULT_COIN_TYPE = 60;
 
 /**
+ * 默认 chainKey（首启动、currentChainKey 为空时兜底）。阶段 0 固定 `eip155:1`。
+ */
+export const DEFAULT_CHAIN_KEY = `${DEFAULT_NAMESPACE}:1`;
+
+/**
  * 从网络配置对象派生 chainKey。
  * @param {{chainId?: string|number}} net
  * @returns {string} 形如 `eip155:1`

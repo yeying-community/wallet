@@ -18,6 +18,7 @@ import {
 import { grantIdentityScopes, handleEthAccounts, handleEthRequestAccounts, handleWalletGetPermissions, handleWalletRequestPermissions, handleWalletRevokePermissions, hasRecentConnectApproval, requestIdentityScopeApproval } from './account-handler.js';
 import { handleEthChainId, handleNetVersion, handleSwitchChain, handleAddEthereumChain } from './chain-handler.js';
 import { handleRpcMethod } from './rpc-handler.js';
+import { getCurrentEvmChainIdHex } from '../chain/current-chain.js';
 import {
   buildMpcSignedTransactionFromSignRequest,
   resolveMpcAccountIdByAddress,
@@ -160,7 +161,7 @@ async function ensureSiteAuthorized(origin) {
 }
 
 async function getCurrentRpcUrl() {
-  const network = await getNetworkByChainId(state.currentChainId);
+  const network = await getNetworkByChainId(getCurrentEvmChainIdHex());
   let rpcUrl = state.currentRpcUrl || network?.rpcUrl || network?.rpc;
   if (!rpcUrl) {
     const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);

@@ -2,21 +2,19 @@
  * YeYing Wallet - 通证操作
  * 负责：ETH 余额、添加自定义代币、代币余额列表
  */
-import { state } from '../state.js';
-import { normalizeChainId } from '../../common/chain/index.js';
 import { validateEthereumAddress, validateTokenConfig } from '../../config/validation-rules.js';
 import { handleRpcMethod } from '../rpc-handler.js';
 import { getUserSetting, updateUserSetting } from '../../storage/index.js';
 import { LIMITS, BUILTIN_TOKENS_BY_CHAIN_ID } from '../../config/index.js';
+import { getCurrentEvmChainIdHex } from '../../chain/current-chain.js';
 
 const CUSTOM_TOKENS_KEY = 'custom_tokens';
 
 function getCurrentTokenChainId() {
-  const chainId = state.currentChainId || '0x1';
   try {
-    return normalizeChainId(chainId);
+    return getCurrentEvmChainIdHex();
   } catch {
-    return chainId;
+    return '0x1';
   }
 }
 

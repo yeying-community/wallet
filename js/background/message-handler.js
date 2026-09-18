@@ -114,6 +114,11 @@ import {
   handleDisableCustody
 } from './operations/custody.js';
 import { state } from './state.js';
+import {
+  getCurrentEvmChainIdHex,
+  setCurrentChainKey,
+  chainIdToChainKey
+} from '../chain/current-chain.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
 import { normalizeChainId } from '../common/chain/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
@@ -228,12 +233,14 @@ async function handleSwitchNetworkMessage(data) {
     return { success: false, error: 'rpcUrl is required' };
   }
 
-  const prevChainId = state.currentChainId;
+  const prevChainKey = state.currentChainKey;
   if (!nextChainId) {
     const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
     nextChainId = fallbackConfig?.chainIdHex || (fallbackConfig?.chainId ? normalizeChainId(fallbackConfig.chainId) : null);
   }
-  state.currentChainId = nextChainId || state.currentChainId;
+  if (nextChainId) {
+    setCurrentChainKey(chainIdToChainKey(nextChainId));
+  }
   state.currentRpcUrl = nextRpcUrl;
 
   if (!selectedNetworkName && nextChainId) {
@@ -243,13 +250,13 @@ async function handleSwitchNetworkMessage(data) {
     await saveSelectedNetworkName(selectedNetworkName);
   }
 
-  if (prevChainId !== state.currentChainId) {
-    broadcastEvent(EventType.CHAIN_CHANGED, { chainId: state.currentChainId });
+  if (prevChainKey !== state.currentChainKey) {
+    broadcastEvent(EventType.CHAIN_CHANGED, { chainId: getCurrentEvmChainIdHex() });
   }
 
   return {
     success: true,
-    chainId: state.currentChainId,
+    chainId: getCurrentEvmChainIdHex(),
     rpcUrl: state.currentRpcUrl
   };
 }
@@ -320,14 +327,14 @@ async function handleGetSupportedNetworksMessage() {
 
 async function handleGetNetworkInfoMessage() {
   try {
-    let chainId = state.currentChainId;
+    let chainId = state.currentChainKey ? getCurrentEvmChainIdHex() : null;
     if (!chainId) {
       const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
       chainId = fallbackConfig?.chainIdHex
         || (fallbackConfig?.chainId ? normalizeChainId(fallbackConfig.chainId) : null)
         || null;
       if (chainId) {
-        state.currentChainId = chainId;
+        setCurrentChainKey(chainIdToChainKey(chainId));
       }
     }
     const network = await getStoredNetworkByChainId(chainId);
@@ -393,7 +400,7 @@ async function handleSendTransactionMessage(data) {
       token: token || null,
       timestamp: getTimestamp(),
       status: 'pending',
-      chainId: normalizedChainId || state.currentChainId || null
+      chainId: normalizedChainId || (state.currentChainKey ? getCurrentEvmChainIdHex() : null)
     });
     return {
       success: true,
@@ -520,7 +527,7 @@ function truncateRpcUiError(message) {
 }
 
 async function resolveRpcUrl(chainIdOverride = null) {
-  const targetChainId = chainIdOverride || state.currentChainId;
+  const targetChainId = chainIdOverride || (state.currentChainKey ? getCurrentEvmChainIdHex() : null);
   let rpcUrl = state.currentRpcUrl;
   if (targetChainId) {
     const network = await getStoredNetworkByChainId(targetChainId);
@@ -580,7 +587,7 @@ async function handleGetTransactionsMessage(data) {
     }
   }
   if (!normalizedChainId) {
-    normalizedChainId = state.currentChainId;
+    normalizedChainId = state.currentChainKey ? getCurrentEvmChainIdHex() : null;
   }
   const transactions = await getTransactionsByAddress(address, normalizedChainId || null);
   const refreshed = await refreshTransactionStatuses(transactions, normalizedChainId || null);
@@ -598,7 +605,7 @@ async function handleClearTransactionsMessage(data) {
     }
   }
   if (!normalizedChainId) {
-    normalizedChainId = state.currentChainId;
+    normalizedChainId = state.currentChainKey ? getCurrentEvmChainIdHex() : null;
   }
   const removed = await clearTransactionsByAddress(address || null, normalizedChainId || null);
   return { success: true, removed };
@@ -667,7 +674,7 @@ async function handleUpdateCustomNetworkMessage(data) {
   try {
     await updateNetwork(normalizedChainId, updates);
 
-    if (state.currentChainId === normalizedChainId) {
+    if (state.currentChainKey && getCurrentEvmChainIdHex() === normalizedChainId) {
       state.currentRpcUrl = updates.rpcUrl;
     }
 
@@ -765,7 +772,7 @@ const popupHandlers = new Map([
     return {
       success: true,
       unlocked: isAccountUnlocked(account?.id),
-      chainId: state.currentChainId,
+      chainId: state.currentChainKey ? getCurrentEvmChainIdHex() : null,
       lastUnlockRequest
     };
   }],
@@ -778,13 +785,15 @@ const popupHandlers = new Map([
   [WalletMessageType.GET_CURRENT_ACCOUNT, async () => await handleGetCurrentAccount()],
 
   [NetworkMessageType.GET_CURRENT_CHAIN_ID, async () => {
-    if (!state.currentChainId) {
+    if (!state.currentChainKey) {
       const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
-      state.currentChainId = fallbackConfig?.chainIdHex
-        || (fallbackConfig?.chainId ? normalizeChainId(fallbackConfig.chainId) : null)
-        || state.currentChainId;
+      const chainIdHex = fallbackConfig?.chainIdHex
+        || (fallbackConfig?.chainId ? normalizeChainId(fallbackConfig.chainId) : null);
+      if (chainIdHex) {
+        setCurrentChainKey(chainIdToChainKey(chainIdHex));
+      }
     }
-    return { success: true, chainId: state.currentChainId };
+    return { success: true, chainId: state.currentChainKey ? getCurrentEvmChainIdHex() : null };
   }],
   [NetworkMessageType.GET_CURRENT_RPC_URL, async () => {
     let rpcUrl = state.currentRpcUrl;

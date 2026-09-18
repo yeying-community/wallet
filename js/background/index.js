@@ -9,6 +9,7 @@ import { state } from './state.js';
 import { updateKeepAlive } from './offscreen.js';
 import { NETWORKS, DEFAULT_NETWORK } from '../config/index.js';
 import { getSelectedNetworkName, getUserSetting, ensureDefaultNetworks, getNetworkConfigByKey } from '../storage/index.js';
+import { setCurrentChainKey, chainIdToChainKey } from '../chain/current-chain.js';
 import { normalizeChainId } from '../common/chain/index.js';
 import { normalizePopupBounds } from './window-utils.js';
 import { backupSyncService } from './sync-service.js';
@@ -60,19 +61,19 @@ async function init() {
 
     if (savedConfig) {
       const chainIdHex = savedConfig.chainIdHex || normalizeChainId(savedConfig.chainId);
-      state.currentChainId = chainIdHex;
+      setCurrentChainKey(chainIdToChainKey(chainIdHex));
       state.currentRpcUrl = savedConfig.rpcUrl || savedConfig.rpc;
       console.log('✅ Loaded saved network:', savedNetwork);
     } else if (defaultConfig) {
       const chainIdHex = defaultConfig.chainIdHex || normalizeChainId(defaultConfig.chainId);
-      state.currentChainId = chainIdHex;
+      setCurrentChainKey(chainIdToChainKey(chainIdHex));
       state.currentRpcUrl = defaultConfig.rpcUrl || defaultConfig.rpc;
       console.log('✅ Using default network:', DEFAULT_NETWORK);
     } else if (seededNetworks?.length) {
       const fallback = seededNetworks.find(item => item?.key === DEFAULT_NETWORK || item?.id === DEFAULT_NETWORK) || seededNetworks[0];
       if (fallback) {
         const chainIdHex = fallback.chainIdHex || normalizeChainId(fallback.chainId);
-        state.currentChainId = chainIdHex;
+        setCurrentChainKey(chainIdToChainKey(chainIdHex));
         state.currentRpcUrl = fallback.rpcUrl || fallback.rpc;
       }
       console.log('✅ Using fallback stored network:', DEFAULT_NETWORK);

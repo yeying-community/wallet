@@ -10,6 +10,7 @@ import { getNetworkByChainId, getNetworkConfigByKey } from '../storage/index.js'
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { diagnostics } from './diagnostics.js';
 import { RPC_CONFIG } from '../config/index.js';
+import { getCurrentEvmChainIdHex } from '../chain/current-chain.js';
 
 /**
  * 处理 RPC 方法
@@ -28,7 +29,7 @@ export async function handleRpcMethod(method, params) {
  * @returns {Promise<any>} RPC 结果
  */
 async function rpcCall(method, params) {
-  const network = await getNetworkByChainId(state.currentChainId);
+  const network = await getNetworkByChainId(getCurrentEvmChainIdHex());
   let rpcUrl = state.currentRpcUrl || network?.rpcUrl || network?.rpc;
   if (!rpcUrl) {
     const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);

@@ -17,6 +17,7 @@ import { sendEvent } from './connection.js';
 import { TIMEOUTS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { updateKeepAlive } from './offscreen.js';
+import { getCurrentEvmChainIdHex } from '../chain/current-chain.js';
 import {
   addPendingRequest,
   ensureApprovalRequestVisible,
@@ -270,7 +271,7 @@ export async function handleEthRequestAccounts(origin, tabId, clientRequestId = 
 
       state.connectedSites.set(origin, {
         accounts,
-        chainId: state.currentChainId,
+        chainId: getCurrentEvmChainIdHex(),
         connectedAt: getTimestamp()
       });
       updateConnectedSites();
@@ -418,7 +419,7 @@ export async function grantIdentityScopes(origin, requestedScopes, account = nul
   const granted = Array.from(new Set([...(stored?.identityScopes || []), ...identityScopes]));
   state.connectedSites.set(origin, {
     accounts,
-    chainId: state.currentChainId,
+    chainId: getCurrentEvmChainIdHex(),
     connectedAt: getTimestamp(),
     identityScopes: granted
   });

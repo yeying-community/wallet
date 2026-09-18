@@ -49,6 +49,7 @@ import { validateAccountName, validateUsername } from '../../config/validation-r
 import { getCachedPassword, cachePassword, refreshPasswordCache, clearPasswordCache } from '../password-cache.js';
 import { resetLockTimer, lockWallet } from '../keyring.js';
 import { normalizeChainId } from '../../common/chain/index.js';
+import { setCurrentChainKey, chainIdToChainKey } from '../../chain/current-chain.js';
 import { broadcastEvent } from '../connection.js';
 import { TIMEOUTS, NETWORKS, DEFAULT_NETWORK } from '../../config/index.js';
 import { notifyUnlocked } from '../unlock-flow.js';
@@ -1197,10 +1198,10 @@ export async function handleResetWallet() {
     const defaultConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
     if (defaultConfig) {
       const chainIdHex = defaultConfig.chainIdHex || normalizeChainId(defaultConfig.chainId);
-      state.currentChainId = chainIdHex;
+      setCurrentChainKey(chainIdToChainKey(chainIdHex));
       state.currentRpcUrl = defaultConfig.rpcUrl || defaultConfig.rpc || null;
     } else {
-      state.currentChainId = null;
+      state.currentChainKey = null;
       state.currentRpcUrl = null;
     }
 

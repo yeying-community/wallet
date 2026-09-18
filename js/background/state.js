@@ -7,8 +7,8 @@
  * 全局状态对象
  */
 export const state = {
-  // 网络状态
-  currentChainId: null,
+  // 网络状态（CAIP-2 chainKey，如 eip155:1。hex/十进制通过 chain/current-chain 派生）
+  currentChainKey: null,
   currentRpcUrl: null,
 
   // 连接管理
@@ -35,7 +35,7 @@ export const state = {
  * 重置状态（用于测试）
  */
 export function resetState() {
-  state.currentChainId = null;
+  state.currentChainKey = null;
   state.currentRpcUrl = null;
   state.connectedSites.clear();
   state.connections.clear();

@@ -10,13 +10,19 @@ import { normalizeChainId } from '../common/chain/index.js';
 import { validateNetworkConfig } from '../config/validation-rules.js';
 import { saveSelectedNetworkName, getNetworkByChainId, getNetworkConfigByKey, addNetwork } from '../storage/index.js';
 import { broadcastEvent } from './connection.js';
+import {
+  getCurrentEvmChainIdHex,
+  getCurrentChainIdDecimal,
+  setCurrentChainKey,
+  chainIdToChainKey
+} from '../chain/current-chain.js';
 
 /**
  * 处理 eth_chainId
  * @returns {string} 当前链 ID
  */
 export function handleEthChainId() {
-  return state.currentChainId;
+  return getCurrentEvmChainIdHex();
 }
 
 /**
@@ -24,7 +30,7 @@ export function handleEthChainId() {
  * @returns {string} 当前链 ID（十进制）
  */
 export function handleNetVersion() {
-  return parseInt(state.currentChainId, 16).toString();
+  return getCurrentChainIdDecimal();
 }
 
 /**
@@ -46,8 +52,9 @@ export async function handleSwitchChain(params) {
     throw createUnrecognizedChainError(chainId);
   }
 
-  const oldChainId = state.currentChainId;
-  state.currentChainId = normalizedChainId;
+  const oldChainKey = state.currentChainKey;
+  setCurrentChainKey(chainIdToChainKey(normalizedChainId));
+  const newChainKey = state.currentChainKey;
   const rpcUrl = network?.rpcUrl || network?.rpc || null;
   if (rpcUrl) {
     state.currentRpcUrl = rpcUrl;
@@ -69,7 +76,7 @@ export async function handleSwitchChain(params) {
   }
 
   // 如果链 ID 改变，广播事件
-  if (oldChainId !== normalizedChainId) {
+  if (oldChainKey !== newChainKey) {
     broadcastEvent(EventType.CHAIN_CHANGED, { chainId: normalizedChainId });
   }
 

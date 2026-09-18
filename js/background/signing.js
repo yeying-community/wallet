@@ -24,6 +24,7 @@ import { generateId } from '../common/utils/index.js';
 import { buildActionPayloadHash, createActionSignature } from './action-signature.js';
 import { MpcCoordinatorClient } from './mpc-coordinator-client.js';
 import { getUnlockedCoordinatorSigningAccount } from './coordinator-signing-account.js';
+import { getCurrentEvmChainIdHex } from '../chain/current-chain.js';
 
 export const MPC_ACCOUNT_ID_PREFIX = 'mpc:';
 const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
@@ -164,7 +165,7 @@ async function createMpcSignContext(wallet, kind, payload) {
     payload: signingPayload,
     keyVersion: Number(wallet.keyVersion || keyShare.keyVersion || 1),
     shareVersion: Number(keyShare.shareVersion || wallet.shareVersion || 1),
-    chainId: state.currentChainId || '',
+    chainId: getCurrentEvmChainIdHex() || '',
     createdAt: now,
     updatedAt: now
   };
@@ -371,7 +372,7 @@ export async function signTransaction(accountId, transaction) {
     const normalizedTx = normalizeTransaction(transaction);
 
     // 连接到 provider
-    const network = await getNetworkByChainId(state.currentChainId);
+    const network = await getNetworkByChainId(getCurrentEvmChainIdHex());
     let rpcUrl = state.currentRpcUrl || network?.rpcUrl || network?.rpc;
     if (!rpcUrl) {
       const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
