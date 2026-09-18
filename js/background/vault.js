@@ -31,6 +31,11 @@ import {
   createInvalidParams,
   createAccountNotFoundError,
 } from '../common/errors/index.js';
+import {
+  DEFAULT_CHAIN_KEY,
+  DEFAULT_COIN_TYPE,
+  DEFAULT_NAMESPACE
+} from '../chain/chain-key.js';
 
 // ==================== 钱包类型 ====================
 
@@ -125,6 +130,7 @@ export async function createHDWallet(accountName, password) {
       derivationPath: derivationPath,
       address: mainWallet.address,
       encryptedPrivateKey: encryptedPrivateKey,
+      ...buildEvmAccountIdentity(mainWallet),
       createdAt,
       nameUpdatedAt: createdAt
     };
@@ -212,6 +218,7 @@ export async function importHDWallet(accountName, mnemonic, password) {
       derivationPath: derivationPath,
       address: mainWallet.address,
       encryptedPrivateKey: encryptedPrivateKey,
+      ...buildEvmAccountIdentity(mainWallet),
       createdAt,
       nameUpdatedAt: createdAt
     };
@@ -299,6 +306,7 @@ export async function importPrivateKeyWallet(accountName, privateKey, password) 
       index: 0,
       address: ethersWallet.address,
       encryptedPrivateKey: encryptedPrivateKey,
+      ...buildEvmAccountIdentity(ethersWallet),
       createdAt,
       nameUpdatedAt: createdAt
     };
@@ -380,6 +388,7 @@ export async function deriveSubAccount(wallet, newIndex, accountName, password) 
       derivationPath: derivationPath,
       address: ethersWallet.address,
       encryptedPrivateKey: encryptedPrivateKey,
+      ...buildEvmAccountIdentity(ethersWallet),
       createdAt,
       nameUpdatedAt: createdAt
     };
@@ -547,10 +556,29 @@ export async function changeWalletPassword(wallet, accounts, oldPassword, newPas
 
 /**
  * 生成账户 ID
- * @param {string} walletId - 钱包 ID
- * @param {number} index - 账户索引
- * @returns {string} 账户 ID
+ * @param {string} walletId
+ * @param {number} index
+ * @returns {string}
  */
 function generateAccountId(walletId, index) {
   return `${walletId}_${index}`;
+}
+
+/**
+ * 推导 EVM 账户的链身份字段（namespace/chainKey/coinType/publicKey）。
+ * 阶段 0 仅支持 EVM：所有本地账户均落在 eip155 命名空间、coinType 60、
+ * 链标识为 DEFAULT_CHAIN_KEY（eip155:1），compressed publicKey 由私钥派生，
+ * 与 MPC 视图口径一致。
+ *
+ * @param {ethers.HDNodeWallet|ethers.Wallet} ethersWallet
+ * @returns {{namespace:string,chainKey:string,coinType:number,publicKey:string}}
+ */
+function buildEvmAccountIdentity(ethersWallet) {
+  const publicKey = ethers.SigningKey.computePublicKey(ethersWallet.privateKey, true);
+  return {
+    namespace: DEFAULT_NAMESPACE,
+    chainKey: DEFAULT_CHAIN_KEY,
+    coinType: DEFAULT_COIN_TYPE,
+    publicKey
+  };
 }

@@ -43,6 +43,11 @@ test('createHDWallet 生成 HD 钱包 + 主账户 + 12 词助记词', async () =
   assert.equal(mainAccount.derivationPath, "m/44'/60'/0'/0/0");
   assert.match(mainAccount.address, /^0x[0-9a-fA-F]{40}$/);
   assert.equal(mainAccount.id, `${wallet.id}_0`);
+  // 链身份字段（阶段 0 schemaVersion=2）
+  assert.equal(mainAccount.namespace, 'eip155');
+  assert.equal(mainAccount.chainKey, 'eip155:1');
+  assert.equal(mainAccount.coinType, 60);
+  assert.match(mainAccount.publicKey, /^0x[0-9a-fA-F]{66}$/, 'compressed publicKey 应为 33 字节');
 
   assert.equal(mnemonic.trim().split(/\s+/).length, 12);
   // 明文助记词不得落在账户对象上
@@ -75,6 +80,10 @@ test('importPrivateKeyWallet 对已知私钥得到确定性地址且无助记词
   assert.equal(wallet.type, WALLET_TYPE.IMPORTED);
   assert.equal(wallet.encryptedMnemonic, undefined, '导入私钥钱包不应有助记词');
   assert.equal(mainAccount.address.toLowerCase(), TEST_ADDR_0.toLowerCase());
+  assert.equal(mainAccount.namespace, 'eip155');
+  assert.equal(mainAccount.chainKey, 'eip155:1');
+  assert.equal(mainAccount.coinType, 60);
+  assert.match(mainAccount.publicKey, /^0x[0-9a-fA-F]{66}$/);
 });
 
 test('importPrivateKeyWallet 拒绝非法私钥', async () => {
@@ -90,6 +99,11 @@ test('deriveSubAccount 派生确定性子账户地址', async () => {
   assert.equal(sub.derivationPath, "m/44'/60'/0'/0/1");
   assert.equal(sub.address.toLowerCase(), TEST_ADDR_1.toLowerCase());
   assert.equal(sub.id, `${wallet.id}_1`);
+  // 子账户同样携带链身份字段
+  assert.equal(sub.namespace, 'eip155');
+  assert.equal(sub.chainKey, 'eip155:1');
+  assert.equal(sub.coinType, 60);
+  assert.match(sub.publicKey, /^0x[0-9a-fA-F]{66}$/);
 });
 
 test('deriveSubAccount 对导入私钥钱包应拒绝（无助记词不可派生）', async () => {

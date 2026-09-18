@@ -4,6 +4,10 @@
  * 管理账户数据的存储和读取
  *
  * 存储后端：chrome.storage.local（关键密钥数据，不放 IndexedDB）。
+ *
+ * 阶段 0 起（schemaVersion=2），账户对象附带链身份字段 namespace/chainKey/
+ * coinType/publicKey，读路径对老数据（无这些字段）做惰性补全，**写不改密文**；
+ * publicKey 由私钥在 vault 层派生后落库，老数据若无则回填为空串（不抛错）。
  */
 
 import { WalletStorageKeys } from './storage-keys.js';
@@ -18,15 +22,46 @@ import {
 } from './storage-base.js';
 import { getMpcWallet } from './mpc-storage.js';
 import { logError } from '../common/errors/index.js';
+import {
+  DEFAULT_CHAIN_KEY,
+  DEFAULT_COIN_TYPE,
+  DEFAULT_NAMESPACE
+} from '../chain/chain-key.js';
 
 const STORE = WalletStorageKeys.ACCOUNTS; // 'accounts'
 const SELECTED_KEY = WalletStorageKeys.SELECTED_ACCOUNT_ID;
 const MPC_ACCOUNT_ID_PREFIX = 'mpc:';
+const SCHEMA_VERSION = 2;
 
 function getMpcWalletIdFromAccountId(accountId) {
   return String(accountId || '').startsWith(MPC_ACCOUNT_ID_PREFIX)
     ? String(accountId || '').slice(MPC_ACCOUNT_ID_PREFIX.length).trim()
     : '';
+}
+
+/**
+ * 读时补全账户的链身份字段。无 namespace/chainKey/coinType/publicKey 时填入
+ * 阶段 0 默认（EVM, eip155:1, coinType 60），publicKey 缺省为空串。
+ *
+ * @param {Object|null|undefined} account
+ * @returns {Object|null}
+ */
+function withAccountDefaults(account) {
+  if (!account || typeof account !== 'object') return account;
+  const next = { ...account };
+  if (typeof next.namespace !== 'string' || !next.namespace) {
+    next.namespace = DEFAULT_NAMESPACE;
+  }
+  if (typeof next.chainKey !== 'string' || !next.chainKey) {
+    next.chainKey = DEFAULT_CHAIN_KEY;
+  }
+  if (!Number.isInteger(next.coinType)) {
+    next.coinType = DEFAULT_COIN_TYPE;
+  }
+  if (typeof next.publicKey !== 'string') {
+    next.publicKey = '';
+  }
+  return next;
 }
 
 function buildMpcAccountView(wallet) {
@@ -42,6 +77,9 @@ function buildMpcAccountView(wallet) {
     address: wallet.address,
     status: wallet.status || '',
     publicKey: wallet.publicKey || '',
+    namespace: DEFAULT_NAMESPACE,
+    chainKey: DEFAULT_CHAIN_KEY,
+    coinType: DEFAULT_COIN_TYPE,
     keygenSessionId: wallet.keygenSessionId || '',
     keyVersion: wallet.keyVersion,
     shareVersion: wallet.shareVersion,
@@ -60,7 +98,8 @@ export async function saveAccount(account) {
     if (!account || !account.id) {
       throw new Error('Invalid account object');
     }
-    await setMapItem(STORE, account.id, account);
+    const enriched = { ...withAccountDefaults(account), schemaVersion: SCHEMA_VERSION };
+    await setMapItem(STORE, account.id, enriched);
     console.log('✅ Account saved:', account.id);
   } catch (error) {
     logError('account-storage-save', error);
@@ -75,7 +114,7 @@ export async function saveAccount(account) {
  */
 export async function getAccount(accountId) {
   try {
-    return await getMapItem(STORE, accountId);
+    return withAccountDefaults(await getMapItem(STORE, accountId));
   } catch (error) {
     logError('account-storage-get', error);
     return null;
@@ -88,7 +127,12 @@ export async function getAccount(accountId) {
  */
 export async function getAccounts() {
   try {
-    return await getMap(STORE);
+    const raw = await getMap(STORE);
+    const out = {};
+    for (const [id, account] of Object.entries(raw || {})) {
+      out[id] = withAccountDefaults(account);
+    }
+    return out;
   } catch (error) {
     logError('account-storage-get-all', error);
     return {};
@@ -128,7 +172,8 @@ export async function updateAccount(account) {
     if (!account || !account.id) {
       throw new Error('Invalid account object');
     }
-    await setMapItem(STORE, account.id, account);
+    const enriched = { ...withAccountDefaults(account), schemaVersion: SCHEMA_VERSION };
+    await setMapItem(STORE, account.id, enriched);
     console.log('✅ Account updated:', account.id);
   } catch (error) {
     logError('account-storage-update', error);
