@@ -788,10 +788,13 @@ function waitForNextFrame() {
   });
 }
 
-function updateNetworkIndicator(chainId) {
+function updateNetworkIndicator(chainIdOrKey) {
   const indicators = document.querySelectorAll('.network-dot');
   if (!indicators || indicators.length === 0) return;
-  const isMainnet = chainId === '1' || chainId === 1;
+  // 兼容 EVM hex chainId 与 CAIP-2 chainKey（Tron: `tron:mainnet` / `tron:shasta` / `tron:nile`）
+  const isMainnet =
+    chainIdOrKey === 'tron:mainnet'
+    || chainIdOrKey === '0x1' || chainIdOrKey === 1 || chainIdOrKey === '1';
   indicators.forEach((indicator) => {
     indicator.style.backgroundColor = isMainnet ? '#10B981' : '#F59E0B';
   });

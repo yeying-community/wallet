@@ -96,6 +96,69 @@ export const NETWORKS = {
       symbol: 'tBNB',
       decimals: 18
     }
+  },
+  // ===== Tron（v1：secp256k1 / native TRX only；TRC20 不在 v1 范围）=====
+  // chainKey 用 CAIP-2 `tron:<reference>`，无 chainId/chainIdHex 字段；
+  // Tron adapter 通过 namespace=tron + reference 字段识别。
+  tronMainnet: {
+    id: 'tronMainnet',
+    name: 'Tron Mainnet',
+    rpc: 'https://api.trongrid.io',
+    rpcUrl: 'https://api.trongrid.io',
+    tronRpcUrl: 'https://api.trongrid.io',
+    symbol: 'TRX',
+    decimals: 6,
+    explorer: 'https://tronscan.org',
+    type: 'mainnet',
+    isTestnet: false,
+    namespace: 'tron',
+    reference: 'mainnet',
+    chainKey: 'tron:mainnet',
+    nativeCurrency: {
+      name: 'TRX',
+      symbol: 'TRX',
+      decimals: 6
+    }
+  },
+  tronShasta: {
+    id: 'tronShasta',
+    name: 'Tron Shasta Testnet',
+    rpc: 'https://api.shasta.trongrid.io',
+    rpcUrl: 'https://api.shasta.trongrid.io',
+    tronRpcUrl: 'https://api.shasta.trongrid.io',
+    symbol: 'TRX',
+    decimals: 6,
+    explorer: 'https://shasta.tronscan.org',
+    type: 'testnet',
+    isTestnet: true,
+    namespace: 'tron',
+    reference: 'shasta',
+    chainKey: 'tron:shasta',
+    nativeCurrency: {
+      name: 'Test TRX',
+      symbol: 'TRX',
+      decimals: 6
+    }
+  },
+  tronNile: {
+    id: 'tronNile',
+    name: 'Tron Nile Testnet',
+    rpc: 'https://api.nile.trongrid.io',
+    rpcUrl: 'https://api.nile.trongrid.io',
+    tronRpcUrl: 'https://api.nile.trongrid.io',
+    symbol: 'TRX',
+    decimals: 6,
+    explorer: 'https://nile.tronscan.io',
+    type: 'testnet',
+    isTestnet: true,
+    namespace: 'tron',
+    reference: 'nile',
+    chainKey: 'tron:nile',
+    nativeCurrency: {
+      name: 'Test TRX',
+      symbol: 'TRX',
+      decimals: 6
+    }
   }
 };
 
@@ -167,7 +230,7 @@ export function getNetworkByChainId(chainId) {
     : parseInt(chainId, 10);
 
   const networks = Object.values(NETWORKS);
-  return networks.find(n => n.chainId === chainIdNum) || null;
+  return networks.find(n => typeof n.chainId === 'number' && n.chainId === chainIdNum) || null;
 }
 
 /**
@@ -232,28 +295,70 @@ export function getTestnets() {
  * @returns {Object} 格式化后的配置
  */
 export function formatNetworkConfig(config) {
-  const chainId = typeof config.chainId === 'string' && config.chainId.startsWith('0x')
-    ? parseInt(config.chainId, 16)
-    : parseInt(config.chainId, 10);
-  
+  const raw = config && typeof config === 'object' ? config : {};
+  const ns = String(raw.namespace || '').toLowerCase();
+
+  // Tron / non-EVM 网络（namespace=tron 等）没有 EVM 数字 chainId；
+  // 直接 return chainKey 形式，跳过 chainId 数字转换。
+  if (ns === 'tron') {
+    const reference = String(raw.reference || '').toLowerCase();
+    if (!reference) {
+      throw new Error('Tron network config requires reference');
+    }
+    return {
+      id: raw.id || `tron-${reference}`,
+      name: raw.name || `Tron ${capitalize(reference)}`,
+      rpc: raw.rpc || raw.rpcUrl || '',
+      rpcUrl: raw.rpcUrl || raw.rpc || '',
+      tronRpcUrl: raw.tronRpcUrl || raw.rpcUrl || raw.rpc || '',
+      symbol: raw.symbol || 'TRX',
+      decimals: raw.decimals || 6,
+      explorer: raw.explorer || '',
+      type: raw.type || NETWORK_TYPES.CUSTOM,
+      isTestnet: raw.isTestnet || false,
+      namespace: 'tron',
+      reference,
+      chainKey: raw.chainKey || `tron:${reference}`,
+      nativeCurrency: raw.nativeCurrency || {
+        name: raw.symbol || 'TRX',
+        symbol: raw.symbol || 'TRX',
+        decimals: raw.decimals || 6
+      }
+    };
+  }
+
+  // EVM 网络：保持原有数字 chainId 路径
+  const chainId = typeof raw.chainId === 'string' && raw.chainId.startsWith('0x')
+    ? parseInt(raw.chainId, 16)
+    : parseInt(raw.chainId, 10);
+
   return {
-    id: config.id || config.name.toLowerCase().replace(/\s+/g, '-'),
-    name: config.name,
-    rpc: config.rpc || config.rpcUrl,
-    rpcUrl: config.rpcUrl || config.rpc,
+    id: raw.id || (raw.name || '').toLowerCase().replace(/\s+/g, '-'),
+    name: raw.name,
+    rpc: raw.rpc || raw.rpcUrl,
+    rpcUrl: raw.rpcUrl || raw.rpc,
     chainId: chainId,
     chainIdHex: '0x' + chainId.toString(16),
-    symbol: config.symbol,
-    decimals: config.decimals || 18,
-    explorer: config.explorer || '',
-    type: config.type || NETWORK_TYPES.CUSTOM,
-    isTestnet: config.isTestnet || false,
-    nativeCurrency: config.nativeCurrency || {
-      name: config.symbol,
-      symbol: config.symbol,
-      decimals: config.decimals || 18
+    symbol: raw.symbol,
+    decimals: raw.decimals || 18,
+    explorer: raw.explorer || '',
+    type: raw.type || NETWORK_TYPES.CUSTOM,
+    isTestnet: raw.isTestnet || false,
+    nativeCurrency: raw.nativeCurrency || {
+      name: raw.symbol,
+      symbol: raw.symbol,
+      decimals: raw.decimals || 18
     }
   };
+}
+
+/**
+ * @param {string} s
+ * @returns {string}
+ */
+function capitalize(s) {
+  const str = String(s || '');
+  return str ? str[0].toUpperCase() + str.slice(1) : '';
 }
 
 /**

@@ -253,34 +253,54 @@ export class NetworkDomain extends BaseDomain {
 
   /**
    * 获取网络显示名称
-   * @param {string} chainId - 链 ID
+   * @param {string} chainIdOrKey - 链 ID（hex）或 chainKey（CAIP-2）
    * @returns {string} 显示名称
    */
-  getNetworkDisplayName(chainId) {
-    const network = this._networks.find(n => n.chainId === chainId || n.chainIdHex === chainId);
+  getNetworkDisplayName(chainIdOrKey) {
+    const network = this._networks.find(n =>
+      n.chainId === chainIdOrKey || n.chainIdHex === chainIdOrKey || n.chainKey === chainIdOrKey
+    );
     if (network) {
       return network.name || network.chainName || '网络';
     }
-    return `Chain ${parseInt(chainId, 16)}`;
+    // Tron chainKey 回退名
+    if (chainIdOrKey === 'tron:mainnet') return 'Tron Mainnet';
+    if (chainIdOrKey === 'tron:shasta') return 'Tron Shasta Testnet';
+    if (chainIdOrKey === 'tron:nile') return 'Tron Nile Testnet';
+    // 其他未知 chainId 用 hex 兜底
+    if (chainIdOrKey && chainIdOrKey.startsWith('0x')) {
+      return `Chain ${parseInt(chainIdOrKey, 16)}`;
+    }
+    return chainIdOrKey || '未知网络';
   }
 
   /**
    * 检查是否是主网
-   * @param {string} chainId - 链 ID
+   * @param {string} chainIdOrKey - 链 ID 或 chainKey
    * @returns {boolean} 是否是主网
    */
-  isMainnet(chainId) {
-    return chainId === '0x1';
+  isMainnet(chainIdOrKey) {
+    if (chainIdOrKey === 'tron:mainnet') return true;
+    const network = this._networks.find(n =>
+      n.chainId === chainIdOrKey || n.chainIdHex === chainIdOrKey || n.chainKey === chainIdOrKey
+    );
+    if (network) return network.isTestnet === false;
+    return chainIdOrKey === '0x1' || chainIdOrKey === 1;
   }
 
   /**
    * 检查是否是测试网
-   * @param {string} chainId - 链 ID
+   * @param {string} chainIdOrKey - 链 ID 或 chainKey
    * @returns {boolean} 是否是测试网
    */
-  isTestnet(chainId) {
+  isTestnet(chainIdOrKey) {
+    if (chainIdOrKey === 'tron:shasta' || chainIdOrKey === 'tron:nile') return true;
+    const network = this._networks.find(n =>
+      n.chainId === chainIdOrKey || n.chainIdHex === chainIdOrKey || n.chainKey === chainIdOrKey
+    );
+    if (network) return network.isTestnet === true;
     const testnetChainIds = ['0x5', '0xaa36a7', '0x13881']; // Goerli, Sepolia, Mumbai
-    return testnetChainIds.includes(chainId);
+    return testnetChainIds.includes(chainIdOrKey);
   }
 
   /**
@@ -295,10 +315,10 @@ export class NetworkDomain extends BaseDomain {
 
   /**
    * 获取网络图标颜色
-   * @param {string} chainId - 链 ID
+   * @param {string} chainIdOrKey - 链 ID 或 chainKey
    * @returns {string} 颜色代码
    */
-  getNetworkColor(chainId) {
+  getNetworkColor(chainIdOrKey) {
     const colorMap = {
       '0x1': '#627EEA',      // Ethereum - 蓝色
       '0x89': '#8247E5',     // Polygon - 紫色
@@ -306,8 +326,11 @@ export class NetworkDomain extends BaseDomain {
       '0xa': '#FF0420',      // Optimism - 红色
       '0x38': '#F0B90B',     // BSC - 黄色
       '0xaa36a7': '#627EEA', // Sepolia - 蓝色（测试网）
-      '0x5': '#627EEA'       // Goerli - 蓝色（测试网）
+      '0x5': '#627EEA',      // Goerli - 蓝色（测试网）
+      'tron:mainnet': '#FF060A',   // Tron - 红色
+      'tron:shasta': '#FF060A',
+      'tron:nile': '#FF060A'
     };
-    return colorMap[chainId] || '#808080';
+    return colorMap[chainIdOrKey] || '#808080';
   }
 }
