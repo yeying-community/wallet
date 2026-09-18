@@ -5,6 +5,7 @@
 import { EventType } from '../protocol/dapp-protocol.js';
 import { state } from './state.js';
 import { createInvalidParams, createUnrecognizedChainError } from '../common/errors/index.js';
+import { ErrorCode } from '../common/errors/error-codes.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
 import { normalizeChainId } from '../common/chain/index.js';
 import { validateNetworkConfig } from '../config/validation-rules.js';
@@ -18,10 +19,27 @@ import {
 } from '../chain/current-chain.js';
 
 /**
+ * EVM 协议入口守门：当钱包当前链是 `tron:*` 时，dApp 调用 eth_chainId /
+ * net_version / wallet_switchEthereumChain 抛 EIP-1193 UNSUPPORTED_METHOD。
+ *
+ * 阶段 1（v1）：wallet 不在 Tron 链下响应 dApp 的 EVM 协议调用，避免
+ * 把错误的 chainId 答回 dApp。
+ */
+function ensureEvmActive() {
+  const chainKey = state.currentChainKey || '';
+  if (chainKey.startsWith('tron:')) {
+    const err = new Error('EVM dApp protocol is unavailable while Tron is active');
+    err.code = ErrorCode.UNSUPPORTED_METHOD;
+    throw err;
+  }
+}
+
+/**
  * 处理 eth_chainId
  * @returns {string} 当前链 ID
  */
 export function handleEthChainId() {
+  ensureEvmActive();
   return getCurrentEvmChainIdHex();
 }
 
@@ -30,6 +48,7 @@ export function handleEthChainId() {
  * @returns {string} 当前链 ID（十进制）
  */
 export function handleNetVersion() {
+  ensureEvmActive();
   return getCurrentChainIdDecimal();
 }
 
@@ -39,6 +58,7 @@ export function handleNetVersion() {
  * @returns {Promise<null>}
  */
 export async function handleSwitchChain(params) {
+  ensureEvmActive();
   const [{ chainId }] = params;
 
   if (!chainId) {

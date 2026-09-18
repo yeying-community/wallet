@@ -10,6 +10,10 @@ import {
   importHDWallet,
   importPrivateKeyWallet,
   deriveSubAccount,
+  createTronHDWallet,
+  importTronHDWallet,
+  importTronPrivateKeyWallet,
+  deriveTronSubAccount,
   WALLET_TYPE,
   createWalletInstance,
   getAccountPrivateKey,
@@ -525,8 +529,120 @@ export async function handleCreateSubAccount(walletId, accountName, password) {
   }
 }
 
+// ==================== Tron 钱包 / 子账户（v1：secp256k1 / native TRX） ====================
+
 /**
- * 切换账户（支持自动解锁）
+ * 创建 Tron HD 钱包（生成新助记词）
+ * @param {string} accountName
+ * @param {string} password
+ * @param {{tronReference?: string}} [options]
+ * @returns {Promise<Object>} { success, wallet, account, mnemonic }
+ */
+export async function handleCreateTronHDWallet(accountName, password, options = {}) {
+  try {
+    const { wallet, mainAccount, mnemonic } = await createTronHDWallet(accountName, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Tron HD wallet created and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount, mnemonic };
+  } catch (error) {
+    console.error('❌ Handle create Tron HD wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 导入 Tron HD 钱包（从助记词）
+ * @param {string} accountName
+ * @param {string} mnemonic
+ * @param {string} password
+ * @param {{tronReference?: string}} [options]
+ * @returns {Promise<Object>} { success, wallet, account }
+ */
+export async function handleImportTronHDWallet(accountName, mnemonic, password, options = {}) {
+  try {
+    const { wallet, mainAccount } = await importTronHDWallet(accountName, mnemonic, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Tron HD wallet imported and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount };
+  } catch (error) {
+    console.error('❌ Handle import Tron HD wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 导入 Tron 私钥
+ * @param {string} accountName
+ * @param {string} privateKey
+ * @param {string} password
+ * @param {{tronReference?: string}} [options]
+ * @returns {Promise<Object>} { success, wallet, account }
+ */
+export async function handleImportTronPrivateKeyWallet(accountName, privateKey, password, options = {}) {
+  try {
+    const { wallet, mainAccount } = await importTronPrivateKeyWallet(accountName, privateKey, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Tron private key wallet imported and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount };
+  } catch (error) {
+    console.error('❌ Handle import Tron private key wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 派生 Tron 子账户（仅 Tron HD 钱包）
+ * @param {string} walletId
+ * @param {string|null} password
+ * @returns {Promise<Object>} { success, account }
+ */
+export async function handleCreateTronSubAccount(walletId, password) {
+  try {
+    const wallet = await getWallet(walletId);
+    if (!wallet || wallet.type !== WALLET_TYPE.HD) {
+      return { success: false, error: 'Tron HD wallet not found' };
+    }
+
+    // 计算新索引：与 EVM 路径一致，避免 index 复用
+    const walletAccounts = await getWalletAccounts(walletId);
+    const maxIndex = walletAccounts.reduce(
+      (max, account) => Math.max(max, Number.isFinite(account.index) ? account.index : 0),
+      -1
+    );
+    const newIndex = maxIndex + 1;
+
+    const subAccount = await deriveTronSubAccount(wallet, newIndex, undefined, password);
+    await saveAccount(subAccount);
+
+    wallet.accountCount = (wallet.accountCount || 0) + 1;
+    await saveWallet(wallet);
+
+    if (password) {
+      cachePassword(password, TIMEOUTS.PASSWORD);
+    } else {
+      refreshPasswordCache();
+    }
+    resetLockTimer();
+
+    console.log('✅ Tron sub account created and saved:', subAccount.name);
+    return { success: true, account: subAccount };
+  } catch (error) {
+    console.error('❌ Handle create Tron sub account failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 切换账户
  * @param {string} accountId - 要切换到的账户 ID
  * @param {string|null} password - 密码（可选，如果有缓存则不需要）
  * @returns {Promise<Object>} { success, account, requirePassword }

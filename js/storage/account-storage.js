@@ -31,7 +31,9 @@ import {
 const STORE = WalletStorageKeys.ACCOUNTS; // 'accounts'
 const SELECTED_KEY = WalletStorageKeys.SELECTED_ACCOUNT_ID;
 const MPC_ACCOUNT_ID_PREFIX = 'mpc:';
-const SCHEMA_VERSION = 2;
+// schemaVersion=3：阶段 1 Tron 加入后，account.namespace/chainKey/coinType 可以
+// 是 'tron' / 'tron:<ref>' / 195；若用户既有账户缺这三字段，回填 EVM 默认。
+const SCHEMA_VERSION = 3;
 
 function getMpcWalletIdFromAccountId(accountId) {
   return String(accountId || '').startsWith(MPC_ACCOUNT_ID_PREFIX)
