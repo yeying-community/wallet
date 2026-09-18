@@ -40,7 +40,8 @@ export const NETWORKS = {
     nativeCurrency: {
       name: 'Ether',
       symbol: 'ETH',
-      decimals: 18
+      decimals: 18,
+      icon: 'assets/token-icons/source-official/ethereum.svg'
     }
   },
   sepolia: {
@@ -58,7 +59,8 @@ export const NETWORKS = {
     nativeCurrency: {
       name: 'Sepolia Ether',
       symbol: 'ETH',
-      decimals: 18
+      decimals: 18,
+      icon: 'assets/token-icons/source-official/ethereum.svg'
     }
   },
   'polygon-amoy': {
@@ -171,6 +173,7 @@ export const BUILTIN_TOKENS_BY_CHAIN_ID = {
       name: 'USD Coin',
       decimals: 6,
       chainId: '0x1',
+      image: 'assets/token-icons/source-official/usdc.svg',
       builtin: true
     },
     {
@@ -179,6 +182,7 @@ export const BUILTIN_TOKENS_BY_CHAIN_ID = {
       name: 'Tether USD',
       decimals: 6,
       chainId: '0x1',
+      image: 'assets/token-icons/source-official/usdt.svg',
       builtin: true
     }
   ]

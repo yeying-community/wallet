@@ -64,6 +64,7 @@ export class TokenDomain extends BaseDomain {
     let symbol = 'ETH';
     let name = '原生代币';
     let balance = '0';
+    let image = '';
 
     if (chainId) {
       try {
@@ -71,6 +72,7 @@ export class TokenDomain extends BaseDomain {
         if (info) {
           symbol = info.nativeCurrency?.symbol || info.symbol || symbol;
           name = info.nativeCurrency?.name || info.name || info.chainName || name;
+          image = info.nativeCurrency?.icon || info.icon || image;
         }
       } catch (error) {
         console.warn('[TokenDomain] 获取网络信息失败:', error);
@@ -90,7 +92,16 @@ export class TokenDomain extends BaseDomain {
       symbol,
       name,
       balance,
+      image: image || this.getNativeTokenIcon(chainId),
       isNative: true
     };
+  }
+
+  getNativeTokenIcon(chainId) {
+    const normalizedChainId = String(chainId || '').toLowerCase();
+    if (normalizedChainId === '0x1' || normalizedChainId === '1' || normalizedChainId === '0xaa36a7' || normalizedChainId === '11155111') {
+      return 'assets/token-icons/source-official/ethereum.svg';
+    }
+    return '';
   }
 }

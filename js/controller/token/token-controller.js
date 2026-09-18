@@ -2,6 +2,21 @@ import { shortenAddress } from '../../common/chain/index.js';
 import { escapeHtml } from '../../common/ui/html-ui.js';
 import { TransferTokenController } from './transfer-token-controller.js';
 
+function resolveTokenImage(image) {
+  const value = String(image || '').trim();
+  if (!value) return '';
+  if (/^(?:https?:|data:|blob:|chrome-extension:|moz-extension:)/i.test(value)) {
+    return value;
+  }
+  try {
+    return globalThis.chrome?.runtime?.getURL
+      ? globalThis.chrome.runtime.getURL(value.replace(/^\/+/, ''))
+      : value;
+  } catch {
+    return value;
+  }
+}
+
 export class TokenController {
   constructor({ token, wallet, networkController } = {}) {
     this.token = token;
@@ -83,7 +98,7 @@ export class TokenController {
     container.innerHTML = tokens.map(token => {
       const symbol = String(token.symbol || '-');
       const name = token.name || (token.address ? shortenAddress(token.address) : '');
-      const image = token.image || token.icon || token.logoURI || token.logo || '';
+      const image = resolveTokenImage(token.image || token.icon || token.logoURI || token.logo);
       const iconLabel = symbol.replace(/[^A-Za-z0-9]/g, '').slice(0, 1).toUpperCase() || '?';
       return `
       <div class="token-item ${token.isNative ? 'native' : ''}">
