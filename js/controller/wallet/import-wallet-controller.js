@@ -165,7 +165,9 @@ export class ImportWalletController {
     const name = document.getElementById('importAccountName')?.value.trim() || '导入钱包';
     const password = document.getElementById('importWalletPassword')?.value;
     const source = document.querySelector('.import-source-tab.active')?.dataset.source || 'wallet';
-    const importType = document.querySelector('.import-method-tab.active')?.dataset.type || 'mnemonic';
+    const methodType = document.querySelector('.import-method-tab.active')?.dataset.type || 'mnemonic';
+    // 「备份文件」来源使用文件导入分支；「助记词/私钥」来源才由方式 tab 决定类型。
+    const importType = source === 'file' ? 'file' : methodType;
     const origin = getPageOrigin('importPage', 'welcome');
     const useExistingPassword = origin === 'accounts';
 
