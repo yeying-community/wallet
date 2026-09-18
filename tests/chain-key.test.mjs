@@ -16,7 +16,9 @@ import {
   chainKeyFromHex,
   chainKeyToHex,
   chainKeyToDecimal,
-  namespaceOf
+  namespaceOf,
+  referenceOf,
+  TRON_NAMESPACE
 } from '../js/chain/chain-key.js';
 
 test('常量', () => {
@@ -49,6 +51,12 @@ test('chainKeyFromNetwork：number / hex / 十进制串 chainId', () => {
   assert.equal(chainKeyFromNetwork({ chainId: '137' }), 'eip155:137');
 });
 
+test('chainKeyFromNetwork：Tron network（namespace=tron + reference）', () => {
+  assert.equal(chainKeyFromNetwork({ namespace: 'tron', reference: 'mainnet' }), 'tron:mainnet');
+  assert.equal(chainKeyFromNetwork({ namespace: 'tron', reference: 'shasta' }), 'tron:shasta');
+  assert.equal(chainKeyFromNetwork({ namespace: 'tron', reference: 'nile' }), 'tron:nile');
+});
+
 test('chainKeyToDecimal', () => {
   assert.equal(chainKeyToDecimal('eip155:1'), '1');
   assert.equal(chainKeyToDecimal('eip155:5432'), '5432');
@@ -57,7 +65,19 @@ test('chainKeyToDecimal', () => {
 test('namespaceOf', () => {
   assert.equal(namespaceOf('eip155:1'), 'eip155');
   assert.equal(namespaceOf('solana:mainnet'), 'solana');
+  assert.equal(namespaceOf('tron:mainnet'), 'tron');
   assert.equal(namespaceOf('no-colon'), '');
+});
+
+test('referenceOf', () => {
+  assert.equal(referenceOf('eip155:1'), '1');
+  assert.equal(referenceOf('tron:mainnet'), 'mainnet');
+  assert.equal(referenceOf('tron:shasta'), 'shasta');
+  assert.equal(referenceOf('no-colon'), '');
+});
+
+test('TRON_NAMESPACE 暴露为常量', () => {
+  assert.equal(TRON_NAMESPACE, 'tron');
 });
 
 test('非 eip155 命名空间在 hex/decimal 转换处抛错', () => {
