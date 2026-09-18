@@ -36,6 +36,13 @@ import {
   DEFAULT_COIN_TYPE,
   DEFAULT_NAMESPACE
 } from '../chain/chain-key.js';
+import {
+  privateKeyToTronAddress,
+  tronPrefixForReference,
+  TRON_COIN_TYPE,
+  TRON_NAMESPACE,
+  TRON_REFERENCE_MAINNET
+} from '../chain/adapters/tron/address.js';
 
 // ==================== 钱包类型 ====================
 
@@ -565,20 +572,326 @@ function generateAccountId(walletId, index) {
 }
 
 /**
- * 推导 EVM 账户的链身份字段（namespace/chainKey/coinType/publicKey）。
- * 阶段 0 仅支持 EVM：所有本地账户均落在 eip155 命名空间、coinType 60、
- * 链标识为 DEFAULT_CHAIN_KEY（eip155:1），compressed publicKey 由私钥派生，
- * 与 MPC 视图口径一致。
+ * 推导账户的链身份字段（namespace/chainKey/coinType/publicKey）。
+ *
+ * `chainFamily` 控制命名空间：
+ *   - 'eip155' → namespace=eip155, chainKey=DEFAULT_CHAIN_KEY, coinType=60；
+ *   - 'tron'   → namespace=tron, chainKey=tron:<reference>, coinType=195，
+ *                address 由 privateKeyToTronAddress 派生为 T... 形态（Base58Check）。
+ *
+ * 注意：`buildEvmAccountIdentity` 保留为旧入口（薄包装），新逻辑都走这里。
  *
  * @param {ethers.HDNodeWallet|ethers.Wallet} ethersWallet
+ * @param {string} [chainFamily='eip155']
+ * @param {{tronReference?: string}} [options] - 仅 Tron 路径使用
  * @returns {{namespace:string,chainKey:string,coinType:number,publicKey:string}}
  */
-function buildEvmAccountIdentity(ethersWallet) {
+function buildAccountIdentity(ethersWallet, chainFamily = DEFAULT_NAMESPACE, options = {}) {
+  const family = String(chainFamily || DEFAULT_NAMESPACE).toLowerCase();
   const publicKey = ethers.SigningKey.computePublicKey(ethersWallet.privateKey, true);
+
+  if (family === TRON_NAMESPACE) {
+    const reference = String(options.tronReference || TRON_REFERENCE_MAINNET).toLowerCase();
+    return {
+      namespace: TRON_NAMESPACE,
+      chainKey: `${TRON_NAMESPACE}:${reference}`,
+      coinType: TRON_COIN_TYPE,
+      publicKey
+    };
+  }
+
   return {
     namespace: DEFAULT_NAMESPACE,
     chainKey: DEFAULT_CHAIN_KEY,
     coinType: DEFAULT_COIN_TYPE,
     publicKey
   };
+}
+
+/**
+ * EVM 账户的链身份字段（旧入口薄包装，保留以避免破坏旧 caller）。
+ * @param {ethers.HDNodeWallet|ethers.Wallet} ethersWallet
+ * @returns {{namespace:string,chainKey:string,coinType:number,publicKey:string}}
+ */
+function buildEvmAccountIdentity(ethersWallet) {
+  return buildAccountIdentity(ethersWallet, DEFAULT_NAMESPACE);
+}
+
+// ==================== Tron 钱包（v1：secp256k1 / native TRX） ====================
+//
+// 4 个入口点与 EVM 路径平行：HD 创建、HD 导入、私钥导入、子账户派生。
+// 派生路径固定 m/44'/195'/0'/0/{index}；地址走 Base58Check（T... 形态）。
+// reference 默认 mainnet（0x41 prefix），可通过 options 切换 shasta/nile。
+
+/**
+ * 创建 Tron HD 钱包（生成新助记词）
+ * @param {string} accountName - 账户名称
+ * @param {string} password - 密码
+ * @param {{tronReference?: string}} [options]
+ * @returns {Promise<Object>} { wallet, mainAccount, mnemonic }
+ */
+export async function createTronHDWallet(accountName, password, options = {}) {
+  try {
+    const validation = validatePassword(password);
+    if (!validation.valid) {
+      throw createInvalidPasswordError(validation.error);
+    }
+
+    const reference = String(options.tronReference || TRON_REFERENCE_MAINNET).toLowerCase();
+    const prefix = tronPrefixForReference(reference);
+
+    const ethersWallet = ethers.Wallet.createRandom();
+    const mnemonic = ethersWallet.mnemonic.phrase;
+
+    // 直接从私钥派生主账户（HDNodeWallet 的默认 path 是 EVM，需绕开）
+    const childSk = deriveTronChildKeyFromMnemonic(mnemonic, 0);
+    const childAddress = privateKeyToTronAddress(childSk, prefix);
+
+    const encryptedMnemonic = await encryptString(mnemonic, password);
+    const encryptedPrivateKey = await encryptString(childSk, password);
+    const walletId = generateId('wallet');
+    const createdAt = getTimestamp();
+
+    const wallet = {
+      id: walletId,
+      name: 'Tron HD Wallet',
+      type: WALLET_TYPE.HD,
+      encryptedMnemonic,
+      createdAt,
+      accountCount: 1
+    };
+
+    const mainAccount = {
+      id: generateAccountId(walletId, 0),
+      walletId,
+      name: accountName || 'Tron Account 1',
+      index: 0,
+      derivationPath: `m/44'/195'/0'/0/0`,
+      address: childAddress,
+      encryptedPrivateKey,
+      ...buildAccountIdentity(new ethers.Wallet(childSk), TRON_NAMESPACE, { tronReference: reference }),
+      createdAt,
+      nameUpdatedAt: createdAt
+    };
+
+    console.log('✅ Tron HD Wallet created:', { walletId, address: mainAccount.address, reference });
+
+    return { wallet, mainAccount, mnemonic };
+  } catch (error) {
+    console.error('❌ Create Tron HD wallet failed:', error);
+    if (error.code) throw error;
+    throw createInternalError('创建 Tron 钱包失败：' + error.message);
+  }
+}
+
+/**
+ * 导入 Tron HD 钱包（从助记词）
+ * @param {string} accountName - 账户名称
+ * @param {string} mnemonic - 助记词
+ * @param {string} password - 密码
+ * @param {{tronReference?: string}} [options]
+ * @returns {Promise<Object>} { wallet, mainAccount }
+ */
+export async function importTronHDWallet(accountName, mnemonic, password, options = {}) {
+  try {
+    let validation = validatePassword(password);
+    if (!validation.valid) {
+      throw createInvalidPasswordError(validation.error);
+    }
+    validation = validateMnemonic(mnemonic);
+    if (!validation.valid) {
+      throw createMnemonicInvalidError('助记词无效：' + validation.error);
+    }
+
+    const reference = String(options.tronReference || TRON_REFERENCE_MAINNET).toLowerCase();
+    const prefix = tronPrefixForReference(reference);
+
+    let childSk;
+    try {
+      childSk = deriveTronChildKeyFromMnemonic(mnemonic.trim(), 0);
+    } catch (error) {
+      throw createMnemonicInvalidError('无法从助记词派生 Tron 钱包：' + error.message);
+    }
+    const childAddress = privateKeyToTronAddress(childSk, prefix);
+
+    const encryptedMnemonic = await encryptString(mnemonic, password);
+    const encryptedPrivateKey = await encryptString(childSk, password);
+    const walletId = generateId('wallet');
+    const createdAt = getTimestamp();
+
+    const wallet = {
+      id: walletId,
+      name: 'Tron HD Wallet',
+      type: WALLET_TYPE.HD,
+      encryptedMnemonic,
+      createdAt,
+      accountCount: 1
+    };
+
+    const mainAccount = {
+      id: generateAccountId(walletId, 0),
+      walletId,
+      name: accountName || 'Tron Account 1',
+      index: 0,
+      derivationPath: `m/44'/195'/0'/0/0`,
+      address: childAddress,
+      encryptedPrivateKey,
+      ...buildAccountIdentity(new ethers.Wallet(childSk), TRON_NAMESPACE, { tronReference: reference }),
+      createdAt,
+      nameUpdatedAt: createdAt
+    };
+
+    console.log('✅ Tron HD Wallet imported:', { walletId, address: mainAccount.address, reference });
+
+    return { wallet, mainAccount };
+  } catch (error) {
+    console.error('❌ Import Tron HD wallet failed:', error);
+    if (error.code) throw error;
+    throw createInternalError('导入 Tron 钱包失败：' + error.message);
+  }
+}
+
+/**
+ * 导入 Tron 私钥钱包
+ * @param {string} accountName - 账户名称
+ * @param {string} privateKey - 私钥
+ * @param {string} password - 密码
+ * @param {{tronReference?: string}} [options]
+ * @returns {Promise<Object>} { wallet, mainAccount }
+ */
+export async function importTronPrivateKeyWallet(accountName, privateKey, password, options = {}) {
+  try {
+    let validation = validatePassword(password);
+    if (!validation.valid) {
+      throw createInvalidPasswordError(validation.error);
+    }
+    validation = validatePrivateKey(privateKey);
+    if (!validation.valid) {
+      throw createPrivateKeyInvalidError('私钥无效：' + validation.error);
+    }
+
+    privateKey = privateKey.trim();
+    if (!privateKey.startsWith('0x')) {
+      privateKey = '0x' + privateKey;
+    }
+
+    let ethersWallet;
+    try {
+      ethersWallet = new ethers.Wallet(privateKey);
+    } catch (error) {
+      throw createPrivateKeyInvalidError('无法从私钥创建 Tron 钱包：' + error.message);
+    }
+
+    const reference = String(options.tronReference || TRON_REFERENCE_MAINNET).toLowerCase();
+    const prefix = tronPrefixForReference(reference);
+    const tronAddress = privateKeyToTronAddress(ethersWallet.privateKey, prefix);
+
+    const encryptedPrivateKey = await encryptString(privateKey, password);
+    const walletId = generateId('wallet');
+    const createdAt = getTimestamp();
+
+    const wallet = {
+      id: walletId,
+      name: 'Imported Tron Wallet',
+      type: WALLET_TYPE.IMPORTED,
+      createdAt,
+      accountCount: 1
+    };
+
+    const mainAccount = {
+      id: generateAccountId(walletId, 0),
+      walletId,
+      name: accountName || 'Imported Tron Account',
+      index: 0,
+      address: tronAddress,
+      encryptedPrivateKey,
+      ...buildAccountIdentity(ethersWallet, TRON_NAMESPACE, { tronReference: reference }),
+      createdAt,
+      nameUpdatedAt: createdAt
+    };
+
+    console.log('✅ Tron private key wallet imported:', { walletId, address: mainAccount.address, reference });
+
+    return { wallet, mainAccount };
+  } catch (error) {
+    console.error('❌ Import Tron private key wallet failed:', error);
+    if (error.code) throw error;
+    throw createInternalError('导入 Tron 私钥失败：' + error.message);
+  }
+}
+
+/**
+ * 派生 Tron 子账户（仅 HD 钱包）
+ * @param {Object} wallet - HD 钱包对象
+ * @param {number} newIndex - 新账户索引
+ * @param {string} accountName - 账户名称
+ * @param {string} password - 密码
+ * @param {{tronReference?: string}} [options]
+ * @returns {Promise<Object>} 子账户对象
+ */
+export async function deriveTronSubAccount(wallet, newIndex, accountName, password, options = {}) {
+  try {
+    if (wallet.type !== WALLET_TYPE.HD) {
+      throw createInvalidParams('只有 HD 钱包可以派生 Tron 子账户');
+    }
+    if (!wallet.encryptedMnemonic) {
+      throw createMnemonicInvalidError('钱包缺少助记词数据');
+    }
+
+    let mnemonic;
+    try {
+      mnemonic = await decryptString(wallet.encryptedMnemonic, password);
+    } catch (error) {
+      throw createInvalidPasswordError('密码错误');
+    }
+
+    const reference = String(options.tronReference || TRON_REFERENCE_MAINNET).toLowerCase();
+    const prefix = tronPrefixForReference(reference);
+
+    let childSk;
+    try {
+      childSk = deriveTronChildKeyFromMnemonic(mnemonic, newIndex);
+    } catch (error) {
+      throw createInternalError('派生 Tron 账户失败：' + error.message);
+    }
+    const childAddress = privateKeyToTronAddress(childSk, prefix);
+
+    const encryptedPrivateKey = await encryptString(childSk, password);
+    const createdAt = getTimestamp();
+
+    const subAccount = {
+      id: generateAccountId(wallet.id, newIndex),
+      walletId: wallet.id,
+      name: accountName || `Tron Account ${newIndex + 1}`,
+      index: newIndex,
+      derivationPath: `m/44'/195'/0'/0/${newIndex}`,
+      address: childAddress,
+      encryptedPrivateKey,
+      ...buildAccountIdentity(new ethers.Wallet(childSk), TRON_NAMESPACE, { tronReference: reference }),
+      createdAt,
+      nameUpdatedAt: createdAt
+    };
+
+    console.log('✅ Tron sub account derived:', { walletId: wallet.id, index: newIndex, address: subAccount.address });
+
+    return subAccount;
+  } catch (error) {
+    console.error('❌ Derive Tron sub account failed:', error);
+    if (error.code) throw error;
+    throw createInternalError('派生 Tron 子账户失败：' + error.message);
+  }
+}
+
+/**
+ * 通过 HDNodeWallet 从 mnemonic 派生 m/44'/195'/0'/0/{index} 的子私钥 hex。
+ * ethers.HDNodeWallet.fromPhrase 默认路径是 EVM (m/44'/60'/0'/0/0)，所以用
+ * derivePath 走相对路径 44'/195'/0'/0/{index} 即可。
+ *
+ * @param {string} mnemonic
+ * @param {number} index
+ * @returns {string} 0x + 64 hex chars
+ */
+function deriveTronChildKeyFromMnemonic(mnemonic, index) {
+  const hd = ethers.HDNodeWallet.fromPhrase(String(mnemonic || '').trim());
+  return hd.derivePath(`44'/195'/0'/0/${index}`).privateKey;
 }
