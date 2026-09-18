@@ -1,4 +1,6 @@
 node_modules
+# This repository uses npm; do not track pnpm's generated lockfile.
+pnpm-lock.yaml
 nohup.out
 .DS_Store
 docs/plan.md

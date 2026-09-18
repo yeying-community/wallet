@@ -35,7 +35,7 @@
           导入钱包
         </button>
         <button id="welcomeRecoverWalletBtn" class="btn btn-secondary">
-          云端密钥恢复
+          云端恢复钱包
         </button>
       </div>
 
@@ -57,23 +57,6 @@
             <button id="cancelCustodyRecoveryEndpointBtn" class="btn btn-secondary" type="button">取消</button>
             <button id="confirmCustodyRecoveryEndpointBtn" class="btn btn-primary" type="button">继续</button>
           </div>
-        </div>
-      </div>
-
-      <div id="custodyRecoveryPage" class="page hidden">
-        <div class="page-header">
-          <button id="custodyRecoveryBackBtn" class="back-btn" type="button">←</button>
-          <h2>云端密钥恢复</h2>
-        </div>
-        <div class="settings-body">
-          <p class="settings-card-description">确认要恢复的钱包身份，并输入创建云端托管记录时使用的钱包密码。</p>
-          <div id="custodyRecoveryCount" class="custody-recovery-count"></div>
-          <div id="custodyRecoveryList" class="custody-summary"></div>
-          <div class="form-group">
-            <label for="custodyRecoveryPassword">托管钱包密码</label>
-            <input id="custodyRecoveryPassword" class="input" type="password" autocomplete="current-password" />
-          </div>
-          <button id="custodyRecoveryConfirmBtn" class="btn btn-primary btn-block" type="button">开始恢复</button>
         </div>
       </div>
 
@@ -606,11 +589,17 @@
         </div>
 
         <!-- 导入类型切换 -->
-        <div class="import-tabs">
-          <button class="import-tab active" data-type="mnemonic">助记词</button>
-          <button class="import-tab" data-type="privateKey">私钥</button>
-          <button class="import-tab" data-type="file">备份文件</button>
+        <div class="import-tabs" role="tablist" aria-label="钱包恢复方式">
+          <button class="import-source-tab active" data-source="wallet" type="button">助记词 / 私钥</button>
+          <button class="import-source-tab" data-source="file" type="button">备份文件</button>
+          <button class="import-source-tab" data-source="custody" type="button">云端恢复钱包</button>
         </div>
+
+        <div id="walletImportSection">
+          <div class="import-method-tabs" role="tablist" aria-label="钱包密钥类型">
+            <button id="mnemonicTab" class="import-tab import-method-tab active" data-type="mnemonic" type="button">助记词</button>
+            <button id="privateKeyTab" class="import-tab import-method-tab" data-type="privateKey" type="button">私钥</button>
+          </div>
 
         <!-- 钱包名称 -->
         <div class="form-group" id="importWalletNameGroup">
@@ -645,16 +634,41 @@
             />
           </div>
         </div>
+        </div>
 
         <div id="fileImportSection" class="hidden">
           <div class="form-group">
             <label for="importAccountsFile">加密账户文件</label>
-            <input id="importAccountsFile" type="file" accept="application/json,.json" />
+            <label class="file-picker" for="importAccountsFile">
+              <span class="file-picker-icon" aria-hidden="true">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <path d="M14 2v6h6"></path>
+                  <path d="M12 18v-6"></path>
+                  <path d="m9 15 3-3 3 3"></path>
+                </svg>
+              </span>
+              <span class="file-picker-copy">
+                <strong>选择备份文件</strong>
+                <span id="importAccountsFileName">支持 JSON 格式的加密备份文件</span>
+              </span>
+              <input id="importAccountsFile" type="file" accept="application/json,.json" />
+            </label>
+          </div>
+        </div>
+
+        <div id="custodyImportSection" class="hidden">
+          <p class="settings-card-description">通过通行证授权读取云端托管记录，再使用创建托管记录时的钱包密码在本地解密恢复。</p>
+          <div id="custodyRecoveryCount" class="custody-recovery-count"></div>
+          <div id="custodyRecoveryList" class="custody-summary"></div>
+          <div class="form-group">
+            <label for="custodyRecoveryPassword">托管钱包密码</label>
+            <input id="custodyRecoveryPassword" class="input" type="password" autocomplete="current-password" />
           </div>
         </div>
 
         <!-- 密码 -->
-        <div class="form-group">
+        <div class="form-group" id="importWalletPasswordGroup">
           <label id="importPasswordLabel">密码</label>
           <input
             type="password"

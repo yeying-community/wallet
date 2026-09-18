@@ -2,7 +2,7 @@
 
 #settingsPage {
   padding: 0;
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -24,7 +24,7 @@
 
 #backupSyncLogsPage {
   padding: 0;
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -52,7 +52,7 @@
 #walletIdentityAuthenticatorPage,
 #walletIdentityEditPage {
   padding: 0;
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -113,7 +113,7 @@
 
 #sitesPage {
   padding: 0;
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
 }

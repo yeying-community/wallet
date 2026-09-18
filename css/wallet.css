@@ -1,13 +1,21 @@
 /* 钱包主页面样式 */
 
-html,
+html {
+  width: var(--popup-width);
+  height: var(--popup-height);
+  overflow: hidden;
+}
+
 body {
+  width: 100%;
   height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
 .container {
   height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -1232,7 +1240,7 @@ body {
 /* ==================== 导入页面样式 ==================== */
 
 #importPage {
-  height: 100vh;
+  height: 100%;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -1248,7 +1256,18 @@ body {
   border-radius: 8px;
 }
 
-.import-tab {
+.import-method-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 3px;
+  background: #f5f5f5;
+  border-radius: 7px;
+}
+
+.import-tab,
+.import-source-tab,
+.import-method-tab {
   flex: 1;
   min-width: 0;
   padding: 8px;
@@ -1280,12 +1299,16 @@ body {
   margin: 0;
 }
 
-.import-tab:hover {
+.import-tab:hover,
+.import-source-tab:hover,
+.import-method-tab:hover {
   background: rgba(102, 126, 234, 0.1);
   color: #667eea;
 }
 
-.import-tab.active {
+.import-tab.active,
+.import-source-tab.active,
+.import-method-tab.active {
   background: white;
   color: #667eea;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
