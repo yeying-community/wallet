@@ -35,11 +35,13 @@ globalThis.chrome = {
 
 const {
   getMpcAccountId,
-  resolveMpcAccountIdByAddress,
-  signMessage,
-  signTransaction,
-  signTypedData
+  resolveMpcAccountIdByAddress
 } = await import('../js/background/signing.js');
+const {
+  signMessage,
+  signTransactionRaw,
+  signTypedData
+} = await import('../js/chain/signing-service.js');
 const { resetMpcTssEngineForTests, setMpcTssEngineForTests } = await import('../js/background/mpc-tss-engine.js');
 const { mpcService } = await import('../js/background/mpc-service.js');
 const { createMpcWireMessage } = await import('../js/background/mpc-wire-protocol.js');
@@ -212,7 +214,7 @@ test('active MPC 钱包在 TSS signer 接入前明确阻断签名', async () => 
     /MPC_SIGNER_NOT_CONFIGURED/
   );
   await assert.rejects(
-    () => signTransaction(getMpcAccountId('mpc-wallet-1'), {
+    () => signTransactionRaw('eip155:1', getMpcAccountId('mpc-wallet-1'), {
       to: '0x2222222222222222222222222222222222222222',
       value: '0x0',
     }),
@@ -481,7 +483,7 @@ test('MPC 交易签名会签 unsignedHash 并组装 signed transaction', async (
   });
 
   const signed = await withLocalWireMessagePoll(
-    () => signTransaction(getMpcAccountId('mpc-wallet-1'), transaction)
+    () => signTransactionRaw('eip155:1', getMpcAccountId('mpc-wallet-1'), transaction)
   );
 
   assert.match(signed, /^0x/);

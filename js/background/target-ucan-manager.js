@@ -1,4 +1,4 @@
-import { signMessage } from './signing.js';
+import { signMessage } from '../chain/signing-service.js';
 import {
   getUserSetting,
   updateUserSettings

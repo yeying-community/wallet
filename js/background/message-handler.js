@@ -8,7 +8,12 @@ import { APPROVAL_PORT_NAME, ApprovalMessageType, WalletMessageType, NetworkMess
 import { sendResponse, sendError, registerConnection, unregisterConnection, checkSessionAndNotify } from './connection.js';
 import { routeRequest } from './request-router.js';
 import { unlockWallet, lockWallet, isAccountUnlocked } from './keyring.js';
-import { resolveMpcAccountIdByAddress, signMessage, signTransaction } from './signing.js';
+import { resolveMpcAccountIdByAddress } from './signing.js';
+import {
+  signMessage,
+  signTransactionRaw,
+  broadcastRawTransaction
+} from '../chain/signing-service.js';
 import { ethers } from '../../lib/ethers-6.16.esm.min.js';
 import {
   isWalletInitialized,
@@ -382,8 +387,11 @@ async function handleSendTransactionMessage(data) {
       tx.gasLimit = limit;
     }
 
-    const result = await signTransaction(accountId, tx);
-    const txHash = result?.hash || result?.transactionHash || result?.txHash || result;
+    const chainKey = state.currentChainKey || 'eip155:1';
+    // 统一路径：本地 + MPC 都走 signTransactionRaw → rawTx → broadcastRawTransaction，
+    // 补齐此前路径 C（popup / approval-page 入口）的 MPC 广播缺口。
+    const rawTx = await signTransactionRaw(chainKey, accountId, tx);
+    const txHash = await broadcastRawTransaction(chainKey, rawTx);
     let normalizedChainId = null;
     if (chainId) {
       try {
@@ -396,7 +404,7 @@ async function handleSendTransactionMessage(data) {
       hash: txHash,
       from,
       to,
-      value: result?.value ?? value,
+      value,
       token: token || null,
       timestamp: getTimestamp(),
       status: 'pending',
@@ -998,7 +1006,11 @@ const popupHandlers = new Map([
         }
         await unlockWallet(data.password, account.id, 'popup');
       }
-      const signedTransaction = await signTransaction(account.id, data.transaction);
+      const signedTransaction = await signTransactionRaw(
+        state.currentChainKey || 'eip155:1',
+        account.id,
+        data.transaction
+      );
       return { success: true, signedTransaction };
     } catch (error) {
       return { success: false, error: error.message };

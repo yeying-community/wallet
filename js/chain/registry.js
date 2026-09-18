@@ -16,7 +16,10 @@ import { localKeyringSigner } from './signers/local-keyring.js';
 import { isMpcAccountId } from '../background/signing.js';
 
 const UNSUPPORTED_CHAIN = 'UNSUPPORTED_CHAIN';
-const NOT_IMPLEMENTED = 'CHAIN_SIGNER_NOT_IMPLEMENTED';
+// MPC 走 signing-service 的 mpcSignTransaction/mpcSignMessage/mpcSignTypedData
+// （编排层级超出 Signer 接口的 digest→SignatureResult 形态）；registry 给出
+// 明确重定向错误，调用方应改走 signing-service。
+const MPC_REDIRECT = 'MPC_SIGNER_USE_SIGNING_SERVICE';
 
 /**
  * 按 chainKey 取适配器。
@@ -33,23 +36,18 @@ export function getAdapter(chainKey) {
 
 /**
  * 按账户取签名器，并校验曲线兼容。
+ * MPC 账户不返回 Signer：其编排走 signing-service，此处抛 MPC_REDIRECT。
  * @param {{id?: string}|string} account 账户对象或 accountId
  * @param {import('./types.d.ts').ChainAdapter} adapter
  * @returns {import('./types.d.ts').Signer}
  */
 export function getSigner(account, adapter) {
   const accountId = typeof account === 'string' ? account : String(account?.id || '');
-  const signer = isMpcAccountId(accountId)
-    ? mpcSignerOrThrow()
-    : localKeyringSigner;
-  assertCurveCompatible(adapter, signer);
-  return signer;
-}
-
-/** @returns {import('./types.d.ts').Signer} */
-function mpcSignerOrThrow() {
-  // Step 2 接入 signers/mpc-cggmp24.js
-  throw new Error(`${NOT_IMPLEMENTED}: mpc-cggmp24`);
+  if (isMpcAccountId(accountId)) {
+    throw new Error(`${MPC_REDIRECT}: ${accountId}`);
+  }
+  assertCurveCompatible(adapter, localKeyringSigner);
+  return localKeyringSigner;
 }
 
 /**

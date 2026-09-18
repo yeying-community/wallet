@@ -18,21 +18,24 @@ import {
 import { grantIdentityScopes, handleEthAccounts, handleEthRequestAccounts, handleWalletGetPermissions, handleWalletRequestPermissions, handleWalletRevokePermissions, hasRecentConnectApproval, requestIdentityScopeApproval } from './account-handler.js';
 import { handleEthChainId, handleNetVersion, handleSwitchChain, handleAddEthereumChain } from './chain-handler.js';
 import { handleRpcMethod } from './rpc-handler.js';
-import { getCurrentEvmChainIdHex } from '../chain/current-chain.js';
+import { getCurrentChainKey } from '../chain/current-chain.js';
 import {
   buildMpcSignedTransactionFromSignRequest,
   resolveMpcAccountIdByAddress,
-  signTransaction,
-  signMessage,
-  signTypedData,
   isMpcAccountId
 } from './signing.js';
-import { getSelectedAccount, isAuthorized, updateUserSetting, getNetworkByChainId, getNetworkConfigByKey, getMpcSignRequest, getAuthorization } from '../storage/index.js';
+import {
+  signTransactionRaw,
+  broadcastRawTransaction,
+  signMessage,
+  signTypedData
+} from '../chain/signing-service.js';
+import { getSelectedAccount, isAuthorized, updateUserSetting, getMpcSignRequest, getAuthorization } from '../storage/index.js';
 import { focusUnlockWindow, requestUnlock } from './unlock-flow.js';
 import { getCachedPassword } from './password-cache.js';
 import { mpcService } from './mpc-service.js';
 import { withPopupBoundsAsync } from './window-utils.js';
-import { DEFAULT_NETWORK, POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
+import { POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { handleUcanSession, handleUcanSign } from './ucan.js';
 import { normalizeIdentityPresentationRequest, requestIdentityPresentation as handleIdentityPresentation } from './identity-presentation.js';
@@ -160,44 +163,14 @@ async function ensureSiteAuthorized(origin) {
   }
 }
 
-async function getCurrentRpcUrl() {
-  const network = await getNetworkByChainId(getCurrentEvmChainIdHex());
-  let rpcUrl = state.currentRpcUrl || network?.rpcUrl || network?.rpc;
-  if (!rpcUrl) {
-    const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
-    rpcUrl = fallbackConfig?.rpcUrl || fallbackConfig?.rpc || '';
-  }
-  if (!rpcUrl) {
-    throw createInternalError('RPC URL not configured');
-  }
-  return rpcUrl;
-}
-
+/**
+ * 广播 rawTx（保留旧导出名以便现有测试与调用方；内部委托 signing-service，
+ * 统一走 evmAdapter.broadcast = eth_sendRawTransaction）。
+ * @param {string} signedTransaction
+ * @returns {Promise<string>} txHash
+ */
 export async function broadcastSignedTransaction(signedTransaction) {
-  const raw = String(signedTransaction || '').trim();
-  if (!/^0x[0-9a-fA-F]+$/.test(raw)) {
-    throw createInvalidParams('Invalid signed transaction');
-  }
-  const rpcUrl = await getCurrentRpcUrl();
-  const response = await fetch(rpcUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: getTimestamp(),
-      method: 'eth_sendRawTransaction',
-      params: [raw]
-    })
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || payload?.error) {
-    throw createInternalError(payload?.error?.message || `Failed to broadcast transaction: HTTP ${response.status}`);
-  }
-  const hash = String(payload?.result || '').trim();
-  if (!/^0x[0-9a-fA-F]{64}$/.test(hash)) {
-    throw createInternalError('Invalid transaction hash returned by RPC');
-  }
-  return hash;
+  return await broadcastRawTransaction(getCurrentChainKey(), signedTransaction);
 }
 
 async function waitForApprovalAndExecute({
@@ -712,14 +685,14 @@ async function handleSendTransaction(account, params, origin, tabId, clientReque
     },
     onApproved: async () => {
       console.log('✅ Transaction approved, signing...');
-      const result = await executeMpcAwareSignature(
-        () => signTransaction(signerAccountId, transaction),
+      const chainKey = getCurrentChainKey();
+      // 统一路径：本地 + MPC 都走 signTransactionRaw → rawTx → broadcastRawTransaction，
+      // 补齐此前路径 C（message-handler / popup / approval-page 入口）的 MPC 广播缺口。
+      const rawTx = await executeMpcAwareSignature(
+        () => signTransactionRaw(chainKey, signerAccountId, transaction),
         isMpcAccountId(signerAccountId) ? { resultType: 'signedTransaction' } : {}
       );
-      if (isMpcAccountId(signerAccountId)) {
-        return await broadcastSignedTransaction(result);
-      }
-      return result.hash;
+      return await broadcastRawTransaction(chainKey, rawTx);
     },
     onRejectedMessage: 'User rejected the transaction'
   });
@@ -773,10 +746,13 @@ async function handleSignTransaction(account, params, origin, tabId, clientReque
       });
       return requestId;
     },
-    onApproved: async () => executeMpcAwareSignature(
-      () => signTransaction(signerAccountId, transaction),
-      isMpcAccountId(signerAccountId) ? { resultType: 'signedTransaction' } : {}
-    ),
+    onApproved: async () => {
+      const chainKey = getCurrentChainKey();
+      return executeMpcAwareSignature(
+        () => signTransactionRaw(chainKey, signerAccountId, transaction),
+        isMpcAccountId(signerAccountId) ? { resultType: 'signedTransaction' } : {}
+      );
+    },
     onRejectedMessage: 'User rejected the transaction'
   });
 }
