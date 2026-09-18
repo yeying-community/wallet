@@ -142,14 +142,41 @@ test('getAllNetworks：长度 == getSupportedNetworks 长度', () => {
 
 // ==================== getMainnets / getTestnets ====================
 
-test('getMainnets：当前两条都是主网', () => {
+test('getMainnets：当前两条主网（yeying / ethereum）', () => {
   const mainnets = getMainnets();
   assert.equal(mainnets.length, 2);
   for (const n of mainnets) assert.equal(n.isTestnet, false);
+  const ids = mainnets.map((n) => n.id);
+  assert.ok(ids.includes('yeying'));
+  assert.ok(ids.includes('ethereum'));
 });
 
-test('getTestnets：当前没有测试网', () => {
-  assert.deepEqual(getTestnets(), []);
+test('getTestnets：sepolia / polygon-amoy / bsc-testnet 均为测试网', () => {
+  const testnets = getTestnets();
+  const ids = testnets.map((n) => n.id);
+  assert.ok(ids.includes('sepolia'), 'sepolia 应在测试网列表');
+  assert.ok(ids.includes('polygon-amoy'), 'polygon-amoy 应在测试网列表');
+  assert.ok(ids.includes('bsc-testnet'), 'bsc-testnet 应在测试网列表');
+  for (const n of testnets) {
+    assert.equal(n.isTestnet, true);
+    assert.equal(n.type, 'testnet');
+  }
+});
+
+test('NETWORKS：新增测试网 chainId / hex 正确', () => {
+  assert.equal(NETWORKS.sepolia.chainId, 11155111);
+  assert.equal(NETWORKS.sepolia.chainIdHex, '0xaa36a7');
+  assert.equal(NETWORKS['polygon-amoy'].chainId, 80002);
+  assert.equal(NETWORKS['polygon-amoy'].chainIdHex, '0x13882');
+  assert.equal(NETWORKS['bsc-testnet'].chainId, 97);
+  assert.equal(NETWORKS['bsc-testnet'].chainIdHex, '0x61');
+});
+
+test('getNetworkByChainId：测试网 chainId 也能命中', () => {
+  assert.equal(getNetworkByChainId(11155111), NETWORKS.sepolia);
+  assert.equal(getNetworkByChainId('0xaa36a7'), NETWORKS.sepolia);
+  assert.equal(getNetworkByChainId(80002), NETWORKS['polygon-amoy']);
+  assert.equal(getNetworkByChainId('0x61'), NETWORKS['bsc-testnet']);
 });
 
 // ==================== formatNetworkConfig ====================

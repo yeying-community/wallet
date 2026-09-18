@@ -42,6 +42,60 @@ export const NETWORKS = {
       symbol: 'ETH',
       decimals: 18
     }
+  },
+  sepolia: {
+    id: 'sepolia',
+    name: 'Ethereum Sepolia',
+    rpc: 'https://ethereum-sepolia-rpc.publicnode.com',
+    rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
+    chainId: 11155111,
+    chainIdHex: '0xaa36a7',
+    symbol: 'ETH',
+    decimals: 18,
+    explorer: 'https://sepolia.etherscan.io',
+    type: 'testnet',
+    isTestnet: true,
+    nativeCurrency: {
+      name: 'Sepolia Ether',
+      symbol: 'ETH',
+      decimals: 18
+    }
+  },
+  'polygon-amoy': {
+    id: 'polygon-amoy',
+    name: 'Polygon Amoy',
+    rpc: 'https://polygon-amoy-bor-rpc.publicnode.com',
+    rpcUrl: 'https://polygon-amoy-bor-rpc.publicnode.com',
+    chainId: 80002,
+    chainIdHex: '0x13882',
+    symbol: 'POL',
+    decimals: 18,
+    explorer: 'https://amoy.polygonscan.com',
+    type: 'testnet',
+    isTestnet: true,
+    nativeCurrency: {
+      name: 'Polygon',
+      symbol: 'POL',
+      decimals: 18
+    }
+  },
+  'bsc-testnet': {
+    id: 'bsc-testnet',
+    name: 'BNB Smart Chain Testnet',
+    rpc: 'https://bsc-testnet-rpc.publicnode.com',
+    rpcUrl: 'https://bsc-testnet-rpc.publicnode.com',
+    chainId: 97,
+    chainIdHex: '0x61',
+    symbol: 'tBNB',
+    decimals: 18,
+    explorer: 'https://testnet.bscscan.com',
+    type: 'testnet',
+    isTestnet: true,
+    nativeCurrency: {
+      name: 'Test BNB',
+      symbol: 'tBNB',
+      decimals: 18
+    }
   }
 };
 
