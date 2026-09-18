@@ -17,7 +17,8 @@ import {
   DEFAULT_CHAIN_KEY,
   chainKeyFromHex,
   chainKeyToHex,
-  chainKeyToDecimal
+  chainKeyToDecimal,
+  namespaceOf
 } from './chain-key.js';
 
 /**
@@ -49,16 +50,27 @@ export function chainIdToChainKey(chainId) {
 
 /**
  * 派生对外 hex chainId（eth_chainId）。
- * @returns {string}
+ * 非 EVM 链（Tron 等）没有 numeric chainId，返回 null；
+ * 调用方应先看 namespaceOf(getCurrentChainKey()) === 'eip155'
+ * 再调本函数，否则视为 EVM 不适用。
+ * @returns {string|null}
  */
 export function getCurrentEvmChainIdHex() {
-  return chainKeyToHex(getCurrentChainKey());
+  const key = getCurrentChainKey();
+  if (namespaceOf(key) !== 'eip155') {
+    return null;
+  }
+  return chainKeyToHex(key);
 }
 
 /**
- * 派生对外十进制 chainId 串（net_version）。
- * @returns {string}
+ * 派生对外十进制 chainId 串（net_version）。非 EVM 返回 null。
+ * @returns {string|null}
  */
 export function getCurrentChainIdDecimal() {
-  return chainKeyToDecimal(getCurrentChainKey());
+  const key = getCurrentChainKey();
+  if (namespaceOf(key) !== 'eip155') {
+    return null;
+  }
+  return chainKeyToDecimal(key);
 }

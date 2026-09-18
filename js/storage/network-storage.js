@@ -21,7 +21,10 @@ function getChainIdKey(network) {
   try {
     return normalizeChainId(id);
   } catch {
-    return id ? String(id) : null;
+    // 非 EVM 链（Tron 等）没有 numeric chainId；用 `key` 字段（默认网络在
+    // ensureDefaultNetworks 里挂上的；自定义网络也通过 saveCustomNetwork
+    // 写入 `key`）作去重键，保证 Tron 网络也能进入合并结果。
+    return network.key ? String(network.key) : id ? String(id) : null;
   }
 }
 

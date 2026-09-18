@@ -205,6 +205,7 @@ async function handleSwitchNetworkMessage(data) {
   const { chainId, rpcUrl, networkKey } = data || {};
 
   let nextChainId = null;
+  let nextChainKey = null;
   let nextRpcUrl = null;
   let selectedNetworkName = networkKey;
 
@@ -213,8 +214,16 @@ async function handleSwitchNetworkMessage(data) {
     if (!network) {
       return { success: false, error: 'Unknown network key' };
     }
-    nextChainId = network.chainIdHex || normalizeChainId(network.chainId);
-    nextRpcUrl = network.rpcUrl || network.rpc;
+    // Tron 等非 EVM 链没有 numeric chainId；它们携带 `chainKey` 字段
+    // （CAIP-2 `tron:<reference>`），下游 setCurrentChainKey 直接读它。
+    // EVM 网络走 `chainIdHex`/`chainId` 路径；Tron 走 chainKey 路径，
+    // `nextChainId` 留 null，让 line 246-252 的 fallback 不被触发。
+    if (network.chainKey) {
+      nextChainKey = network.chainKey;
+    } else {
+      nextChainId = network.chainIdHex || normalizeChainId(network.chainId);
+    }
+    nextRpcUrl = network.rpcUrl || network.rpc || network.tronRpcUrl;
   } else if (chainId) {
     const normalizedChainId = normalizeChainId(chainId);
     const network = await getStoredNetworkByChainId(normalizedChainId);
@@ -243,11 +252,14 @@ async function handleSwitchNetworkMessage(data) {
   }
 
   const prevChainKey = state.currentChainKey;
-  if (!nextChainId) {
+  if (!nextChainId && !nextChainKey) {
     const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
     nextChainId = fallbackConfig?.chainIdHex || (fallbackConfig?.chainId ? normalizeChainId(fallbackConfig.chainId) : null);
   }
-  if (nextChainId) {
+  if (nextChainKey) {
+    // Tron 等非 EVM 链：直接用 network.chainKey（CAIP-2 `tron:<reference>`）
+    setCurrentChainKey(nextChainKey);
+  } else if (nextChainId) {
     setCurrentChainKey(chainIdToChainKey(nextChainId));
   }
   state.currentRpcUrl = nextRpcUrl;
