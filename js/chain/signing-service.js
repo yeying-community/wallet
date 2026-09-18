@@ -13,18 +13,31 @@
  *   MPC_SIGNING_PENDING）。两者都返回 rawTx，再由 broadcastRawTransaction 统一广播。
  * - 消息 / typed data：返回 sigHex，外部契约不变（本地走 ethers，MPC 走编排）。
  *
- * rawTx 广播统一走 registry → evmAdapter.broadcast（内部 eth_sendRawTransaction）。
+ * rawTx 广播统一走 registry → adapter.broadcast（内部 eth_sendRawTransaction
+ * 或 Tron /wallet/broadcasttransaction）。Tron 路径：signTransactionRaw 返回
+ * 已附签名的 transaction JSON 串（满足 tronAdapter.broadcast 的 signedJson
+ * 形态）。
+ *
+ * 阶段 1：Tron（`tron:*`）走本地 secp256k1 keyring：buildUnsigned → SHA-256
+ * 摘要 → ECDSA 签名（v 归一化为 0/1）→ assembleSigned → broadcast JSON。
+ * MPC 路径对 Tron 暂不支持，抛 UNSUPPORTED_OPERATION。
  */
 
 import { ethers } from '../../lib/ethers-6.16.esm.min.js';
 import { getWalletInstance } from '../background/keyring.js';
+import { getAccountPrivateKey } from '../background/vault.js';
 import { isMpcAccountId, buildMpcSignedTransactionFromSignRequest } from '../background/signing.js';
 import { normalizeTransaction } from './adapters/evm/transaction.js';
 import { normalizeTypedData } from './adapters/evm/typed-data.js';
 import { resolveEvmRpcUrl } from './adapters/evm/rpc.js';
 import { getAdapter } from './registry.js';
 import { getCurrentChainKey } from './current-chain.js';
+import { namespaceOf } from './chain-key.js';
 import { mpcSignTransaction, mpcSignMessage, mpcSignTypedData } from './signers/mpc-cggmp24.js';
+import {
+  buildUnsigned as buildTronUnsigned,
+  assembleSigned as assembleTronSigned
+} from './adapters/tron/transaction.js';
 
 function isPendingMpcSignError(error) {
   return String(error?.code || error?.message || '').trim() === 'MPC_SIGNING_PENDING';
@@ -32,13 +45,18 @@ function isPendingMpcSignError(error) {
 
 /**
  * 交易签名，返回 rawTx（不广播）。本地 + MPC 统一。
- * @param {string} chainKey CAIP-2，如 eip155:1
+ * @param {string} chainKey CAIP-2，如 eip155:1 / tron:mainnet
  * @param {string} accountId
  * @param {Object} transaction 原始交易对象（可为部分字段，本地路径会补全）
- * @returns {Promise<string>} rawTx（0x...）
+ * @returns {Promise<string>} rawTx（EVM: 0x...；Tron: 已附 signature 的 JSON 串）
  */
 export async function signTransactionRaw(chainKey, accountId, transaction) {
   try {
+    // Tron 分支：本路径只支持本地 keyring；MPC 路径 v1 暂不支持。
+    if (namespaceOf(chainKey) === 'tron') {
+      return await signTronTransactionLocal(chainKey, accountId, transaction);
+    }
+
     if (isMpcAccountId(accountId)) {
       return await mpcSignTransaction(accountId, transaction);
     }
@@ -60,10 +78,46 @@ export async function signTransactionRaw(chainKey, accountId, transaction) {
 }
 
 /**
- * 广播 rawTx，返回交易哈希。统一走 evmAdapter.broadcast。
+ * Tron 本地签名：buildUnsigned → SHA-256 摘要 → keyring 私钥 ECDSA → 归一化
+ * v 0/1 → assembleSigned 返回 JSON 串（直接给 broadcastRawTransaction）。
+ *
+ * MPC 路径对 Tron 暂不支持（Tron MPC hook 在 v1 抛 UNSUPPORTED_OPERATION）。
+ */
+async function signTronTransactionLocal(chainKey, accountId, transaction) {
+  if (isMpcAccountId(accountId)) {
+    throw Object.assign(new Error('Tron MPC signing is not implemented in v1'), {
+      code: 'UNSUPPORTED_OPERATION'
+    });
+  }
+
+  // 取 keyring 里的 ethers.Wallet（解锁时 createWalletInstance 缓存的是
+  // EVM 形态实例）；Tron 复用同一条 secp256k1 曲线，私钥字节等价。
+  const wallet = getWalletInstance(accountId);
+  const privateKeyHex = wallet.privateKey;
+
+  // 1) 调 adapter 拿 digest（hashAlg='sha256'）+ serializeState（完整 transaction JSON）
+  const unsigned = await buildTronUnsigned(transaction, { chainKey });
+
+  // 2) ECDSA 签摘要：ethers.SigningKey.sign(digest) 接受任意 32 字节摘要；
+  //    v=27/28 归一化为 0/1 在 assembleSigned 完成。
+  const payload = unsigned.payloads[0];
+  if (!payload || payload.kind !== 'digest') {
+    throw new Error('Tron adapter must produce a digest payload');
+  }
+  const signingKey = new ethers.SigningKey(privateKeyHex);
+  const sig = signingKey.sign(ethers.getBytes(payload.bytes));
+  const sigParts = [{ r: sig.r, s: sig.s, recid: sig.v - 27 }];
+
+  // 3) 组装已签名 transaction JSON（满足 tronAdapter.broadcast 的 signedJson）
+  return assembleTronSigned(unsigned, { parts: sigParts });
+}
+
+/**
+ * 广播 rawTx，返回交易哈希。统一走 adapter.broadcast。
+ * EVM 传 0x...；Tron 传已附 signature 的 JSON 串。
  * @param {string} chainKey
  * @param {string} rawTx
- * @returns {Promise<string>} txHash（0x + 64 hex）
+ * @returns {Promise<string>} txHash
  */
 export async function broadcastRawTransaction(chainKey, rawTx) {
   return await getAdapter(chainKey).broadcast(rawTx, { chainKey });
@@ -80,6 +134,7 @@ export function assembleRawFromSignRequest(signRequest) {
 
 /**
  * 消息签名（personal_sign / EIP-191）。返回 sigHex，外部契约不变。
+ * Tron 路径 v1 暂不支持，抛 UNSUPPORTED_OPERATION。
  * @param {string} accountId
  * @param {string} message
  * @returns {Promise<string>}
@@ -89,6 +144,9 @@ export async function signMessage(accountId, message) {
     if (isMpcAccountId(accountId)) {
       return await mpcSignMessage(accountId, message);
     }
+    // 当前调用方通过 getCurrentChainKey() 间接决定链族；Tron 路径在
+    // signMessage 这一层不感知 chainKey，由调用方（如 dApp 协议）守门。
+    // 钱包自身 UI（Tron 私钥导入的 popup）不走 dApp 路径。
     const wallet = getWalletInstance(accountId);
     return await wallet.signMessage(message);
   } catch (error) {
@@ -101,6 +159,7 @@ export async function signMessage(accountId, message) {
 
 /**
  * 类型化数据签名（EIP-712）。返回 sigHex，外部契约不变。
+ * Tron 路径 v1 暂不支持（EIP-712 是 EVM 专属）。
  * @param {string} accountId
  * @param {Object} domain
  * @param {Object} types
@@ -128,3 +187,6 @@ export async function signTypedData(accountId, domain, types, value) {
 }
 
 export { getCurrentChainKey };
+// 抑制 lint：getAccountPrivateKey 备用扩展位（Tron 路径下若 keyring 解锁方式
+// 改变，可改用 vault 层直接取私钥）。
+void getAccountPrivateKey;

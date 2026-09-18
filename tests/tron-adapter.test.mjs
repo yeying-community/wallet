@@ -451,6 +451,81 @@ test('getNativeBalance：缺地址抛错', async () => {
   );
 });
 
+// ==================== signing-service Tron local-keyring path ====================
+//
+// 验证：signTransactionRaw('tron:mainnet', accountId, intent) 用 keyring 里的
+// ethers.Wallet 私钥做 ECDSA（SHA-256 摘要）→ 组装 JSON 串 → broadcastRawTransaction
+// 成功返回 txid。
+//
+// 测试方式：mock globalThis.fetch 处理 buildUnsigned 的 createtransaction 和
+// broadcast 的 broadcasttransaction；同时直接注入 keyring Map 的 ethers.Wallet
+// 实例，绕开 unlock 流程。
+
+import { state } from '../js/background/state.js';
+import { signTransactionRaw, broadcastRawTransaction } from '../js/chain/signing-service.js';test('signing-service Tron 本地签名 → broadcast 流程', async () => {
+  // 1) mock fetch：createtransaction + broadcasttransaction
+  const tx = fakeCreateTransactionResponse();
+  const txid = tx.txID;
+  const restore = installFetchMock({
+    '/wallet/createtransaction': () => tx,
+    '/wallet/broadcasttransaction': () => ({ result: true, txid })
+  });
+
+  // 2) 注入 keyring Map：用一个 Hardhat 公开私钥 + accountId
+  if (!state.keyring) state.keyring = new Map();
+  const TEST_PRIVKEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+  const TEST_ACCOUNT_ID = 'tron-test-account-1';
+  const wallet = new ethers.Wallet(TEST_PRIVKEY);
+  state.keyring.set(TEST_ACCOUNT_ID, wallet);
+
+  // 3) 调 signTransactionRaw：EVM/Tron 入口都接受 (chainKey, accountId, transaction)
+  //    Tron 路径会自己派生 T 地址（与 mainnet prefix 0x41 一致）作为 owner_address。
+  const intent = {
+    type: 'native-transfer',
+    from: 'TYBNgWfhGuNzdLtjKtxXTfskAhTbMcqbaG',
+    toAddress: 'TNzoqJ2ZCVZAzTsR5sKA6N5zardVodSi5x',
+    amount: '1000000'
+  };
+  const signedJson = await signTransactionRaw('tron:mainnet', TEST_ACCOUNT_ID, intent);
+  assert.equal(typeof signedJson, 'string');
+  const parsed = JSON.parse(signedJson);
+  assert.ok(Array.isArray(parsed.signature));
+  assert.equal(parsed.signature.length, 1);
+  assert.equal(parsed.signature[0].length, 130, 'r‖s‖v = 130 hex chars (65B)');
+
+  // 4) broadcast 走 adapter
+  const out = await broadcastRawTransaction('tron:mainnet', signedJson);
+  assert.equal(out, txid);
+
+  // 清理：keyring + lockTimer（signTransactionRaw 间接触发 setTimeout）
+  state.keyring.delete(TEST_ACCOUNT_ID);
+  if (state.lockTimer) {
+    clearTimeout(state.lockTimer);
+    state.lockTimer = null;
+  }
+  restore();
+});
+
+test('signing-service Tron MPC 账户暂不支持 → UNSUPPORTED_OPERATION', async () => {
+  const restore = installFetchMock({
+    '/wallet/createtransaction': () => fakeCreateTransactionResponse()
+  });
+
+  const mpcAccountId = 'mpc:wallet-xyz';
+  // isMpcAccountId 短路检查在 getWalletInstance 之前，不需要注入 keyring
+  await assert.rejects(
+    () => signTransactionRaw('tron:mainnet', mpcAccountId, {
+      type: 'native-transfer',
+      from: 'TYBNgWfhGuNzdLtjKtxXTfskAhTbMcqbaG',
+      toAddress: 'TNzoqJ2ZCVZAzTsR5sKA6N5zardVodSi5x',
+      amount: '1'
+    }),
+    (err) => String(err.code) === 'UNSUPPORTED_OPERATION'
+  );
+
+  restore();
+});
+
 // ==================== getTokenBalance（v1 NOT_IMPLEMENTED） ====================
 
 test('getTokenBalance：v1 抛 NOT_IMPLEMENTED（TRC20 暂不支持）', async () => {
