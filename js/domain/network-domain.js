@@ -200,6 +200,19 @@ export class NetworkDomain extends BaseDomain {
   }
 
   /**
+   * 获取当前链的 chainKey（CAIP-2 形式：eip155:1 / tron:mainnet / ...）。
+   * 仅基于本地 state 读取，无 background IPC。
+   * @returns {Promise<string>}
+   */
+  async getChainKey() {
+    try {
+      return String(this._currentChainKey || '').toLowerCase();
+    } catch {
+      return '';
+    }
+  }
+
+  /**
    * 获取当前网络信息
    * @returns {Promise<Object>} 网络信息
    */

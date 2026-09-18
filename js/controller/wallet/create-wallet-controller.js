@@ -62,6 +62,7 @@ export class CreateWalletController {
       });
     }
     this.bindWalletTypeDropdown();
+    this.bindTronNetworkDropdown();
     this.bindMpcParticipantsSelector();
     this.bindDraftPersistence();
 
@@ -88,6 +89,7 @@ export class CreateWalletController {
     const useExistingPassword = origin === 'accounts';
     const walletType = this.getCreateWalletType();
     const isMpc = walletType === 'mpc';
+    const isTron = walletType === 'tron';
     const name = rawName || this.generateDefaultWalletName(walletType);
 
     if (origin !== 'accounts' && isMpc) {
@@ -133,9 +135,14 @@ export class CreateWalletController {
         return;
       }
 
-      await this.wallet.createHDWallet(name, password);
+      if (isTron) {
+        const tronReference = this.getTronReference();
+        await this.wallet.createTronHDWallet(name, password, { tronReference });
+      } else {
+        await this.wallet.createHDWallet(name, password);
+      }
 
-      showSuccess('钱包创建成功');
+      showSuccess(isTron ? 'Tron 钱包创建成功' : '钱包创建成功');
       showPage('walletPage');
 
       this.resetForm();
@@ -172,6 +179,7 @@ export class CreateWalletController {
     const mpcCoordinatorEndpointInput = document.getElementById('mpcCreateCoordinatorEndpointInput');
     const mpcAdvancedOptions = document.querySelector('.mpc-advanced-options');
     const mpcResult = document.getElementById('mpcCreateWalletResult');
+    const tronNetworkSelect = document.getElementById('tronCreateNetworkSelect');
 
     if (nameInput) nameInput.value = this.generateDefaultWalletName('hd');
     if (walletTypeSelect) walletTypeSelect.value = 'hd';
@@ -183,6 +191,7 @@ export class CreateWalletController {
       mpcResult.textContent = '-';
       mpcResult.classList.add('hidden');
     }
+    if (tronNetworkSelect) tronNetworkSelect.value = 'mainnet';
     this.selectedMpcParticipants = [];
     this.currentMpcAccount = null;
     this.renderMpcParticipantSelection();
@@ -201,21 +210,34 @@ export class CreateWalletController {
   getCreateWalletType() {
     const select = document.getElementById('createWalletTypeSelect');
     const value = String(select?.value || 'hd').toLowerCase();
-    return value === 'mpc' ? 'mpc' : 'hd';
+    if (value === 'mpc') return 'mpc';
+    if (value === 'tron' || value === 'tronhd' || value === 'tron-hd') return 'tron';
+    return 'hd';
+  }
+
+  getTronReference() {
+    const select = document.getElementById('tronCreateNetworkSelect');
+    const value = String(select?.value || 'mainnet').toLowerCase();
+    if (value === 'shasta' || value === 'nile') return value;
+    return 'mainnet';
   }
 
   generateDefaultWalletName(type = 'hd') {
-    const prefix = String(type || '').toLowerCase() === 'mpc' ? 'mpc' : 'hd';
+    const normalized = String(type || '').toLowerCase();
+    const prefix = normalized === 'mpc' ? 'mpc' : (normalized === 'tron' ? 'tron' : 'hd');
     const suffix = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
     return `${prefix}-${suffix}`;
   }
 
   shouldReplaceWalletNameForType(name, type) {
-    const normalized = String(type || '').toLowerCase() === 'mpc' ? 'mpc' : 'hd';
+    const normalized = String(type || '').toLowerCase();
+    let expectedPrefix = 'hd';
+    if (normalized === 'mpc') expectedPrefix = 'mpc';
+    else if (normalized === 'tron') expectedPrefix = 'tron';
     const current = String(name || '').trim();
     if (!current || current === '主钱包') return true;
     if (!GENERATED_WALLET_NAME_PATTERN.test(current)) return false;
-    return !current.startsWith(`${normalized}-`);
+    return !current.startsWith(`${expectedPrefix}-`);
   }
 
   ensureDefaultWalletName(type = this.getCreateWalletType()) {
@@ -227,9 +249,13 @@ export class CreateWalletController {
   }
 
   applyCreateWalletType(type, origin) {
-    const normalized = String(type || 'hd').toLowerCase() === 'mpc' ? 'mpc' : 'hd';
+    const value = String(type || 'hd').toLowerCase();
+    let normalized = 'hd';
+    if (value === 'mpc') normalized = 'mpc';
+    else if (value === 'tron' || value === 'tronhd' || value === 'tron-hd') normalized = 'tron';
     const group = document.getElementById('createWalletTypeGroup');
     const mpcFields = document.getElementById('mpcCreateWalletFields');
+    const tronFields = document.getElementById('tronCreateWalletFields');
     const resultEl = document.getElementById('mpcCreateWalletResult');
     const setPasswordBtn = document.getElementById('setPasswordBtn');
     const hint = document.getElementById('setPasswordHint');
@@ -241,11 +267,16 @@ export class CreateWalletController {
     if (mpcFields) {
       mpcFields.classList.toggle('hidden', normalized !== 'mpc');
     }
+    if (tronFields) {
+      tronFields.classList.toggle('hidden', normalized !== 'tron');
+    }
     if (resultEl) {
       resultEl.classList.toggle('hidden', normalized !== 'mpc');
     }
     if (hint) {
-      hint.textContent = normalized === 'mpc' ? '请填写钱包名称和参与方' : '请填写钱包名称';
+      if (normalized === 'mpc') hint.textContent = '请填写钱包名称和参与方';
+      else if (normalized === 'tron') hint.textContent = '请填写 Tron 钱包名称';
+      else hint.textContent = '请填写钱包名称';
     }
     if (setPasswordBtn && isAccounts) {
       setPasswordBtn.textContent = '创建钱包';
@@ -326,15 +357,66 @@ export class CreateWalletController {
   }
 
   updateWalletTypeMenu(type) {
-    const label = document.getElementById('createWalletTypeLabel');
-    if (label) {
-      label.textContent = type === 'mpc' ? 'MPC Wallet' : 'HD Wallet';
+    let label = 'HD Wallet';
+    if (type === 'mpc') label = 'MPC Wallet';
+    else if (type === 'tron') label = 'Tron HD';
+    const labelEl = document.getElementById('createWalletTypeLabel');
+    if (labelEl) {
+      labelEl.textContent = label;
     }
     const menu = document.getElementById('createWalletTypeMenu');
     if (!menu) return;
     menu.querySelectorAll('.network-option').forEach(option => {
       const isActive = option.dataset.walletType === type;
       option.classList.toggle('active', isActive);
+    });
+  }
+
+  bindTronNetworkDropdown() {
+    const trigger = document.getElementById('tronCreateNetworkTrigger');
+    const menu = document.getElementById('tronCreateNetworkMenu');
+    const select = document.getElementById('tronCreateNetworkSelect');
+    if (!trigger || !menu || !select) return;
+
+    const closeMenu = () => {
+      if (!menu.classList.contains('hidden')) {
+        menu.classList.add('hidden');
+        trigger.setAttribute('aria-expanded', 'false');
+      }
+    };
+
+    trigger.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const isHidden = menu.classList.contains('hidden');
+      if (isHidden) {
+        menu.classList.remove('hidden');
+        trigger.setAttribute('aria-expanded', 'true');
+      } else {
+        closeMenu();
+      }
+    });
+
+    menu.addEventListener('click', (event) => {
+      const option = event.target.closest('.network-option');
+      if (!option) return;
+      const nextRef = option.dataset.tronReference;
+      if (!nextRef) return;
+      if (select.value !== nextRef) {
+        select.value = nextRef;
+        const labelEl = document.getElementById('tronCreateNetworkLabel');
+        if (labelEl) labelEl.textContent = option.textContent.trim();
+        menu.querySelectorAll('.network-option').forEach(opt => {
+          opt.classList.toggle('active', opt.dataset.tronReference === nextRef);
+        });
+        void this.saveDraft();
+      }
+      closeMenu();
+    });
+
+    document.addEventListener('click', (event) => {
+      if (menu.classList.contains('hidden')) return;
+      if (trigger.contains(event.target) || menu.contains(event.target)) return;
+      closeMenu();
     });
   }
 
@@ -556,6 +638,7 @@ export class CreateWalletController {
       curve: String(document.getElementById('mpcCreateCurveSelect')?.value || 'secp256k1'),
       coordinatorEndpoint: String(document.getElementById('mpcCreateCoordinatorEndpointInput')?.value || '').trim(),
       advancedOpen: Boolean(document.querySelector('.mpc-advanced-options')?.open),
+      tronReference: this.getTronReference(),
     };
   }
 
@@ -599,7 +682,15 @@ export class CreateWalletController {
     setValue('mpcCreateThresholdInput', draft.threshold || '');
     setValue('mpcCreateCurveSelect', draft.curve || 'secp256k1');
     setValue('mpcCreateCoordinatorEndpointInput', draft.coordinatorEndpoint || '');
-    setValue('createWalletTypeSelect', draft.walletType === 'mpc' ? 'mpc' : 'hd');
+    setValue('createWalletTypeSelect', draft.walletType === 'mpc' ? 'mpc' : (draft.walletType === 'tron' ? 'tron' : 'hd'));
+    if (draft.tronReference) {
+      setValue('tronCreateNetworkSelect', draft.tronReference);
+      const tronLabel = document.getElementById('tronCreateNetworkLabel');
+      if (tronLabel) {
+        const opt = document.querySelector(`#tronCreateNetworkMenu [data-tron-reference="${draft.tronReference}"]`);
+        if (opt) tronLabel.textContent = opt.textContent.trim();
+      }
+    }
     this.selectedMpcParticipants = Array.isArray(draft.participants)
       ? this.dedupeAddresses(draft.participants)
       : [];

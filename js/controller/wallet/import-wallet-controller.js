@@ -78,6 +78,7 @@ export class ImportWalletController {
 
         const source = clicked.dataset.source;
         const type = clicked.dataset.type;
+        const chain = String(clicked.dataset.chain || 'evm').toLowerCase();
         const mnemonicSection = document.getElementById('mnemonicImportSection');
         const privateKeySection = document.getElementById('privateKeyImportSection');
         const fileSection = document.getElementById('fileImportSection');
@@ -85,6 +86,7 @@ export class ImportWalletController {
         const custodySection = document.getElementById('custodyImportSection');
         const nameGroup = document.getElementById('importWalletNameGroup');
         const passwordGroup = document.getElementById('importWalletPasswordGroup');
+        const tronNetworkGroup = document.getElementById('tronImportNetworkGroup');
         const importBtn = document.getElementById('importBtn');
 
         if (source === 'custody') {
@@ -105,20 +107,22 @@ export class ImportWalletController {
           nameGroup?.classList.add('hidden');
           passwordGroup?.classList.remove('hidden');
           if (importBtn) importBtn.textContent = '导入备份';
-        } else if (type === 'mnemonic') {
+        } else if (type === 'mnemonic' || type === 'privateKey') {
           walletSection?.classList.remove('hidden');
-          mnemonicSection?.classList.remove('hidden');
-          privateKeySection?.classList.add('hidden');
+          custodySection?.classList.add('hidden');
           fileSection?.classList.add('hidden');
+          if (type === 'mnemonic') {
+            mnemonicSection?.classList.remove('hidden');
+            privateKeySection?.classList.add('hidden');
+          } else {
+            mnemonicSection?.classList.add('hidden');
+            privateKeySection?.classList.remove('hidden');
+          }
           nameGroup?.classList.remove('hidden');
           passwordGroup?.classList.remove('hidden');
-          if (importBtn) importBtn.textContent = '导入钱包';
-        } else if (type === 'privateKey') {
-          mnemonicSection?.classList.add('hidden');
-          privateKeySection?.classList.remove('hidden');
-          fileSection?.classList.add('hidden');
-          nameGroup?.classList.remove('hidden');
-          passwordGroup?.classList.remove('hidden');
+          if (tronNetworkGroup) {
+            tronNetworkGroup.classList.toggle('hidden', chain !== 'tron');
+          }
           if (importBtn) importBtn.textContent = '导入钱包';
         } else {
           walletSection?.classList.remove('hidden');
@@ -135,6 +139,8 @@ export class ImportWalletController {
         });
       });
     });
+
+    this.bindTronImportNetworkDropdown();
 
     const importBtn = document.getElementById('importBtn');
     if (importBtn) {
@@ -166,6 +172,7 @@ export class ImportWalletController {
     const password = document.getElementById('importWalletPassword')?.value;
     const source = document.querySelector('.import-source-tab.active')?.dataset.source || 'wallet';
     const methodType = document.querySelector('.import-method-tab.active')?.dataset.type || 'mnemonic';
+    const methodChain = String(document.querySelector('.import-method-tab.active')?.dataset.chain || 'evm').toLowerCase();
     // 「备份文件」来源使用文件导入分支；「助记词/私钥」来源才由方式 tab 决定类型。
     const importType = source === 'file' ? 'file' : methodType;
     const origin = getPageOrigin('importPage', 'welcome');
@@ -214,10 +221,18 @@ export class ImportWalletController {
 
       if (importType === 'mnemonic') {
         const mnemonic = document.getElementById('importMnemonic')?.value.trim();
-        await this.wallet.importFromMnemonic(name, mnemonic, password);
+        if (methodChain === 'tron') {
+          await this.wallet.importTronFromMnemonic(name, mnemonic, password, { tronReference: this.getTronImportReference() });
+        } else {
+          await this.wallet.importFromMnemonic(name, mnemonic, password);
+        }
       } else if (importType === 'privateKey') {
         const privateKey = document.getElementById('importPrivateKey')?.value.trim();
-        await this.wallet.importFromPrivateKey(name, privateKey, password);
+        if (methodChain === 'tron') {
+          await this.wallet.importTronFromPrivateKey(name, privateKey, password, { tronReference: this.getTronImportReference() });
+        } else {
+          await this.wallet.importFromPrivateKey(name, privateKey, password);
+        }
       } else {
         const file = document.getElementById('importAccountsFile')?.files?.[0];
         let parsed;
@@ -271,5 +286,59 @@ export class ImportWalletController {
       throw new Error('未找到当前账户');
     }
     await this.wallet.exportPrivateKey(account.id, password);
+  }
+
+  bindTronImportNetworkDropdown() {
+    const trigger = document.getElementById('tronImportNetworkTrigger');
+    const menu = document.getElementById('tronImportNetworkMenu');
+    const select = document.getElementById('tronImportNetworkSelect');
+    if (!trigger || !menu || !select) return;
+
+    const closeMenu = () => {
+      if (!menu.classList.contains('hidden')) {
+        menu.classList.add('hidden');
+        trigger.setAttribute('aria-expanded', 'false');
+      }
+    };
+
+    trigger.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const isHidden = menu.classList.contains('hidden');
+      if (isHidden) {
+        menu.classList.remove('hidden');
+        trigger.setAttribute('aria-expanded', 'true');
+      } else {
+        closeMenu();
+      }
+    });
+
+    menu.addEventListener('click', (event) => {
+      const option = event.target.closest('.network-option');
+      if (!option) return;
+      const nextRef = option.dataset.tronReference;
+      if (!nextRef) return;
+      if (select.value !== nextRef) {
+        select.value = nextRef;
+        const labelEl = document.getElementById('tronImportNetworkLabel');
+        if (labelEl) labelEl.textContent = option.textContent.trim();
+        menu.querySelectorAll('.network-option').forEach(opt => {
+          opt.classList.toggle('active', opt.dataset.tronReference === nextRef);
+        });
+      }
+      closeMenu();
+    });
+
+    document.addEventListener('click', (event) => {
+      if (menu.classList.contains('hidden')) return;
+      if (trigger.contains(event.target) || menu.contains(event.target)) return;
+      closeMenu();
+    });
+  }
+
+  getTronImportReference() {
+    const select = document.getElementById('tronImportNetworkSelect');
+    const value = String(select?.value || 'mainnet').toLowerCase();
+    if (value === 'shasta' || value === 'nile') return value;
+    return 'mainnet';
   }
 }

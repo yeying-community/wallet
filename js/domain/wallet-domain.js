@@ -181,6 +181,25 @@ export class WalletDomain extends BaseDomain {
   }
 
   /**
+   * 创建 Tron HD 钱包（secp256k1, m/44'/195'/0'/0/0）
+   * @param {string} accountName
+   * @param {string} password
+   * @param {{tronReference?: 'mainnet'|'shasta'|'nile'}} [options]
+   */
+  async createTronHDWallet(accountName, password, options = {}) {
+    if (!password || password.length < 8) {
+      throw new Error('密码至少需要8位字符');
+    }
+    const result = await this._sendMessage(WalletMessageType.CREATE_TRON_HD_WALLET, {
+      accountName: accountName || 'Tron 钱包',
+      password,
+      options
+    });
+    this._currentAccount = result.account;
+    return result;
+  }
+
+  /**
    * 创建 MPC 钱包
    * @param {Object} options - 配置
    * @returns {Promise<Object>} 创建结果
@@ -217,6 +236,26 @@ export class WalletDomain extends BaseDomain {
   }
 
   /**
+   * 从助记词导入 Tron HD 钱包
+   */
+  async importTronFromMnemonic(accountName, mnemonic, password, options = {}) {
+    if (!mnemonic || mnemonic.trim().split(' ').length < 12) {
+      throw new Error('助记词无效，至少需要12个单词');
+    }
+    if (!password || password.length < 8) {
+      throw new Error('密码至少需要8位字符');
+    }
+    const result = await this._sendMessage(WalletMessageType.IMPORT_TRON_HD_WALLET, {
+      accountName: accountName || 'Tron 导入钱包',
+      mnemonic: mnemonic.trim(),
+      password,
+      options
+    });
+    this._currentAccount = result.account;
+    return result;
+  }
+
+  /**
    * 从私钥导入钱包
    * @param {string} accountName - 账户名称
    * @param {string} privateKey - 私钥
@@ -242,6 +281,27 @@ export class WalletDomain extends BaseDomain {
     return result;
   }
 
+  /**
+   * 从私钥导入 Tron 钱包（Base58 私钥，不带 0x 前缀）
+   */
+  async importTronFromPrivateKey(accountName, privateKey, password, options = {}) {
+    const trimmed = String(privateKey || '').trim();
+    if (!trimmed) {
+      throw new Error('请输入 Tron 私钥');
+    }
+    if (!password || password.length < 8) {
+      throw new Error('密码至少需要8位字符');
+    }
+    const result = await this._sendMessage(WalletMessageType.IMPORT_TRON_PRIVATE_KEY_WALLET, {
+      accountName: accountName || 'Tron 私钥钱包',
+      privateKey: trimmed,
+      password,
+      options
+    });
+    this._currentAccount = result.account;
+    return result;
+  }
+
   // ==================== 账户管理 ====================
 
   /**
@@ -258,6 +318,17 @@ export class WalletDomain extends BaseDomain {
       password
     });
 
+    return result;
+  }
+
+  /**
+   * 派生 Tron 子账户
+   */
+  async createTronSubAccount(walletId, password) {
+    const result = await this._sendMessage(WalletMessageType.CREATE_TRON_SUB_ACCOUNT, {
+      walletId,
+      password
+    });
     return result;
   }
 

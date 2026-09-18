@@ -1,4 +1,5 @@
 import { isValidAddress } from '../../common/chain/index.js';
+import { isValidAddressForFamily } from '../../common/chain/address-normalize.js';
 import { showError, showWaiting, hideToast, hideWaiting } from '../../common/ui/index.js';
 import { isWalletLockedError } from '../../common/errors/index.js';
 
@@ -23,6 +24,23 @@ export class TransactionSendController {
     this.transactionListController = controller;
   }
 
+  /**
+   * Detect chain kind from current network or selected account.
+   * Returns 'tron' if either is Tron, otherwise 'eip155'.
+   */
+  async detectChainKind() {
+    try {
+      const chainKey = String(await this.network?.getChainKey?.() || '').toLowerCase();
+      if (chainKey.startsWith('tron:')) return 'tron';
+    } catch { /* network may not implement getChainKey in tests */ }
+    try {
+      const account = await this.wallet.getCurrentAccount();
+      const ns = String(account?.namespace || account?.chainFamily || '').toLowerCase();
+      if (ns === 'tron') return 'tron';
+    } catch { /* */ }
+    return 'eip155';
+  }
+
   async handleSendTransaction({ requestPassword, onSuccess, silentBalanceRefresh = false, token = null } = {}) {
     const recipientInput = document.getElementById('recipientAddress');
     const amountInput = document.getElementById('amount');
@@ -35,8 +53,13 @@ export class TransactionSendController {
       return;
     }
 
-    if (!isValidAddress(recipient)) {
-      showError('地址格式无效');
+    const chainKind = await this.detectChainKind();
+    const family = chainKind === 'tron' ? 'tron' : 'eip155';
+    const isAddressValid = chainKind === 'tron'
+      ? isValidAddressForFamily(recipient, 'tron')
+      : isValidAddress(recipient);
+    if (!isAddressValid) {
+      showError(chainKind === 'tron' ? 'Tron 地址格式无效' : '地址格式无效');
       return;
     }
 
@@ -55,14 +78,30 @@ export class TransactionSendController {
 
       const chainId = await this.network.getChainId();
       const rpcUrl = await this.network.getRpcUrl();
-      const txParams = this.buildTransactionParams({
-        from: account.address,
-        recipient,
-        amount,
-        chainId,
-        rpcUrl,
-        token
-      });
+      const chainKind2 = await this.detectChainKind();
+      let txParams;
+      if (chainKind2 === 'tron') {
+        // Tron native TRX transfer — amount unit is TRX (sun = TRX × 1e6)
+        txParams = {
+          chainId,
+          rpcUrl,
+          chainFamily: 'tron',
+          asset: 'TRX',
+          from: account.address,
+          to: recipient,
+          valueTrx: String(amount),
+          feeLimitSun: 15000000 // 15 TRX default fee cap
+        };
+      } else {
+        txParams = this.buildTransactionParams({
+          from: account.address,
+          recipient,
+          amount,
+          chainId,
+          rpcUrl,
+          token
+        });
+      }
 
       const txHash = await this.transaction.sendTransaction(txParams);
 
@@ -132,6 +171,13 @@ export class TransactionSendController {
     const amountInput = document.getElementById('amount');
     const recipient = recipientInput?.value.trim();
     const amount = amountInput?.value;
+
+    const chainKind = await this.detectChainKind();
+    if (chainKind === 'tron') {
+      // Tron fixed fee cap (15 TRX = 15_000_000 SUN); TRC20 not in v1
+      this.setFeeEstimateText('0–15 TRX');
+      return;
+    }
 
     if (!recipient || !isValidAddress(recipient) || !amount || Number(amount) <= 0) {
       this.setFeeEstimateText('-');
