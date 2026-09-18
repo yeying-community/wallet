@@ -29,13 +29,21 @@ export function clearImportWalletForm({ resetType = true } = {}) {
   }
 
   const tabs = Array.from(document.querySelectorAll('.import-tab'));
+  const sourceTabs = Array.from(document.querySelectorAll('.import-source-tab'));
   const mnemonicTab = tabs.find((tab) => tab?.dataset?.type === 'mnemonic');
   const privateKeyTab = tabs.find((tab) => tab?.dataset?.type === 'privateKey');
   const mnemonicSection = document.getElementById('mnemonicImportSection');
   const privateKeySection = document.getElementById('privateKeyImportSection');
   const fileSection = document.getElementById('fileImportSection');
   const nameGroup = document.getElementById('importWalletNameGroup');
+  const walletSection = document.getElementById('walletImportSection');
+  const custodySection = document.getElementById('custodyImportSection');
+  const passwordGroup = document.getElementById('importWalletPasswordGroup');
 
+  sourceTabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.source === 'wallet'));
+  walletSection?.classList.remove('hidden');
+  custodySection?.classList.add('hidden');
+  passwordGroup?.classList.remove('hidden');
   mnemonicTab?.classList.add('active');
   privateKeyTab?.classList.remove('active');
   mnemonicSection?.classList.remove('hidden');
@@ -45,42 +53,78 @@ export function clearImportWalletForm({ resetType = true } = {}) {
 }
 
 export class ImportWalletController {
-  constructor({ wallet, onImportSuccess }) {
+  constructor({ wallet, onImportSuccess, onStartCustodyRecovery, onRestoreCustodyRecovery, onRecoveryReady, onCancelCustodyRecovery }) {
     this.wallet = wallet;
     this.onImportSuccess = onImportSuccess;
+    this.onStartCustodyRecovery = onStartCustodyRecovery;
+    this.onRestoreCustodyRecovery = onRestoreCustodyRecovery;
+    this.onRecoveryReady = onRecoveryReady;
+    this.onCancelCustodyRecovery = onCancelCustodyRecovery;
   }
 
   bindEvents() {
-    document.querySelectorAll('.import-tab').forEach(tab => {
+    const sourceTabs = [...document.querySelectorAll('.import-source-tab')];
+    const methodTabs = [...document.querySelectorAll('.import-method-tab'), ...document.querySelectorAll('.import-tab')]
+      .filter((tab, index, list) => list.indexOf(tab) === index);
+    const tabs = [...sourceTabs, ...methodTabs];
+    tabs.forEach(tab => {
       tab.addEventListener('click', (e) => {
-        document.querySelectorAll('.import-tab').forEach(t => {
+        const clicked = e.currentTarget || e.target;
+        const group = clicked.classList?.contains('import-source-tab') ? sourceTabs : methodTabs;
+        group.forEach(t => {
           t.classList.remove('active');
         });
-        e.target.classList.add('active');
+        clicked.classList.add('active');
 
-        const type = e.target.dataset.type;
+        const source = clicked.dataset.source;
+        const type = clicked.dataset.type;
         const mnemonicSection = document.getElementById('mnemonicImportSection');
         const privateKeySection = document.getElementById('privateKeyImportSection');
         const fileSection = document.getElementById('fileImportSection');
+        const walletSection = document.getElementById('walletImportSection');
+        const custodySection = document.getElementById('custodyImportSection');
         const nameGroup = document.getElementById('importWalletNameGroup');
+        const passwordGroup = document.getElementById('importWalletPasswordGroup');
         const importBtn = document.getElementById('importBtn');
 
-        if (type === 'mnemonic') {
+        if (source === 'custody') {
+          walletSection?.classList.add('hidden');
+          mnemonicSection?.classList.add('hidden');
+          privateKeySection?.classList.add('hidden');
+          fileSection?.classList.add('hidden');
+          custodySection?.classList.remove('hidden');
+          nameGroup?.classList.add('hidden');
+          passwordGroup?.classList.add('hidden');
+          if (importBtn) importBtn.textContent = '开始恢复';
+        } else if (source === 'file' || type === 'file') {
+          walletSection?.classList.add('hidden');
+          mnemonicSection?.classList.add('hidden');
+          privateKeySection?.classList.add('hidden');
+          fileSection?.classList.remove('hidden');
+          custodySection?.classList.add('hidden');
+          nameGroup?.classList.add('hidden');
+          passwordGroup?.classList.remove('hidden');
+          if (importBtn) importBtn.textContent = '导入备份';
+        } else if (type === 'mnemonic') {
+          walletSection?.classList.remove('hidden');
           mnemonicSection?.classList.remove('hidden');
           privateKeySection?.classList.add('hidden');
           fileSection?.classList.add('hidden');
           nameGroup?.classList.remove('hidden');
+          passwordGroup?.classList.remove('hidden');
           if (importBtn) importBtn.textContent = '导入钱包';
         } else if (type === 'privateKey') {
           mnemonicSection?.classList.add('hidden');
           privateKeySection?.classList.remove('hidden');
           fileSection?.classList.add('hidden');
           nameGroup?.classList.remove('hidden');
+          passwordGroup?.classList.remove('hidden');
           if (importBtn) importBtn.textContent = '导入钱包';
         } else {
+          walletSection?.classList.remove('hidden');
           mnemonicSection?.classList.add('hidden');
           privateKeySection?.classList.add('hidden');
-          fileSection?.classList.remove('hidden');
+          fileSection?.classList.add('hidden');
           nameGroup?.classList.add('hidden');
           if (importBtn) importBtn.textContent = '导入备份';
         }
@@ -120,11 +164,23 @@ export class ImportWalletController {
   async handleImportWallet() {
     const name = document.getElementById('importAccountName')?.value.trim() || '导入钱包';
     const password = document.getElementById('importWalletPassword')?.value;
-    const activeTab = document.querySelector('.import-tab.active');
-    const importType = activeTab?.dataset.type;
+    const source = document.querySelector('.import-source-tab.active')?.dataset.source || 'wallet';
+    const importType = document.querySelector('.import-method-tab.active')?.dataset.type || 'mnemonic';
     const origin = getPageOrigin('importPage', 'welcome');
     const useExistingPassword = origin === 'accounts';
 
+    if (source === 'custody') {
+      try {
+        if (this.onRestoreCustodyRecovery && this.onRecoveryReady?.()) {
+          await this.onRestoreCustodyRecovery();
+        } else {
+          await this.onStartCustodyRecovery?.();
+        }
+      } catch (error) {
+        showError(`无法发起恢复：${error?.message || '未知错误'}`);
+      }
+      return;
+    }
     if (!password || password.length < 8) {
       showError(useExistingPassword ? '请输入当前密码（至少8位）' : '密码至少需要8位字符');
       return;
@@ -193,6 +249,10 @@ export class ImportWalletController {
   }
 
   handleCancel() {
+    const source = document.querySelector('.import-source-tab.active')?.dataset.source;
+    if (source === 'custody') {
+      void this.onCancelCustodyRecovery?.();
+    }
     const origin = getPageOrigin('importPage', 'welcome');
     clearImportWalletForm();
     if (origin === 'accounts') {

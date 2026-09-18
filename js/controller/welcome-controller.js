@@ -37,6 +37,17 @@ export class WelcomeController {
     return normalized;
   }
 
+  async clearCustodyRecoveryState() {
+    await Promise.allSettled([
+      chrome.storage.local.remove([
+        'walletRecoveryAuthorization',
+        'walletRecoveryPkce',
+        'custodyRecoveryReturnPage'
+      ]),
+      this.wallet?.clearWalletRecoveryCallback?.()
+    ]);
+  }
+
   promptRecoveryEndpoint() {
     const modal = document.getElementById('custodyRecoveryEndpointModal');
     const input = document.getElementById('custodyRecoveryEndpointInput');
@@ -122,26 +133,35 @@ export class WelcomeController {
       }
     };
     document.getElementById('welcomeRecoverWalletBtn')?.addEventListener('click', () => beginRecovery('welcomePage'));
-    document.getElementById('settingsRecoverCustodyBtn')?.addEventListener('click', () => beginRecovery('settingsPage'));
     document.getElementById('custodyRecoveryBackBtn')?.addEventListener('click', () => showPage(this.recoveryReturnPage || 'welcomePage'));
     document.getElementById('custodyRecoveryConfirmBtn')?.addEventListener('click', () => {
       this.restoreSelectedCustodyWallet().catch((error) => showError(`恢复失败：${error.message}`));
     });
   }
 
+  async startCustodyRecoveryFromImport(returnPage = 'importPage') {
+    this.recoveryReturnPage = returnPage;
+    const endpoint = await this.promptRecoveryEndpoint();
+    if (!endpoint) return;
+    await this.startCustodyRecovery(endpoint);
+  }
+
   async resumeCustodyRecovery() {
     const { custodyRecoveryReturnPage } = await chrome.storage.local.get('custodyRecoveryReturnPage');
-    if (custodyRecoveryReturnPage === 'settingsPage' || custodyRecoveryReturnPage === 'welcomePage') {
+    if (['settingsPage', 'welcomePage', 'accountsPage', 'importPage'].includes(custodyRecoveryReturnPage)) {
       this.recoveryReturnPage = custodyRecoveryReturnPage;
     }
     const callback = await this.wallet?.getWalletRecoveryCallback?.();
     if (!callback?.code) {
       const { walletRecoveryAuthorization } = await chrome.storage.local.get('walletRecoveryAuthorization');
-      if (!walletRecoveryAuthorization?.token) return;
+      if (!walletRecoveryAuthorization?.token) {
+        if (custodyRecoveryReturnPage) await chrome.storage.local.remove('custodyRecoveryReturnPage');
+        return;
+      }
       const expiresAt = Number(walletRecoveryAuthorization.expiresAt || 0);
       const expiresAtMs = expiresAt > 1e12 ? expiresAt : expiresAt * 1000;
       if (expiresAtMs > 0 && expiresAtMs <= Date.now()) {
-        await chrome.storage.local.remove('walletRecoveryAuthorization');
+        await this.clearCustodyRecoveryState();
         throw new Error('恢复授权已过期，请重新发起');
       }
       // The popup can close after the callback page returns. Keep a valid
@@ -184,6 +204,9 @@ export class WelcomeController {
       });
       showSuccess('身份验证完成，请确认要恢复的钱包身份');
       await this.loadCustodyRecoveryRecords();
+    } catch (error) {
+      await this.clearCustodyRecoveryState();
+      throw error;
     } finally {
       await Promise.allSettled([
         this.wallet?.clearWalletRecoveryCallback?.(),
@@ -245,8 +268,18 @@ export class WelcomeController {
       list.appendChild(button);
       if (index === 0) button.click();
     });
-    if (!records.length) list.textContent = '没有可执行云端密钥恢复的钱包身份';
-    showPage('custodyRecoveryPage');
+    if (!records.length) list.textContent = '没有可恢复的钱包';
+    showPage('importPage');
+    document.querySelectorAll('.import-source-tab').forEach((tab) => {
+      const active = tab.dataset.source === 'custody';
+      tab.classList.toggle('active', active);
+    });
+    document.getElementById('walletImportSection')?.classList.add('hidden');
+    document.getElementById('fileImportSection')?.classList.add('hidden');
+    document.getElementById('custodyImportSection')?.classList.remove('hidden');
+    document.getElementById('importWalletNameGroup')?.classList.add('hidden');
+    const importButton = document.getElementById('importBtn');
+    if (importButton) importButton.textContent = '开始恢复';
   }
 
   async restoreSelectedCustodyWallet() {
@@ -260,8 +293,7 @@ export class WelcomeController {
       recoveryToken: walletRecoveryAuthorization?.token
     });
     if (passwordInput) passwordInput.value = '';
-    await chrome.storage.local.remove('walletRecoveryAuthorization');
-    await chrome.storage.local.remove('custodyRecoveryReturnPage');
+    await this.clearCustodyRecoveryState();
     showPage('walletPage');
     await this.onRecoverySuccess?.(result);
     showSuccess('钱包恢复成功');

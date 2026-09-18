@@ -137,7 +137,11 @@ export class PopupController {
     });
     this.importWalletController = new ImportWalletController({
       wallet: this.wallet,
-      onImportSuccess: () => this.refreshWalletData()
+      onImportSuccess: () => this.refreshWalletData(),
+      onStartCustodyRecovery: () => this.welcomeController.startCustodyRecoveryFromImport('importPage'),
+      onRestoreCustodyRecovery: () => this.welcomeController.restoreSelectedCustodyWallet(),
+      onRecoveryReady: () => Boolean(this.welcomeController.recoveryWalletId),
+      onCancelCustodyRecovery: () => this.welcomeController.clearCustodyRecoveryState()
     });
     this.createWalletController = new CreateWalletController({
       wallet: this.wallet,
