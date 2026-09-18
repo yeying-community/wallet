@@ -4,6 +4,7 @@
  */
 
 import { encryptObject, decryptObject, hashHex } from '../common/crypto/index.js';
+import { normalizeAddressForFamily } from '../common/chain/address-normalize.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import {
   getWallets,
@@ -656,7 +657,7 @@ class BackupSyncService {
         const remoteUpdatedAt = remote.nameUpdatedAt || remote.updatedAt || remote.createdAt || 0;
 
         if (local) {
-          if (remote.address && local.address && remote.address.toLowerCase() !== local.address.toLowerCase()) {
+          if (remote.address && local.address && normalizeAddressForFamily(remote.address, remote.namespace) !== normalizeAddressForFamily(local.address, local.namespace)) {
             continue;
           }
 

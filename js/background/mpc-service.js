@@ -3,6 +3,7 @@
  */
 
 import { encryptObject, decryptObject } from '../common/crypto/index.js';
+import { normalizeAddressForFamily, addressDidMethod } from '../common/chain/address-normalize.js';
 import { generateId } from '../common/utils/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import {
@@ -656,7 +657,7 @@ class MpcService {
       sessionId: id,
       label: options.label || participantId,
       deviceId,
-      identity: options.identity || `did:pkh:eth:${address.toLowerCase()}`,
+      identity: options.identity || `did:pkh:${addressDidMethod(account.namespace)}:${normalizeAddressForFamily(address, account.namespace) || address}`,
       signingPublicKey: deviceKeys.signingPublicKeyRaw,
       e2ePublicKey: deviceKeys.e2ePublicKeyRaw,
       status: options.status || 'active',

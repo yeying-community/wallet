@@ -8,6 +8,7 @@
 import { showPage, showSuccess, showError, showWaiting, hideWaiting } from '../../common/ui/index.js';
 import { formatDate, formatLocaleDateTime } from '../../common/utils/time-utils.js';
 import { shortenAddress } from '../../common/chain/index.js';
+import { normalizeAddressForFamily, addressDidMethod } from '../../common/chain/address-normalize.js';
 import { escapeHtml } from '../../common/ui/html-ui.js';
 import {
   getUcanExpiresAt,
@@ -1023,7 +1024,7 @@ export class BackupSyncSettingsController {
       const signature = await this.transaction.signMessage(message, password);
       const rootProof = {
         type: 'siwe',
-        iss: `did:pkh:eth:${account.address.toLowerCase()}`,
+        iss: `did:pkh:${addressDidMethod(account.namespace)}:${normalizeAddressForFamily(account.address, account.namespace) || String(account.address || '')}`,
         aud: did,
         cap: [{ resource, action }],
         exp: expiresAt,

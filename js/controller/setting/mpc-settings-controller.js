@@ -9,6 +9,7 @@ import { showPage, getCurrentPage, showSuccess, showError, showWaiting, hideWait
 import { formatLocaleDateTime } from '../../common/utils/time-utils.js';
 import { escapeHtml } from '../../common/ui/html-ui.js';
 import { deriveUcanAudience } from '../../common/ucan-utils.js';
+import { normalizeAddressForFamily, addressDidMethod } from '../../common/chain/address-normalize.js';
 import {
   normalizeUcanToken,
   normalizeMpcUcanResource,
@@ -1149,7 +1150,7 @@ export class MpcSettingsController {
     try {
       const account = await this.wallet.getCurrentAccount();
       if (!account?.address) return '';
-      return `did:pkh:eth:${account.address.toLowerCase()}`;
+      return `did:pkh:${addressDidMethod(account.namespace)}:${normalizeAddressForFamily(account.address, account.namespace) || String(account.address || '')}`;
     } catch {
       return '';
     }

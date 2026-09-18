@@ -16,13 +16,16 @@ import assert from 'node:assert/strict';
 
 import {
   DEFAULT_ADDRESS_FAMILY,
-  normalizeAddress,
+  normalizeAddressForFamily,
   isValidAddressForFamily,
   compareAddresses,
   formatAddressForFamily,
   addressDidMethod,
   registerTronStrictValidator
 } from '../js/common/chain/address-normalize.js';
+
+// 旧名 → 新名 别名（测试沿用 normalizeAddress 直观名字）
+const normalizeAddress = normalizeAddressForFamily;
 
 // 已知合法 Tron 地址（来自公开测试向量）
 const TRON_VALID_1 = 'TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW';

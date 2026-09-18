@@ -49,6 +49,7 @@ import { validateAccountName, validateUsername } from '../../config/validation-r
 import { getCachedPassword, cachePassword, refreshPasswordCache, clearPasswordCache } from '../password-cache.js';
 import { resetLockTimer, lockWallet } from '../keyring.js';
 import { normalizeChainId } from '../../common/chain/index.js';
+import { normalizeAddressForFamily } from '../../common/chain/address-normalize.js';
 import { setCurrentChainKey, chainIdToChainKey } from '../../chain/current-chain.js';
 import { broadcastEvent } from '../connection.js';
 import { TIMEOUTS, NETWORKS, DEFAULT_NETWORK } from '../../config/index.js';
@@ -844,7 +845,9 @@ export async function handleImportAccountsFile(file, password) {
       return { success: false, error: '账户备份内容无效' };
     }
     const existingAddresses = new Set(
-      Object.values(await getAccounts()).map(account => String(account.address || '').toLowerCase()).filter(Boolean)
+      Object.values(await getAccounts())
+        .map(account => normalizeAddressForFamily(account.address, account.namespace))
+        .filter(Boolean)
     );
     let imported = 0;
     let skipped = 0;
@@ -867,7 +870,7 @@ export async function handleImportAccountsFile(file, password) {
       if (source.type === WALLET_TYPE.HD && source.mnemonic) {
         const firstMeta = sourceAccounts.find(account => account.index === 0) || sourceAccounts[0] || {};
         const preview = await importHDWallet(firstMeta.name || '导入账户', source.mnemonic, password);
-        if (existingAddresses.has(preview.mainAccount.address.toLowerCase())) {
+        if (existingAddresses.has(normalizeAddressForFamily(preview.mainAccount.address, preview.mainAccount.namespace))) {
           skipped += sourceAccounts.length || 1;
           continue;
         }
@@ -880,15 +883,15 @@ export async function handleImportAccountsFile(file, password) {
         });
         await saveAccount(preview.mainAccount);
         if (!firstImportedAccountId) firstImportedAccountId = preview.mainAccount.id;
-        existingAddresses.add(preview.mainAccount.address.toLowerCase());
+        existingAddresses.add(normalizeAddressForFamily(preview.mainAccount.address, preview.mainAccount.namespace));
         imported += 1;
         for (const meta of sourceAccounts.filter(account => Number.isInteger(account.index) && account.index > 0).sort((a, b) => a.index - b.index)) {
           const account = await deriveSubAccount(preview.wallet, meta.index, meta.name, password);
-          if (existingAddresses.has(account.address.toLowerCase())) { skipped += 1; continue; }
+          if (existingAddresses.has(normalizeAddressForFamily(account.address, account.namespace))) { skipped += 1; continue; }
           account.username = meta.username || '';
           account.usernameUpdatedAt = meta.usernameUpdatedAt || 0;
           await saveAccount(account);
-          existingAddresses.add(account.address.toLowerCase());
+          existingAddresses.add(normalizeAddressForFamily(account.address, account.namespace));
           imported += 1;
           preview.wallet.accountCount = Math.max(preview.wallet.accountCount || 1, meta.index + 1);
         }
@@ -897,14 +900,14 @@ export async function handleImportAccountsFile(file, password) {
         for (let index = 0; index < source.privateKeys.length; index += 1) {
           const meta = sourceAccounts[index] || {};
           const preview = await importPrivateKeyWallet(meta.name || '导入账户', source.privateKeys[index], password);
-          if (existingAddresses.has(preview.mainAccount.address.toLowerCase())) { skipped += 1; continue; }
+          if (existingAddresses.has(normalizeAddressForFamily(preview.mainAccount.address, preview.mainAccount.namespace))) { skipped += 1; continue; }
           preview.wallet.name = source.name || preview.wallet.name;
           preview.mainAccount.username = meta.username || '';
           preview.mainAccount.usernameUpdatedAt = meta.usernameUpdatedAt || 0;
           await saveWallet(preview.wallet);
           await saveAccount(preview.mainAccount);
           if (!firstImportedAccountId) firstImportedAccountId = preview.mainAccount.id;
-          existingAddresses.add(preview.mainAccount.address.toLowerCase());
+          existingAddresses.add(normalizeAddressForFamily(preview.mainAccount.address, preview.mainAccount.namespace));
           imported += 1;
         }
       }

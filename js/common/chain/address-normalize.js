@@ -37,11 +37,20 @@ export function registerTronStrictValidator(fn) {
 }
 
 /**
+ * 链族感知的 address 规范化。EVM 转小写，Tron 保持 Base58 大小写敏感。
+ * 用 `normalizeAddressForFamily` 名称导出（与 address-utils.js 的 `normalizeAddress`
+ * 不冲突）。
+ */
+export function normalizeAddressForFamily(value, family = DEFAULT_ADDRESS_FAMILY) {
+  return normalizeAddress(value, family);
+}
+
+/**
  * 默认链族：向后兼容，未显式标注的 account 视作 EVM。
  */
 export const DEFAULT_ADDRESS_FAMILY = 'eip155';
 
-export function normalizeAddress(value, family = DEFAULT_ADDRESS_FAMILY) {
+function normalizeAddress(value, family = DEFAULT_ADDRESS_FAMILY) {
   const raw = String(value || '').trim();
   if (!raw) return '';
   const ns = String(family || '').toLowerCase();

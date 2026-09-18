@@ -4,6 +4,7 @@ import {
   updateUserSettings
 } from '../storage/index.js';
 import { getUnlockedCoordinatorSigningAccount } from './coordinator-signing-account.js';
+import { normalizeAddressForFamily, addressDidMethod } from '../common/chain/address-normalize.js';
 import {
   normalizeBearerToken,
   decodeJwtPayload,
@@ -109,7 +110,7 @@ export async function ensureTargetUcanToken(options = {}) {
   const signature = await signMessage(account.id, message);
   const rootProof = {
     type: 'siwe',
-    iss: `did:pkh:eth:${String(account.address || '').toLowerCase()}`,
+    iss: `did:pkh:${addressDidMethod(account.namespace)}:${normalizeAddressForFamily(account.address, account.namespace) || String(account.address || '')}`,
     aud: did,
     cap: [{ resource, action }],
     exp: expiresAt,
