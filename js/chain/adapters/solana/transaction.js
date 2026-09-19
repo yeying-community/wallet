@@ -25,8 +25,11 @@ import {
   systemTransferInstruction,
   encodeCompactU16
 } from './sysprog.js';
+import {
+  getAssociatedTokenAddress,
+  splTransferCheckedInstruction
+} from './spl.js';
 
-const NOT_IMPLEMENTED = 'CHAIN_ADAPTER_NOT_IMPLEMENTED';
 
 /**
  * 把 Uint8Array 序列化为 `0x<hex>` 字符串（Signer 接口契约）。
@@ -65,8 +68,11 @@ function hexToBytes(hex) {
  * @returns {Promise<import('../../types.d.ts').UnsignedTx>}
  */
 export async function buildUnsigned(intent, ctx) {
+  if (intent && intent.type === 'token-transfer') {
+    return buildSplTokenTransfer(intent, ctx);
+  }
   if (!intent || intent.type !== 'native-transfer') {
-    throw new Error(`Solana buildUnsigned: only native-transfer supported (got ${intent?.type})`);
+    throw new Error(`Solana buildUnsigned: only native-transfer / token-transfer supported (got ${intent?.type})`);
   }
   const fromAddr = String(intent.from || '').trim();
   const toAddr = String(intent.to || '').trim();
@@ -203,10 +209,74 @@ export function signEd25519Message(messageBytes, secretKey) {
 }
 
 /**
- * SPL token 转账 — Phase 3 走。
+ * SPL token 转账（TransferChecked）。
+ *   intent: { type:'token-transfer', from, to, mint, amount(base units 字符串), decimals }
+ *   - source ATA = getAssociatedTokenAddress(from, mint)
+ *   - dest ATA   = getAssociatedTokenAddress(to, mint)
+ *   - owner = feePayer = from（本地单签）
+ * v1 假设收款方 ATA 已存在（不发 createAssociatedTokenAccount 指令）。
+ *
+ * @param {any} intent
+ * @param {import('../../types.d.ts').ChainCtx} ctx
+ * @returns {Promise<import('../../types.d.ts').UnsignedTx>}
  */
-export function buildTokenTransfer(_intent, _ctx) {
-  throw new Error(`${NOT_IMPLEMENTED}: SPL token transfer (deferred to Phase 3)`);
+export async function buildSplTokenTransfer(intent, ctx) {
+  const fromAddr = String(intent?.from || '').trim();
+  const toAddr = String(intent?.to || '').trim();
+  const mintAddr = String(intent?.mint || intent?.token?.address || '').trim();
+  if (!fromAddr || !toAddr) throw new Error('Solana token-transfer: from / to required');
+  if (!mintAddr) throw new Error('Solana token-transfer: mint required');
+  if (!isValidSolanaAddress(fromAddr) || !isValidSolanaAddress(toAddr)) {
+    throw new Error('Solana token-transfer: invalid from/to address');
+  }
+  if (!isValidSolanaAddress(mintAddr)) {
+    throw new Error('Solana token-transfer: invalid mint address');
+  }
+  const amount = String(intent?.amount ?? '');
+  if (!/^[0-9]+$/.test(amount) || amount === '0') {
+    throw new Error(`Solana token-transfer: invalid amount "${amount}" (token base units, positive integer)`);
+  }
+  const decimals = Number.isFinite(Number(intent?.decimals)) ? Number(intent.decimals) : 6;
+
+  const fromPubkey = solanaAddressToPubkey(fromAddr);
+  const toPubkey = solanaAddressToPubkey(toAddr);
+  const mintPubkey = solanaAddressToPubkey(mintAddr);
+  const sourceAta = getAssociatedTokenAddress(fromPubkey, mintPubkey);
+  const destAta = getAssociatedTokenAddress(toPubkey, mintPubkey);
+
+  const rh = await solanaRpcCall(ctx.chainKey, 'getRecentBlockhash', []);
+  /** @type {any} */
+  const r = rh;
+  const blockhash = r?.value?.blockhash || r?.blockhash;
+  if (!blockhash || typeof blockhash !== 'string') {
+    throw new Error('Solana token-transfer: getRecentBlockhash returned no blockhash');
+  }
+  const blockhashBytes = base58Decode(blockhash);
+  if (blockhashBytes.length !== 32) {
+    throw new Error(`Solana token-transfer: blockhash must decode to 32 bytes (got ${blockhashBytes.length})`);
+  }
+
+  const tx = new Transaction({ feePayer: fromPubkey, recentBlockhash: blockhashBytes });
+  tx.add(splTransferCheckedInstruction({
+    source: sourceAta,
+    mint: mintPubkey,
+    destination: destAta,
+    owner: fromPubkey,
+    amount: BigInt(amount),
+    decimals
+  }));
+  const messageBytes = tx.message.serializeMessage();
+
+  return {
+    curve: 'ed25519',
+    payloads: [{
+      kind: 'message',
+      bytes: bytesToHex(messageBytes),
+      hashAlg: null
+    }],
+    serializeState: { tx, messageBytes, feePayer: fromPubkey, chainKey: ctx.chainKey },
+    needsRecoveryId: false
+  };
 }
 
 // 暴露 encodeCompactU16 方便外部 RPC stub 与 wire 测试使用。

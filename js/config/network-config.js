@@ -337,7 +337,7 @@ export const BUILTIN_TOKENS_BY_CHAIN_KEY = {
   ],
   'solana:mainnet-beta': [
     {
-      address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDd1kn',
+      address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
       symbol: 'USDC',
       name: 'USD Coin (SPL)',
       decimals: 6,

@@ -167,27 +167,54 @@ export class Message {
   }
 
   /**
-   * 重建 headerKeys：feePayer + ix.keys + ix.programIds（去重）。
-   * Message ctor 时 instructions=[] 只放 feePayer；Transaction.add() 后
-   * 调用本方法补足。
+   * 重建 headerKeys 与 header 计数：按 Solana 账户编译规则排序
+   *   分组顺序：可写签名者 → 只读签名者 → 可写非签名者 → 只读非签名者。
+   * feePayer 强制为「可写签名者」且排第一。programId 默认「只读非签名者」。
+   * 同一 pubkey 多次出现时 OR 合并 isSigner / isWritable。
+   *
+   * 对 native SOL（feePayer 可写签名 + to 可写非签名 + SystemProgram 只读非签名）
+   * 该排序结果与旧实现字节一致。
    */
   rebuildHeaderKeys() {
-    const headerSet = new Set();
-    /** @type {Uint8Array[]} */
-    const keys = [];
-    const add = (k) => {
-      const hex = pubkeyHex(k);
-      if (!headerSet.has(hex)) {
-        headerSet.add(hex);
-        keys.push(k);
+    /** @type {Map<string, {pubkey: Uint8Array, isSigner: boolean, isWritable: boolean, order: number}>} */
+    const metas = new Map();
+    let order = 0;
+    const upsert = (pubkey, isSigner, isWritable) => {
+      const hex = pubkeyHex(pubkey);
+      const prev = metas.get(hex);
+      if (prev) {
+        prev.isSigner = prev.isSigner || isSigner;
+        prev.isWritable = prev.isWritable || isWritable;
+      } else {
+        metas.set(hex, { pubkey, isSigner, isWritable, order: order++ });
       }
     };
-    add(this.feePayer);
+    // feePayer 永远是可写签名者，且第一顺位
+    upsert(this.feePayer, true, true);
     for (const ix of this.instructions) {
-      for (const k of ix.keys) add(k.pubkey);
+      for (const k of ix.keys) upsert(k.pubkey, !!k.isSigner, !!k.isWritable);
     }
-    for (const ix of this.instructions) add(ix.programId);
-    this.headerKeys = keys;
+    for (const ix of this.instructions) upsert(ix.programId, false, false);
+
+    const all = Array.from(metas.values());
+    const group = (isSigner, isWritable) => all
+      .filter((m) => m.isSigner === isSigner && m.isWritable === isWritable)
+      .sort((a, b) => a.order - b.order);
+    const writableSigners = group(true, true);
+    const readonlySigners = group(true, false);
+    const writableNonSigners = group(false, true);
+    const readonlyNonSigners = group(false, false);
+
+    const ordered = [
+      ...writableSigners,
+      ...readonlySigners,
+      ...writableNonSigners,
+      ...readonlyNonSigners
+    ];
+    this.headerKeys = ordered.map((m) => m.pubkey);
+    this.numRequiredSignatures = writableSigners.length + readonlySigners.length;
+    this.numReadonlySigned = readonlySigners.length;
+    this.numReadonlyUnsigned = readonlyNonSigners.length;
   }
 
   /**
@@ -195,27 +222,8 @@ export class Message {
    * @returns {Uint8Array}
    */
   serializeMessage() {
-    // 决定 numReadonlyUnsigned：最后一个 header key（程序 ID）算 readonly unsigned
-    // Solana 算法：feePayer 是 signer+writable；program IDs 默认 readonly unsigned
-    // 简化：所有非 feePayer 的 keys 标记 writable；最后一个 programId 算 readonly
-    let numReadonlyUnsigned = 0;
-    for (const ix of this.instructions) {
-      // 每个 ix 的 programId 是 readonly unsigned（除非它是 feePayer，但 SystemProgram != feePayer）
-      // 已在 headerKeys 里；它在末尾
-    }
-    // 计算 readonly unsigned：出现在 header 但只是 programId 角色的
-    const programIds = new Set();
-    for (const ix of this.instructions) {
-      programIds.add(pubkeyHex(ix.programId));
-    }
-    // 任何 programId 出现在 headerKeys 中（除了 feePayer）算 readonly unsigned
-    let readonlyUnsignedCount = 0;
-    for (let i = 1; i < this.headerKeys.length; i++) {
-      if (programIds.has(pubkeyHex(this.headerKeys[i]))) {
-        readonlyUnsignedCount++;
-      }
-    }
-    this.numReadonlyUnsigned = readonlyUnsignedCount;
+    // 每次序列化前重算 header（respect account metas），保证 header 计数正确。
+    this.rebuildHeaderKeys();
 
     const headerKeysBytes = concatBytes(this.headerKeys);
     const encHeaderCount = encodeCompactU16(this.headerKeys.length);
