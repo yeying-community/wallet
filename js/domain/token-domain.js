@@ -97,9 +97,12 @@ export class TokenDomain extends BaseDomain {
     };
   }
 
-  getNativeTokenIcon(chainId) {
-    const normalizedChainId = String(chainId || '').toLowerCase();
-    if (normalizedChainId === '0x1' || normalizedChainId === '1' || normalizedChainId === '0xaa36a7' || normalizedChainId === '11155111') {
+  getNativeTokenIcon(chainKey) {
+    const v = String(chainKey || '').toLowerCase();
+    if (v.startsWith('tron:')) return '';
+    if (v.startsWith('solana:')) return '';
+    if (v.startsWith('bip122:')) return '';
+    if (v === '0x1' || v === '1' || v === '0xaa36a7' || v === '11155111' || v === 'eip155:1' || v === 'eip155:11155111') {
       return 'assets/token-icons/source-official/ethereum.svg';
     }
     return '';

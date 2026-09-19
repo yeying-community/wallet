@@ -219,3 +219,63 @@ test('solanaAdapter.chainKey：{ reference: "mainnet-beta" } → "solana:mainnet
   // 默认回 mainnet-beta
   assert.equal(solanaAdapter.chainKey({}), 'solana:mainnet-beta');
 });
+
+// ===== getTokenBalance（SPL） =====
+
+test('getTokenBalance：getTokenAccountsByOwner 累加 tokenAmount.amount', async () => {
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      jsonrpc: '2.0',
+      id: 'x',
+      result: {
+        context: { slot: 1 },
+        value: [
+          { account: { data: { parsed: { info: { tokenAmount: { amount: '1500000' } } } } } },
+          { account: { data: { parsed: { info: { tokenAmount: { amount: '500000' } } } } } }
+        ]
+      }
+    })
+  });
+  try {
+    const r = await solanaAdapter.getTokenBalance(
+      FROM_ADDR,
+      { address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDd1kn' },
+      { chainKey: 'solana:mainnet-beta' }
+    );
+    // 1500000 + 500000 = 2000000
+    assert.equal(r.balance, '2000000');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('getTokenBalance：无 token account → 0', async () => {
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({ jsonrpc: '2.0', id: 'x', result: { context: { slot: 1 }, value: [] } })
+  });
+  try {
+    const r = await solanaAdapter.getTokenBalance(
+      FROM_ADDR,
+      { address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDd1kn' },
+      { chainKey: 'solana:mainnet-beta' }
+    );
+    assert.equal(r.balance, '0');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('getTokenBalance：缺 owner/mint 抛错', async () => {
+  await assert.rejects(
+    () => solanaAdapter.getTokenBalance('', { address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDd1kn' }, { chainKey: 'solana:mainnet-beta' }),
+    /owner and mint required/
+  );
+  await assert.rejects(
+    () => solanaAdapter.getTokenBalance(FROM_ADDR, { address: '' }, { chainKey: 'solana:mainnet-beta' }),
+    /owner and mint required/
+  );
+});

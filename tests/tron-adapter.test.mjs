@@ -527,11 +527,50 @@ test('signing-service Tron MPC 账户暂不支持 → UNSUPPORTED_OPERATION', as
   restore();
 });
 
-// ==================== getTokenBalance（v1 NOT_IMPLEMENTED） ====================
+// ==================== getTokenBalance（TRC20） ====================
 
-test('getTokenBalance：v1 抛 NOT_IMPLEMENTED（TRC20 暂不支持）', async () => {
+test('getTokenBalance：TRC20 balanceOf → hex', async () => {
+  // triggerconstantcontract 返回 constant_result 是 ABI 编码 32 字节整数
+  // 1000000000 (1e9) → 0x3b9aca00
+  const constantHex = '000000000000000000000000000000000000000000000000000000003b9aca00';
+  const restore = installFetchMock({
+    '/wallet/triggerconstantcontract': () => ({ constant_result: [constantHex] })
+  });
+  try {
+    const r = await tronAdapter.getTokenBalance(
+      'TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW',
+      { address: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t' },
+      { chainKey: 'tron:mainnet' }
+    );
+    assert.equal(r.balance, '0x3b9aca00');
+  } finally {
+    restore();
+  }
+});
+
+test('getTokenBalance：空 constant_result → 0x0', async () => {
+  const restore = installFetchMock({
+    '/wallet/triggerconstantcontract': () => ({ constant_result: [] })
+  });
+  try {
+    const r = await tronAdapter.getTokenBalance(
+      'TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW',
+      { address: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t' },
+      { chainKey: 'tron:mainnet' }
+    );
+    assert.equal(r.balance, '0x0');
+  } finally {
+    restore();
+  }
+});
+
+test('getTokenBalance：缺 owner/contract 抛错', async () => {
   await assert.rejects(
-    () => tronAdapter.getTokenBalance('TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW', { address: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t' }, { chainKey: 'tron:mainnet' }),
-    /CHAIN_ADAPTER_NOT_IMPLEMENTED/
+    () => tronAdapter.getTokenBalance('', { address: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t' }, { chainKey: 'tron:mainnet' }),
+    /missing address or contract/
+  );
+  await assert.rejects(
+    () => tronAdapter.getTokenBalance('TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW', { address: '' }, { chainKey: 'tron:mainnet' }),
+    /missing address or contract/
   );
 });

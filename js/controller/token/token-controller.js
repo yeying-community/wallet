@@ -59,6 +59,9 @@ export class TokenController {
         return [];
       }
 
+      const family = await this.resolveChainFamily();
+      this.transferController.setChainFamily(family);
+
       const nativeToken = await this.token.getNativeToken(account.address);
       const tokens = await this.token.getTokenBalances(account.address);
       const list = nativeToken ? [nativeToken, ...tokens] : tokens;
@@ -75,10 +78,38 @@ export class TokenController {
   }
 
   async prepareTransferSelectors() {
+    const family = await this.resolveChainFamily();
+    this.transferController.setChainFamily(family);
     await this.transferController.prepareTransferSelectors({
       tokenList: this.lastTokenList,
       loadTokenBalances: () => this.loadTokenBalances()
     });
+  }
+
+  /**
+   * 探测当前链族（优先 chainKey；缺时回退 account.namespace）。
+   * @returns {Promise<string>} 'eip155' | 'tron' | 'solana' | 'utxo'
+   */
+  async resolveChainFamily() {
+    try {
+      if (this.networkController?.getChainKey) {
+        const key = String(await this.networkController.getChainKey() || '');
+        if (key.startsWith('tron:')) return 'tron';
+        if (key.startsWith('solana:')) return 'solana';
+        if (key.startsWith('bip122:')) return 'utxo';
+        return 'eip155';
+      }
+    } catch { /* */ }
+    try {
+      if (this.wallet?.getCurrentAccount) {
+        const acc = await this.wallet.getCurrentAccount();
+        const ns = String(acc?.namespace || acc?.chainFamily || '').toLowerCase();
+        if (ns === 'tron') return 'tron';
+        if (ns === 'solana') return 'solana';
+        if (ns === 'bip122') return 'utxo';
+      }
+    } catch { /* */ }
+    return 'eip155';
   }
 
   renderTokenBalances(tokens) {
