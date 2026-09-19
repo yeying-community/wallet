@@ -64,6 +64,7 @@ export class CreateWalletController {
     this.bindWalletTypeDropdown();
     this.bindTronNetworkDropdown();
     this.bindSolanaNetworkDropdown();
+    this.bindBitcoinNetworkDropdown();
     this.bindMpcParticipantsSelector();
     this.bindDraftPersistence();
 
@@ -92,6 +93,7 @@ export class CreateWalletController {
     const isMpc = walletType === 'mpc';
     const isTron = walletType === 'tron';
     const isSolana = walletType === 'solana';
+    const isBitcoin = walletType === 'bitcoin';
     const name = rawName || this.generateDefaultWalletName(walletType);
 
     if (origin !== 'accounts' && isMpc) {
@@ -143,11 +145,14 @@ export class CreateWalletController {
       } else if (isSolana) {
         const solanaReference = this.getSolanaReference();
         await this.wallet.createSolanaHDWallet(name, password, { solanaReference });
+      } else if (isBitcoin) {
+        const bitcoinReference = this.getBitcoinReference();
+        await this.wallet.createBitcoinHDWallet(name, password, { bitcoinReference });
       } else {
         await this.wallet.createHDWallet(name, password);
       }
 
-      showSuccess(isTron ? 'Tron 钱包创建成功' : (isSolana ? 'Solana 钱包创建成功' : '钱包创建成功'));
+      showSuccess(isTron ? 'Tron 钱包创建成功' : (isSolana ? 'Solana 钱包创建成功' : (isBitcoin ? 'Bitcoin 钱包创建成功' : '钱包创建成功')));
       showPage('walletPage');
 
       this.resetForm();
@@ -186,6 +191,7 @@ export class CreateWalletController {
     const mpcResult = document.getElementById('mpcCreateWalletResult');
     const tronNetworkSelect = document.getElementById('tronCreateNetworkSelect');
     const solanaNetworkSelect = document.getElementById('solanaCreateNetworkSelect');
+    const bitcoinNetworkSelect = document.getElementById('bitcoinCreateNetworkSelect');
 
     if (nameInput) nameInput.value = this.generateDefaultWalletName('hd');
     if (walletTypeSelect) walletTypeSelect.value = 'hd';
@@ -199,6 +205,7 @@ export class CreateWalletController {
     }
     if (tronNetworkSelect) tronNetworkSelect.value = 'mainnet';
     if (solanaNetworkSelect) solanaNetworkSelect.value = 'mainnet-beta';
+    if (bitcoinNetworkSelect) bitcoinNetworkSelect.value = 'mainnet';
     this.selectedMpcParticipants = [];
     this.currentMpcAccount = null;
     this.renderMpcParticipantSelection();
@@ -220,6 +227,7 @@ export class CreateWalletController {
     if (value === 'mpc') return 'mpc';
     if (value === 'tron' || value === 'tronhd' || value === 'tron-hd') return 'tron';
     if (value === 'solana') return 'solana';
+    if (value === 'bitcoin') return 'bitcoin';
     return 'hd';
   }
 
@@ -237,11 +245,18 @@ export class CreateWalletController {
     return 'mainnet-beta';
   }
 
+  getBitcoinReference() {
+    const select = document.getElementById('bitcoinCreateNetworkSelect');
+    const value = String(select?.value || 'mainnet').toLowerCase();
+    if (value === 'testnet') return 'testnet';
+    return 'mainnet';
+  }
+
   generateDefaultWalletName(type = 'hd') {
     const normalized = String(type || '').toLowerCase();
     const prefix = normalized === 'mpc'
       ? 'mpc'
-      : (normalized === 'tron' ? 'tron' : (normalized === 'solana' ? 'sol' : 'hd'));
+      : (normalized === 'tron' ? 'tron' : (normalized === 'solana' ? 'sol' : (normalized === 'bitcoin' ? 'btc' : 'hd')));
     const suffix = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
     return `${prefix}-${suffix}`;
   }
@@ -252,6 +267,7 @@ export class CreateWalletController {
     if (normalized === 'mpc') expectedPrefix = 'mpc';
     else if (normalized === 'tron') expectedPrefix = 'tron';
     else if (normalized === 'solana') expectedPrefix = 'sol';
+    else if (normalized === 'bitcoin') expectedPrefix = 'btc';
     const current = String(name || '').trim();
     if (!current || current === '主钱包') return true;
     if (!GENERATED_WALLET_NAME_PATTERN.test(current)) return false;
@@ -272,10 +288,12 @@ export class CreateWalletController {
     if (value === 'mpc') normalized = 'mpc';
     else if (value === 'tron' || value === 'tronhd' || value === 'tron-hd') normalized = 'tron';
     else if (value === 'solana') normalized = 'solana';
+    else if (value === 'bitcoin') normalized = 'bitcoin';
     const group = document.getElementById('createWalletTypeGroup');
     const mpcFields = document.getElementById('mpcCreateWalletFields');
     const tronFields = document.getElementById('tronCreateWalletFields');
     const solanaFields = document.getElementById('solanaCreateWalletFields');
+    const bitcoinFields = document.getElementById('bitcoinCreateWalletFields');
     const resultEl = document.getElementById('mpcCreateWalletResult');
     const setPasswordBtn = document.getElementById('setPasswordBtn');
     const hint = document.getElementById('setPasswordHint');
@@ -293,6 +311,9 @@ export class CreateWalletController {
     if (solanaFields) {
       solanaFields.classList.toggle('hidden', normalized !== 'solana');
     }
+    if (bitcoinFields) {
+      bitcoinFields.classList.toggle('hidden', normalized !== 'bitcoin');
+    }
     if (resultEl) {
       resultEl.classList.toggle('hidden', normalized !== 'mpc');
     }
@@ -300,6 +321,7 @@ export class CreateWalletController {
       if (normalized === 'mpc') hint.textContent = '请填写钱包名称和参与方';
       else if (normalized === 'tron') hint.textContent = '请填写 Tron 钱包名称';
       else if (normalized === 'solana') hint.textContent = '请填写 Solana 钱包名称';
+      else if (normalized === 'bitcoin') hint.textContent = '请填写 Bitcoin 钱包名称';
       else hint.textContent = '请填写钱包名称';
     }
     if (setPasswordBtn && isAccounts) {
@@ -385,6 +407,7 @@ export class CreateWalletController {
     if (type === 'mpc') label = 'MPC Wallet';
     else if (type === 'tron') label = 'Tron HD';
     else if (type === 'solana') label = 'Solana 钱包';
+    else if (type === 'bitcoin') label = 'Bitcoin 钱包';
     const labelEl = document.getElementById('createWalletTypeLabel');
     if (labelEl) {
       labelEl.textContent = label;
@@ -480,6 +503,54 @@ export class CreateWalletController {
         if (labelEl) labelEl.textContent = option.textContent.trim();
         menu.querySelectorAll('.network-option').forEach(opt => {
           opt.classList.toggle('active', opt.dataset.solanaReference === nextRef);
+        });
+        void this.saveDraft();
+      }
+      closeMenu();
+    });
+
+    document.addEventListener('click', (event) => {
+      if (menu.classList.contains('hidden')) return;
+      if (trigger.contains(event.target) || menu.contains(event.target)) return;
+      closeMenu();
+    });
+  }
+
+  bindBitcoinNetworkDropdown() {
+    const trigger = document.getElementById('bitcoinCreateNetworkTrigger');
+    const menu = document.getElementById('bitcoinCreateNetworkMenu');
+    const select = document.getElementById('bitcoinCreateNetworkSelect');
+    if (!trigger || !menu || !select) return;
+
+    const closeMenu = () => {
+      if (!menu.classList.contains('hidden')) {
+        menu.classList.add('hidden');
+        trigger.setAttribute('aria-expanded', 'false');
+      }
+    };
+
+    trigger.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const isHidden = menu.classList.contains('hidden');
+      if (isHidden) {
+        menu.classList.remove('hidden');
+        trigger.setAttribute('aria-expanded', 'true');
+      } else {
+        closeMenu();
+      }
+    });
+
+    menu.addEventListener('click', (event) => {
+      const option = event.target.closest('.network-option');
+      if (!option) return;
+      const nextRef = option.dataset.bitcoinReference;
+      if (!nextRef) return;
+      if (select.value !== nextRef) {
+        select.value = nextRef;
+        const labelEl = document.getElementById('bitcoinCreateNetworkLabel');
+        if (labelEl) labelEl.textContent = option.textContent.trim();
+        menu.querySelectorAll('.network-option').forEach(opt => {
+          opt.classList.toggle('active', opt.dataset.bitcoinReference === nextRef);
         });
         void this.saveDraft();
       }

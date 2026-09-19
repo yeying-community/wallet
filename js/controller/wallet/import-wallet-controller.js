@@ -88,6 +88,7 @@ export class ImportWalletController {
         const passwordGroup = document.getElementById('importWalletPasswordGroup');
         const tronNetworkGroup = document.getElementById('tronImportNetworkGroup');
         const solanaNetworkGroup = document.getElementById('solanaImportNetworkGroup');
+        const bitcoinNetworkGroup = document.getElementById('bitcoinImportNetworkGroup');
         const importBtn = document.getElementById('importBtn');
 
         if (source === 'custody') {
@@ -127,6 +128,9 @@ export class ImportWalletController {
           if (solanaNetworkGroup) {
             solanaNetworkGroup.classList.toggle('hidden', chain !== 'solana');
           }
+          if (bitcoinNetworkGroup) {
+            bitcoinNetworkGroup.classList.toggle('hidden', chain !== 'bitcoin');
+          }
           if (importBtn) importBtn.textContent = '导入钱包';
         } else {
           walletSection?.classList.remove('hidden');
@@ -146,6 +150,7 @@ export class ImportWalletController {
 
     this.bindTronImportNetworkDropdown();
     this.bindSolanaImportNetworkDropdown();
+    this.bindBitcoinImportNetworkDropdown();
 
     const importBtn = document.getElementById('importBtn');
     if (importBtn) {
@@ -230,6 +235,8 @@ export class ImportWalletController {
           await this.wallet.importTronFromMnemonic(name, mnemonic, password, { tronReference: this.getTronImportReference() });
         } else if (methodChain === 'solana') {
           await this.wallet.importSolanaFromMnemonic(name, mnemonic, password, { solanaReference: this.getSolanaImportReference() });
+        } else if (methodChain === 'bitcoin') {
+          await this.wallet.importBitcoinFromMnemonic(name, mnemonic, password, { bitcoinReference: this.getBitcoinImportReference() });
         } else {
           await this.wallet.importFromMnemonic(name, mnemonic, password);
         }
@@ -239,6 +246,8 @@ export class ImportWalletController {
           await this.wallet.importTronFromPrivateKey(name, privateKey, password, { tronReference: this.getTronImportReference() });
         } else if (methodChain === 'solana') {
           await this.wallet.importSolanaFromPrivateKey(name, privateKey, password, { solanaReference: this.getSolanaImportReference() });
+        } else if (methodChain === 'bitcoin') {
+          await this.wallet.importBitcoinFromPrivateKey(name, privateKey, password, { bitcoinReference: this.getBitcoinImportReference() });
         } else {
           await this.wallet.importFromPrivateKey(name, privateKey, password);
         }
@@ -403,5 +412,59 @@ export class ImportWalletController {
     const value = String(select?.value || 'mainnet-beta').toLowerCase();
     if (value === 'devnet' || value === 'testnet') return value;
     return 'mainnet-beta';
+  }
+
+  bindBitcoinImportNetworkDropdown() {
+    const trigger = document.getElementById('bitcoinImportNetworkTrigger');
+    const menu = document.getElementById('bitcoinImportNetworkMenu');
+    const select = document.getElementById('bitcoinImportNetworkSelect');
+    if (!trigger || !menu || !select) return;
+
+    const closeMenu = () => {
+      if (!menu.classList.contains('hidden')) {
+        menu.classList.add('hidden');
+        trigger.setAttribute('aria-expanded', 'false');
+      }
+    };
+
+    trigger.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const isHidden = menu.classList.contains('hidden');
+      if (isHidden) {
+        menu.classList.remove('hidden');
+        trigger.setAttribute('aria-expanded', 'true');
+      } else {
+        closeMenu();
+      }
+    });
+
+    menu.addEventListener('click', (event) => {
+      const option = event.target.closest('.network-option');
+      if (!option) return;
+      const nextRef = option.dataset.bitcoinReference;
+      if (!nextRef) return;
+      if (select.value !== nextRef) {
+        select.value = nextRef;
+        const labelEl = document.getElementById('bitcoinImportNetworkLabel');
+        if (labelEl) labelEl.textContent = option.textContent.trim();
+        menu.querySelectorAll('.network-option').forEach(opt => {
+          opt.classList.toggle('active', opt.dataset.bitcoinReference === nextRef);
+        });
+      }
+      closeMenu();
+    });
+
+    document.addEventListener('click', (event) => {
+      if (menu.classList.contains('hidden')) return;
+      if (trigger.contains(event.target) || menu.contains(event.target)) return;
+      closeMenu();
+    });
+  }
+
+  getBitcoinImportReference() {
+    const select = document.getElementById('bitcoinImportNetworkSelect');
+    const value = String(select?.value || 'mainnet').toLowerCase();
+    if (value === 'testnet') return 'testnet';
+    return 'mainnet';
   }
 }

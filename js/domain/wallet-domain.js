@@ -219,6 +219,25 @@ export class WalletDomain extends BaseDomain {
   }
 
   /**
+   * 创建 Bitcoin HD 钱包（secp256k1, m/44'/0'/0'/0/0；testnet 用 coin type 1'）
+   * @param {string} accountName
+   * @param {string} password
+   * @param {{bitcoinReference?: 'mainnet'|'testnet'}} [options]
+   */
+  async createBitcoinHDWallet(accountName, password, options = {}) {
+    if (!password || password.length < 8) {
+      throw new Error('密码至少需要8位字符');
+    }
+    const result = await this._sendMessage(WalletMessageType.CREATE_BITCOIN_HD_WALLET, {
+      accountName: accountName || 'Bitcoin 钱包',
+      password,
+      options
+    });
+    this._currentAccount = result.account;
+    return result;
+  }
+
+  /**
    * 创建 MPC 钱包
    * @param {Object} options - 配置
    * @returns {Promise<Object>} 创建结果
@@ -291,6 +310,23 @@ export class WalletDomain extends BaseDomain {
     return result;
   }
 
+  async importBitcoinFromMnemonic(accountName, mnemonic, password, options = {}) {
+    if (!mnemonic || mnemonic.trim().split(' ').length < 12) {
+      throw new Error('助记词无效，至少需要12个单词');
+    }
+    if (!password || password.length < 8) {
+      throw new Error('密码至少需要8位字符');
+    }
+    const result = await this._sendMessage(WalletMessageType.IMPORT_BITCOIN_HD_WALLET, {
+      accountName: accountName || 'Bitcoin 导入钱包',
+      mnemonic: mnemonic.trim(),
+      password,
+      options
+    });
+    this._currentAccount = result.account;
+    return result;
+  }
+
   /**
    * 从私钥导入钱包
    * @param {string} accountName - 账户名称
@@ -348,6 +384,24 @@ export class WalletDomain extends BaseDomain {
     }
     const result = await this._sendMessage(WalletMessageType.IMPORT_SOLANA_PRIVATE_KEY_WALLET, {
       accountName: accountName || 'Solana 私钥钱包',
+      privateKey: trimmed,
+      password,
+      options
+    });
+    this._currentAccount = result.account;
+    return result;
+  }
+
+  async importBitcoinFromPrivateKey(accountName, privateKey, password, options = {}) {
+    const trimmed = String(privateKey || '').trim();
+    if (!trimmed) {
+      throw new Error('请输入 Bitcoin 私钥');
+    }
+    if (!password || password.length < 8) {
+      throw new Error('密码至少需要8位字符');
+    }
+    const result = await this._sendMessage(WalletMessageType.IMPORT_BITCOIN_PRIVATE_KEY_WALLET, {
+      accountName: accountName || 'Bitcoin 私钥钱包',
       privateKey: trimmed,
       password,
       options
