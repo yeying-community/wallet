@@ -223,6 +223,50 @@ export const NETWORKS = {
       symbol: 'SOL',
       decimals: 9
     }
+  },
+
+  // ===== Bitcoin（v1：secp256k1 / native BTC P2WPKH；不上稳定币）=====
+  // chainKey 用 CAIP-2 `bip122:<reference>`，无 chainId/chainIdHex；
+  // Bitcoin adapter 通过 namespace=bip122 + reference 识别（mainnet / testnet）。
+  bitcoinMainnet: {
+    id: 'bitcoinMainnet',
+    name: 'Bitcoin Mainnet',
+    rpc: 'https://blockstream.info/api',
+    rpcUrl: 'https://blockstream.info/api',
+    bitcoinRpcUrl: 'https://blockstream.info/api',
+    symbol: 'BTC',
+    decimals: 8,
+    explorer: 'https://mempool.space',
+    type: 'mainnet',
+    isTestnet: false,
+    namespace: 'bip122',
+    reference: 'mainnet',
+    chainKey: 'bip122:mainnet',
+    nativeCurrency: {
+      name: 'Bitcoin',
+      symbol: 'BTC',
+      decimals: 8
+    }
+  },
+  bitcoinTestnet: {
+    id: 'bitcoinTestnet',
+    name: 'Bitcoin Testnet',
+    rpc: 'https://blockstream.info/testnet/api',
+    rpcUrl: 'https://blockstream.info/testnet/api',
+    bitcoinRpcUrl: 'https://blockstream.info/testnet/api',
+    symbol: 'BTC',
+    decimals: 8,
+    explorer: 'https://mempool.space/testnet',
+    type: 'testnet',
+    isTestnet: true,
+    namespace: 'bip122',
+    reference: 'testnet',
+    chainKey: 'bip122:testnet',
+    nativeCurrency: {
+      name: 'Test BTC',
+      symbol: 'BTC',
+      decimals: 8
+    }
   }
 };
 
@@ -245,6 +289,62 @@ export const BUILTIN_TOKENS_BY_CHAIN_ID = {
       decimals: 6,
       chainId: '0x1',
       image: 'assets/token-icons/source-official/usdt.svg',
+      builtin: true
+    }
+  ]
+};
+
+// 内置通证（按 CAIP-2 chainKey 索引）——三链稳定币入口，用户无需手贴合约地址。
+// EVM 段与 BUILTIN_TOKENS_BY_CHAIN_ID['0x1'] 等价（family=eip155）；
+// Tron TRC20 USDT / Solana SPL USDC 无 numeric chainId，只有 chainKey。
+// Bitcoin（bip122）不上稳定币，故无条目。
+export const BUILTIN_TOKENS_BY_CHAIN_KEY = {
+  'eip155:1': [
+    {
+      address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+      symbol: 'USDC',
+      name: 'USD Coin',
+      decimals: 6,
+      chainId: '0x1',
+      chainKey: 'eip155:1',
+      family: 'eip155',
+      image: 'assets/token-icons/source-official/usdc.svg',
+      builtin: true
+    },
+    {
+      address: '0xdac17f958d2ee523a2206206994597c13d831ec7',
+      symbol: 'USDT',
+      name: 'Tether USD',
+      decimals: 6,
+      chainId: '0x1',
+      chainKey: 'eip155:1',
+      family: 'eip155',
+      image: 'assets/token-icons/source-official/usdt.svg',
+      builtin: true
+    }
+  ],
+  'tron:mainnet': [
+    {
+      address: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+      symbol: 'USDT',
+      name: 'Tether USD (TRC20)',
+      decimals: 6,
+      chainKey: 'tron:mainnet',
+      family: 'tron',
+      image: 'assets/token-icons/source-official/usdt.svg',
+      builtin: true
+    }
+  ],
+  'solana:mainnet-beta': [
+    {
+      address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDd1kn',
+      symbol: 'USDC',
+      name: 'USD Coin (SPL)',
+      decimals: 6,
+      chainKey: 'solana:mainnet-beta',
+      family: 'solana',
+      mint: true,
+      image: 'assets/token-icons/source-official/usdc.svg',
       builtin: true
     }
   ]
@@ -418,6 +518,35 @@ export function formatNetworkConfig(config) {
         name: raw.symbol || 'SOL',
         symbol: raw.symbol || 'SOL',
         decimals: raw.decimals || 9
+      }
+    };
+  }
+
+  // Bitcoin / bip122 网络：无 numeric chainId；chainKey = bip122:<reference>，
+  // native symbol BTC，decimals 8（satoshi）。
+  if (ns === 'bip122') {
+    const reference = String(raw.reference || '').toLowerCase();
+    if (!reference) {
+      throw new Error('Bitcoin network config requires reference');
+    }
+    return {
+      id: raw.id || `bitcoin-${reference}`,
+      name: raw.name || `Bitcoin ${capitalize(reference)}`,
+      rpc: raw.rpc || raw.rpcUrl || '',
+      rpcUrl: raw.rpcUrl || raw.rpc || '',
+      bitcoinRpcUrl: raw.bitcoinRpcUrl || raw.rpcUrl || raw.rpc || '',
+      symbol: raw.symbol || 'BTC',
+      decimals: raw.decimals || 8,
+      explorer: raw.explorer || '',
+      type: raw.type || NETWORK_TYPES.CUSTOM,
+      isTestnet: raw.isTestnet || false,
+      namespace: 'bip122',
+      reference,
+      chainKey: raw.chainKey || `bip122:${reference}`,
+      nativeCurrency: raw.nativeCurrency || {
+        name: raw.symbol || 'BTC',
+        symbol: raw.symbol || 'BTC',
+        decimals: raw.decimals || 8
       }
     };
   }
