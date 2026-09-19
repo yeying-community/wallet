@@ -30,6 +30,7 @@ import {
   bip122P2shVersion,
   chainKeyFromBip122Network
 } from './chain-key-bridge.js';
+import { registerBitcoinStrictValidator } from '../../../common/chain/address-normalize.js';
 
 const DUST_THRESHOLD = 546n; // 标准 P2PKH dust（sat）
 
@@ -165,6 +166,9 @@ export function isValidBitcoinAddress(value) {
     return false;
   }
 }
+
+// 注入 Bitcoin 严格校验器给 common/address-normalize（避免 common → chain 反向依赖）。
+registerBitcoinStrictValidator(isValidBitcoinAddress);
 
 /**
  * 把任意 Bitcoin 地址解析成 scriptPubKey（锁定脚本字节）。

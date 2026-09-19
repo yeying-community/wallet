@@ -30,9 +30,13 @@
 const EVM_REGEX = /^0x[0-9a-fA-F]{40}$/;
 const TRON_PLAIN_REGEX = /^[A-HJ-NP-Za-km-z1-9]{34}$/;
 const SOLANA_PLAIN_REGEX = /^[A-HJ-NP-Za-km-z1-9]{32,44}$/;  // base58(32B) ≈ 43-44 字符
+// Bitcoin：base58 (P2PKH/P2SH，前缀 1/3/m/n/2) 或 bech32/bech32m (bc1/tb1)。
+// 粗字符集/前缀预校验；严格校验（校验和 / bech32 polymod）走注入的 validator。
+const BITCOIN_PLAIN_REGEX = /^(bc1|tb1)[0-9ac-hj-np-z]{6,87}$|^[123mn2][A-HJ-NP-Za-km-z1-9]{25,39}$/;
 
 let _tronStrictValidator = null;
 let _solanaStrictValidator = null;
+let _bitcoinStrictValidator = null;
 
 export function registerTronStrictValidator(fn) {
   _tronStrictValidator = typeof fn === 'function' ? fn : null;
@@ -40,6 +44,10 @@ export function registerTronStrictValidator(fn) {
 
 export function registerSolanaStrictValidator(fn) {
   _solanaStrictValidator = typeof fn === 'function' ? fn : null;
+}
+
+export function registerBitcoinStrictValidator(fn) {
+  _bitcoinStrictValidator = typeof fn === 'function' ? fn : null;
 }
 
 /**
@@ -71,6 +79,12 @@ function normalizeAddress(value, family = DEFAULT_ADDRESS_FAMILY) {
     if (_solanaStrictValidator && !_solanaStrictValidator(raw)) return '';
     return raw;
   }
+  if (ns === 'utxo' || ns === 'bip122') {
+    // Bitcoin 大小写敏感（base58）/ bech32 强制小写；保持原值。
+    if (!BITCOIN_PLAIN_REGEX.test(raw)) return '';
+    if (_bitcoinStrictValidator && !_bitcoinStrictValidator(raw)) return '';
+    return raw;
+  }
   // 默认 EVM：转小写并校验
   const lowered = raw.toLowerCase();
   if (!EVM_REGEX.test(lowered)) return '';
@@ -90,7 +104,15 @@ export function isValidAddressForFamily(value, family = DEFAULT_ADDRESS_FAMILY) 
   if (ns === 'solana') {
     if (!SOLANA_PLAIN_REGEX.test(raw)) return false;
     if (_solanaStrictValidator) return _solanaStrictValidator(raw);
-    return false;
+    // 严格校验函数未注册（如 popup 上下文未加载 solana adapter）：
+    // 回退到字符集校验（与 Tron 迁移期回退一致）。background 侧已注册严格校验。
+    return true;
+  }
+  if (ns === 'utxo' || ns === 'bip122') {
+    if (!BITCOIN_PLAIN_REGEX.test(raw)) return false;
+    if (_bitcoinStrictValidator) return _bitcoinStrictValidator(raw);
+    // 同上：popup 未加载 bip122 adapter 时回退字符集/前缀校验。
+    return true;
   }
   return EVM_REGEX.test(raw);
 }

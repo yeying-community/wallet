@@ -145,14 +145,16 @@ test('getAllNetworks：长度 == getSupportedNetworks 长度', () => {
 
 // ==================== getMainnets / getTestnets ====================
 
-test('getMainnets：当前三条主网（yeying / ethereum / tronMainnet）', () => {
+test('getMainnets：当前五条主网（yeying / ethereum / tronMainnet / solanaMainnet / bitcoinMainnet）', () => {
   const mainnets = getMainnets();
-  assert.equal(mainnets.length, 3);
+  assert.equal(mainnets.length, 5);
   for (const n of mainnets) assert.equal(n.isTestnet, false);
   const ids = mainnets.map((n) => n.id);
   assert.ok(ids.includes('yeying'));
   assert.ok(ids.includes('ethereum'));
   assert.ok(ids.includes('tronMainnet'));
+  assert.ok(ids.includes('solanaMainnet'));
+  assert.ok(ids.includes('bitcoinMainnet'));
 });
 
 test('getTestnets：sepolia / polygon-amoy / bsc-testnet 均为测试网', () => {

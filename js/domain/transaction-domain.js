@@ -143,11 +143,13 @@ export class TransactionDomain extends BaseDomain {
   async sendTransaction(txParams) {
     const {
       from, to, value, data, gas, chainId, rpcUrl, token,
-      chainFamily, valueTrx, feeLimitSun, asset, amountSol
+      chainFamily, valueTrx, feeLimitSun, asset, amountSol, amountBtc
     } = txParams || {};
     const family = chainFamily === 'solana'
       ? 'solana'
-      : (chainFamily === 'tron' ? 'tron' : 'eip155');
+      : (chainFamily === 'tron'
+        ? 'tron'
+        : (chainFamily === 'utxo' ? 'utxo' : 'eip155'));
 
     // 参数验证：family-aware；Tron Base58 与 Solana base58(32B) 都不通过
     // EVM-only isValidAddress；address-normalize 已按 family 严格校验。
@@ -167,6 +169,12 @@ export class TransactionDomain extends BaseDomain {
       // v1 Solana 仅支持 SOL native transfer；amount 人类可读 SOL，lamports = × 1e9
       const sol = parseFloat(amountSol);
       if (!Number.isFinite(sol) || sol <= 0) {
+        throw new Error('请输入发送金额');
+      }
+    } else if (family === 'utxo') {
+      // v1 Bitcoin 仅支持 BTC native transfer；amount 人类可读 BTC，satoshi = × 1e8
+      const btc = parseFloat(amountBtc);
+      if (!Number.isFinite(btc) || btc <= 0) {
         throw new Error('请输入发送金额');
       }
     } else {
@@ -189,6 +197,9 @@ export class TransactionDomain extends BaseDomain {
     } else if (family === 'solana') {
       payload.asset = asset || 'SOL';
       payload.amountSol = String(amountSol);
+    } else if (family === 'utxo') {
+      payload.asset = asset || 'BTC';
+      payload.amountBtc = String(amountBtc);
     } else {
       payload.value = value;
       payload.data = data || '0x';
@@ -216,6 +227,9 @@ export class TransactionDomain extends BaseDomain {
     } else if (family === 'solana') {
       // 同 Tron：用人类可读 SOL 字符串作为占位（hex 形态 normalize 假设）。
       record.value = `${amountSol} SOL`;
+    } else if (family === 'utxo') {
+      // 同上：用人类可读 BTC 字符串作为占位。
+      record.value = `${amountBtc} BTC`;
     } else {
       record.value = value;
     }

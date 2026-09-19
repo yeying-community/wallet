@@ -18,6 +18,10 @@ import {
   importSolanaHDWallet,
   importSolanaPrivateKeyWallet,
   deriveSolanaSubAccount,
+  createBitcoinHDWallet,
+  importBitcoinHDWallet,
+  importBitcoinPrivateKeyWallet,
+  deriveBitcoinSubAccount,
   WALLET_TYPE,
   createWalletInstance,
   getAccountPrivateKey,
@@ -717,6 +721,82 @@ export async function handleCreateSolanaSubAccount(walletId, password, options =
     return { success: true, account: subAccount };
   } catch (error) {
     console.error('❌ Handle create Solana sub account failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ==================== Bitcoin 钱包 / 子账户（v1：secp256k1 / native BTC P2WPKH） ====================
+
+export async function handleCreateBitcoinHDWallet(accountName, password, options = {}) {
+  try {
+    const { wallet, mainAccount, mnemonic } = await createBitcoinHDWallet(accountName, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Bitcoin HD wallet created and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount, mnemonic };
+  } catch (error) {
+    console.error('❌ Handle create Bitcoin HD wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function handleImportBitcoinHDWallet(accountName, mnemonic, password, options = {}) {
+  try {
+    const { wallet, mainAccount } = await importBitcoinHDWallet(accountName, mnemonic, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Bitcoin HD wallet imported and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount };
+  } catch (error) {
+    console.error('❌ Handle import Bitcoin HD wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function handleImportBitcoinPrivateKeyWallet(accountName, privateKey, password, options = {}) {
+  try {
+    const { wallet, mainAccount } = await importBitcoinPrivateKeyWallet(accountName, privateKey, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Bitcoin private key wallet imported and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount };
+  } catch (error) {
+    console.error('❌ Handle import Bitcoin private key wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function handleCreateBitcoinSubAccount(walletId, password, options = {}) {
+  try {
+    const wallet = await getWallet(walletId);
+    if (!wallet || wallet.type !== WALLET_TYPE.HD) {
+      return { success: false, error: 'Bitcoin HD wallet not found' };
+    }
+    const walletAccounts = await getWalletAccounts(walletId);
+    const maxIndex = walletAccounts.reduce(
+      (max, account) => Math.max(max, Number.isFinite(account.index) ? account.index : 0),
+      -1
+    );
+    const newIndex = maxIndex + 1;
+    const subAccount = await deriveBitcoinSubAccount(wallet, newIndex, undefined, password, options || {});
+    await saveAccount(subAccount);
+    wallet.accountCount = (wallet.accountCount || 0) + 1;
+    await saveWallet(wallet);
+    if (password) {
+      cachePassword(password, TIMEOUTS.PASSWORD);
+    } else {
+      refreshPasswordCache();
+    }
+    resetLockTimer();
+    return { success: true, account: subAccount };
+  } catch (error) {
+    console.error('❌ Handle create Bitcoin sub account failed:', error);
     return { success: false, error: error.message };
   }
 }

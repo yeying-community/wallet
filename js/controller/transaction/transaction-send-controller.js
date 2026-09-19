@@ -34,12 +34,14 @@ export class TransactionSendController {
       const chainKey = String(await this.network?.getChainKey?.() || '').toLowerCase();
       if (chainKey.startsWith('tron:')) return 'tron';
       if (chainKey.startsWith('solana:')) return 'solana';
+      if (chainKey.startsWith('bip122:')) return 'bitcoin';
     } catch { /* network may not implement getChainKey in tests */ }
     try {
       const account = await this.wallet.getCurrentAccount();
       const ns = String(account?.namespace || account?.chainFamily || '').toLowerCase();
       if (ns === 'tron') return 'tron';
       if (ns === 'solana') return 'solana';
+      if (ns === 'bip122') return 'bitcoin';
     } catch { /* */ }
     return 'eip155';
   }
@@ -59,14 +61,16 @@ export class TransactionSendController {
     const chainKind = await this.detectChainKind();
     const family = chainKind === 'tron'
       ? 'tron'
-      : (chainKind === 'solana' ? 'solana' : 'eip155');
+      : (chainKind === 'solana' ? 'solana' : (chainKind === 'bitcoin' ? 'utxo' : 'eip155'));
     const isAddressValid = family === 'eip155'
       ? isValidAddress(recipient)
       : isValidAddressForFamily(recipient, family);
     if (!isAddressValid) {
       const errorText = family === 'tron'
         ? 'Tron 地址格式无效'
-        : (family === 'solana' ? 'Solana 地址格式无效' : '地址格式无效');
+        : (family === 'solana'
+          ? 'Solana 地址格式无效'
+          : (family === 'utxo' ? 'Bitcoin 地址格式无效' : '地址格式无效'));
       showError(errorText);
       return;
     }
@@ -110,6 +114,17 @@ export class TransactionSendController {
           from: account.address,
           to: recipient,
           amountSol: String(amount)
+        };
+      } else if (chainKind2 === 'bitcoin') {
+        // Bitcoin native BTC transfer — amount unit is BTC (satoshi = BTC × 1e8)
+        txParams = {
+          chainId,
+          rpcUrl,
+          chainFamily: 'utxo',
+          asset: 'BTC',
+          from: account.address,
+          to: recipient,
+          amountBtc: String(amount)
         };
       } else {
         txParams = this.buildTransactionParams({
@@ -200,6 +215,20 @@ export class TransactionSendController {
     if (chainKind === 'solana') {
       // Solana base fee is 5000 lamports per signature; SPL 不在 Phase 1 范围
       this.setFeeEstimateText('~0.000005 SOL');
+      return;
+    }
+    if (chainKind === 'bitcoin') {
+      // Bitcoin fee 走 Esplora fee-estimates（sat/vB）；此处给出费率提示，
+      // 精确金额在 buildUnsigned 选币后按 vsize 计算。
+      try {
+        const rate = await this.transaction.getBitcoinFeeRate?.({
+          rpcUrl: await this.network.getRpcUrl(),
+          chainKey: await this.network?.getChainKey?.()
+        });
+        this.setFeeEstimateText(rate ? `~${rate} sat/vB` : '~10 sat/vB');
+      } catch {
+        this.setFeeEstimateText('~10 sat/vB');
+      }
       return;
     }
 
