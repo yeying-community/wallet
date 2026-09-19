@@ -49,6 +49,15 @@ import {
   SOLANA_NAMESPACE,
   SOLANA_REFERENCE_MAINNET
 } from '../chain/adapters/solana/address.js';
+import {
+  privateKeyToBitcoinAddress
+} from '../chain/adapters/bip122/address.js';
+import {
+  BIP122_NAMESPACE,
+  BIP122_COIN_TYPE,
+  BIP122_REFERENCE_MAINNET,
+  BIP122_REFERENCE_TESTNET
+} from '../chain/adapters/bip122/chain-key-bridge.js';
 
 // ==================== 钱包类型 ====================
 
@@ -600,7 +609,7 @@ function generateAccountId(walletId, index) {
  *
  * @param {ethers.HDNodeWallet|ethers.Wallet} ethersWallet
  * @param {string} [chainFamily='eip155']
- * @param {{tronReference?: string, solanaReference?: string}} [options]
+ * @param {{tronReference?: string, solanaReference?: string, bip122Reference?: string}} [options]
  * @returns {{namespace:string,chainKey:string,coinType:number,publicKey:string}}
  */
 function buildAccountIdentity(ethersWallet, chainFamily = DEFAULT_NAMESPACE, options = {}) {
@@ -626,6 +635,18 @@ function buildAccountIdentity(ethersWallet, chainFamily = DEFAULT_NAMESPACE, opt
       chainKey: `${SOLANA_NAMESPACE}:${reference}`,
       coinType: SOLANA_COIN_TYPE,
       publicKey: solPubkey
+    };
+  }
+
+  if (family === BIP122_NAMESPACE) {
+    const reference = String(options.bip122Reference || BIP122_REFERENCE_MAINNET).toLowerCase();
+    // BTC 复用 secp256k1 压缩公钥（33B hex）；地址是 P2WPKH，公钥字段存压缩 hex 供 witness。
+    const publicKey = ethers.SigningKey.computePublicKey(ethersWallet.privateKey, true);
+    return {
+      namespace: BIP122_NAMESPACE,
+      chainKey: `${BIP122_NAMESPACE}:${reference}`,
+      coinType: BIP122_COIN_TYPE,
+      publicKey
     };
   }
 
@@ -1175,5 +1196,280 @@ export async function deriveSolanaSubAccount(wallet, newIndex, accountName, pass
     console.error('❌ Derive Solana sub account failed:', error);
     if (error.code) throw error;
     throw createInternalError('派生 Solana 子账户失败：' + error.message);
+  }
+}
+
+// ==================== Bitcoin 钱包（v1：secp256k1 / native BTC P2WPKH） ====================
+//
+// 4 个入口点与 EVM/Tron/Solana 路径平行。BTC 复用 secp256k1 曲线（同 EVM keyring），
+// 派生路径 m/44'/0'/0'/0/{index}（mainnet）/ m/44'/1'/0'/0/{index}（testnet, coinType 1'）。
+// 地址走 native segwit P2WPKH（bc1q... / tb1q...）。reference 默认 mainnet。
+
+/**
+ * BTC coinType：mainnet 用 0'，testnet 用 1'（SLIP-44）。
+ * @param {string} reference
+ */
+function bitcoinDerivationCoinType(reference) {
+  return reference === BIP122_REFERENCE_TESTNET ? 1 : 0;
+}
+
+/**
+ * @param {string} mnemonic
+ * @param {number} index
+ * @param {string} reference
+ * @returns {string} 0x + 64 hex chars
+ */
+function deriveBitcoinChildKeyFromMnemonic(mnemonic, index, reference) {
+  const hd = ethers.HDNodeWallet.fromPhrase(String(mnemonic || '').trim());
+  const coin = bitcoinDerivationCoinType(reference);
+  return hd.derivePath(`44'/${coin}'/0'/0/${index}`).privateKey;
+}
+
+/**
+ * 创建 Bitcoin HD 钱包（生成新助记词）
+ * @param {string} accountName
+ * @param {string} password
+ * @param {{bip122Reference?: string}} [options]
+ */
+export async function createBitcoinHDWallet(accountName, password, options = {}) {
+  try {
+    const validation = validatePassword(password);
+    if (!validation.valid) {
+      throw createInvalidPasswordError(validation.error);
+    }
+
+    const reference = String(options.bip122Reference || BIP122_REFERENCE_MAINNET).toLowerCase();
+    const coin = bitcoinDerivationCoinType(reference);
+
+    const ethersWallet = ethers.Wallet.createRandom();
+    const mnemonic = ethersWallet.mnemonic.phrase;
+
+    const childSk = deriveBitcoinChildKeyFromMnemonic(mnemonic, 0, reference);
+    const childAddress = privateKeyToBitcoinAddress(childSk, reference);
+
+    const encryptedMnemonic = await encryptString(mnemonic, password);
+    const encryptedPrivateKey = await encryptString(childSk, password);
+    const walletId = generateId('wallet');
+    const createdAt = getTimestamp();
+
+    const wallet = {
+      id: walletId,
+      name: 'Bitcoin HD Wallet',
+      type: WALLET_TYPE.HD,
+      encryptedMnemonic,
+      createdAt,
+      accountCount: 1
+    };
+
+    const mainAccount = {
+      id: generateAccountId(walletId, 0),
+      walletId,
+      name: accountName || 'Bitcoin Account 1',
+      index: 0,
+      derivationPath: `m/44'/${coin}'/0'/0/0`,
+      address: childAddress,
+      encryptedPrivateKey,
+      ...buildAccountIdentity(new ethers.Wallet(childSk), BIP122_NAMESPACE, { bip122Reference: reference }),
+      createdAt,
+      nameUpdatedAt: createdAt
+    };
+
+    console.log('✅ Bitcoin HD Wallet created:', { walletId, address: mainAccount.address, reference });
+    return { wallet, mainAccount, mnemonic };
+  } catch (error) {
+    console.error('❌ Create Bitcoin HD wallet failed:', error);
+    if (error.code) throw error;
+    throw createInternalError('创建 Bitcoin 钱包失败：' + error.message);
+  }
+}
+
+/**
+ * 导入 Bitcoin HD 钱包（从助记词）
+ * @param {string} accountName
+ * @param {string} mnemonic
+ * @param {string} password
+ * @param {{bip122Reference?: string}} [options]
+ */
+export async function importBitcoinHDWallet(accountName, mnemonic, password, options = {}) {
+  try {
+    let validation = validatePassword(password);
+    if (!validation.valid) {
+      throw createInvalidPasswordError(validation.error);
+    }
+    validation = validateMnemonic(mnemonic);
+    if (!validation.valid) {
+      throw createMnemonicInvalidError('助记词无效：' + validation.error);
+    }
+
+    const reference = String(options.bip122Reference || BIP122_REFERENCE_MAINNET).toLowerCase();
+    const coin = bitcoinDerivationCoinType(reference);
+
+    let childSk;
+    try {
+      childSk = deriveBitcoinChildKeyFromMnemonic(mnemonic.trim(), 0, reference);
+    } catch (error) {
+      throw createMnemonicInvalidError('无法从助记词派生 Bitcoin 钱包：' + error.message);
+    }
+    const childAddress = privateKeyToBitcoinAddress(childSk, reference);
+
+    const encryptedMnemonic = await encryptString(mnemonic, password);
+    const encryptedPrivateKey = await encryptString(childSk, password);
+    const walletId = generateId('wallet');
+    const createdAt = getTimestamp();
+
+    const wallet = {
+      id: walletId,
+      name: 'Bitcoin HD Wallet',
+      type: WALLET_TYPE.HD,
+      encryptedMnemonic,
+      createdAt,
+      accountCount: 1
+    };
+
+    const mainAccount = {
+      id: generateAccountId(walletId, 0),
+      walletId,
+      name: accountName || 'Bitcoin Account 1',
+      index: 0,
+      derivationPath: `m/44'/${coin}'/0'/0/0`,
+      address: childAddress,
+      encryptedPrivateKey,
+      ...buildAccountIdentity(new ethers.Wallet(childSk), BIP122_NAMESPACE, { bip122Reference: reference }),
+      createdAt,
+      nameUpdatedAt: createdAt
+    };
+
+    console.log('✅ Bitcoin HD Wallet imported:', { walletId, address: mainAccount.address, reference });
+    return { wallet, mainAccount };
+  } catch (error) {
+    console.error('❌ Import Bitcoin HD wallet failed:', error);
+    if (error.code) throw error;
+    throw createInternalError('导入 Bitcoin 钱包失败：' + error.message);
+  }
+}
+
+/**
+ * 导入 Bitcoin 私钥钱包
+ * @param {string} accountName
+ * @param {string} privateKey
+ * @param {string} password
+ * @param {{bip122Reference?: string}} [options]
+ */
+export async function importBitcoinPrivateKeyWallet(accountName, privateKey, password, options = {}) {
+  try {
+    let validation = validatePassword(password);
+    if (!validation.valid) {
+      throw createInvalidPasswordError(validation.error);
+    }
+    validation = validatePrivateKey(privateKey);
+    if (!validation.valid) {
+      throw createPrivateKeyInvalidError('私钥无效：' + validation.error);
+    }
+
+    privateKey = privateKey.trim();
+    if (!privateKey.startsWith('0x')) {
+      privateKey = '0x' + privateKey;
+    }
+
+    let ethersWallet;
+    try {
+      ethersWallet = new ethers.Wallet(privateKey);
+    } catch (error) {
+      throw createPrivateKeyInvalidError('无法从私钥创建 Bitcoin 钱包：' + error.message);
+    }
+
+    const reference = String(options.bip122Reference || BIP122_REFERENCE_MAINNET).toLowerCase();
+    const bitcoinAddress = privateKeyToBitcoinAddress(ethersWallet.privateKey, reference);
+
+    const encryptedPrivateKey = await encryptString(privateKey, password);
+    const walletId = generateId('wallet');
+    const createdAt = getTimestamp();
+
+    const wallet = {
+      id: walletId,
+      name: 'Imported Bitcoin Wallet',
+      type: WALLET_TYPE.IMPORTED,
+      createdAt,
+      accountCount: 1
+    };
+
+    const mainAccount = {
+      id: generateAccountId(walletId, 0),
+      walletId,
+      name: accountName || 'Imported Bitcoin Account',
+      index: 0,
+      address: bitcoinAddress,
+      encryptedPrivateKey,
+      ...buildAccountIdentity(ethersWallet, BIP122_NAMESPACE, { bip122Reference: reference }),
+      createdAt,
+      nameUpdatedAt: createdAt
+    };
+
+    console.log('✅ Bitcoin private key wallet imported:', { walletId, address: mainAccount.address, reference });
+    return { wallet, mainAccount };
+  } catch (error) {
+    console.error('❌ Import Bitcoin private key wallet failed:', error);
+    if (error.code) throw error;
+    throw createInternalError('导入 Bitcoin 私钥失败：' + error.message);
+  }
+}
+
+/**
+ * 派生 Bitcoin 子账户（仅 HD 钱包）
+ * @param {Object} wallet
+ * @param {number} newIndex
+ * @param {string} accountName
+ * @param {string} password
+ * @param {{bip122Reference?: string}} [options]
+ */
+export async function deriveBitcoinSubAccount(wallet, newIndex, accountName, password, options = {}) {
+  try {
+    if (wallet.type !== WALLET_TYPE.HD) {
+      throw createInvalidParams('只有 HD 钱包可以派生 Bitcoin 子账户');
+    }
+    if (!wallet.encryptedMnemonic) {
+      throw createMnemonicInvalidError('钱包缺少助记词数据');
+    }
+
+    let mnemonic;
+    try {
+      mnemonic = await decryptString(wallet.encryptedMnemonic, password);
+    } catch (error) {
+      throw createInvalidPasswordError('密码错误');
+    }
+
+    const reference = String(options.bip122Reference || BIP122_REFERENCE_MAINNET).toLowerCase();
+    const coin = bitcoinDerivationCoinType(reference);
+
+    let childSk;
+    try {
+      childSk = deriveBitcoinChildKeyFromMnemonic(mnemonic, newIndex, reference);
+    } catch (error) {
+      throw createInternalError('派生 Bitcoin 账户失败：' + error.message);
+    }
+    const childAddress = privateKeyToBitcoinAddress(childSk, reference);
+
+    const encryptedPrivateKey = await encryptString(childSk, password);
+    const createdAt = getTimestamp();
+
+    const subAccount = {
+      id: generateAccountId(wallet.id, newIndex),
+      walletId: wallet.id,
+      name: accountName || `Bitcoin Account ${newIndex + 1}`,
+      index: newIndex,
+      derivationPath: `m/44'/${coin}'/0'/0/${newIndex}`,
+      address: childAddress,
+      encryptedPrivateKey,
+      ...buildAccountIdentity(new ethers.Wallet(childSk), BIP122_NAMESPACE, { bip122Reference: reference }),
+      createdAt,
+      nameUpdatedAt: createdAt
+    };
+
+    console.log('✅ Bitcoin sub account derived:', { walletId: wallet.id, index: newIndex, address: subAccount.address });
+    return subAccount;
+  } catch (error) {
+    console.error('❌ Derive Bitcoin sub account failed:', error);
+    if (error.code) throw error;
+    throw createInternalError('派生 Bitcoin 子账户失败：' + error.message);
   }
 }

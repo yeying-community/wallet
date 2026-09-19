@@ -38,6 +38,11 @@ import {
   buildUnsigned as buildTronUnsigned,
   assembleSigned as assembleTronSigned
 } from './adapters/tron/transaction.js';
+import {
+  buildUnsigned as buildBitcoinUnsigned,
+  assembleSigned as assembleBitcoinSigned
+} from './adapters/bip122/transaction.js';
+import { hexToBytes } from './adapters/bip122/address.js';
 
 function isPendingMpcSignError(error) {
   return String(error?.code || error?.message || '').trim() === 'MPC_SIGNING_PENDING';
@@ -60,6 +65,11 @@ export async function signTransactionRaw(chainKey, accountId, transaction) {
     // Solana 分支：ed25519 走 native SOL transfer（或 Phase 3 的 SPL token）。
     if (namespaceOf(chainKey) === 'solana') {
       return await signSolanaTransactionLocal(chainKey, accountId, transaction);
+    }
+
+    // Bitcoin 分支：secp256k1 UTXO，多 input 逐个签 BIP-143 sighash。
+    if (namespaceOf(chainKey) === 'bip122') {
+      return await signBitcoinTransactionLocal(chainKey, accountId, transaction);
     }
 
     if (isMpcAccountId(accountId)) {
@@ -147,6 +157,54 @@ async function signSolanaTransactionLocal(chainKey, accountId, transaction) {
   const signer = getSigner(accountId, adapter);
   const sigResult = await signer.sign(unsigned, { accountId });
   return adapter.assembleSigned(unsigned, sigResult);
+}
+
+/**
+ * Bitcoin 本地签名（native P2WPKH segwit）：
+ *   1) adapter.buildUnsigned(intent, ctx) 拉 UTXO / 选币 / 生成每 input 的 BIP-143 sighash
+ *   2) 注入发送方压缩公钥（witness 需要），逐个 sighash 用同一 secp256k1 私钥签
+ *   3) adapter.assembleSigned 序列化成 segwit raw tx hex
+ *
+ * MPC 路径对 Bitcoin 暂不支持（v1 抛 UNSUPPORTED_OPERATION）。
+ */
+async function signBitcoinTransactionLocal(chainKey, accountId, transaction) {
+  if (isMpcAccountId(accountId)) {
+    throw Object.assign(new Error('Bitcoin MPC signing is not implemented in v1'), {
+      code: 'UNSUPPORTED_OPERATION'
+    });
+  }
+
+  // keyring 里的 ethers.Wallet（BTC 复用 secp256k1 曲线，私钥字节等价）。
+  const wallet = getWalletInstance(accountId);
+  const signingKey = new ethers.SigningKey(wallet.privateKey);
+
+  // intent normalize：UI 传 { from, to, amount(satoshi), feeRate? }
+  const intent = transaction && transaction.type
+    ? transaction
+    : {
+        type: 'native-transfer',
+        from: transaction?.from,
+        to: transaction?.to,
+        amount: transaction?.amount,
+        feeRate: transaction?.feeRate
+      };
+
+  const unsigned = await buildBitcoinUnsigned(intent, { chainKey });
+
+  // witness 需要发送方压缩公钥（33B）；注入 serializeState 供 assembleSigned 使用。
+  const st = /** @type {any} */ (unsigned.serializeState);
+  st.compressedPubkey = hexToBytes(signingKey.compressedPublicKey);
+
+  // 逐个 input（每个 payload 是一个 BIP-143 sighash digest）用同一私钥签名。
+  const parts = unsigned.payloads.map((payload) => {
+    if (!payload || payload.kind !== 'digest') {
+      throw new Error('Bitcoin adapter must produce digest payloads');
+    }
+    const sig = signingKey.sign(ethers.getBytes(payload.bytes));
+    return { r: sig.r, s: sig.s, recid: sig.v - 27 };
+  });
+
+  return assembleBitcoinSigned(unsigned, { parts });
 }
 
 /**
