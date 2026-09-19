@@ -389,8 +389,18 @@ export class TransactionDomain extends BaseDomain {
    * @returns {string} 格式化后的金额
    */
   formatTransactionValue(value, isSent = true) {
-    const ether = this.formatEther(value);
     const prefix = isSent ? '-' : '+';
+    // 非 EVM 链（Tron/Solana/Bitcoin）记录里 value 已是格式化好的展示串
+    // （如 "0.1 SOL" / "0.001 BTC" / "5 TRX"），不是 hex/十进制原始单位。
+    // 仅当 value 是纯 hex（0x..）或纯十进制整数时才按 18 位 wei→ETH 格式化。
+    const raw = typeof value === 'string' ? value.trim() : value;
+    const isRawUnits = typeof raw === 'string'
+      ? (/^0x[0-9a-fA-F]+$/.test(raw) || /^[0-9]+$/.test(raw))
+      : (typeof raw === 'bigint' || typeof raw === 'number');
+    if (!isRawUnits && raw) {
+      return `${prefix}${raw}`;
+    }
+    const ether = this.formatEther(value);
     return `${prefix}${ether} ETH`;
   }
 

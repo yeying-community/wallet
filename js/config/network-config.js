@@ -192,7 +192,7 @@ export const NETWORKS = {
     solanaRpcUrl: 'https://api.devnet.solana.com',
     symbol: 'SOL',
     decimals: 9,
-    explorer: 'https://solscan.io?cluster=devnet',
+    explorer: 'https://solscan.io',
     type: 'testnet',
     isTestnet: true,
     namespace: 'solana',
@@ -212,7 +212,7 @@ export const NETWORKS = {
     solanaRpcUrl: 'https://api.testnet.solana.com',
     symbol: 'SOL',
     decimals: 9,
-    explorer: 'https://solscan.io?cluster=testnet',
+    explorer: 'https://solscan.io',
     type: 'testnet',
     isTestnet: true,
     namespace: 'solana',
@@ -597,6 +597,32 @@ export function isSameNetwork(network1, network2) {
 }
 
 /**
+ * 按链 namespace 拼接 explorer 路径。
+ *   - tron（tronscan）：SPA hash 路由 `/#/transaction/`、`/#/address/`、`/#/block/`
+ *   - solana（solscan）：非 mainnet 追加 `?cluster=<reference>` query
+ *   - 其余（EVM/BTC mempool.space 等）：标准 `/tx/`、`/address/`、`/block/`
+ * @param {object} network
+ * @param {'tx'|'address'|'block'} kind
+ * @param {string} value
+ * @returns {string}
+ */
+function buildExplorerPath(network, kind, value) {
+  const base = String(network.explorer || '').replace(/\/+$/, '');
+  const ns = network.namespace || '';
+  if (ns === 'tron') {
+    const seg = kind === 'tx' ? 'transaction' : kind;
+    return `${base}/#/${seg}/${value}`;
+  }
+  const seg = kind === 'tx' ? 'tx' : kind;
+  if (ns === 'solana') {
+    const ref = network.reference || 'mainnet-beta';
+    const cluster = ref === 'mainnet-beta' ? '' : `?cluster=${ref}`;
+    return `${base}/${seg}/${value}${cluster}`;
+  }
+  return `${base}/${seg}/${value}`;
+}
+
+/**
  * 获取区块浏览器地址 URL
  * @param {string} networkName - 网络名称
  * @param {string} address - 地址
@@ -605,7 +631,7 @@ export function isSameNetwork(network1, network2) {
 export function getExplorerAddressUrl(networkName, address) {
   const network = getNetworkConfig(networkName);
   if (!network || !network.explorer) return '';
-  return `${network.explorer}/address/${address}`;
+  return buildExplorerPath(network, 'address', address);
 }
 
 /**
@@ -617,7 +643,7 @@ export function getExplorerAddressUrl(networkName, address) {
 export function getExplorerTxUrl(networkName, txHash) {
   const network = getNetworkConfig(networkName);
   if (!network || !network.explorer) return '';
-  return `${network.explorer}/tx/${txHash}`;
+  return buildExplorerPath(network, 'tx', txHash);
 }
 
 /**
@@ -629,5 +655,5 @@ export function getExplorerTxUrl(networkName, txHash) {
 export function getExplorerBlockUrl(networkName, blockNumber) {
   const network = getNetworkConfig(networkName);
   if (!network || !network.explorer) return '';
-  return `${network.explorer}/block/${blockNumber}`;
+  return buildExplorerPath(network, 'block', String(blockNumber));
 }

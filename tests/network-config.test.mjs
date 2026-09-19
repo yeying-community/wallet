@@ -344,3 +344,30 @@ test('getExplorer*Url：未知网络或 explorer 缺失 → 空串', () => {
   assert.equal(getExplorerTxUrl(null, '0xabc'), '');
   assert.equal(getExplorerBlockUrl('', '123'), '');
 });
+
+test('getExplorerTxUrl：非 EVM 链按 namespace 拼接（Tron hash 路由 / Solana cluster / BTC 标准）', () => {
+  // Tron tronscan 是 SPA hash 路由 /#/transaction/
+  assert.equal(
+    getExplorerTxUrl('tronMainnet', 'abc123'),
+    'https://tronscan.org/#/transaction/abc123'
+  );
+  assert.equal(
+    getExplorerAddressUrl('tronMainnet', 'TXaddr'),
+    'https://tronscan.org/#/address/TXaddr'
+  );
+  // Solana mainnet-beta：solscan 标准 /tx/，无 cluster query
+  assert.equal(
+    getExplorerTxUrl('solanaMainnet', 'sig123'),
+    'https://solscan.io/tx/sig123'
+  );
+  // Solana devnet：追加 ?cluster=devnet
+  assert.equal(
+    getExplorerTxUrl('solanaDevnet', 'sig456'),
+    'https://solscan.io/tx/sig456?cluster=devnet'
+  );
+  // Bitcoin mempool.space：标准 /tx/
+  assert.equal(
+    getExplorerTxUrl('bitcoinMainnet', 'txid789'),
+    'https://mempool.space/tx/txid789'
+  );
+});
