@@ -14,6 +14,7 @@ import { namespaceOf } from './chain-key.js';
 import { evmAdapter } from './adapters/evm/index.js';
 import { tronAdapter } from './adapters/tron/index.js';
 import { solanaAdapter } from './adapters/solana/index.js';
+import { bitcoinAdapter } from './adapters/bip122/index.js';
 import { localKeyringSigner } from './signers/local-keyring.js';
 import { localKeyringEd25519Signer } from './signers/local-keyring-ed25519.js';
 import { isMpcAccountId } from '../background/signing.js';
@@ -39,6 +40,9 @@ export function getAdapter(chainKey) {
   }
   if (ns === 'solana') {
     return solanaAdapter;
+  }
+  if (ns === 'bip122') {
+    return bitcoinAdapter;
   }
   throw new Error(`${UNSUPPORTED_CHAIN}: ${chainKey}`);
 }

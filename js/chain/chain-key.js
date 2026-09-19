@@ -27,6 +27,14 @@ import {
   chainKeyFromSolanaNetwork,
   solanaReference
 } from './adapters/solana/chain-key-bridge.js';
+import {
+  BIP122_NAMESPACE,
+  BIP122_REFERENCE_MAINNET,
+  BIP122_REFERENCE_TESTNET,
+  BIP122_COIN_TYPE,
+  chainKeyFromBip122Network,
+  bip122Reference
+} from './adapters/bip122/chain-key-bridge.js';
 
 export const DEFAULT_NAMESPACE = 'eip155';
 export const DEFAULT_COIN_TYPE = 60;
@@ -49,6 +57,9 @@ export function chainKeyFromNetwork(net) {
   }
   if (ns === SOLANA_NAMESPACE) {
     return chainKeyFromSolanaNetwork(net);
+  }
+  if (ns === BIP122_NAMESPACE) {
+    return chainKeyFromBip122Network(net);
   }
   const decimal = toDecimalChainId(net?.chainId);
   return `${DEFAULT_NAMESPACE}:${decimal}`;
@@ -169,4 +180,12 @@ export {
   SOLANA_COIN_TYPE,
   chainKeyFromSolanaNetwork,
   solanaReference
+};
+export {
+  BIP122_NAMESPACE,
+  BIP122_REFERENCE_MAINNET,
+  BIP122_REFERENCE_TESTNET,
+  BIP122_COIN_TYPE,
+  chainKeyFromBip122Network,
+  bip122Reference
 };
