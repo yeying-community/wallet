@@ -87,6 +87,7 @@ export class ImportWalletController {
         const nameGroup = document.getElementById('importWalletNameGroup');
         const passwordGroup = document.getElementById('importWalletPasswordGroup');
         const tronNetworkGroup = document.getElementById('tronImportNetworkGroup');
+        const solanaNetworkGroup = document.getElementById('solanaImportNetworkGroup');
         const importBtn = document.getElementById('importBtn');
 
         if (source === 'custody') {
@@ -123,6 +124,9 @@ export class ImportWalletController {
           if (tronNetworkGroup) {
             tronNetworkGroup.classList.toggle('hidden', chain !== 'tron');
           }
+          if (solanaNetworkGroup) {
+            solanaNetworkGroup.classList.toggle('hidden', chain !== 'solana');
+          }
           if (importBtn) importBtn.textContent = '导入钱包';
         } else {
           walletSection?.classList.remove('hidden');
@@ -141,6 +145,7 @@ export class ImportWalletController {
     });
 
     this.bindTronImportNetworkDropdown();
+    this.bindSolanaImportNetworkDropdown();
 
     const importBtn = document.getElementById('importBtn');
     if (importBtn) {
@@ -223,6 +228,8 @@ export class ImportWalletController {
         const mnemonic = document.getElementById('importMnemonic')?.value.trim();
         if (methodChain === 'tron') {
           await this.wallet.importTronFromMnemonic(name, mnemonic, password, { tronReference: this.getTronImportReference() });
+        } else if (methodChain === 'solana') {
+          await this.wallet.importSolanaFromMnemonic(name, mnemonic, password, { solanaReference: this.getSolanaImportReference() });
         } else {
           await this.wallet.importFromMnemonic(name, mnemonic, password);
         }
@@ -230,6 +237,8 @@ export class ImportWalletController {
         const privateKey = document.getElementById('importPrivateKey')?.value.trim();
         if (methodChain === 'tron') {
           await this.wallet.importTronFromPrivateKey(name, privateKey, password, { tronReference: this.getTronImportReference() });
+        } else if (methodChain === 'solana') {
+          await this.wallet.importSolanaFromPrivateKey(name, privateKey, password, { solanaReference: this.getSolanaImportReference() });
         } else {
           await this.wallet.importFromPrivateKey(name, privateKey, password);
         }
@@ -340,5 +349,59 @@ export class ImportWalletController {
     const value = String(select?.value || 'mainnet').toLowerCase();
     if (value === 'shasta' || value === 'nile') return value;
     return 'mainnet';
+  }
+
+  bindSolanaImportNetworkDropdown() {
+    const trigger = document.getElementById('solanaImportNetworkTrigger');
+    const menu = document.getElementById('solanaImportNetworkMenu');
+    const select = document.getElementById('solanaImportNetworkSelect');
+    if (!trigger || !menu || !select) return;
+
+    const closeMenu = () => {
+      if (!menu.classList.contains('hidden')) {
+        menu.classList.add('hidden');
+        trigger.setAttribute('aria-expanded', 'false');
+      }
+    };
+
+    trigger.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const isHidden = menu.classList.contains('hidden');
+      if (isHidden) {
+        menu.classList.remove('hidden');
+        trigger.setAttribute('aria-expanded', 'true');
+      } else {
+        closeMenu();
+      }
+    });
+
+    menu.addEventListener('click', (event) => {
+      const option = event.target.closest('.network-option');
+      if (!option) return;
+      const nextRef = option.dataset.solanaReference;
+      if (!nextRef) return;
+      if (select.value !== nextRef) {
+        select.value = nextRef;
+        const labelEl = document.getElementById('solanaImportNetworkLabel');
+        if (labelEl) labelEl.textContent = option.textContent.trim();
+        menu.querySelectorAll('.network-option').forEach(opt => {
+          opt.classList.toggle('active', opt.dataset.solanaReference === nextRef);
+        });
+      }
+      closeMenu();
+    });
+
+    document.addEventListener('click', (event) => {
+      if (menu.classList.contains('hidden')) return;
+      if (trigger.contains(event.target) || menu.contains(event.target)) return;
+      closeMenu();
+    });
+  }
+
+  getSolanaImportReference() {
+    const select = document.getElementById('solanaImportNetworkSelect');
+    const value = String(select?.value || 'mainnet-beta').toLowerCase();
+    if (value === 'devnet' || value === 'testnet') return value;
+    return 'mainnet-beta';
   }
 }

@@ -129,8 +129,9 @@ test('registry.getAdapter("eip155:1") 仍返回 evmAdapter（向后兼容）', (
 });
 
 test('registry.getAdapter 未知命名空间 → UNSUPPORTED_CHAIN', () => {
-  assert.throws(() => getAdapter('solana:mainnet'), /UNSUPPORTED_CHAIN/);
+  // 已知 ns 集合 = eip155 / tron / solana；其它（包括 bip122 在 Phase 2 前）抛 UNSUPPORTED_CHAIN
   assert.throws(() => getAdapter('bip122:000000000019d6689c085ae165831e93'), /UNSUPPORTED_CHAIN/);
+  assert.throws(() => getAdapter('cosmos:hub'), /UNSUPPORTED_CHAIN/);
 });
 
 // ==================== buildUnsigned ====================

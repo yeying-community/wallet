@@ -22,10 +22,13 @@ import {
   handleCreateTronHDWallet,
   handleImportHDWallet,
   handleImportTronHDWallet,
+  handleImportSolanaHDWallet,
   handleImportPrivateKeyWallet,
   handleImportTronPrivateKeyWallet,
+  handleImportSolanaPrivateKeyWallet,
   handleCreateSubAccount,
   handleCreateTronSubAccount,
+  handleCreateSolanaSubAccount,
   handleSwitchAccount,
   handleGetCurrentAccount,
   handleGetAccountById,
@@ -408,10 +411,17 @@ async function handleSendTransactionMessage(data) {
     return { success: false, error: 'Invalid transaction params' };
   }
 
-  // Tron 路径：valueTrx 是人类可读 TRX 数量，不强制 hex value；EVM 必须有 value
-  const family = chainFamily === 'tron' ? 'tron' : 'eip155';
+  // Tron 路径：valueTrx 是人类可读 TRX 数量，不强制 hex value；Solana 路径：
+  // amountSol 人类可读 SOL 数量（lamports = amount × 1e9）；EVM 必须有 value
+  const family = chainFamily === 'solana'
+    ? 'solana'
+    : (chainFamily === 'tron' ? 'tron' : 'eip155');
   if (family === 'tron') {
     if (!valueTrx || parseFloat(valueTrx) <= 0) {
+      return { success: false, error: 'Invalid transaction params' };
+    }
+  } else if (family === 'solana') {
+    if (!data?.amountSol || parseFloat(data.amountSol) <= 0) {
       return { success: false, error: 'Invalid transaction params' };
     }
   } else if (!value) {
@@ -430,6 +440,7 @@ async function handleSendTransactionMessage(data) {
     // /wallet/createtransaction + 本地 secp256k1 签名）；
     // EVM 路径仍走 ethers populateTransaction + signTransaction。
     const SUN_PER_TRX = 1_000_000n;
+    const LAMPORTS_PER_SOL = 1_000_000_000n;
     const tx = family === 'tron'
       ? {
           type: 'native-transfer',
@@ -439,21 +450,41 @@ async function handleSendTransactionMessage(data) {
           to,
           amount: String(BigInt(Math.floor(parseFloat(valueTrx) * 1e6)))
         }
-      : (() => {
-          const evmTx = {
+      : family === 'solana'
+        ? {
+            type: 'native-transfer',
+            chainFamily: 'solana',
+            asset: 'SOL',
+            from,
             to,
-            value,
-            data: txData || '0x'
-          };
-          const limit = gasLimit || gas;
-          if (limit) evmTx.gasLimit = limit;
-          return evmTx;
-        })();
+            amount: String(BigInt(Math.floor(parseFloat(data.amountSol) * 1e9)))
+          }
+        : (() => {
+            const evmTx = {
+              to,
+              value,
+              data: txData || '0x'
+            };
+            const limit = gasLimit || gas;
+            if (limit) evmTx.gasLimit = limit;
+            return evmTx;
+          })();
 
     // 优先使用消息携带的 chainKey（popup 显式声明）；其次 fallback state。
-    const chainKey = (state.currentChainKey || '').startsWith('tron:')
-      ? state.currentChainKey
-      : (family === 'tron' ? 'tron:mainnet' : (state.currentChainKey || 'eip155:1'));
+    // Tron / Solana 路径各自有 family-specific 兜底：
+    //   - tron:* → tron:mainnet
+    //   - solana:* → solana:mainnet-beta
+    // EVM 仍走 state.currentChainKey（保留 eip155:1）。
+    const currentKey = state.currentChainKey || '';
+    const chainKey = currentKey.startsWith('tron:')
+      ? currentKey
+      : currentKey.startsWith('solana:')
+        ? currentKey
+        : (family === 'tron'
+            ? 'tron:mainnet'
+            : (family === 'solana'
+                ? 'solana:mainnet-beta'
+                : (state.currentChainKey || 'eip155:1')));
 
     const rawTx = await signTransactionRaw(chainKey, accountId, tx);
     const txHash = await broadcastRawTransaction(chainKey, rawTx);
@@ -469,7 +500,9 @@ async function handleSendTransactionMessage(data) {
       hash: txHash,
       from,
       to,
-      value: family === 'tron' ? `${valueTrx} TRX` : value,
+      value: family === 'tron'
+        ? `${valueTrx} TRX`
+        : (family === 'solana' ? `${data.amountSol} SOL` : value),
       token: token || null,
       timestamp: getTimestamp(),
       status: 'pending',
@@ -826,13 +859,17 @@ const popupHandlers = new Map([
   ['GET_ALL_WALLETS', async () => await HandleGetWalletList()],
   ['CREATE_HD_WALLET', async (data) => await handleCreateHDWallet(data.accountName, data.password)],
   ['CREATE_TRON_HD_WALLET', async (data) => await handleCreateTronHDWallet(data.accountName, data.password, data.options || {})],
+  ['CREATE_SOLANA_HD_WALLET', async (data) => await handleCreateSolanaHDWallet(data.accountName, data.password, data.options || {})],
   ['IMPORT_HD_WALLET', async (data) => await handleImportHDWallet(data.accountName, data.mnemonic, data.password)],
   ['IMPORT_TRON_HD_WALLET', async (data) => await handleImportTronHDWallet(data.accountName, data.mnemonic, data.password, data.options || {})],
+  ['IMPORT_SOLANA_HD_WALLET', async (data) => await handleImportSolanaHDWallet(data.accountName, data.mnemonic, data.password, data.options || {})],
   ['IMPORT_PRIVATE_KEY_WALLET', async (data) => await handleImportPrivateKeyWallet(data.accountName, data.privateKey, data.password)],
   ['IMPORT_TRON_PRIVATE_KEY_WALLET', async (data) => await handleImportTronPrivateKeyWallet(data.accountName, data.privateKey, data.password, data.options || {})],
+  ['IMPORT_SOLANA_PRIVATE_KEY_WALLET', async (data) => await handleImportSolanaPrivateKeyWallet(data.accountName, data.privateKey, data.password, data.options || {})],
   ['CREATE_MPC_WALLET', async (data) => await handleCreateMpcWallet(data)],
   ['CREATE_SUB_ACCOUNT', async (data) => await handleCreateSubAccount(data.walletId, data.accountName, data.password)],
   ['CREATE_TRON_SUB_ACCOUNT', async (data) => await handleCreateTronSubAccount(data.walletId, data.password)],
+  ['CREATE_SOLANA_SUB_ACCOUNT', async (data) => await handleCreateSolanaSubAccount(data.walletId, data.password, data.options || {})],
   ['SWITCH_ACCOUNT', async (data) => await handleSwitchAccount(data.accountId, data.password)],
 
   // ==================== 解锁/锁定 ====================

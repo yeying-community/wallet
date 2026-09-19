@@ -200,6 +200,25 @@ export class WalletDomain extends BaseDomain {
   }
 
   /**
+   * 创建 Solana HD 钱包（ed25519, m/44'/501'/0'/0/0）
+   * @param {string} accountName
+   * @param {string} password
+   * @param {{solanaReference?: 'mainnet-beta'|'devnet'|'testnet'}} [options]
+   */
+  async createSolanaHDWallet(accountName, password, options = {}) {
+    if (!password || password.length < 8) {
+      throw new Error('密码至少需要8位字符');
+    }
+    const result = await this._sendMessage(WalletMessageType.CREATE_SOLANA_HD_WALLET, {
+      accountName: accountName || 'Solana 钱包',
+      password,
+      options
+    });
+    this._currentAccount = result.account;
+    return result;
+  }
+
+  /**
    * 创建 MPC 钱包
    * @param {Object} options - 配置
    * @returns {Promise<Object>} 创建结果
@@ -255,6 +274,23 @@ export class WalletDomain extends BaseDomain {
     return result;
   }
 
+  async importSolanaFromMnemonic(accountName, mnemonic, password, options = {}) {
+    if (!mnemonic || mnemonic.trim().split(' ').length < 12) {
+      throw new Error('助记词无效，至少需要12个单词');
+    }
+    if (!password || password.length < 8) {
+      throw new Error('密码至少需要8位字符');
+    }
+    const result = await this._sendMessage(WalletMessageType.IMPORT_SOLANA_HD_WALLET, {
+      accountName: accountName || 'Solana 导入钱包',
+      mnemonic: mnemonic.trim(),
+      password,
+      options
+    });
+    this._currentAccount = result.account;
+    return result;
+  }
+
   /**
    * 从私钥导入钱包
    * @param {string} accountName - 账户名称
@@ -294,6 +330,24 @@ export class WalletDomain extends BaseDomain {
     }
     const result = await this._sendMessage(WalletMessageType.IMPORT_TRON_PRIVATE_KEY_WALLET, {
       accountName: accountName || 'Tron 私钥钱包',
+      privateKey: trimmed,
+      password,
+      options
+    });
+    this._currentAccount = result.account;
+    return result;
+  }
+
+  async importSolanaFromPrivateKey(accountName, privateKey, password, options = {}) {
+    const trimmed = String(privateKey || '').trim();
+    if (!trimmed) {
+      throw new Error('请输入 Solana 私钥');
+    }
+    if (!password || password.length < 8) {
+      throw new Error('密码至少需要8位字符');
+    }
+    const result = await this._sendMessage(WalletMessageType.IMPORT_SOLANA_PRIVATE_KEY_WALLET, {
+      accountName: accountName || 'Solana 私钥钱包',
       privateKey: trimmed,
       password,
       options

@@ -143,11 +143,14 @@ export class TransactionDomain extends BaseDomain {
   async sendTransaction(txParams) {
     const {
       from, to, value, data, gas, chainId, rpcUrl, token,
-      chainFamily, valueTrx, feeLimitSun, asset
+      chainFamily, valueTrx, feeLimitSun, asset, amountSol
     } = txParams || {};
-    const family = chainFamily === 'tron' ? 'tron' : 'eip155';
+    const family = chainFamily === 'solana'
+      ? 'solana'
+      : (chainFamily === 'tron' ? 'tron' : 'eip155');
 
-    // 参数验证：family-aware；Tron Base58 不通过 EVM-only isValidAddress
+    // 参数验证：family-aware；Tron Base58 与 Solana base58(32B) 都不通过
+    // EVM-only isValidAddress；address-normalize 已按 family 严格校验。
     if (!from || !isValidAddressForFamily(from, family)) {
       throw new Error('无效的发送地址');
     }
@@ -158,6 +161,12 @@ export class TransactionDomain extends BaseDomain {
       // v1 Tron 仅支持 TRX native transfer
       const trx = parseFloat(valueTrx);
       if (!Number.isFinite(trx) || trx <= 0) {
+        throw new Error('请输入发送金额');
+      }
+    } else if (family === 'solana') {
+      // v1 Solana 仅支持 SOL native transfer；amount 人类可读 SOL，lamports = × 1e9
+      const sol = parseFloat(amountSol);
+      if (!Number.isFinite(sol) || sol <= 0) {
         throw new Error('请输入发送金额');
       }
     } else {
@@ -177,6 +186,9 @@ export class TransactionDomain extends BaseDomain {
       payload.asset = asset || 'TRX';
       payload.valueTrx = String(valueTrx);
       payload.feeLimitSun = String(feeLimitSun || 15000000);
+    } else if (family === 'solana') {
+      payload.asset = asset || 'SOL';
+      payload.amountSol = String(amountSol);
     } else {
       payload.value = value;
       payload.data = data || '0x';
@@ -201,6 +213,9 @@ export class TransactionDomain extends BaseDomain {
       // 未来 transaction-storage family-aware 改造时统一替换为
       // `valueTrx` 字段。
       record.value = `${valueTrx} TRX`;
+    } else if (family === 'solana') {
+      // 同 Tron：用人类可读 SOL 字符串作为占位（hex 形态 normalize 假设）。
+      record.value = `${amountSol} SOL`;
     } else {
       record.value = value;
     }

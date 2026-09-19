@@ -29,11 +29,17 @@
 
 const EVM_REGEX = /^0x[0-9a-fA-F]{40}$/;
 const TRON_PLAIN_REGEX = /^[A-HJ-NP-Za-km-z1-9]{34}$/;
+const SOLANA_PLAIN_REGEX = /^[A-HJ-NP-Za-km-z1-9]{32,44}$/;  // base58(32B) ≈ 43-44 字符
 
 let _tronStrictValidator = null;
+let _solanaStrictValidator = null;
 
 export function registerTronStrictValidator(fn) {
   _tronStrictValidator = typeof fn === 'function' ? fn : null;
+}
+
+export function registerSolanaStrictValidator(fn) {
+  _solanaStrictValidator = typeof fn === 'function' ? fn : null;
 }
 
 /**
@@ -60,6 +66,11 @@ function normalizeAddress(value, family = DEFAULT_ADDRESS_FAMILY) {
     // 严格校验通过：保持原 Base58 大小写（Tron 大小写敏感）
     return raw;
   }
+  if (ns === 'solana') {
+    if (!SOLANA_PLAIN_REGEX.test(raw)) return '';
+    if (_solanaStrictValidator && !_solanaStrictValidator(raw)) return '';
+    return raw;
+  }
   // 默认 EVM：转小写并校验
   const lowered = raw.toLowerCase();
   if (!EVM_REGEX.test(lowered)) return '';
@@ -75,6 +86,11 @@ export function isValidAddressForFamily(value, family = DEFAULT_ADDRESS_FAMILY) 
     if (_tronStrictValidator) return _tronStrictValidator(raw);
     // 严格校验函数未注册：仅字符集通过（Step 7 迁移期回退）
     return true;
+  }
+  if (ns === 'solana') {
+    if (!SOLANA_PLAIN_REGEX.test(raw)) return false;
+    if (_solanaStrictValidator) return _solanaStrictValidator(raw);
+    return false;
   }
   return EVM_REGEX.test(raw);
 }

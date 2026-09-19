@@ -108,6 +108,17 @@ export async function unlockWallet(password, accountId, source = 'unknown') {
     }
     state.keyring.set(account.id, walletInstance);
 
+    // Solana（ed25519 曲线）账户：把同一私钥字节派生 ed25519 keypair 缓存到
+    // state.ed25519Keyring（独立 Map，避免与 secp256k1 ethers.Wallet 冲突）。
+    if (account.namespace === 'solana' && walletInstance && walletInstance.privateKey) {
+      if (!state.ed25519Keyring) {
+        state.ed25519Keyring = new Map();
+      }
+      const { ed25519KeypairFromSecp256k1Hex } = await import('../chain/adapters/solana/ed25519-keypair.js');
+      const keypair = ed25519KeypairFromSecp256k1Hex(walletInstance.privateKey);
+      state.ed25519Keyring.set(account.id, keypair);
+    }
+
     // 保存当前选择的账户 ID
     await setSelectedAccountId(account.id);
 
@@ -162,6 +173,10 @@ export async function lockWallet() {
     if (state.keyring) {
       state.keyring.clear();
       state.keyring = null;
+    }
+    if (state.ed25519Keyring) {
+      state.ed25519Keyring.clear();
+      state.ed25519Keyring = null;
     }
 
     // 清除密码缓存
@@ -226,6 +241,28 @@ export function getWalletInstance(accountId) {
   refreshPasswordCache();
 
   return state.keyring.get(accountId);
+}
+
+/**
+ * 按曲线维度取 keyring 缓存：
+ *   - 'secp256k1'（默认）：state.keyring 的 ethers.Wallet（EVM + Tron + BTC）
+ *   - 'ed25519'：state.ed25519Keyring 的 nacl KeyPair（Solana）
+ *
+ * 调用方（signer 模块）按 adapter.curve 选 keyring。MPC 账户不在 keyring 缓存。
+ *
+ * @param {string} accountId
+ * @param {'secp256k1'|'ed25519'} [curve='secp256k1']
+ */
+export function getWalletInstanceByCurve(accountId, curve = 'secp256k1') {
+  if (curve === 'ed25519') {
+    if (!state.ed25519Keyring || !state.ed25519Keyring.has(accountId)) {
+      throw createWalletLockedError();
+    }
+    resetLockTimer();
+    refreshPasswordCache();
+    return state.ed25519Keyring.get(accountId);
+  }
+  return getWalletInstance(accountId);
 }
 
 export function isAccountUnlocked(accountId) {

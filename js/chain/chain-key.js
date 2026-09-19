@@ -18,6 +18,15 @@ import {
   chainKeyFromTronNetwork,
   tronReference
 } from './adapters/tron/chain-key-bridge.js';
+import {
+  SOLANA_NAMESPACE,
+  SOLANA_REFERENCE_MAINNET,
+  SOLANA_REFERENCE_DEVNET,
+  SOLANA_REFERENCE_TESTNET,
+  SOLANA_COIN_TYPE,
+  chainKeyFromSolanaNetwork,
+  solanaReference
+} from './adapters/solana/chain-key-bridge.js';
 
 export const DEFAULT_NAMESPACE = 'eip155';
 export const DEFAULT_COIN_TYPE = 60;
@@ -37,6 +46,9 @@ export function chainKeyFromNetwork(net) {
   const ns = String(net?.namespace || '').toLowerCase();
   if (ns === TRON_NAMESPACE) {
     return chainKeyFromTronNetwork(net);
+  }
+  if (ns === SOLANA_NAMESPACE) {
+    return chainKeyFromSolanaNetwork(net);
   }
   const decimal = toDecimalChainId(net?.chainId);
   return `${DEFAULT_NAMESPACE}:${decimal}`;
@@ -139,7 +151,8 @@ function toDecimalChainId(chainId) {
   return decimal;
 }
 
-// 重新导出 Tron namespace 常量，方便调用方直接 `import { TRON_NAMESPACE } from 'chain-key.js'`。
+// 重新导出 Tron / Solana namespace 常量，方便调用方直接
+// `import { TRON_NAMESPACE } from 'chain-key.js'`。
 export {
   TRON_NAMESPACE,
   TRON_REFERENCE_MAINNET,
@@ -147,4 +160,13 @@ export {
   TRON_REFERENCE_NILE,
   chainKeyFromTronNetwork,
   tronReference
+};
+export {
+  SOLANA_NAMESPACE,
+  SOLANA_REFERENCE_MAINNET,
+  SOLANA_REFERENCE_DEVNET,
+  SOLANA_REFERENCE_TESTNET,
+  SOLANA_COIN_TYPE,
+  chainKeyFromSolanaNetwork,
+  solanaReference
 };

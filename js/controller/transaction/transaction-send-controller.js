@@ -26,17 +26,20 @@ export class TransactionSendController {
 
   /**
    * Detect chain kind from current network or selected account.
-   * Returns 'tron' if either is Tron, otherwise 'eip155'.
+   * Returns 'tron' if either is Tron, 'solana' if either is Solana,
+   * otherwise 'eip155'.
    */
   async detectChainKind() {
     try {
       const chainKey = String(await this.network?.getChainKey?.() || '').toLowerCase();
       if (chainKey.startsWith('tron:')) return 'tron';
+      if (chainKey.startsWith('solana:')) return 'solana';
     } catch { /* network may not implement getChainKey in tests */ }
     try {
       const account = await this.wallet.getCurrentAccount();
       const ns = String(account?.namespace || account?.chainFamily || '').toLowerCase();
       if (ns === 'tron') return 'tron';
+      if (ns === 'solana') return 'solana';
     } catch { /* */ }
     return 'eip155';
   }
@@ -54,12 +57,17 @@ export class TransactionSendController {
     }
 
     const chainKind = await this.detectChainKind();
-    const family = chainKind === 'tron' ? 'tron' : 'eip155';
-    const isAddressValid = chainKind === 'tron'
-      ? isValidAddressForFamily(recipient, 'tron')
-      : isValidAddress(recipient);
+    const family = chainKind === 'tron'
+      ? 'tron'
+      : (chainKind === 'solana' ? 'solana' : 'eip155');
+    const isAddressValid = family === 'eip155'
+      ? isValidAddress(recipient)
+      : isValidAddressForFamily(recipient, family);
     if (!isAddressValid) {
-      showError(chainKind === 'tron' ? 'Tron 地址格式无效' : '地址格式无效');
+      const errorText = family === 'tron'
+        ? 'Tron 地址格式无效'
+        : (family === 'solana' ? 'Solana 地址格式无效' : '地址格式无效');
+      showError(errorText);
       return;
     }
 
@@ -91,6 +99,17 @@ export class TransactionSendController {
           to: recipient,
           valueTrx: String(amount),
           feeLimitSun: 15000000 // 15 TRX default fee cap
+        };
+      } else if (chainKind2 === 'solana') {
+        // Solana native SOL transfer — amount unit is SOL (lamports = SOL × 1e9)
+        txParams = {
+          chainId,
+          rpcUrl,
+          chainFamily: 'solana',
+          asset: 'SOL',
+          from: account.address,
+          to: recipient,
+          amountSol: String(amount)
         };
       } else {
         txParams = this.buildTransactionParams({
@@ -176,6 +195,11 @@ export class TransactionSendController {
     if (chainKind === 'tron') {
       // Tron fixed fee cap (15 TRX = 15_000_000 SUN); TRC20 not in v1
       this.setFeeEstimateText('0–15 TRX');
+      return;
+    }
+    if (chainKind === 'solana') {
+      // Solana base fee is 5000 lamports per signature; SPL 不在 Phase 1 范围
+      this.setFeeEstimateText('~0.000005 SOL');
       return;
     }
 

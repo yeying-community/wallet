@@ -63,6 +63,7 @@ export class CreateWalletController {
     }
     this.bindWalletTypeDropdown();
     this.bindTronNetworkDropdown();
+    this.bindSolanaNetworkDropdown();
     this.bindMpcParticipantsSelector();
     this.bindDraftPersistence();
 
@@ -90,6 +91,7 @@ export class CreateWalletController {
     const walletType = this.getCreateWalletType();
     const isMpc = walletType === 'mpc';
     const isTron = walletType === 'tron';
+    const isSolana = walletType === 'solana';
     const name = rawName || this.generateDefaultWalletName(walletType);
 
     if (origin !== 'accounts' && isMpc) {
@@ -138,11 +140,14 @@ export class CreateWalletController {
       if (isTron) {
         const tronReference = this.getTronReference();
         await this.wallet.createTronHDWallet(name, password, { tronReference });
+      } else if (isSolana) {
+        const solanaReference = this.getSolanaReference();
+        await this.wallet.createSolanaHDWallet(name, password, { solanaReference });
       } else {
         await this.wallet.createHDWallet(name, password);
       }
 
-      showSuccess(isTron ? 'Tron 钱包创建成功' : '钱包创建成功');
+      showSuccess(isTron ? 'Tron 钱包创建成功' : (isSolana ? 'Solana 钱包创建成功' : '钱包创建成功'));
       showPage('walletPage');
 
       this.resetForm();
@@ -180,6 +185,7 @@ export class CreateWalletController {
     const mpcAdvancedOptions = document.querySelector('.mpc-advanced-options');
     const mpcResult = document.getElementById('mpcCreateWalletResult');
     const tronNetworkSelect = document.getElementById('tronCreateNetworkSelect');
+    const solanaNetworkSelect = document.getElementById('solanaCreateNetworkSelect');
 
     if (nameInput) nameInput.value = this.generateDefaultWalletName('hd');
     if (walletTypeSelect) walletTypeSelect.value = 'hd';
@@ -192,6 +198,7 @@ export class CreateWalletController {
       mpcResult.classList.add('hidden');
     }
     if (tronNetworkSelect) tronNetworkSelect.value = 'mainnet';
+    if (solanaNetworkSelect) solanaNetworkSelect.value = 'mainnet-beta';
     this.selectedMpcParticipants = [];
     this.currentMpcAccount = null;
     this.renderMpcParticipantSelection();
@@ -212,6 +219,7 @@ export class CreateWalletController {
     const value = String(select?.value || 'hd').toLowerCase();
     if (value === 'mpc') return 'mpc';
     if (value === 'tron' || value === 'tronhd' || value === 'tron-hd') return 'tron';
+    if (value === 'solana') return 'solana';
     return 'hd';
   }
 
@@ -222,9 +230,18 @@ export class CreateWalletController {
     return 'mainnet';
   }
 
+  getSolanaReference() {
+    const select = document.getElementById('solanaCreateNetworkSelect');
+    const value = String(select?.value || 'mainnet-beta').toLowerCase();
+    if (value === 'devnet' || value === 'testnet') return value;
+    return 'mainnet-beta';
+  }
+
   generateDefaultWalletName(type = 'hd') {
     const normalized = String(type || '').toLowerCase();
-    const prefix = normalized === 'mpc' ? 'mpc' : (normalized === 'tron' ? 'tron' : 'hd');
+    const prefix = normalized === 'mpc'
+      ? 'mpc'
+      : (normalized === 'tron' ? 'tron' : (normalized === 'solana' ? 'sol' : 'hd'));
     const suffix = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
     return `${prefix}-${suffix}`;
   }
@@ -234,6 +251,7 @@ export class CreateWalletController {
     let expectedPrefix = 'hd';
     if (normalized === 'mpc') expectedPrefix = 'mpc';
     else if (normalized === 'tron') expectedPrefix = 'tron';
+    else if (normalized === 'solana') expectedPrefix = 'sol';
     const current = String(name || '').trim();
     if (!current || current === '主钱包') return true;
     if (!GENERATED_WALLET_NAME_PATTERN.test(current)) return false;
@@ -253,9 +271,11 @@ export class CreateWalletController {
     let normalized = 'hd';
     if (value === 'mpc') normalized = 'mpc';
     else if (value === 'tron' || value === 'tronhd' || value === 'tron-hd') normalized = 'tron';
+    else if (value === 'solana') normalized = 'solana';
     const group = document.getElementById('createWalletTypeGroup');
     const mpcFields = document.getElementById('mpcCreateWalletFields');
     const tronFields = document.getElementById('tronCreateWalletFields');
+    const solanaFields = document.getElementById('solanaCreateWalletFields');
     const resultEl = document.getElementById('mpcCreateWalletResult');
     const setPasswordBtn = document.getElementById('setPasswordBtn');
     const hint = document.getElementById('setPasswordHint');
@@ -270,12 +290,16 @@ export class CreateWalletController {
     if (tronFields) {
       tronFields.classList.toggle('hidden', normalized !== 'tron');
     }
+    if (solanaFields) {
+      solanaFields.classList.toggle('hidden', normalized !== 'solana');
+    }
     if (resultEl) {
       resultEl.classList.toggle('hidden', normalized !== 'mpc');
     }
     if (hint) {
       if (normalized === 'mpc') hint.textContent = '请填写钱包名称和参与方';
       else if (normalized === 'tron') hint.textContent = '请填写 Tron 钱包名称';
+      else if (normalized === 'solana') hint.textContent = '请填写 Solana 钱包名称';
       else hint.textContent = '请填写钱包名称';
     }
     if (setPasswordBtn && isAccounts) {
@@ -360,6 +384,7 @@ export class CreateWalletController {
     let label = 'HD Wallet';
     if (type === 'mpc') label = 'MPC Wallet';
     else if (type === 'tron') label = 'Tron HD';
+    else if (type === 'solana') label = 'Solana 钱包';
     const labelEl = document.getElementById('createWalletTypeLabel');
     if (labelEl) {
       labelEl.textContent = label;
@@ -407,6 +432,54 @@ export class CreateWalletController {
         if (labelEl) labelEl.textContent = option.textContent.trim();
         menu.querySelectorAll('.network-option').forEach(opt => {
           opt.classList.toggle('active', opt.dataset.tronReference === nextRef);
+        });
+        void this.saveDraft();
+      }
+      closeMenu();
+    });
+
+    document.addEventListener('click', (event) => {
+      if (menu.classList.contains('hidden')) return;
+      if (trigger.contains(event.target) || menu.contains(event.target)) return;
+      closeMenu();
+    });
+  }
+
+  bindSolanaNetworkDropdown() {
+    const trigger = document.getElementById('solanaCreateNetworkTrigger');
+    const menu = document.getElementById('solanaCreateNetworkMenu');
+    const select = document.getElementById('solanaCreateNetworkSelect');
+    if (!trigger || !menu || !select) return;
+
+    const closeMenu = () => {
+      if (!menu.classList.contains('hidden')) {
+        menu.classList.add('hidden');
+        trigger.setAttribute('aria-expanded', 'false');
+      }
+    };
+
+    trigger.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const isHidden = menu.classList.contains('hidden');
+      if (isHidden) {
+        menu.classList.remove('hidden');
+        trigger.setAttribute('aria-expanded', 'true');
+      } else {
+        closeMenu();
+      }
+    });
+
+    menu.addEventListener('click', (event) => {
+      const option = event.target.closest('.network-option');
+      if (!option) return;
+      const nextRef = option.dataset.solanaReference;
+      if (!nextRef) return;
+      if (select.value !== nextRef) {
+        select.value = nextRef;
+        const labelEl = document.getElementById('solanaCreateNetworkLabel');
+        if (labelEl) labelEl.textContent = option.textContent.trim();
+        menu.querySelectorAll('.network-option').forEach(opt => {
+          opt.classList.toggle('active', opt.dataset.solanaReference === nextRef);
         });
         void this.saveDraft();
       }

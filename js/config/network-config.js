@@ -161,6 +161,68 @@ export const NETWORKS = {
       symbol: 'TRX',
       decimals: 6
     }
+  },
+  // ===== Solana（v1：ed25519 / native SOL only；SPL token Phase 3）=====
+  // chainKey 用 CAIP-2 `solana:<reference>`，无 chainId/chainIdHex。
+  solanaMainnet: {
+    id: 'solanaMainnet',
+    name: 'Solana Mainnet',
+    rpc: 'https://api.mainnet-beta.solana.com',
+    rpcUrl: 'https://api.mainnet-beta.solana.com',
+    solanaRpcUrl: 'https://api.mainnet-beta.solana.com',
+    symbol: 'SOL',
+    decimals: 9,
+    explorer: 'https://solscan.io',
+    type: 'mainnet',
+    isTestnet: false,
+    namespace: 'solana',
+    reference: 'mainnet-beta',
+    chainKey: 'solana:mainnet-beta',
+    nativeCurrency: {
+      name: 'Solana',
+      symbol: 'SOL',
+      decimals: 9
+    }
+  },
+  solanaDevnet: {
+    id: 'solanaDevnet',
+    name: 'Solana Devnet',
+    rpc: 'https://api.devnet.solana.com',
+    rpcUrl: 'https://api.devnet.solana.com',
+    solanaRpcUrl: 'https://api.devnet.solana.com',
+    symbol: 'SOL',
+    decimals: 9,
+    explorer: 'https://solscan.io?cluster=devnet',
+    type: 'testnet',
+    isTestnet: true,
+    namespace: 'solana',
+    reference: 'devnet',
+    chainKey: 'solana:devnet',
+    nativeCurrency: {
+      name: 'Test SOL',
+      symbol: 'SOL',
+      decimals: 9
+    }
+  },
+  solanaTestnet: {
+    id: 'solanaTestnet',
+    name: 'Solana Testnet',
+    rpc: 'https://api.testnet.solana.com',
+    rpcUrl: 'https://api.testnet.solana.com',
+    solanaRpcUrl: 'https://api.testnet.solana.com',
+    symbol: 'SOL',
+    decimals: 9,
+    explorer: 'https://solscan.io?cluster=testnet',
+    type: 'testnet',
+    isTestnet: true,
+    namespace: 'solana',
+    reference: 'testnet',
+    chainKey: 'solana:testnet',
+    nativeCurrency: {
+      name: 'Test SOL',
+      symbol: 'SOL',
+      decimals: 9
+    }
   }
 };
 
@@ -327,6 +389,35 @@ export function formatNetworkConfig(config) {
         name: raw.symbol || 'TRX',
         symbol: raw.symbol || 'TRX',
         decimals: raw.decimals || 6
+      }
+    };
+  }
+
+  // Solana / ed25519 网络：与 Tron 同样无 numeric chainId；
+  // chainKey = solana:<reference>，native symbol SOL，decimals 9。
+  if (ns === 'solana') {
+    const reference = String(raw.reference || '').toLowerCase();
+    if (!reference) {
+      throw new Error('Solana network config requires reference');
+    }
+    return {
+      id: raw.id || `solana-${reference}`,
+      name: raw.name || `Solana ${capitalize(reference)}`,
+      rpc: raw.rpc || raw.rpcUrl || '',
+      rpcUrl: raw.rpcUrl || raw.rpc || '',
+      solanaRpcUrl: raw.solanaRpcUrl || raw.rpcUrl || raw.rpc || '',
+      symbol: raw.symbol || 'SOL',
+      decimals: raw.decimals || 9,
+      explorer: raw.explorer || '',
+      type: raw.type || NETWORK_TYPES.CUSTOM,
+      isTestnet: raw.isTestnet || false,
+      namespace: 'solana',
+      reference,
+      chainKey: raw.chainKey || `solana:${reference}`,
+      nativeCurrency: raw.nativeCurrency || {
+        name: raw.symbol || 'SOL',
+        symbol: raw.symbol || 'SOL',
+        decimals: raw.decimals || 9
       }
     };
   }

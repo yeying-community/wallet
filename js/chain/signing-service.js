@@ -30,7 +30,7 @@ import { isMpcAccountId, buildMpcSignedTransactionFromSignRequest } from '../bac
 import { normalizeTransaction } from './adapters/evm/transaction.js';
 import { normalizeTypedData } from './adapters/evm/typed-data.js';
 import { resolveEvmRpcUrl } from './adapters/evm/rpc.js';
-import { getAdapter } from './registry.js';
+import { getAdapter, getSigner } from './registry.js';
 import { getCurrentChainKey } from './current-chain.js';
 import { namespaceOf } from './chain-key.js';
 import { mpcSignTransaction, mpcSignMessage, mpcSignTypedData } from './signers/mpc-cggmp24.js';
@@ -45,16 +45,21 @@ function isPendingMpcSignError(error) {
 
 /**
  * 交易签名，返回 rawTx（不广播）。本地 + MPC 统一。
- * @param {string} chainKey CAIP-2，如 eip155:1 / tron:mainnet
+ * @param {string} chainKey CAIP-2，如 eip155:1 / tron:mainnet / solana:mainnet-beta
  * @param {string} accountId
  * @param {Object} transaction 原始交易对象（可为部分字段，本地路径会补全）
- * @returns {Promise<string>} rawTx（EVM: 0x...；Tron: 已附 signature 的 JSON 串）
+ * @returns {Promise<string>} rawTx（EVM: 0x...；Tron: 已附 signature 的 JSON 串；Solana: base58 wire）
  */
 export async function signTransactionRaw(chainKey, accountId, transaction) {
   try {
     // Tron 分支：本路径只支持本地 keyring；MPC 路径 v1 暂不支持。
     if (namespaceOf(chainKey) === 'tron') {
       return await signTronTransactionLocal(chainKey, accountId, transaction);
+    }
+
+    // Solana 分支：ed25519 走 native SOL transfer（或 Phase 3 的 SPL token）。
+    if (namespaceOf(chainKey) === 'solana') {
+      return await signSolanaTransactionLocal(chainKey, accountId, transaction);
     }
 
     if (isMpcAccountId(accountId)) {
@@ -110,6 +115,38 @@ async function signTronTransactionLocal(chainKey, accountId, transaction) {
 
   // 3) 组装已签名 transaction JSON（满足 tronAdapter.broadcast 的 signedJson）
   return assembleTronSigned(unsigned, { parts: sigParts });
+}
+
+/**
+ * Solana 本地签名：
+ *   1) 调 adapter.buildUnsigned(intent, ctx) 拿 UnsignedTx（curve=ed25519, kind=message）
+ *   2) 调 registry.getSigner → localKeyringEd25519Signer.sign 产出 base58(64B sig)
+ *   3) 调 adapter.assembleSigned 返回 base58 wire transaction
+ *
+ * MPC 路径对 Solana 暂不支持（Tron MPC hook 在 v1 抛 UNSUPPORTED_OPERATION）。
+ */
+async function signSolanaTransactionLocal(chainKey, accountId, transaction) {
+  if (isMpcAccountId(accountId)) {
+    throw Object.assign(new Error('Solana MPC signing is not implemented in v1'), {
+      code: 'UNSUPPORTED_OPERATION'
+    });
+  }
+
+  const adapter = getAdapter(chainKey);
+  // Solana native SOL transfer：transaction 携带 { from, to, amount(lamports) }
+  // 或已是 Intent shape；normalize 一下
+  const intent = transaction && transaction.type
+    ? transaction
+    : {
+        type: 'native-transfer',
+        from: transaction?.from,
+        to: transaction?.to,
+        amount: transaction?.amount
+      };
+  const unsigned = await adapter.buildUnsigned(intent, { chainKey });
+  const signer = getSigner(accountId, adapter);
+  const sigResult = await signer.sign(unsigned, { accountId });
+  return adapter.assembleSigned(unsigned, sigResult);
 }
 
 /**

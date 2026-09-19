@@ -43,6 +43,12 @@ import {
   TRON_NAMESPACE,
   TRON_REFERENCE_MAINNET
 } from '../chain/adapters/tron/address.js';
+import {
+  privateKeyToSolanaAddress,
+  SOLANA_COIN_TYPE,
+  SOLANA_NAMESPACE,
+  SOLANA_REFERENCE_MAINNET
+} from '../chain/adapters/solana/address.js';
 
 // ==================== 钱包类型 ====================
 
@@ -586,20 +592,23 @@ function generateAccountId(walletId, index) {
  *   - 'eip155' → namespace=eip155, chainKey=DEFAULT_CHAIN_KEY, coinType=60；
  *   - 'tron'   → namespace=tron, chainKey=tron:<reference>, coinType=195，
  *                address 由 privateKeyToTronAddress 派生为 T... 形态（Base58Check）。
+ *   - 'solana' → namespace=solana, chainKey=solana:<reference>, coinType=501，
+ *                address 由 privateKeyToSolanaAddress 派生（base58 32B ed25519 pubkey）。
+ *                publicKey 字段为 ed25519 pubkey bytes（base58 编码，无 0x04 前缀）。
  *
  * 注意：`buildEvmAccountIdentity` 保留为旧入口（薄包装），新逻辑都走这里。
  *
  * @param {ethers.HDNodeWallet|ethers.Wallet} ethersWallet
  * @param {string} [chainFamily='eip155']
- * @param {{tronReference?: string}} [options] - 仅 Tron 路径使用
+ * @param {{tronReference?: string, solanaReference?: string}} [options]
  * @returns {{namespace:string,chainKey:string,coinType:number,publicKey:string}}
  */
 function buildAccountIdentity(ethersWallet, chainFamily = DEFAULT_NAMESPACE, options = {}) {
   const family = String(chainFamily || DEFAULT_NAMESPACE).toLowerCase();
-  const publicKey = ethers.SigningKey.computePublicKey(ethersWallet.privateKey, true);
 
   if (family === TRON_NAMESPACE) {
     const reference = String(options.tronReference || TRON_REFERENCE_MAINNET).toLowerCase();
+    const publicKey = ethers.SigningKey.computePublicKey(ethersWallet.privateKey, true);
     return {
       namespace: TRON_NAMESPACE,
       chainKey: `${TRON_NAMESPACE}:${reference}`,
@@ -608,6 +617,19 @@ function buildAccountIdentity(ethersWallet, chainFamily = DEFAULT_NAMESPACE, opt
     };
   }
 
+  if (family === SOLANA_NAMESPACE) {
+    const reference = String(options.solanaReference || SOLANA_REFERENCE_MAINNET).toLowerCase();
+    // Solana pubkey 走 ed25519（base58(32B)），不复用 secp256k1 的 uncompressed 形态
+    const solPubkey = privateKeyToSolanaAddress(ethersWallet.privateKey);
+    return {
+      namespace: SOLANA_NAMESPACE,
+      chainKey: `${SOLANA_NAMESPACE}:${reference}`,
+      coinType: SOLANA_COIN_TYPE,
+      publicKey: solPubkey
+    };
+  }
+
+  const publicKey = ethers.SigningKey.computePublicKey(ethersWallet.privateKey, true);
   return {
     namespace: DEFAULT_NAMESPACE,
     chainKey: DEFAULT_CHAIN_KEY,
@@ -902,4 +924,256 @@ export async function deriveTronSubAccount(wallet, newIndex, accountName, passwo
 function deriveTronChildKeyFromMnemonic(mnemonic, index) {
   const hd = ethers.HDNodeWallet.fromPhrase(String(mnemonic || '').trim());
   return hd.derivePath(`44'/195'/0'/0/${index}`).privateKey;
+}
+
+// ==================== Solana 钱包（v1：ed25519 / native SOL） ====================
+//
+// 4 个入口点与 EVM / Tron 路径平行：HD 创建、HD 导入、私钥导入、子账户派生。
+// 派生路径 m/44'/501'/<account>'/0'/<index>（SLIP-44 / SLIP-0010）。
+// v1 简化：私钥字节直接复用 secp256k1 sk 的 32B 字节作为 ed25519 seed（无 SLIP-0010
+// ed25519 HD），钱包文档化此限制。地址 = base58(32B ed25519 pubkey)。
+
+/**
+ * @param {string} mnemonic
+ * @param {number} [account=0]
+ * @param {number} [index=0]
+ * @returns {string} 0x + 64 hex chars
+ */
+function deriveSolanaChildKeyFromMnemonic(mnemonic, account = 0, index = 0) {
+  const hd = ethers.HDNodeWallet.fromPhrase(String(mnemonic || '').trim());
+  return hd.derivePath(`44'/501'/${account}'/0'/${index}`).privateKey;
+}
+
+/**
+ * 创建 Solana HD 钱包（生成新助记词）
+ * @param {string} accountName
+ * @param {string} password
+ * @param {{solanaReference?: string}} [options]
+ */
+export async function createSolanaHDWallet(accountName, password, options = {}) {
+  try {
+    const validation = validatePassword(password);
+    if (!validation.valid) {
+      throw createInvalidPasswordError(validation.error);
+    }
+
+    const reference = String(options.solanaReference || SOLANA_REFERENCE_MAINNET).toLowerCase();
+
+    const ethersWallet = ethers.Wallet.createRandom();
+    const mnemonic = ethersWallet.mnemonic.phrase;
+
+    // 直接从私钥派生主账户（HDNodeWallet 默认走 EVM）
+    const childSk = deriveSolanaChildKeyFromMnemonic(mnemonic, 0, 0);
+    const childAddress = privateKeyToSolanaAddress(childSk);   // 去掉 0x
+
+    const encryptedMnemonic = await encryptString(mnemonic, password);
+    const encryptedPrivateKey = await encryptString(childSk, password);
+    const walletId = generateId('wallet');
+    const createdAt = getTimestamp();
+
+    const wallet = {
+      id: walletId,
+      name: 'Solana HD Wallet',
+      type: WALLET_TYPE.HD,
+      encryptedMnemonic,
+      createdAt,
+      accountCount: 1
+    };
+
+    const mainAccount = {
+      id: generateAccountId(walletId, 0),
+      walletId,
+      name: accountName || 'Solana Account 1',
+      index: 0,
+      derivationPath: `m/44'/501'/0'/0/0`,
+      address: childAddress,
+      encryptedPrivateKey,
+      ...buildAccountIdentity(new ethers.Wallet(childSk), SOLANA_NAMESPACE, { solanaReference: reference }),
+      createdAt,
+      nameUpdatedAt: createdAt
+    };
+
+    console.log('✅ Solana HD Wallet created:', { walletId, address: mainAccount.address, reference });
+    return { wallet, mainAccount, mnemonic };
+  } catch (error) {
+    console.error('❌ Create Solana HD wallet failed:', error);
+    if (error.code) throw error;
+    throw createInternalError('创建 Solana 钱包失败：' + error.message);
+  }
+}
+
+/**
+ * 导入 Solana HD 钱包（从助记词）
+ */
+export async function importSolanaHDWallet(accountName, mnemonic, password, options = {}) {
+  try {
+    let validation = validatePassword(password);
+    if (!validation.valid) {
+      throw createInvalidPasswordError(validation.error);
+    }
+    validation = validateMnemonic(mnemonic);
+    if (!validation.valid) {
+      throw createMnemonicInvalidError('助记词无效：' + validation.error);
+    }
+
+    const reference = String(options.solanaReference || SOLANA_REFERENCE_MAINNET).toLowerCase();
+
+    let childSk;
+    try {
+      childSk = deriveSolanaChildKeyFromMnemonic(mnemonic.trim(), 0, 0);
+    } catch (error) {
+      throw createMnemonicInvalidError('无法从助记词派生 Solana 钱包：' + error.message);
+    }
+    const childAddress = privateKeyToSolanaAddress(childSk);
+
+    const encryptedMnemonic = await encryptString(mnemonic, password);
+    const encryptedPrivateKey = await encryptString(childSk, password);
+    const walletId = generateId('wallet');
+    const createdAt = getTimestamp();
+
+    const wallet = {
+      id: walletId,
+      name: 'Solana HD Wallet',
+      type: WALLET_TYPE.HD,
+      encryptedMnemonic,
+      createdAt,
+      accountCount: 1
+    };
+
+    const mainAccount = {
+      id: generateAccountId(walletId, 0),
+      walletId,
+      name: accountName || 'Solana Account 1',
+      index: 0,
+      derivationPath: `m/44'/501'/0'/0/0`,
+      address: childAddress,
+      encryptedPrivateKey,
+      ...buildAccountIdentity(new ethers.Wallet(childSk), SOLANA_NAMESPACE, { solanaReference: reference }),
+      createdAt,
+      nameUpdatedAt: createdAt
+    };
+
+    console.log('✅ Solana HD Wallet imported:', { walletId, address: mainAccount.address, reference });
+    return { wallet, mainAccount };
+  } catch (error) {
+    console.error('❌ Import Solana HD wallet failed:', error);
+    if (error.code) throw error;
+    throw createInternalError('导入 Solana 钱包失败：' + error.message);
+  }
+}
+
+/**
+ * 导入 Solana 私钥钱包
+ */
+export async function importSolanaPrivateKeyWallet(accountName, privateKey, password, options = {}) {
+  try {
+    let validation = validatePassword(password);
+    if (!validation.valid) {
+      throw createInvalidPasswordError(validation.error);
+    }
+    validation = validatePrivateKey(privateKey);
+    if (!validation.valid) {
+      throw createPrivateKeyInvalidError('私钥无效：' + validation.error);
+    }
+
+    privateKey = privateKey.trim();
+    if (!privateKey.startsWith('0x')) {
+      privateKey = '0x' + privateKey;
+    }
+
+    let ethersWallet;
+    try {
+      ethersWallet = new ethers.Wallet(privateKey);
+    } catch (error) {
+      throw createPrivateKeyInvalidError('无法从私钥创建 Solana 钱包：' + error.message);
+    }
+
+    const reference = String(options.solanaReference || SOLANA_REFERENCE_MAINNET).toLowerCase();
+    const solAddress = privateKeyToSolanaAddress(ethersWallet.privateKey);
+
+    const encryptedPrivateKey = await encryptString(privateKey, password);
+    const walletId = generateId('wallet');
+    const createdAt = getTimestamp();
+
+    const wallet = {
+      id: walletId,
+      name: 'Imported Solana Wallet',
+      type: WALLET_TYPE.IMPORTED,
+      createdAt,
+      accountCount: 1
+    };
+
+    const mainAccount = {
+      id: generateAccountId(walletId, 0),
+      walletId,
+      name: accountName || 'Imported Solana Account',
+      index: 0,
+      address: solAddress,
+      encryptedPrivateKey,
+      ...buildAccountIdentity(ethersWallet, SOLANA_NAMESPACE, { solanaReference: reference }),
+      createdAt,
+      nameUpdatedAt: createdAt
+    };
+
+    console.log('✅ Solana private key wallet imported:', { walletId, address: mainAccount.address, reference });
+    return { wallet, mainAccount };
+  } catch (error) {
+    console.error('❌ Import Solana private key wallet failed:', error);
+    if (error.code) throw error;
+    throw createInternalError('导入 Solana 私钥失败：' + error.message);
+  }
+}
+
+/**
+ * 派生 Solana 子账户
+ */
+export async function deriveSolanaSubAccount(wallet, newIndex, accountName, password, options = {}) {
+  try {
+    if (wallet.type !== WALLET_TYPE.HD) {
+      throw createInvalidParams('只有 HD 钱包可以派生 Solana 子账户');
+    }
+    if (!wallet.encryptedMnemonic) {
+      throw createMnemonicInvalidError('钱包缺少助记词数据');
+    }
+
+    let mnemonic;
+    try {
+      mnemonic = await decryptString(wallet.encryptedMnemonic, password);
+    } catch (error) {
+      throw createInvalidPasswordError('密码错误');
+    }
+
+    const reference = String(options.solanaReference || SOLANA_REFERENCE_MAINNET).toLowerCase();
+
+    let childSk;
+    try {
+      childSk = deriveSolanaChildKeyFromMnemonic(mnemonic, 0, newIndex);
+    } catch (error) {
+      throw createInternalError('派生 Solana 账户失败：' + error.message);
+    }
+    const childAddress = privateKeyToSolanaAddress(childSk);
+
+    const encryptedPrivateKey = await encryptString(childSk, password);
+    const createdAt = getTimestamp();
+
+    const subAccount = {
+      id: generateAccountId(wallet.id, newIndex),
+      walletId: wallet.id,
+      name: accountName || `Solana Account ${newIndex + 1}`,
+      index: newIndex,
+      derivationPath: `m/44'/501'/0'/0/${newIndex}`,
+      address: childAddress,
+      encryptedPrivateKey,
+      ...buildAccountIdentity(new ethers.Wallet(childSk), SOLANA_NAMESPACE, { solanaReference: reference }),
+      createdAt,
+      nameUpdatedAt: createdAt
+    };
+
+    console.log('✅ Solana sub account derived:', { walletId: wallet.id, index: newIndex, address: subAccount.address });
+    return subAccount;
+  } catch (error) {
+    console.error('❌ Derive Solana sub account failed:', error);
+    if (error.code) throw error;
+    throw createInternalError('派生 Solana 子账户失败：' + error.message);
+  }
 }

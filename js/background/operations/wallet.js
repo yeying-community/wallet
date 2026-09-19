@@ -14,6 +14,10 @@ import {
   importTronHDWallet,
   importTronPrivateKeyWallet,
   deriveTronSubAccount,
+  createSolanaHDWallet,
+  importSolanaHDWallet,
+  importSolanaPrivateKeyWallet,
+  deriveSolanaSubAccount,
   WALLET_TYPE,
   createWalletInstance,
   getAccountPrivateKey,
@@ -637,6 +641,82 @@ export async function handleCreateTronSubAccount(walletId, password) {
     return { success: true, account: subAccount };
   } catch (error) {
     console.error('❌ Handle create Tron sub account failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ==================== Solana 钱包 / 子账户（v1：ed25519 / native SOL） ====================
+
+export async function handleCreateSolanaHDWallet(accountName, password, options = {}) {
+  try {
+    const { wallet, mainAccount, mnemonic } = await createSolanaHDWallet(accountName, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Solana HD wallet created and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount, mnemonic };
+  } catch (error) {
+    console.error('❌ Handle create Solana HD wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function handleImportSolanaHDWallet(accountName, mnemonic, password, options = {}) {
+  try {
+    const { wallet, mainAccount } = await importSolanaHDWallet(accountName, mnemonic, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Solana HD wallet imported and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount };
+  } catch (error) {
+    console.error('❌ Handle import Solana HD wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function handleImportSolanaPrivateKeyWallet(accountName, privateKey, password, options = {}) {
+  try {
+    const { wallet, mainAccount } = await importSolanaPrivateKeyWallet(accountName, privateKey, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Solana private key wallet imported and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount };
+  } catch (error) {
+    console.error('❌ Handle import Solana private key wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function handleCreateSolanaSubAccount(walletId, password, options = {}) {
+  try {
+    const wallet = await getWallet(walletId);
+    if (!wallet || wallet.type !== WALLET_TYPE.HD) {
+      return { success: false, error: 'Solana HD wallet not found' };
+    }
+    const walletAccounts = await getWalletAccounts(walletId);
+    const maxIndex = walletAccounts.reduce(
+      (max, account) => Math.max(max, Number.isFinite(account.index) ? account.index : 0),
+      -1
+    );
+    const newIndex = maxIndex + 1;
+    const subAccount = await deriveSolanaSubAccount(wallet, newIndex, undefined, password, options || {});
+    await saveAccount(subAccount);
+    wallet.accountCount = (wallet.accountCount || 0) + 1;
+    await saveWallet(wallet);
+    if (password) {
+      cachePassword(password, TIMEOUTS.PASSWORD);
+    } else {
+      refreshPasswordCache();
+    }
+    resetLockTimer();
+    return { success: true, account: subAccount };
+  } catch (error) {
+    console.error('❌ Handle create Solana sub account failed:', error);
     return { success: false, error: error.message };
   }
 }

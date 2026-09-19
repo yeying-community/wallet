@@ -13,7 +13,9 @@
 import { namespaceOf } from './chain-key.js';
 import { evmAdapter } from './adapters/evm/index.js';
 import { tronAdapter } from './adapters/tron/index.js';
+import { solanaAdapter } from './adapters/solana/index.js';
 import { localKeyringSigner } from './signers/local-keyring.js';
+import { localKeyringEd25519Signer } from './signers/local-keyring-ed25519.js';
 import { isMpcAccountId } from '../background/signing.js';
 
 const UNSUPPORTED_CHAIN = 'UNSUPPORTED_CHAIN';
@@ -35,6 +37,9 @@ export function getAdapter(chainKey) {
   if (ns === 'tron') {
     return tronAdapter;
   }
+  if (ns === 'solana') {
+    return solanaAdapter;
+  }
   throw new Error(`${UNSUPPORTED_CHAIN}: ${chainKey}`);
 }
 
@@ -49,6 +54,11 @@ export function getSigner(account, adapter) {
   const accountId = typeof account === 'string' ? account : String(account?.id || '');
   if (isMpcAccountId(accountId)) {
     throw new Error(`${MPC_REDIRECT}: ${accountId}`);
+  }
+  // 按曲线选 signer：secp256k1 → localKeyringSigner；ed25519 → localKeyringEd25519Signer
+  if (adapter && adapter.curve === 'ed25519') {
+    assertCurveCompatible(adapter, localKeyringEd25519Signer);
+    return localKeyringEd25519Signer;
   }
   assertCurveCompatible(adapter, localKeyringSigner);
   return localKeyringSigner;
