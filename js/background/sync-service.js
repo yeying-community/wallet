@@ -64,6 +64,10 @@ const LEGACY_SYNC_ENDPOINT = 'https://webdav.yeying.pub/dav';
 const MISTYPED_SYNC_ENDPOINT = 'https://warenouse.tidukongjian.com/dav';
 const MIGRATED_SYNC_ENDPOINT = 'https://warehouse.tidukongjian.com/dav';
 
+// v1 backup/sync schema 仅承载 EVM 账户（isEthereumAddress 在
+// validateSyncPayload 中硬约束 `^0x[0-9a-fA-F]{40}$`）。Tron 备份路径
+// 走 schema v3 后的 family-aware 通道，下一阶段落地；当前 sync payload
+// 不需要额外判断 namespace。
 function isEthereumAddress(value) {
   return typeof value === 'string' && /^0x[0-9a-fA-F]{40}$/.test(value);
 }
@@ -1027,7 +1031,13 @@ class BackupSyncService {
       if (contact.id) {
         localById.set(contact.id, contact);
       }
-      const addr = String(contact.address || '').toLowerCase();
+      // family-aware key：EVM 大小写折叠，Tron 保留 Base58 原始形式。
+      // v1 联系人 record 没有 namespace 字段，按 eip155 处理；导入链路
+      // 写 record 时补 namespace 后自动切到正确分支。
+      const addr = normalizeAddressForFamily(
+        contact.address,
+        contact.namespace || 'eip155',
+      );
       if (addr) {
         localByAddress.set(addr, contact);
       }
@@ -1037,7 +1047,10 @@ class BackupSyncService {
 
     for (const remote of remoteContacts) {
       if (!remote) continue;
-      const remoteAddr = String(remote.address || '').toLowerCase();
+      const remoteAddr = normalizeAddressForFamily(
+        remote.address,
+        remote.namespace || 'eip155',
+      );
       if (!remoteAddr) continue;
 
       const remoteUpdatedAt = remote.updatedAt || remote.createdAt || 0;
@@ -1054,6 +1067,7 @@ class BackupSyncService {
             name: remote.name || local.name,
             note: remote.note || '',
             address: remote.address || local.address,
+            namespace: remote.namespace || local.namespace || 'eip155',
             updatedAt: remoteUpdatedAt
           };
           await saveContact(updated);
@@ -1080,6 +1094,7 @@ class BackupSyncService {
         name: remote.name || '',
         note: remote.note || '',
         address: remote.address,
+        namespace: remote.namespace || 'eip155',
         createdAt: remoteUpdatedAt || Date.now(),
         updatedAt: remoteUpdatedAt || Date.now()
       };

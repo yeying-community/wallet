@@ -5,6 +5,7 @@
 import { encryptObject, decryptObject } from '../../common/crypto/index.js';
 import { getTimestamp } from '../../common/utils/time-utils.js';
 import { ethers } from '../../../lib/ethers-6.16.esm.min.js';
+import { compareAddresses, normalizeAddressForFamily } from '../../common/chain/address-normalize.js';
 import {
   getUserSetting,
   updateUserSettings,
@@ -295,18 +296,27 @@ export function validateCustodySecret(secret) {
   if (accounts.some((account, position) => account.index !== position)) {
     throw new Error('托管记录账户索引不连续');
   }
-  if (new Set(accounts.map(account => String(account.address || '').toLowerCase())).size !== accounts.length) {
+  // 跨链族去重：EVM 大小写等价、Tron 大小写敏感，按 account.namespace 走 normalizeAddressForFamily。
+  if (new Set(accounts.map(account => normalizeAddressForFamily(account.address, account.namespace))).size !== accounts.length) {
     throw new Error('托管记录包含重复账户地址');
   }
   const first = accounts[0];
-  const expected = String(first?.address || '').toLowerCase();
+  const expected = normalizeAddressForFamily(first?.address, first?.namespace);
   if (!expected) throw new Error('托管记录缺少钱包地址');
 
   if (secret.wallet.type === WALLET_TYPE.HD) {
     if (!secret.mnemonic) throw new Error('托管记录缺少助记词');
     for (const account of accounts) {
+      // Custody v1 仅 EVM（`m/44'/60'/0'/0/…`）；若记录携带 namespace='tron'，
+      // account.address 是 T... 形态，与 EVM derived（0x...）属于不同编码体系，
+      // 应拒绝导入；非 EVM 走 family-aware compare，仅当两侧都是 EVM 时走
+      // `derived !== ...toLowerCase()` 的等价比较。
+      const family = account.namespace || 'eip155';
       const path = account.derivationPath || `m/44'/60'/0'/0/${account.index}`;
       const derived = ethers.HDNodeWallet.fromPhrase(secret.mnemonic, undefined, path).address.toLowerCase();
+      if (family === 'tron') {
+        throw new Error('托管记录不支持 Tron 账户');
+      }
       if (derived !== String(account.address || '').toLowerCase()) throw new Error('托管记录地址校验失败');
     }
     if (first.index !== 0) throw new Error('托管记录缺少 HD 主账户');
@@ -318,6 +328,12 @@ export function validateCustodySecret(secret) {
   }
   for (const account of accounts) {
     if (!account.privateKey) throw new Error('托管记录缺少私钥');
+    // 同上：custody 私钥导入路径仅 EVM（`new ethers.Wallet(pk)` 只产 EVM 形态），
+    // 遇到 Tron 记录直接拒绝。
+    const family = account.namespace || 'eip155';
+    if (family === 'tron') {
+      throw new Error('托管记录不支持 Tron 账户');
+    }
     const derived = new ethers.Wallet(account.privateKey).address.toLowerCase();
     if (derived !== String(account.address || '').toLowerCase()) throw new Error('托管记录地址校验失败');
   }
@@ -368,9 +384,14 @@ export async function validateCustodyIdentityMaterials(identities, password) {
 }
 
 export async function importOrReuseCustodyWallet(material, password) {
-  const expectedAddress = String(material.address || '').toLowerCase();
+  // Custody v1 仅 EVM：material 顶层 `address` 是 EVM 形态（来自
+  // buildAccountIdentity 的默认 eip155）；family 由顶层 accounts[0].namespace
+  // 传递，向下保持与现有 EVM 兼容。Tron 路径在 phase 8 之前由调用方拒绝，
+  // 到达这里时 namespace 必然是 'eip155' 或 undefined。
+  const family = material.accounts?.[0]?.namespace || 'eip155';
+  const expectedAddress = normalizeAddressForFamily(material.address, family);
   const existing = (await getAccountList()).find(account => (
-    String(account?.address || '').toLowerCase() === expectedAddress
+    compareAddresses(account?.address, material.address, account.namespace || 'eip155')
   ));
   if (existing) {
     const switched = await handleSwitchAccount(existing.id, password);
@@ -385,10 +406,12 @@ export async function importOrReuseCustodyWallet(material, password) {
     if (material.type === WALLET_TYPE.HD) {
       const localAccounts = await getAccountList();
       for (const source of material.accounts) {
-        let account = localAccounts.find(item => String(item?.address || '').toLowerCase() === String(source.address || '').toLowerCase());
+        let account = localAccounts.find(item => (
+          compareAddresses(item?.address, source.address, item?.namespace || 'eip155')
+        ));
         if (!account) {
           account = await deriveSubAccount(wallet, source.index, source.name, password);
-          if (String(account.address || '').toLowerCase() !== String(source.address || '').toLowerCase()) {
+          if (!compareAddresses(account.address, source.address, account.namespace || 'eip155')) {
             throw new Error('托管记录地址校验失败');
           }
           localAccounts.push(account);
@@ -413,6 +436,10 @@ export async function importOrReuseCustodyWallet(material, password) {
     return { success: true, wallet, account: primaryAccount, reused: true };
   }
   const first = material.accounts[0];
+  // Custody HD / imported 调用目前仅支持 EVM；Tron 记录由调用方拒绝，不应到这里。
+  if ((first?.namespace || 'eip155') === 'tron') {
+    throw new Error('托管记录不支持 Tron 账户');
+  }
   const result = material.type === WALLET_TYPE.HD
     ? await handleImportHDWallet(first.name, material.key, password)
     : await handleImportPrivateKeyWallet(first.name, material.key, password);

@@ -130,6 +130,7 @@ import {
 } from '../chain/current-chain.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
 import { normalizeChainId } from '../common/chain/index.js';
+import { compareAddresses } from '../common/chain/address-normalize.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import {
   saveSelectedNetworkName,
@@ -390,8 +391,11 @@ async function resolveAccountIdByAddress(address) {
   const mpcAccountId = await resolveMpcAccountIdByAddress(address);
   if (mpcAccountId) return mpcAccountId;
   const accounts = await getAccountList();
-  const lowered = address.toLowerCase();
-  const match = accounts.find(account => account?.address?.toLowerCase() === lowered);
+  // family-aware 比较：每个 account 独立按 `namespace` 选比较语义；
+  // Tron 账户的 address（T...）不再被 EVM lowercase 强行转换。
+  const match = accounts.find(account => (
+    compareAddresses(address, account?.address, account?.namespace || 'eip155')
+  ));
   return match?.id || null;
 }
 

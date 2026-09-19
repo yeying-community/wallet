@@ -10,6 +10,7 @@ import {
 } from './crypto-constants.js';
 import { logError } from '../errors/index.js';
 import { ethers } from '../../../lib/ethers-6.16.esm.min.js';
+import { compareAddresses } from '../chain/address-normalize.js';
 
 /**
  * 验证助记词
@@ -260,7 +261,7 @@ export function generateEthereumPath(accountIndex = 0) {
  * @param {string} address - 地址
  * @returns {{valid: boolean, error?: string}}
  */
-export function validateSignature(message, signature, address) {
+export function validateSignature(message, signature, address, family) {
   try {
     if (!message || !signature || !address) {
       return {
@@ -268,18 +269,25 @@ export function validateSignature(message, signature, address) {
         error: 'Message, signature, and address are required'
       };
     }
-    
-    // 恢复签名者地址
+
+    // 恢复签名者地址。ethers.verifyMessage 仅支持 EIP-191（EVM）。
+    // 显式传 family='tron' 时直接拒——Tron 路径走 signTronTransactionLocal
+    // / 自己的 message signing helper，不复用本函数。
+    if (String(family || '').toLowerCase() === 'tron') {
+      return { valid: false, error: 'Signature verification not supported for Tron' };
+    }
+
     const recoveredAddress = ethers.verifyMessage(message, signature);
-    
-    // 比较地址（不区分大小写）
-    const isValid = recoveredAddress.toLowerCase() === address.toLowerCase();
-    
+
+    // 链族感知比较：EVM 大小写等价，Tron 大小写敏感（family 默认为 'eip155'，
+    // 与既有调用兼容）。
+    const isValid = compareAddresses(recoveredAddress, address, family || 'eip155');
+
     return {
       valid: isValid,
       error: isValid ? undefined : 'Signature verification failed'
     };
-    
+
   } catch (error) {
     logError('crypto-validate-signature', error);
     return {

@@ -7,6 +7,7 @@ import { handleRpcMethod } from '../rpc-handler.js';
 import { getUserSetting, updateUserSetting } from '../../storage/index.js';
 import { LIMITS, BUILTIN_TOKENS_BY_CHAIN_ID } from '../../config/index.js';
 import { getCurrentEvmChainIdHex } from '../../chain/current-chain.js';
+import { normalizeAddressForFamily, compareAddresses } from '../../common/chain/address-normalize.js';
 
 const CUSTOM_TOKENS_KEY = 'custom_tokens';
 
@@ -18,7 +19,19 @@ function getCurrentTokenChainId() {
   }
 }
 
+/**
+ * chainId → family。已知 Tron chainId 没有 numeric 形态（用 chainKey 字段）；
+ * 因此本函数对 hex/decimal chainId 一律走 eip155；trc20 落地时再扩展
+ * （届时需在 chain-config / network-config 上把 Tron chainKey 映射到一个
+ * 仅用于归类的 chainId）。
+ */
+function chainIdToFamily(chainId) {
+  return 'eip155';
+}
+
 function mergeTokenLists(builtinTokens, customTokens) {
+  // v1 token 仅 EVM（TRC20 不在范围内）；保持 `.toLowerCase()` 行为，
+  // Tron trc20 落地时再切到 normalizeAddressForFamily(token.address, 'tron')。
   const byAddress = new Map();
   [...(builtinTokens || []), ...(customTokens || [])].forEach((token) => {
     const address = token?.address?.toLowerCase();
@@ -131,7 +144,13 @@ export async function handleAddToken(token) {
   }
 
   const chainId = token.chainId || getCurrentTokenChainId();
-  const normalizedAddress = token.address.toLowerCase();
+  // v1 tokens 仅 EVM（TRC20 未实现）；normalizeAddressForFamily 在 EVM 上
+  // 等价于 .toLowerCase()，保持既有存储形态。trc20 落地时此调用点会自动
+  // 切到 chainIdToFamily(chainId) === 'tron' 分支。
+  const family = chainIdToFamily(chainId);
+  const normalizedAddress = family === 'tron'
+    ? normalizeAddressForFamily(token.address, 'tron')
+    : String(token.address || '').toLowerCase();
   const decimals = Number.isFinite(token.decimals)
     ? token.decimals
     : parseInt(token.decimals ?? '18', 10);
@@ -148,7 +167,9 @@ export async function handleAddToken(token) {
   try {
     const allTokens = await getUserSetting(CUSTOM_TOKENS_KEY, {});
     const list = Array.isArray(allTokens[chainId]) ? [...allTokens[chainId]] : [];
-    const existingIndex = list.findIndex(item => item?.address?.toLowerCase() === normalizedAddress);
+    const existingIndex = list.findIndex(item => (
+      compareAddresses(item?.address, normalizedAddress, family)
+    ));
 
     if (existingIndex >= 0) {
       list[existingIndex] = { ...list[existingIndex], ...normalizedToken };

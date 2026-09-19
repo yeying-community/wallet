@@ -3,6 +3,7 @@ import {
   DEFAULT_IDENTITY_NODE_ENDPOINT,
   IDENTITY_NODE_ENDPOINT_STORAGE_KEY
 } from '../../config/identity-config.js';
+import { compareAddresses } from '../../common/chain/address-normalize.js';
 
 const VERIFICATION_STORAGE_PREFIX = 'walletIdentityVerification:';
 const EMAIL_VERIFICATION_STORAGE_PREFIX = 'walletIdentityEmailVerification:';
@@ -161,8 +162,14 @@ export class WalletIdentitySettingsController {
     if (!this.credentialTypes(item).has('WalletAccountCredential')) return false;
     const subject = this.credentialPayload(item)?.vc?.credentialSubject || {};
     const expectedChainKey = account?.chainKey || `eip155:${account?.chainId || 1}`;
-    return subject.chainKey === expectedChainKey
-      && String(subject.address || '').toLowerCase() === String(account?.address || '').toLowerCase();
+    if (subject.chainKey !== expectedChainKey) return false;
+    // account.namespace 决定比较语义：EVM 大小写等价，Tron 大小写敏感。
+    // 对 legacy 没 namespace 的 account，默认按 EVM 处理以保持兼容。
+    return compareAddresses(
+      subject.address,
+      account?.address,
+      account?.namespace || 'eip155',
+    );
   }
 
   identityCredentialsVerified(credentials, account) {
@@ -322,7 +329,9 @@ export class WalletIdentitySettingsController {
     const seen = new Set();
     const addOption = (item) => {
       const address = String(item?.address || '').trim();
-      const key = address.toLowerCase();
+      // family-aware key：EVM 大小写归一，Tron 原值区分大小写。
+      const family = item?.namespace || 'eip155';
+      const key = (family === 'tron') ? address : address.toLowerCase();
       if (!key || seen.has(key)) return;
       seen.add(key);
       options.push({ ...item, address });
@@ -386,7 +395,13 @@ export class WalletIdentitySettingsController {
       const option = document.createElement('option');
       option.value = item.address;
       option.textContent = `${item.name || '钱包账户'} · ${this.formatWalletAddress(item.address)}`;
-      option.selected = item.address.toLowerCase() === String(current?.address || '').toLowerCase();
+      // 用 `current?.namespace` 决定比较语义：EVM 大小写等价、Tron 大小写敏感；
+      // 两侧默认 EVM，与既有行为兼容。
+      option.selected = compareAddresses(
+        item.address,
+        current?.address,
+        current?.namespace || 'eip155',
+      );
       return option;
     }));
     if (!selector.options.length) selector.innerHTML = '<option value="">暂无可用钱包地址</option>';

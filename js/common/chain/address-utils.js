@@ -1,5 +1,11 @@
 /**
  * 地址处理工具函数
+ *
+ * 本文件保留 EVM-only helper（`isValidAddress` / `normalizeAddress` /
+ * `isSameAddress` / `generateAvatar` 等），Tron-aware 调用方请改走
+ * `address-normalize.js` 的 `normalizeAddressForFamily` /
+ * `compareAddresses` / `isValidAddressForFamily`，避免 Tron Base58
+ * case-sensitive 字符串被错误折叠为同地址。
  */
 import { ethers } from '../../../lib/ethers-6.16.esm.min.js';
 

@@ -4,6 +4,7 @@
  */
 import { EventType } from '../protocol/dapp-protocol.js';
 import { state } from './state.js';
+import { normalizeAddressForFamily } from '../common/chain/address-normalize.js';
 import {
   createWalletLockedError,
   createInvalidParams,
@@ -100,16 +101,18 @@ function buildIdentityPermission(scopes) {
   };
 }
 
-function normalizeAddress(value) {
-  return String(value || '').trim().toLowerCase();
+function normalizeAddress(value, family = 'eip155') {
+  // family-aware：EVM 转小写，Tron 保留 Base58 原始大小写敏感形式。
+  // 调用方传 `account.namespace || 'eip155'`，隔离 EVM/Tron 去重/查找 key。
+  return normalizeAddressForFamily(value, family);
 }
 
-function dedupeAddresses(addresses = []) {
+function dedupeAddresses(addresses = [], family = 'eip155') {
   const seen = new Set();
   const result = [];
   for (const address of addresses) {
     const value = String(address || '').trim();
-    const key = normalizeAddress(value);
+    const key = normalizeAddress(value, family);
     if (!value || seen.has(key)) continue;
     seen.add(key);
     result.push(value);
@@ -127,22 +130,27 @@ function isMpcWalletAddressReady(wallet) {
 
 async function getAvailableAccountAddresses(selectedAccount = null) {
   const addresses = [];
+  // selectedAccount 决定本次集合的 family（Tron 选中时不要混入 EVM 地址）。
+  // v1 selectedAccount 一定有 namespace；fallback eip155 是兜底。
+  const family = selectedAccount?.namespace || 'eip155';
   if (selectedAccount?.address) {
     addresses.push(selectedAccount.address);
   }
+  // mpcWallets（v1 仅 EVM）；保留原顺序，未做 family 区分是因为 v1 MPC
+  // 不出 Tron；如果将来 MPC 出 Tron，需要按 wallet.namespace 过滤。
   const mpcWallets = await getMpcWalletList();
   for (const wallet of Array.isArray(mpcWallets) ? mpcWallets : []) {
     if (isMpcWalletAddressReady(wallet)) {
       addresses.push(wallet.address);
     }
   }
-  return dedupeAddresses(addresses);
+  return dedupeAddresses(addresses, family);
 }
 
-function filterAvailableAuthorizedAccounts(authorizedAccounts = [], availableAccounts = []) {
-  const available = new Map(availableAccounts.map((address) => [normalizeAddress(address), address]));
-  return dedupeAddresses(authorizedAccounts)
-    .map((address) => available.get(normalizeAddress(address)))
+function filterAvailableAuthorizedAccounts(authorizedAccounts = [], availableAccounts = [], family = 'eip155') {
+  const available = new Map(availableAccounts.map((address) => [normalizeAddress(address, family), address]));
+  return dedupeAddresses(authorizedAccounts, family)
+    .map((address) => available.get(normalizeAddress(address, family)))
     .filter(Boolean);
 }
 
@@ -173,7 +181,10 @@ export async function handleEthAccounts(origin) {
     const authorizedAccounts = Array.isArray(connected?.accounts) && connected.accounts.length
       ? connected.accounts
       : (Array.isArray(stored?.accounts) && stored.accounts.length ? stored.accounts : [stored?.address]);
-    return filterAvailableAuthorizedAccounts(authorizedAccounts, availableAccounts);
+    // v1 authorizedAccounts 与 selectedAccount 同 family；由 caller 选
+    // 定的 account.namespace 决定，避免 Tron 地址与 EVM 大小写差异导致
+    // 误判。
+    return filterAvailableAuthorizedAccounts(authorizedAccounts, availableAccounts, account?.namespace || 'eip155');
 
   } catch (error) {
     console.error('❌ Handle eth_accounts failed:', error);
@@ -229,7 +240,11 @@ export async function handleEthRequestAccounts(origin, tabId, clientRequestId = 
       if (state.connectedSites.has(origin)) {
         console.log('✅ Site already connected:', origin);
         const connected = state.connectedSites.get(origin);
-        return filterAvailableAuthorizedAccounts(connected?.accounts || [address], accounts);
+        return filterAvailableAuthorizedAccounts(
+          connected?.accounts || [address],
+          accounts,
+          account?.namespace || 'eip155',
+        );
       }
 
       const requestId = resumablePending?.requestId || `connect_${getTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
