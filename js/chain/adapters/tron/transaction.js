@@ -45,8 +45,12 @@ const TRX_TRANSFER_SIGNATURE_LEN = 65; // r (32B) + s (32B) + v (1B)
  * @returns {Promise<import('../../types.d.ts').UnsignedTx>}
  */
 export async function buildUnsigned(intent, ctx) {
-  if (!intent || intent.type !== 'native-transfer') {
-    throw new Error(`Tron buildUnsigned: only native-transfer supported (got ${intent?.type})`);
+  const type = intent?.type;
+  if (type === 'token-transfer') {
+    return buildTrc20Unsigned(intent, ctx);
+  }
+  if (!intent || type !== 'native-transfer') {
+    throw new Error(`Tron buildUnsigned: only native-transfer / token-transfer supported (got ${type})`);
   }
   // Tron adapter 接受 `to`（Intent 标准字段）和 `toAddress`（兼容性别名），
   // 其中 `toAddress` 不在 Intent 类型里——运行时接受为类型保护。
@@ -81,54 +85,148 @@ export async function buildUnsigned(intent, ctx) {
   }
 
   // 调 createtransaction（内部已选 best block + protobuf 编码 raw_data_hex）
-  // TronGrid 协议：`owner_address` / `to_address` 是 `41 + 20bytes hex` 形态，
-  // 不是 Base58Check。wallet 在 popup/dApp UI 上展示 Base58，但 createtransaction
-  // 必须转成 hex；trxBase58CheckDecode 返回的 20 字节是 `hash160`（去掉 prefix），
-  // 直接 hex 编码 + '41' 前缀即可。
-  const toHex = (addr) => {
-    const decoded = trxBase58CheckDecode(addr);
-    if (decoded.length !== 20) {
-      throw new Error('Tron buildUnsigned: decoded Base58Check payload must be 20 bytes');
-    }
-    return '41' + Array.from(decoded)
-      .map((b) => b.toString(16).padStart(2, '0')).join('');
-  };
   const transaction = await tronRpcCall(ctx.chainKey, '/wallet/createtransaction', {
-    owner_address: toHex(ownerAddress),
-    to_address: toHex(to),
+    owner_address: tronAddressToHex(ownerAddress),
+    to_address: tronAddressToHex(to),
     amount: parseInt(amountSun, 10)
   });
+  return finalizeUnsigned(transaction, ctx.chainKey);
+}
+
+/**
+ * TRC20 token-transfer：走 `/wallet/triggersmartcontract` 构造
+ * transfer(address,uint256) 调用；返回的 UnsignedTx 与 native 同形态
+ *（digest = SHA-256(raw_data_hex)，secp256k1）。
+ *
+ * intent 形态：
+ *   { type: 'token-transfer', from, to, tokenAddress, amount, feeLimitSun? }
+ *   - to: 收款人 Base58
+ *   - tokenAddress: TRC20 合约 Base58
+ *   - amount: token 最小单位整数字符串（= 人类可读 × 10^decimals）
+ *
+ * @param {any} intent
+ * @param {import('../../types.d.ts').ChainCtx} ctx
+ * @returns {Promise<import('../../types.d.ts').UnsignedTx>}
+ */
+async function buildTrc20Unsigned(intent, ctx) {
+  const ref = tronReference(ctx.chainKey);
+  const to = String(intent?.to || intent?.toAddress || '').trim();
+  const owner = String(intent?.from || '').trim();
+  const contract = String(intent?.tokenAddress || intent?.token?.address || '').trim();
+  if (!to) throw new Error('Tron token-transfer: missing to');
+  if (!owner) throw new Error('Tron token-transfer: missing from');
+  if (!contract) throw new Error('Tron token-transfer: missing tokenAddress');
+  if (!isValidTronAddressForReference(to, ref)) {
+    throw new Error(`Tron token-transfer: invalid to address for reference ${ref}`);
+  }
+  if (!isValidTronAddressForReference(owner, ref)) {
+    throw new Error(`Tron token-transfer: invalid from address for reference ${ref}`);
+  }
+  const amount = String(intent?.amount ?? '');
+  if (!/^[0-9]+$/.test(amount) || amount === '0') {
+    throw new Error(`Tron token-transfer: invalid amount "${amount}" (must be positive integer, token base units)`);
+  }
+  const feeLimit = Number.isFinite(Number(intent?.feeLimitSun)) && Number(intent?.feeLimitSun) > 0
+    ? Math.floor(Number(intent.feeLimitSun))
+    : 15_000_000; // 15 TRX 默认上限
+
+  // transfer(address,uint256) 的 ABI 参数：address 用 20 字节 hash160 左补 32 字节，
+  // amount 用 uint256 左补 32 字节。
+  const parameter = tronAddressToAbiParam(to) + BigInt(amount).toString(16).padStart(64, '0');
+
+  const resp = await tronRpcCall(ctx.chainKey, '/wallet/triggersmartcontract', {
+    owner_address: tronAddressToHex(owner),
+    contract_address: tronAddressToHex(contract),
+    function_selector: 'transfer(address,uint256)',
+    parameter,
+    fee_limit: feeLimit,
+    call_value: 0
+  });
+  // triggersmartcontract 把 raw tx 嵌在 `.transaction`；校验合约调用是否成功构造。
+  const result = resp?.result;
+  if (result && result.result === false) {
+    const msg = result.message ? hexToUtf8(result.message) : (result.code || 'contract call failed');
+    throw new Error(`Tron token-transfer: triggersmartcontract failed: ${msg}`);
+  }
+  const transaction = resp?.transaction;
+  if (!transaction || typeof transaction !== 'object') {
+    throw new Error('Tron token-transfer: triggersmartcontract returned no transaction');
+  }
+  return finalizeUnsigned(transaction, ctx.chainKey);
+}
+
+/**
+ * 把 createtransaction / triggersmartcontract 返回的 raw tx JSON 收敛为 UnsignedTx。
+ * @param {any} transaction
+ * @param {string} chainKey
+ * @returns {import('../../types.d.ts').UnsignedTx}
+ */
+function finalizeUnsigned(transaction, chainKey) {
   if (!transaction || typeof transaction !== 'object' || !transaction.raw_data) {
-    throw new Error('Tron buildUnsigned: createtransaction returned invalid response');
+    throw new Error('Tron buildUnsigned: response returned invalid transaction');
   }
   if (!transaction.raw_data_hex) {
-    throw new Error('Tron buildUnsigned: createtransaction response missing raw_data_hex');
+    throw new Error('Tron buildUnsigned: transaction missing raw_data_hex');
   }
-
-  // txID = SHA-256(raw_data_hex 字节)，createtransaction 通常已给出；保险起见重算一次
-  // 注意：real TronGrid 的 raw_data_hex 不含 `0x` 前缀，ethers v6 getBytes
-  // 需要 `0x`，所以 normalize 一次。
+  // txID = SHA-256(raw_data_hex 字节)；real node 不带 `0x` 前缀，normalize 后重算。
   const rawHex = String(transaction.raw_data_hex || '');
   const normalizedHex = rawHex.startsWith('0x') ? rawHex : `0x${rawHex}`;
-  const recomputedId = ethers.sha256(ethers.getBytes(normalizedHex));
-  if (transaction.txID && transaction.txID !== recomputedId) {
-    // 不抛错，仅记录——节点可能用不同字段排序
-  }
-  transaction.txID = recomputedId;
-
-  // 摘要（Signer 接口契约：bytes 已是 0x + 64 hex）
-  const digestHex = transaction.txID;
-
+  transaction.txID = ethers.sha256(ethers.getBytes(normalizedHex));
   return {
     curve: 'secp256k1',
     payloads: [{
       kind: 'digest',
-      bytes: digestHex,
+      bytes: transaction.txID,
       hashAlg: 'sha256'
     }],
-    serializeState: { transaction, chainKey: ctx.chainKey },
+    serializeState: { transaction, chainKey },
     needsRecoveryId: false
   };
+}
+
+/**
+ * Base58Check 地址 → TronGrid `41 + hash160` hex 形态。
+ * @param {string} addr
+ * @returns {string}
+ */
+function tronAddressToHex(addr) {
+  const decoded = trxBase58CheckDecode(addr);
+  if (decoded.length !== 20) {
+    throw new Error('Tron buildUnsigned: decoded Base58Check payload must be 20 bytes');
+  }
+  return '41' + Array.from(decoded).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Base58Check 地址 → ABI address 参数（20 字节 hash160 左补 32 字节 = 64 hex）。
+ * @param {string} addr
+ * @returns {string}
+ */
+function tronAddressToAbiParam(addr) {
+  const decoded = trxBase58CheckDecode(addr);
+  if (decoded.length !== 20) {
+    throw new Error('Tron token-transfer: decoded Base58Check payload must be 20 bytes');
+  }
+  let hex = '';
+  for (const b of decoded) hex += b.toString(16).padStart(2, '0');
+  return hex.padStart(64, '0');
+}
+
+/**
+ * TronGrid 错误 message 常以 hex 返回，转 UTF-8 便于展示。
+ * @param {string} hex
+ * @returns {string}
+ */
+function hexToUtf8(hex) {
+  try {
+    const clean = String(hex).replace(/^0x/, '');
+    if (!/^[0-9a-fA-F]*$/.test(clean) || clean.length % 2 !== 0) return String(hex);
+    const bytes = new Uint8Array(clean.length / 2);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return String(hex);
+  }
 }
 
 /**

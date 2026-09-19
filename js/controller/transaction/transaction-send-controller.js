@@ -91,8 +91,32 @@ export class TransactionSendController {
       const chainId = await this.network.getChainId();
       const rpcUrl = await this.network.getRpcUrl();
       const chainKind2 = await this.detectChainKind();
+      // 非 EVM 链上是否选中了非原生 token（TRC20 / SPL）。
+      const isNonEvmTokenTransfer = !!(token && token.address && !token.isNative
+        && (chainKind2 === 'tron' || chainKind2 === 'solana'));
       let txParams;
-      if (chainKind2 === 'tron') {
+      if (isNonEvmTokenTransfer) {
+        // Tron TRC20 / Solana SPL token 转账：amount 人类可读，按 token.decimals
+        // 转成最小单位（hex）交给 background 换算。
+        const decimals = Number.isFinite(Number(token.decimals)) ? Number(token.decimals) : 6;
+        const amountBaseHex = this.transaction.parseUnits(String(amount), decimals, token.symbol || '通证');
+        txParams = {
+          chainId,
+          rpcUrl,
+          chainFamily: chainKind2 === 'tron' ? 'tron' : 'solana',
+          from: account.address,
+          to: recipient,
+          token: {
+            address: token.address,
+            symbol: token.symbol || '',
+            name: token.name || token.symbol || '',
+            decimals,
+            amount: amountBaseHex
+          },
+          tokenAmountDisplay: String(amount)
+        };
+        if (chainKind2 === 'tron') txParams.feeLimitSun = 15000000;
+      } else if (chainKind2 === 'tron') {
         // Tron native TRX transfer — amount unit is TRX (sun = TRX × 1e6)
         txParams = {
           chainId,

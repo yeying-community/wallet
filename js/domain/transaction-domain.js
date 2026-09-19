@@ -143,13 +143,18 @@ export class TransactionDomain extends BaseDomain {
   async sendTransaction(txParams) {
     const {
       from, to, value, data, gas, chainId, rpcUrl, token,
-      chainFamily, valueTrx, feeLimitSun, asset, amountSol, amountBtc
+      chainFamily, valueTrx, feeLimitSun, asset, amountSol, amountBtc,
+      tokenAmountDisplay
     } = txParams || {};
     const family = chainFamily === 'solana'
       ? 'solana'
       : (chainFamily === 'tron'
         ? 'tron'
         : (chainFamily === 'utxo' ? 'utxo' : 'eip155'));
+
+    // 非 EVM（Tron/Solana）token 转账：token 非原生且带 amount（最小单位 hex）。
+    const isNonEvmTokenTransfer = (family === 'tron' || family === 'solana')
+      && !!(token && token.address && !token.isNative && token.amount);
 
     // 参数验证：family-aware；Tron Base58 与 Solana base58(32B) 都不通过
     // EVM-only isValidAddress；address-normalize 已按 family 严格校验。
@@ -159,7 +164,14 @@ export class TransactionDomain extends BaseDomain {
     if (!to || !isValidAddressForFamily(to, family)) {
       throw new Error('无效的接收地址');
     }
-    if (family === 'tron') {
+    if (isNonEvmTokenTransfer) {
+      // token.amount 已是最小单位（hex），> 0 即可。
+      try {
+        if (BigInt(token.amount) <= 0n) throw new Error();
+      } catch {
+        throw new Error('请输入发送金额');
+      }
+    } else if (family === 'tron') {
       // v1 Tron 仅支持 TRX native transfer
       const trx = parseFloat(valueTrx);
       if (!Number.isFinite(trx) || trx <= 0) {
@@ -190,7 +202,11 @@ export class TransactionDomain extends BaseDomain {
       chainId,
       rpcUrl
     };
-    if (family === 'tron') {
+    if (isNonEvmTokenTransfer) {
+      // token 转账：只带 token（含最小单位 amount）+ 显示金额；不带 native amount 字段。
+      payload.token = token;
+      if (family === 'tron') payload.feeLimitSun = String(feeLimitSun || 15000000);
+    } else if (family === 'tron') {
       payload.asset = asset || 'TRX';
       payload.valueTrx = String(valueTrx);
       payload.feeLimitSun = String(feeLimitSun || 15000000);
@@ -205,7 +221,7 @@ export class TransactionDomain extends BaseDomain {
       payload.data = data || '0x';
       payload.gas = gas || undefined;
     }
-    if (token) payload.token = token;
+    if (token && !isNonEvmTokenTransfer) payload.token = token;
 
     const result = await this._sendMessage(TransactionMessageType.SEND_TRANSACTION, payload);
 
@@ -218,7 +234,10 @@ export class TransactionDomain extends BaseDomain {
       status: 'pending',
       chainId: chainId || null
     };
-    if (family === 'tron') {
+    if (isNonEvmTokenTransfer) {
+      // 用人类可读金额 + symbol 作为展示占位。
+      record.value = `${tokenAmountDisplay ?? ''} ${token.symbol || ''}`.trim();
+    } else if (family === 'tron') {
       // v1 transaction 存储层 normalize 假设 hex (transaction-storage.js)，
       // 这里用 `value` 字段存 TRX 字符串作为占位，避免破坏现有 record 形态。
       // 未来 transaction-storage family-aware 改造时统一替换为

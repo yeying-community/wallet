@@ -407,6 +407,27 @@ async function resolveAccountIdByAddress(address) {
   return match?.id || null;
 }
 
+/**
+ * 把 token 最小单位（十进制整数字符串）格式化为人类可读金额（用于交易记录展示）。
+ * @param {string} baseUnits
+ * @param {number} decimals
+ * @returns {string}
+ */
+function formatTokenAmountForRecord(baseUnits, decimals) {
+  try {
+    const d = Number.isFinite(Number(decimals)) ? Number(decimals) : 6;
+    const v = BigInt(baseUnits);
+    const base = 10n ** BigInt(d);
+    const intPart = v / base;
+    const frac = v % base;
+    if (d <= 0 || frac === 0n) return intPart.toString();
+    const fracStr = frac.toString().padStart(d, '0').replace(/0+$/, '');
+    return `${intPart.toString()}.${fracStr}`;
+  } catch {
+    return String(baseUnits ?? '');
+  }
+}
+
 async function handleSendTransactionMessage(data) {
   const {
     from, to, value, data: txData, gas, gasLimit, chainId, token,
@@ -424,7 +445,16 @@ async function handleSendTransactionMessage(data) {
     : (chainFamily === 'tron'
       ? 'tron'
       : (chainFamily === 'utxo' ? 'utxo' : 'eip155'));
-  if (family === 'tron') {
+  // 非 EVM（Tron/Solana）token 转账：token 非原生且带最小单位 amount（hex）。
+  const isNonEvmTokenTransfer = (family === 'tron' || family === 'solana')
+    && !!(token && token.address && !token.isNative && token.amount);
+  if (isNonEvmTokenTransfer) {
+    try {
+      if (BigInt(token.amount) <= 0n) throw new Error();
+    } catch {
+      return { success: false, error: 'Invalid transaction params' };
+    }
+  } else if (family === 'tron') {
     if (!valueTrx || parseFloat(valueTrx) <= 0) {
       return { success: false, error: 'Invalid transaction params' };
     }
@@ -453,7 +483,28 @@ async function handleSendTransactionMessage(data) {
     // EVM 路径仍走 ethers populateTransaction + signTransaction。
     const SUN_PER_TRX = 1_000_000n;
     const LAMPORTS_PER_SOL = 1_000_000_000n;
-    const tx = family === 'tron'
+    const tokenAmountBase = isNonEvmTokenTransfer ? BigInt(token.amount).toString() : null;
+    const tx = isNonEvmTokenTransfer
+      ? (family === 'tron'
+          ? {
+              type: 'token-transfer',
+              chainFamily: 'tron',
+              from,
+              to,
+              tokenAddress: token.address,
+              amount: tokenAmountBase,
+              feeLimitSun: Number(feeLimitSun) > 0 ? Number(feeLimitSun) : 15_000_000
+            }
+          : {
+              type: 'token-transfer',
+              chainFamily: 'solana',
+              from,
+              to,
+              mint: token.address,
+              amount: tokenAmountBase,
+              decimals: Number.isFinite(Number(token.decimals)) ? Number(token.decimals) : 6
+            })
+      : family === 'tron'
       ? {
           type: 'native-transfer',
           chainFamily: 'tron',
@@ -526,11 +577,13 @@ async function handleSendTransactionMessage(data) {
       hash: txHash,
       from,
       to,
-      value: family === 'tron'
-        ? `${valueTrx} TRX`
-        : (family === 'solana'
-          ? `${data.amountSol} SOL`
-          : (family === 'utxo' ? `${data.amountBtc} BTC` : value)),
+      value: isNonEvmTokenTransfer
+        ? `${formatTokenAmountForRecord(tokenAmountBase, token.decimals)} ${token.symbol || ''}`.trim()
+        : (family === 'tron'
+          ? `${valueTrx} TRX`
+          : (family === 'solana'
+            ? `${data.amountSol} SOL`
+            : (family === 'utxo' ? `${data.amountBtc} BTC` : value))),
       token: token || null,
       timestamp: getTimestamp(),
       status: 'pending',

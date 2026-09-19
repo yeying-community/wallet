@@ -242,10 +242,10 @@ test('buildUnsigned：amount 必须正整数', async () => {
   }
 });
 
-test('buildUnsigned：非 native-transfer 抛错', async () => {
+test('buildUnsigned：未知 type 抛错', async () => {
   await assert.rejects(
-    () => buildUnsigned({ type: 'token-transfer', from: 'T...', toAddress: 'T...', amount: '1' }, { chainKey: 'tron:mainnet' }),
-    /only native-transfer/
+    () => buildUnsigned({ type: 'contract-call', from: 'T...', toAddress: 'T...', amount: '1' }, { chainKey: 'tron:mainnet' }),
+    /only native-transfer \/ token-transfer supported/
   );
 });
 
@@ -573,4 +573,90 @@ test('getTokenBalance：缺 owner/contract 抛错', async () => {
     () => tronAdapter.getTokenBalance('TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW', { address: '' }, { chainKey: 'tron:mainnet' }),
     /missing address or contract/
   );
+});
+
+// ==================== buildUnsigned：TRC20 token-transfer ====================
+
+test('buildUnsigned：token-transfer → triggersmartcontract + digest', async () => {
+  const tx = fakeCreateTransactionResponse();
+  let captured = null;
+  const restore = installFetchMock({
+    '/wallet/triggersmartcontract': ({ body }) => {
+      captured = body;
+      return { result: { result: true }, transaction: tx };
+    }
+  });
+  try {
+    const unsigned = await buildUnsigned({
+      type: 'token-transfer',
+      from: 'TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW',
+      to: 'TNzoqJ2ZCVZAzTsR5sKA6N5zardVodSi5x',
+      tokenAddress: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+      amount: '1000000', // 1 USDT (6 decimals)
+      feeLimitSun: 15000000
+    }, { chainKey: 'tron:mainnet' });
+
+    // 形态与 native 一致：secp256k1 + digest(sha256)
+    assert.equal(unsigned.curve, 'secp256k1');
+    assert.equal(unsigned.payloads[0].kind, 'digest');
+    assert.equal(unsigned.payloads[0].hashAlg, 'sha256');
+    assert.match(unsigned.payloads[0].bytes, /^0x[0-9a-f]{64}$/);
+    // triggersmartcontract 参数：selector + parameter (recipient abi + amount abi)
+    assert.equal(captured.function_selector, 'transfer(address,uint256)');
+    assert.equal(captured.fee_limit, 15000000);
+    assert.equal(captured.call_value, 0);
+    // parameter = 64 hex recipient + 64 hex amount = 128 hex
+    assert.equal(captured.parameter.length, 128);
+    // amount 段应是 0xf4240 = 1000000 左补 64
+    assert.equal(captured.parameter.slice(64), BigInt(1000000).toString(16).padStart(64, '0'));
+  } finally {
+    restore();
+  }
+});
+
+test('buildUnsigned：token-transfer 缺 tokenAddress 抛错', async () => {
+  await assert.rejects(
+    () => buildUnsigned({
+      type: 'token-transfer',
+      from: 'TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW',
+      to: 'TNzoqJ2ZCVZAzTsR5sKA6N5zardVodSi5x',
+      amount: '1000000'
+    }, { chainKey: 'tron:mainnet' }),
+    /missing tokenAddress/
+  );
+});
+
+test('buildUnsigned：token-transfer amount 非正整数抛错', async () => {
+  for (const bad of ['0', '-1', '1.5', 'abc', '']) {
+    await assert.rejects(
+      () => buildUnsigned({
+        type: 'token-transfer',
+        from: 'TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW',
+        to: 'TNzoqJ2ZCVZAzTsR5sKA6N5zardVodSi5x',
+        tokenAddress: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+        amount: bad
+      }, { chainKey: 'tron:mainnet' }),
+      /invalid amount/
+    );
+  }
+});
+
+test('buildUnsigned：token-transfer triggersmartcontract 失败抛错', async () => {
+  const restore = installFetchMock({
+    '/wallet/triggersmartcontract': () => ({ result: { result: false, code: 'CONTRACT_VALIDATE_ERROR' } })
+  });
+  try {
+    await assert.rejects(
+      () => buildUnsigned({
+        type: 'token-transfer',
+        from: 'TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW',
+        to: 'TNzoqJ2ZCVZAzTsR5sKA6N5zardVodSi5x',
+        tokenAddress: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+        amount: '1000000'
+      }, { chainKey: 'tron:mainnet' }),
+      /triggersmartcontract failed/
+    );
+  } finally {
+    restore();
+  }
 });
