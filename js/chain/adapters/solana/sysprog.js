@@ -167,6 +167,30 @@ export class Message {
   }
 
   /**
+   * 重建 headerKeys：feePayer + ix.keys + ix.programIds（去重）。
+   * Message ctor 时 instructions=[] 只放 feePayer；Transaction.add() 后
+   * 调用本方法补足。
+   */
+  rebuildHeaderKeys() {
+    const headerSet = new Set();
+    /** @type {Uint8Array[]} */
+    const keys = [];
+    const add = (k) => {
+      const hex = pubkeyHex(k);
+      if (!headerSet.has(hex)) {
+        headerSet.add(hex);
+        keys.push(k);
+      }
+    };
+    add(this.feePayer);
+    for (const ix of this.instructions) {
+      for (const k of ix.keys) add(k.pubkey);
+    }
+    for (const ix of this.instructions) add(ix.programId);
+    this.headerKeys = keys;
+  }
+
+  /**
    * 序列化为 message bytes（给 sign / broadcast 用）
    * @returns {Uint8Array}
    */
@@ -254,17 +278,9 @@ export class Transaction {
    */
   add(ix) {
     this.message.instructions.push(ix);
-    // 同步把 ix 的 accounts + programId 加进 header（v1：单 signer 简化）
-    const headerSet = new Set(this.message.headerKeys.map(pubkeyHex));
-    const addToHeader = (k) => {
-      const hex = pubkeyHex(k);
-      if (!headerSet.has(hex)) {
-        headerSet.add(hex);
-        this.message.headerKeys.push(k);
-      }
-    };
-    for (const k of ix.keys) addToHeader(k.pubkey);
-    addToHeader(ix.programId);
+    // Message ctor 时 instructions=[]，没机会把 ix.keys / ix.programId 推进
+    // headerKeys；这里 lazy 重建一次（v1 简化：add 之后 serialize 之前调用一次）。
+    this.message.rebuildHeaderKeys();
   }
 
   /**
@@ -297,10 +313,12 @@ export class Transaction {
 }
 
 function pubkeyHex(pubkey) {
-  // 用前 8 字节作 Set key（避免每个 key 都 hex 全 64B）
+  // 用全部 32 字节做 Set key；前 8 字节在 toPubkey(全 0) 与 SystemProgram ID(全 0)
+  // 冲突，会让 header 丢失 toPubkey → message 长度漂移 + serialize 报
+  // "account not in header"。
   let s = '';
-  for (let i = 0; i < 8; i++) s += pubkey[i].toString(16).padStart(2, '0');
-  return s + ':' + pubkey.length;
+  for (let i = 0; i < pubkey.length; i++) s += pubkey[i].toString(16).padStart(2, '0');
+  return s;
 }
 
 // 暴露给上层使用
