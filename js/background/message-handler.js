@@ -278,7 +278,7 @@ async function handleSwitchNetworkMessage(data) {
   return {
     success: true,
     chainId: getCurrentEvmChainIdHex(),
-    rpcUrl: state.currentRpcUrl
+    rpcUrl: state.currentRpcUrl,
   };
 }
 
@@ -349,6 +349,20 @@ async function handleGetSupportedNetworksMessage() {
 async function handleGetNetworkInfoMessage() {
   try {
     let chainId = state.currentChainKey ? getCurrentEvmChainIdHex() : null;
+    if (!chainId && state.currentChainKey) {
+      // 非 EVM 链（Tron 等）没有 numeric chainId → 返回当前 chainKey
+      // 让 dApp/popup 自行按 chainKey 路由；不要 fallback 到 defaultConfig
+      // 的 EVM chainId，否则会把 currentChainKey 强制改写成 EVM 形态，
+      // 破坏 SWITCH_NETWORK 写入的目标链。
+      return {
+        success: true,
+        network: {
+          chainId: null,
+          chainKey: state.currentChainKey,
+          rpcUrl: state.currentRpcUrl,
+        },
+      };
+    }
     if (!chainId) {
       const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
       chainId = fallbackConfig?.chainIdHex
@@ -813,15 +827,10 @@ const popupHandlers = new Map([
   [WalletMessageType.GET_CURRENT_ACCOUNT, async () => await handleGetCurrentAccount()],
 
   [NetworkMessageType.GET_CURRENT_CHAIN_ID, async () => {
-    if (!state.currentChainKey) {
-      const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
-      const chainIdHex = fallbackConfig?.chainIdHex
-        || (fallbackConfig?.chainId ? normalizeChainId(fallbackConfig.chainId) : null);
-      if (chainIdHex) {
-        setCurrentChainKey(chainIdToChainKey(chainIdHex));
-      }
-    }
-    return { success: true, chainId: state.currentChainKey ? getCurrentEvmChainIdHex() : null };
+    return {
+      success: true,
+      chainId: state.currentChainKey ? getCurrentEvmChainIdHex() : null,
+    };
   }],
   [NetworkMessageType.GET_CURRENT_RPC_URL, async () => {
     let rpcUrl = state.currentRpcUrl;
