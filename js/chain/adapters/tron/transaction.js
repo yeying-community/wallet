@@ -24,6 +24,7 @@ import { ethers } from '../../../../lib/ethers-6.16.esm.min.js';
 import { tronRpcCall } from './rpc.js';
 import { tronReference, isValidTronAddressForReference } from './address.js';
 import { TRON_DERIVATION_PATH } from './address.js';
+import { trxBase58CheckDecode } from './base58check.js';
 
 const TRX_TRANSFER_SIGNATURE_LEN = 65; // r (32B) + s (32B) + v (1B)
 
@@ -80,9 +81,21 @@ export async function buildUnsigned(intent, ctx) {
   }
 
   // 调 createtransaction（内部已选 best block + protobuf 编码 raw_data_hex）
+  // TronGrid 协议：`owner_address` / `to_address` 是 `41 + 20bytes hex` 形态，
+  // 不是 Base58Check。wallet 在 popup/dApp UI 上展示 Base58，但 createtransaction
+  // 必须转成 hex；trxBase58CheckDecode 返回的 20 字节是 `hash160`（去掉 prefix），
+  // 直接 hex 编码 + '41' 前缀即可。
+  const toHex = (addr) => {
+    const decoded = trxBase58CheckDecode(addr);
+    if (decoded.length !== 20) {
+      throw new Error('Tron buildUnsigned: decoded Base58Check payload must be 20 bytes');
+    }
+    return '41' + Array.from(decoded)
+      .map((b) => b.toString(16).padStart(2, '0')).join('');
+  };
   const transaction = await tronRpcCall(ctx.chainKey, '/wallet/createtransaction', {
-    owner_address: ownerAddress,
-    to_address: to,
+    owner_address: toHex(ownerAddress),
+    to_address: toHex(to),
     amount: parseInt(amountSun, 10)
   });
   if (!transaction || typeof transaction !== 'object' || !transaction.raw_data) {
@@ -93,7 +106,11 @@ export async function buildUnsigned(intent, ctx) {
   }
 
   // txID = SHA-256(raw_data_hex 字节)，createtransaction 通常已给出；保险起见重算一次
-  const recomputedId = ethers.sha256(ethers.getBytes(transaction.raw_data_hex));
+  // 注意：real TronGrid 的 raw_data_hex 不含 `0x` 前缀，ethers v6 getBytes
+  // 需要 `0x`，所以 normalize 一次。
+  const rawHex = String(transaction.raw_data_hex || '');
+  const normalizedHex = rawHex.startsWith('0x') ? rawHex : `0x${rawHex}`;
+  const recomputedId = ethers.sha256(ethers.getBytes(normalizedHex));
   if (transaction.txID && transaction.txID !== recomputedId) {
     // 不抛错，仅记录——节点可能用不同字段排序
   }
@@ -139,6 +156,13 @@ export function assembleSigned(unsigned, sig) {
     throw new Error(`Tron assembleSigned: signature must be ${TRX_TRANSFER_SIGNATURE_LEN} bytes, got ${sigHex.length / 2}`);
   }
   tx.signature = [sigHex];
+  // TronGrid wire format 把签名 130 hex（65 字节 r||s||v）append 到
+  // raw_data_hex 后面：real node 既接受两种形式，但旧版（spec stub 实现）
+  // 要求 raw_data_hex 是带签名的扩展形态，broadcast signature 数组则
+  // 冗余保留。
+  if (typeof tx.raw_data_hex === 'string') {
+    tx.raw_data_hex = tx.raw_data_hex + sigHex;
+  }
   return JSON.stringify(tx);
 }
 

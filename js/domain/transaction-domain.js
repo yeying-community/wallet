@@ -10,6 +10,7 @@
  * 通信协议：{ type, data }
  */
 import { isValidAddress } from '../common/chain/index.js';
+import { isValidAddressForFamily } from '../common/chain/address-normalize.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { TransactionMessageType } from '../protocol/extension-protocol.js';
 import { BaseDomain } from './base-domain.js';
@@ -120,54 +121,91 @@ export class TransactionDomain extends BaseDomain {
 
   /**
    * 发送交易
+   *
+   * 支持 EVM（hex 形态 value/data/gas）与 Tron native TRX
+   * （valueTrx/feeLimitSun/rpcUrl）两族。Tron 路径通过 chainFamily === 'tron'
+   * 路由到 SW 的 Tron signing + /wallet/broadcasttransaction 链路。
+   *
    * @param {Object} txParams - 交易参数
    * @param {string} txParams.from - 发送地址
    * @param {string} txParams.to - 接收地址
-   * @param {string} txParams.value - 发送金额（十六进制）
-   * @param {string} txParams.data - 交易数据（可选）
-   * @param {string} txParams.gas - Gas 限制（可选）
+   * @param {string} txParams.value - 发送金额（十六进制；EVM 专用）
+   * @param {string} txParams.data - 交易数据（可选；EVM 专用）
+   * @param {string} txParams.gas - Gas 限制（可选；EVM 专用）
    * @param {string} txParams.chainId - 链 ID
    * @param {string} txParams.rpcUrl - RPC URL
+   * @param {string} [txParams.chainFamily] - 'eip155'（默认）| 'tron'
+   * @param {string} [txParams.valueTrx] - Tron 原生 TRX 数量（人类可读，TRX 单位）
+   * @param {string} [txParams.feeLimitSun] - Tron fee cap（SUN 单位；默认 15_000_000）
+   * @param {string} [txParams.asset] - Tron 资产标识（v1 仅 'TRX'）
    * @returns {Promise<string>} 交易哈希
    */
   async sendTransaction(txParams) {
-    const { from, to, value, data, gas, chainId, rpcUrl, token } = txParams;
+    const {
+      from, to, value, data, gas, chainId, rpcUrl, token,
+      chainFamily, valueTrx, feeLimitSun, asset
+    } = txParams || {};
+    const family = chainFamily === 'tron' ? 'tron' : 'eip155';
 
-    // 参数验证
-    if (!from || !isValidAddress(from)) {
+    // 参数验证：family-aware；Tron Base58 不通过 EVM-only isValidAddress
+    if (!from || !isValidAddressForFamily(from, family)) {
       throw new Error('无效的发送地址');
     }
-
-    if (!to || !isValidAddress(to)) {
+    if (!to || !isValidAddressForFamily(to, family)) {
       throw new Error('无效的接收地址');
     }
-
-    if (!value) {
-      throw new Error('请输入发送金额');
+    if (family === 'tron') {
+      // v1 Tron 仅支持 TRX native transfer
+      const trx = parseFloat(valueTrx);
+      if (!Number.isFinite(trx) || trx <= 0) {
+        throw new Error('请输入发送金额');
+      }
+    } else {
+      if (!value) {
+        throw new Error('请输入发送金额');
+      }
     }
 
-    const result = await this._sendMessage(TransactionMessageType.SEND_TRANSACTION, {
+    const payload = {
       from,
       to,
-      value,
-      data: data || '0x',
-      gas: gas || undefined,
+      chainFamily: family,
       chainId,
-      rpcUrl,
-      token: token || null
-    });
+      rpcUrl
+    };
+    if (family === 'tron') {
+      payload.asset = asset || 'TRX';
+      payload.valueTrx = String(valueTrx);
+      payload.feeLimitSun = String(feeLimitSun || 15000000);
+    } else {
+      payload.value = value;
+      payload.data = data || '0x';
+      payload.gas = gas || undefined;
+    }
+    if (token) payload.token = token;
+
+    const result = await this._sendMessage(TransactionMessageType.SEND_TRANSACTION, payload);
 
     // 添加到交易记录
-    this._addTransaction({
+    const record = {
       hash: result.txHash,
       from,
       to,
-      value,
-      token: token || null,
       timestamp: getTimestamp(),
       status: 'pending',
       chainId: chainId || null
-    });
+    };
+    if (family === 'tron') {
+      // v1 transaction 存储层 normalize 假设 hex (transaction-storage.js)，
+      // 这里用 `value` 字段存 TRX 字符串作为占位，避免破坏现有 record 形态。
+      // 未来 transaction-storage family-aware 改造时统一替换为
+      // `valueTrx` 字段。
+      record.value = `${valueTrx} TRX`;
+    } else {
+      record.value = value;
+    }
+    if (token) record.token = token;
+    this._addTransaction(record);
 
     return result.txHash;
   }

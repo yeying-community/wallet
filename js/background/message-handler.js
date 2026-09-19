@@ -400,8 +400,21 @@ async function resolveAccountIdByAddress(address) {
 }
 
 async function handleSendTransactionMessage(data) {
-  const { from, to, value, data: txData, gas, gasLimit, chainId, token } = data || {};
-  if (!from || !to || !value) {
+  const {
+    from, to, value, data: txData, gas, gasLimit, chainId, token,
+    chainFamily, valueTrx, feeLimitSun, asset, rpcUrl
+  } = data || {};
+  if (!from || !to) {
+    return { success: false, error: 'Invalid transaction params' };
+  }
+
+  // Tron 路径：valueTrx 是人类可读 TRX 数量，不强制 hex value；EVM 必须有 value
+  const family = chainFamily === 'tron' ? 'tron' : 'eip155';
+  if (family === 'tron') {
+    if (!valueTrx || parseFloat(valueTrx) <= 0) {
+      return { success: false, error: 'Invalid transaction params' };
+    }
+  } else if (!value) {
     return { success: false, error: 'Invalid transaction params' };
   }
 
@@ -411,19 +424,37 @@ async function handleSendTransactionMessage(data) {
   }
 
   try {
-    const tx = {
-      to,
-      value,
-      data: txData || '0x'
-    };
-    const limit = gasLimit || gas;
-    if (limit) {
-      tx.gasLimit = limit;
-    }
+    // 统一构造 transaction 对象：Tron 路径带 type='native-transfer' +
+    // amount(SUN 字符串)；signing-service 的 signTransactionRaw 在
+    // tron:* chainKey 上切到 signTronTransactionLocal（走
+    // /wallet/createtransaction + 本地 secp256k1 签名）；
+    // EVM 路径仍走 ethers populateTransaction + signTransaction。
+    const SUN_PER_TRX = 1_000_000n;
+    const tx = family === 'tron'
+      ? {
+          type: 'native-transfer',
+          chainFamily: 'tron',
+          asset: asset || 'TRX',
+          from,
+          to,
+          amount: String(BigInt(Math.floor(parseFloat(valueTrx) * 1e6)))
+        }
+      : (() => {
+          const evmTx = {
+            to,
+            value,
+            data: txData || '0x'
+          };
+          const limit = gasLimit || gas;
+          if (limit) evmTx.gasLimit = limit;
+          return evmTx;
+        })();
 
-    const chainKey = state.currentChainKey || 'eip155:1';
-    // 统一路径：本地 + MPC 都走 signTransactionRaw → rawTx → broadcastRawTransaction，
-    // 补齐此前路径 C（popup / approval-page 入口）的 MPC 广播缺口。
+    // 优先使用消息携带的 chainKey（popup 显式声明）；其次 fallback state。
+    const chainKey = (state.currentChainKey || '').startsWith('tron:')
+      ? state.currentChainKey
+      : (family === 'tron' ? 'tron:mainnet' : (state.currentChainKey || 'eip155:1'));
+
     const rawTx = await signTransactionRaw(chainKey, accountId, tx);
     const txHash = await broadcastRawTransaction(chainKey, rawTx);
     let normalizedChainId = null;
@@ -438,7 +469,7 @@ async function handleSendTransactionMessage(data) {
       hash: txHash,
       from,
       to,
-      value,
+      value: family === 'tron' ? `${valueTrx} TRX` : value,
       token: token || null,
       timestamp: getTimestamp(),
       status: 'pending',
