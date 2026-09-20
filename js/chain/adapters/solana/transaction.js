@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * Solana 交易：buildUnsigned / assembleSigned / broadcast（v1 仅支持 native SOL transfer）
+ * Solana 交易：buildUnsigned / assembleSigned / broadcast（native SOL + SPL token transfer）
  *
  * 与 EVM 路径差异：
  *   - 不调外部 RPC 构造 raw tx（不像 Tron 走 `/wallet/createtransaction`）；
@@ -11,9 +11,10 @@
  *   - broadcast：JSON-RPC `sendTransaction` with encoding 'base58'，返回 base58 tx signature。
  *
  * v1 不实现（抛 CHAIN_ADAPTER_NOT_IMPLEMENTED）：
- *   - SPL token transfer（Phase 3 走 SPL Token Program）
  *   - Versioned transactions / address lookup tables
  *   - compute budget instructions / priority fees
+ *
+ * SPL token transfer 已实现（TransferChecked tag=12，收款方 ATA 按需 CreateIdempotent 补建）。
  */
 
 import nacl from '../../../../lib/nacl.js';
@@ -27,7 +28,8 @@ import {
 } from './sysprog.js';
 import {
   getAssociatedTokenAddress,
-  splTransferCheckedInstruction
+  splTransferCheckedInstruction,
+  createAssociatedTokenAccountInstruction
 } from './spl.js';
 
 
@@ -214,7 +216,9 @@ export function signEd25519Message(messageBytes, secretKey) {
  *   - source ATA = getAssociatedTokenAddress(from, mint)
  *   - dest ATA   = getAssociatedTokenAddress(to, mint)
  *   - owner = feePayer = from（本地单签）
- * v1 假设收款方 ATA 已存在（不发 createAssociatedTokenAccount 指令）。
+ * 收款方 ATA 若不存在（getAccountInfo → value=null），先补一条
+ * CreateIdempotent 指令由 feePayer 出资建账，再发 TransferChecked，
+ * 否则给从未持有该 token 的地址转账会在链上失败。
  *
  * @param {any} intent
  * @param {import('../../types.d.ts').ChainCtx} ctx
@@ -257,6 +261,16 @@ export async function buildSplTokenTransfer(intent, ctx) {
   }
 
   const tx = new Transaction({ feePayer: fromPubkey, recentBlockhash: blockhashBytes });
+  // 收款方 ATA 不存在时，先补建账（CreateIdempotent，由 feePayer 出资）。
+  const destAtaExists = await solanaTokenAccountExists(ctx.chainKey, destAta);
+  if (!destAtaExists) {
+    tx.add(createAssociatedTokenAccountInstruction({
+      payer: fromPubkey,
+      ata: destAta,
+      owner: toPubkey,
+      mint: mintPubkey
+    }));
+  }
   tx.add(splTransferCheckedInstruction({
     source: sourceAta,
     mint: mintPubkey,
@@ -277,6 +291,33 @@ export async function buildSplTokenTransfer(intent, ctx) {
     serializeState: { tx, messageBytes, feePayer: fromPubkey, chainKey: ctx.chainKey },
     needsRecoveryId: false
   };
+}
+
+/**
+ * 查询某 token account（ATA）是否已存在。
+ *   getAccountInfo → { value: null } 表示账户不存在；{ value: {...} } 表示存在。
+ * 任何 RPC 异常都保守当作「不存在」→ 触发 CreateIdempotent 补建（幂等，
+ * 即使实际已存在也不会失败），避免因查询失败而漏建导致转账在链上报错。
+ *
+ * @param {string} chainKey
+ * @param {Uint8Array} ataPubkey 32 字节
+ * @returns {Promise<boolean>}
+ */
+export async function solanaTokenAccountExists(chainKey, ataPubkey) {
+  try {
+    const info = await solanaRpcCall(chainKey, 'getAccountInfo', [
+      base58Encode(ataPubkey),
+      { encoding: 'base64', commitment: 'confirmed' }
+    ]);
+    /** @type {any} */
+    const r = info;
+    // getAccountInfo 正常返回 { context, value: null|{...} }；有些 stub 直接返回 null。
+    if (r == null) return false;
+    if (typeof r === 'object' && 'value' in r) return r.value != null;
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 // 暴露 encodeCompactU16 方便外部 RPC stub 与 wire 测试使用。
