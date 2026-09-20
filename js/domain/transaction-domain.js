@@ -322,6 +322,17 @@ export class TransactionDomain extends BaseDomain {
     return result.gasPrice;
   }
 
+  /**
+   * 获取 Bitcoin fee rate（sat/vB）。走 Esplora /fee-estimates（6 区块目标），
+   * 失败由后台兜底 10 sat/vB。仅 bip122 链使用。
+   * @param {Object} params - { chainKey?, rpcUrl? }
+   * @returns {Promise<number>} sat/vB 费率
+   */
+  async getBitcoinFeeRate(params = {}) {
+    const result = await this._sendMessage(TransactionMessageType.GET_BITCOIN_FEE_RATE, params);
+    return result?.feeRate;
+  }
+
   // ==================== 交易记录 ====================
 
   /**

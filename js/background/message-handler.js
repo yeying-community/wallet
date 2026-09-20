@@ -131,6 +131,7 @@ import {
   handleDisableCustody
 } from './operations/custody.js';
 import { state } from './state.js';
+import { getFeeRate as getBitcoinFeeRate } from '../chain/adapters/bip122/rpc.js';
 import {
   getCurrentEvmChainIdHex,
   setCurrentChainKey,
@@ -634,6 +635,17 @@ async function handleGetGasPriceMessage(data = {}) {
   }
 }
 
+async function handleGetBitcoinFeeRateMessage(data = {}) {
+  try {
+    const chainKey = data?.chainKey || state.currentChainKey || 'bip122:mainnet';
+    const feeRate = await getBitcoinFeeRate(chainKey);
+    return { success: true, feeRate };
+  } catch (error) {
+    // fee rate 失败不阻断转账：回退到保守 10 sat/vB（与 buildUnsigned 兜底一致）。
+    return { success: true, feeRate: 10 };
+  }
+}
+
 async function resolveTransactionRpcUrl({ chainId = null, rpcUrl = null } = {}) {
   if (rpcUrl) {
     return rpcUrl;
@@ -1112,6 +1124,7 @@ const popupHandlers = new Map([
   [TransactionMessageType.SEND_TRANSACTION, async (data) => await handleSendTransactionMessage(data)],
   [TransactionMessageType.ESTIMATE_GAS, async (data) => await handleEstimateGasMessage(data)],
   [TransactionMessageType.GET_GAS_PRICE, async (data) => await handleGetGasPriceMessage(data)],
+  [TransactionMessageType.GET_BITCOIN_FEE_RATE, async (data) => await handleGetBitcoinFeeRateMessage(data)],
   [TransactionMessageType.GET_TRANSACTIONS, async (data) => await handleGetTransactionsMessage(data)],
   [TransactionMessageType.CLEAR_TRANSACTIONS, async (data) => await handleClearTransactionsMessage(data)],
 
