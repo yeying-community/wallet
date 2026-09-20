@@ -7,6 +7,7 @@ import { state } from './state.js';
 import { createInvalidPasswordError, createAccountNotFoundError, createWalletLockedError } from '../common/errors/index.js';
 import { validatePassword } from '../common/crypto/index.js';
 import { createWalletInstance } from './vault.js';
+import { ed25519KeypairFromSecp256k1Hex } from '../chain/adapters/solana/ed25519-keypair.js';
 import { getAccount, getAccountList, getMpcWallet, setSelectedAccountId } from '../storage/index.js';
 import { cachePassword, clearPasswordCache, refreshPasswordCache } from './password-cache.js';
 import { broadcastEvent } from './connection.js';
@@ -114,7 +115,6 @@ export async function unlockWallet(password, accountId, source = 'unknown') {
       if (!state.ed25519Keyring) {
         state.ed25519Keyring = new Map();
       }
-      const { ed25519KeypairFromSecp256k1Hex } = await import('../chain/adapters/solana/ed25519-keypair.js');
       const keypair = ed25519KeypairFromSecp256k1Hex(walletInstance.privateKey);
       state.ed25519Keyring.set(account.id, keypair);
     }

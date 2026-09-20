@@ -5,6 +5,7 @@
  */
 import { EventType } from '../../protocol/dapp-protocol.js';
 import { state } from '../state.js';
+import { ed25519KeypairFromSecp256k1Hex } from '../../chain/adapters/solana/ed25519-keypair.js';
 import {
   createHDWallet,
   importHDWallet,
@@ -250,6 +251,17 @@ async function rememberUnlockedAccount(account, password) {
     state.keyring = new Map();
   }
   state.keyring.set(account.id, walletInstance);
+
+  // Solana（ed25519 曲线）账户：与 unlockWallet 一致，把同一私钥字节派生 ed25519
+  // keypair 缓存到 state.ed25519Keyring，否则导入后立即签名会因 keyring 为空而
+  // 抛 “Wallet is locked”。
+  if (account.namespace === 'solana' && walletInstance && walletInstance.privateKey) {
+    if (!state.ed25519Keyring) {
+      state.ed25519Keyring = new Map();
+    }
+    state.ed25519Keyring.set(account.id, ed25519KeypairFromSecp256k1Hex(walletInstance.privateKey));
+  }
+
   cachePassword(password, TIMEOUTS.PASSWORD);
   resetLockTimer();
   updateKeepAlive();

@@ -82,14 +82,16 @@ export async function createWalletInstance(account, password) {
     // 创建钱包实例
     const wallet = new ethers.Wallet(decryptedPrivateKey);
 
-    // 验证地址：仅当账户是 EVM 形态（0x...）时才做 EVM 校验；Tron 账户的
-    // account.address 是 Base58Check（T...），与 ethers 推出的 EVM 地址属于
-    // 不同编码体系，不能直接比较。Tron 路径的解密还原正确性由
-    // getAccountPrivateKey + address helper 的单元测试
-    // （tests/tron-vault.test.mjs）守门；返回的 ethers.Wallet 仍可被
-    // signing-service.js:signTronTransactionLocal 读取 .privateKey 后用
-    // ethers.SigningKey 重做 secp256k1 ECDSA（两条链同曲线，私钥字节等价）。
-    if (account.namespace !== 'tron') {
+    // 验证地址：仅当账户是 EVM 形态（0x...）时才做 EVM 校验。非 EVM 链
+    // （Tron Base58Check、Solana base58(ed25519 pubkey)、Bitcoin bech32/base58）
+    // 的 account.address 与 ethers 推出的 EVM 地址属于不同编码体系，不能直接比较。
+    //   - Tron：解密还原正确性由 tests/tron-vault.test.mjs 守门；返回的
+    //     ethers.Wallet 供 signing-service.js:signTronTransactionLocal 复用（同曲线）。
+    //   - Solana：私钥字节经 ed25519-keypair.js 派生 nacl KeyPair 缓存到
+    //     state.ed25519Keyring；ethers.Wallet 仅作私钥字节载体。
+    //   - Bitcoin：同 secp256k1，signing-service 走 BIP-143 segwit 签名。
+    const NON_EVM_NAMESPACES = new Set(['tron', 'solana', 'bip122', 'bitcoin']);
+    if (!NON_EVM_NAMESPACES.has(account.namespace)) {
       if (wallet.address.toLowerCase() !== account.address.toLowerCase()) {
         throw createInvalidAddressError('解密后的地址与账户地址不匹配');
       }
