@@ -21,7 +21,10 @@ function getChainIdKey(network) {
   try {
     return normalizeChainId(id);
   } catch {
-    return id ? String(id) : null;
+    // 非 EVM 链（Tron 等）没有 numeric chainId；用 `key` 字段（默认网络在
+    // ensureDefaultNetworks 里挂上的；自定义网络也通过 saveCustomNetwork
+    // 写入 `key`）作去重键，保证 Tron 网络也能进入合并结果。
+    return network.key ? String(network.key) : id ? String(id) : null;
   }
 }
 
@@ -66,12 +69,33 @@ function normalizeNetwork(network) {
 
 /**
  * 保存选中的网络名称
+ *
+ * 双写：
+ *   1. chrome.storage.local：跨浏览器重启的持久化（重启用）。
+ *   2. chrome.storage.session：跨 MV3 service-worker cold-restart 的
+ *      缓存——SWITCH_NETWORK 写完 local 后 SW 可能被 kill（30s idle /
+ *      5min 强制），下一次消息触发 SW 重启时 local 的 set 回调可能还
+ *      没真正 flush。session 是纯内存存储，写入同步生效；init() 优先
+ *      读它就能保证拿到最近一次 SWITCH_NETWORK 的目标链。session
+ *      跨浏览器重启会丢失，但那时 init() 走 defaultConfig 兜底，语义
+ *      与既有行为一致。
+ *
  * @param {string} networkName - 网络名称
  * @returns {Promise<void>}
  */
 export async function saveSelectedNetworkName(networkName) {
   try {
-    await setValue(NetworkStorageKeys.SELECTED_NETWORK, networkName);
+    const writes = [
+      setValue(NetworkStorageKeys.SELECTED_NETWORK, networkName),
+    ];
+    if (globalThis.chrome?.storage?.session?.set) {
+      writes.push(
+        globalThis.chrome.storage.session
+          .set({ [NetworkStorageKeys.SELECTED_NETWORK]: networkName })
+          .catch(() => null),
+      );
+    }
+    await Promise.all(writes);
     console.log('✅ Selected network saved:', networkName);
   } catch (error) {
     logError('network-storage-save-selected', error);
@@ -81,10 +105,27 @@ export async function saveSelectedNetworkName(networkName) {
 
 /**
  * 获取选中的网络名称
+ *
+ * 优先读 chrome.storage.session（跨 SW cold-restart 一定能看到最近
+ * 写入的目标链），退回 chrome.storage.local（持久化，但有 MV3 SW 写
+ * 入未 flush 的窗口风险），最后由调用方处理 null（走默认配置兜底）。
+ *
  * @returns {Promise<string|null>}
  */
 export async function getSelectedNetworkName() {
   try {
+    if (globalThis.chrome?.storage?.session?.get) {
+      try {
+        const fromSession = await globalThis.chrome.storage.session.get(
+          NetworkStorageKeys.SELECTED_NETWORK,
+        );
+        if (fromSession?.[NetworkStorageKeys.SELECTED_NETWORK]) {
+          return fromSession[NetworkStorageKeys.SELECTED_NETWORK];
+        }
+      } catch {
+        // session 不可用或被禁用（极旧 chromium / 测试环境）→ 退回 local
+      }
+    }
     return await getValue(NetworkStorageKeys.SELECTED_NETWORK, null);
   } catch (error) {
     logError('network-storage-get-selected', error);

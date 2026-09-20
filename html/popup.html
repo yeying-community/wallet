@@ -482,13 +482,104 @@
               </button>
               <div class="network-menu hidden" id="createWalletTypeMenu" role="listbox">
                 <button type="button" class="network-option active" data-wallet-type="hd">HD Wallet</button>
+                <button type="button" class="network-option" data-wallet-type="tron">Tron HD</button>
+                <button type="button" class="network-option" data-wallet-type="solana">Solana 钱包</button>
+                <button type="button" class="network-option" data-wallet-type="bitcoin">Bitcoin 钱包</button>
                 <button type="button" class="network-option" data-wallet-type="mpc">MPC Wallet</button>
               </div>
             </div>
             <select id="createWalletTypeSelect" class="hidden">
               <option value="hd">HD Wallet</option>
+              <option value="tron">Tron HD</option>
+              <option value="solana">Solana 钱包</option>
+              <option value="bitcoin">Bitcoin 钱包</option>
               <option value="mpc">MPC Wallet</option>
             </select>
+          </div>
+
+          <div id="tronCreateWalletFields" class="hidden">
+            <div class="form-group">
+              <label>Tron 网络</label>
+              <div class="network-selector input-like" id="tronCreateNetworkSelector">
+                <div class="network-dot"></div>
+                <button
+                  type="button"
+                  class="network-trigger"
+                  id="tronCreateNetworkTrigger"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                >
+                  <span class="network-label" id="tronCreateNetworkLabel">Mainnet</span>
+                  <span class="network-chevron">▾</span>
+                </button>
+                <div class="network-menu hidden" id="tronCreateNetworkMenu" role="listbox">
+                  <button type="button" class="network-option active" data-tron-reference="mainnet">Mainnet</button>
+                  <button type="button" class="network-option" data-tron-reference="shasta">Shasta (Testnet)</button>
+                  <button type="button" class="network-option" data-tron-reference="nile">Nile (Testnet)</button>
+                </div>
+              </div>
+              <select id="tronCreateNetworkSelect" class="hidden">
+                <option value="mainnet">Mainnet</option>
+                <option value="shasta">Shasta</option>
+                <option value="nile">Nile</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="solanaCreateWalletFields" class="hidden">
+            <div class="form-group">
+              <label>Solana 网络</label>
+              <div class="network-selector input-like" id="solanaCreateNetworkSelector">
+                <div class="network-dot"></div>
+                <button
+                  type="button"
+                  class="network-trigger"
+                  id="solanaCreateNetworkTrigger"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                >
+                  <span class="network-label" id="solanaCreateNetworkLabel">Mainnet</span>
+                  <span class="network-chevron">▾</span>
+                </button>
+                <div class="network-menu hidden" id="solanaCreateNetworkMenu" role="listbox">
+                  <button type="button" class="network-option active" data-solana-reference="mainnet-beta">Mainnet</button>
+                  <button type="button" class="network-option" data-solana-reference="devnet">Devnet</button>
+                  <button type="button" class="network-option" data-solana-reference="testnet">Testnet</button>
+                </div>
+              </div>
+              <select id="solanaCreateNetworkSelect" class="hidden">
+                <option value="mainnet-beta">Mainnet</option>
+                <option value="devnet">Devnet</option>
+                <option value="testnet">Testnet</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="bitcoinCreateWalletFields" class="hidden">
+            <div class="form-group">
+              <label>Bitcoin 网络</label>
+              <div class="network-selector input-like" id="bitcoinCreateNetworkSelector">
+                <div class="network-dot"></div>
+                <button
+                  type="button"
+                  class="network-trigger"
+                  id="bitcoinCreateNetworkTrigger"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                >
+                  <span class="network-label" id="bitcoinCreateNetworkLabel">Mainnet</span>
+                  <span class="network-chevron">▾</span>
+                </button>
+                <div class="network-menu hidden" id="bitcoinCreateNetworkMenu" role="listbox">
+                  <button type="button" class="network-option active" data-bitcoin-reference="mainnet">Mainnet</button>
+                  <button type="button" class="network-option" data-bitcoin-reference="testnet">Testnet</button>
+                </div>
+              </div>
+              <select id="bitcoinCreateNetworkSelect" class="hidden">
+                <option value="mainnet">Mainnet</option>
+                <option value="testnet">Testnet</option>
+              </select>
+            </div>
           </div>
 
           <div id="mpcCreateWalletFields" class="hidden">
@@ -597,8 +688,91 @@
 
         <div id="walletImportSection">
           <div class="import-method-tabs" role="tablist" aria-label="钱包密钥类型">
-            <button id="mnemonicTab" class="import-tab import-method-tab active" data-type="mnemonic" type="button">助记词</button>
-            <button id="privateKeyTab" class="import-tab import-method-tab" data-type="privateKey" type="button">私钥</button>
+            <button id="mnemonicTab" class="import-tab import-method-tab active" data-type="mnemonic" data-chain="evm" type="button">助记词</button>
+            <button id="privateKeyTab" class="import-tab import-method-tab" data-type="privateKey" data-chain="evm" type="button">私钥</button>
+            <button id="tronMnemonicTab" class="import-tab import-method-tab" data-type="mnemonic" data-chain="tron" type="button">Tron 助记词</button>
+            <button id="tronPrivateKeyTab" class="import-tab import-method-tab" data-type="privateKey" data-chain="tron" type="button">Tron 私钥</button>
+            <button id="solanaPrivateKeyTab" class="import-tab import-method-tab" data-type="privateKey" data-chain="solana" type="button">Solana 私钥</button>
+            <button id="bitcoinPrivateKeyTab" class="import-tab import-method-tab" data-type="privateKey" data-chain="bitcoin" type="button">Bitcoin 私钥</button>
+          </div>
+
+          <div id="tronImportNetworkGroup" class="form-group hidden">
+            <label>Tron 网络</label>
+            <div class="network-selector input-like" id="tronImportNetworkSelector">
+              <div class="network-dot"></div>
+              <button
+                type="button"
+                class="network-trigger"
+                id="tronImportNetworkTrigger"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+              >
+                <span class="network-label" id="tronImportNetworkLabel">Mainnet</span>
+                <span class="network-chevron">▾</span>
+              </button>
+              <div class="network-menu hidden" id="tronImportNetworkMenu" role="listbox">
+                <button type="button" class="network-option active" data-tron-reference="mainnet">Mainnet</button>
+                <button type="button" class="network-option" data-tron-reference="shasta">Shasta (Testnet)</button>
+                <button type="button" class="network-option" data-tron-reference="nile">Nile (Testnet)</button>
+              </div>
+            </div>
+            <select id="tronImportNetworkSelect" class="hidden">
+              <option value="mainnet">Mainnet</option>
+              <option value="shasta">Shasta</option>
+              <option value="nile">Nile</option>
+            </select>
+          </div>
+
+          <div id="solanaImportNetworkGroup" class="form-group hidden">
+            <label>Solana 网络</label>
+            <div class="network-selector input-like" id="solanaImportNetworkSelector">
+              <div class="network-dot"></div>
+              <button
+                type="button"
+                class="network-trigger"
+                id="solanaImportNetworkTrigger"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+              >
+                <span class="network-label" id="solanaImportNetworkLabel">Mainnet</span>
+                <span class="network-chevron">▾</span>
+              </button>
+              <div class="network-menu hidden" id="solanaImportNetworkMenu" role="listbox">
+                <button type="button" class="network-option active" data-solana-reference="mainnet-beta">Mainnet</button>
+                <button type="button" class="network-option" data-solana-reference="devnet">Devnet</button>
+                <button type="button" class="network-option" data-solana-reference="testnet">Testnet</button>
+              </div>
+            </div>
+            <select id="solanaImportNetworkSelect" class="hidden">
+              <option value="mainnet-beta">Mainnet</option>
+              <option value="devnet">Devnet</option>
+              <option value="testnet">Testnet</option>
+            </select>
+          </div>
+
+          <div id="bitcoinImportNetworkGroup" class="form-group hidden">
+            <label>Bitcoin 网络</label>
+            <div class="network-selector input-like" id="bitcoinImportNetworkSelector">
+              <div class="network-dot"></div>
+              <button
+                type="button"
+                class="network-trigger"
+                id="bitcoinImportNetworkTrigger"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+              >
+                <span class="network-label" id="bitcoinImportNetworkLabel">Mainnet</span>
+                <span class="network-chevron">▾</span>
+              </button>
+              <div class="network-menu hidden" id="bitcoinImportNetworkMenu" role="listbox">
+                <button type="button" class="network-option active" data-bitcoin-reference="mainnet">Mainnet</button>
+                <button type="button" class="network-option" data-bitcoin-reference="testnet">Testnet</button>
+              </div>
+            </div>
+            <select id="bitcoinImportNetworkSelect" class="hidden">
+              <option value="mainnet">Mainnet</option>
+              <option value="testnet">Testnet</option>
+            </select>
           </div>
 
         <!-- 钱包名称 -->

@@ -34,6 +34,7 @@ import {
 import { getTimestamp } from '../../common/utils/time-utils.js';
 import { generateId } from '../../common/utils/index.js';
 import { deriveUcanAudience, normalizeBearerToken } from '../../common/ucan-utils.js';
+import { normalizeAddressForFamily, addressDidMethod } from '../../common/chain/address-normalize.js';
 
 const DEFAULT_MPC_AUTH_SCHEME = 'ucan';
 const DEFAULT_MPC_E2E_SUITE = 'x25519-aes-gcm';
@@ -591,7 +592,10 @@ export async function handleMpcAcceptInvite(options = {}) {
       ? payload.participants.map(item => String(item).trim()).filter(Boolean)
       : [];
     const participantId = participants.find(item => item.toLowerCase() === address.toLowerCase()) || address;
-    const identity = String(options?.identity || `did:pkh:eth:${address.toLowerCase()}`).trim();
+    const identity = String(
+      options?.identity
+        || `did:pkh:${addressDidMethod(currentAccount.namespace)}:${normalizeAddressForFamily(address, currentAccount.namespace) || address}`
+    ).trim();
 
     let joinResult;
     try {

@@ -21,6 +21,9 @@ registerStore(STORE_NAME, {
 });
 
 function normalizeAddress(address) {
+  // v1 transaction 仅 EVM（Tx chainKey 字段是 eip155:*）；保持 `.toLowerCase()`
+  // 兼容既有存储 / 索引语义。Tron 交易落地时把 family 透传进来，调用
+  // normalizeAddressForFamily(address, family)。
   return address ? String(address).toLowerCase() : '';
 }
 

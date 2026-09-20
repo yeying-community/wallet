@@ -9,6 +9,7 @@ import { state } from './state.js';
 import { updateKeepAlive } from './offscreen.js';
 import { NETWORKS, DEFAULT_NETWORK } from '../config/index.js';
 import { getSelectedNetworkName, getUserSetting, ensureDefaultNetworks, getNetworkConfigByKey } from '../storage/index.js';
+import { setCurrentChainKey, chainIdToChainKey } from '../chain/current-chain.js';
 import { normalizeChainId } from '../common/chain/index.js';
 import { normalizePopupBounds } from './window-utils.js';
 import { backupSyncService } from './sync-service.js';
@@ -59,21 +60,36 @@ async function init() {
     const defaultConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
 
     if (savedConfig) {
-      const chainIdHex = savedConfig.chainIdHex || normalizeChainId(savedConfig.chainId);
-      state.currentChainId = chainIdHex;
-      state.currentRpcUrl = savedConfig.rpcUrl || savedConfig.rpc;
+      // Tron 等非 EVM 链没有 numeric chainId，但携带 `chainKey` 字段
+      // （CAIP-2 `tron:<reference>`）；直接 setCurrentChainKey 让 EVM 派生
+      // helper 在非 EVM 链上返回 null。
+      if (savedConfig.chainKey) {
+        setCurrentChainKey(savedConfig.chainKey);
+      } else {
+        const chainIdHex = savedConfig.chainIdHex || normalizeChainId(savedConfig.chainId);
+        setCurrentChainKey(chainIdToChainKey(chainIdHex));
+      }
+      state.currentRpcUrl = savedConfig.rpcUrl || savedConfig.rpc || savedConfig.tronRpcUrl;
       console.log('✅ Loaded saved network:', savedNetwork);
     } else if (defaultConfig) {
-      const chainIdHex = defaultConfig.chainIdHex || normalizeChainId(defaultConfig.chainId);
-      state.currentChainId = chainIdHex;
-      state.currentRpcUrl = defaultConfig.rpcUrl || defaultConfig.rpc;
+      if (defaultConfig.chainKey) {
+        setCurrentChainKey(defaultConfig.chainKey);
+      } else {
+        const chainIdHex = defaultConfig.chainIdHex || normalizeChainId(defaultConfig.chainId);
+        setCurrentChainKey(chainIdToChainKey(chainIdHex));
+      }
+      state.currentRpcUrl = defaultConfig.rpcUrl || defaultConfig.rpc || defaultConfig.tronRpcUrl;
       console.log('✅ Using default network:', DEFAULT_NETWORK);
     } else if (seededNetworks?.length) {
       const fallback = seededNetworks.find(item => item?.key === DEFAULT_NETWORK || item?.id === DEFAULT_NETWORK) || seededNetworks[0];
       if (fallback) {
-        const chainIdHex = fallback.chainIdHex || normalizeChainId(fallback.chainId);
-        state.currentChainId = chainIdHex;
-        state.currentRpcUrl = fallback.rpcUrl || fallback.rpc;
+        if (fallback.chainKey) {
+          setCurrentChainKey(fallback.chainKey);
+        } else {
+          const chainIdHex = fallback.chainIdHex || normalizeChainId(fallback.chainId);
+          setCurrentChainKey(chainIdToChainKey(chainIdHex));
+        }
+        state.currentRpcUrl = fallback.rpcUrl || fallback.rpc || fallback.tronRpcUrl;
       }
       console.log('✅ Using fallback stored network:', DEFAULT_NETWORK);
     }

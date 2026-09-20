@@ -34,12 +34,18 @@ export class AccountHeaderController {
     if (avatarEl) {
       avatarEl.innerHTML = '';
       if (account?.address) {
-        try {
-          const size = avatarEl.clientWidth || 40;
-          const canvas = generateAvatar(account.address, size);
-          avatarEl.appendChild(canvas);
-        } catch (error) {
-          avatarEl.textContent = (account?.name || '?').charAt(0).toUpperCase();
+        // Tron 不画 jazzicon：generateAvatar 期望 hex 字符串，Tron Base58
+        // 没有 0x 前缀会抛错；这里走 fallback 显示名字首字母即可。
+        if (account?.namespace === 'tron') {
+          avatarEl.textContent = (account.address || '').slice(0, 1).toUpperCase() || 'T';
+        } else {
+          try {
+            const size = avatarEl.clientWidth || 40;
+            const canvas = generateAvatar(account.address, size);
+            avatarEl.appendChild(canvas);
+          } catch (error) {
+            avatarEl.textContent = (account?.name || '?').charAt(0).toUpperCase();
+          }
         }
       } else {
         avatarEl.textContent = (account?.name || '?').charAt(0).toUpperCase();

@@ -1,4 +1,5 @@
 import { isValidAddress } from '../../common/chain/index.js';
+import { isValidAddressForFamily } from '../../common/chain/address-normalize.js';
 import { showError, showWaiting, hideToast, hideWaiting } from '../../common/ui/index.js';
 import { isWalletLockedError } from '../../common/errors/index.js';
 
@@ -23,6 +24,28 @@ export class TransactionSendController {
     this.transactionListController = controller;
   }
 
+  /**
+   * Detect chain kind from current network or selected account.
+   * Returns 'tron' if either is Tron, 'solana' if either is Solana,
+   * otherwise 'eip155'.
+   */
+  async detectChainKind() {
+    try {
+      const chainKey = String(await this.network?.getChainKey?.() || '').toLowerCase();
+      if (chainKey.startsWith('tron:')) return 'tron';
+      if (chainKey.startsWith('solana:')) return 'solana';
+      if (chainKey.startsWith('bip122:')) return 'bitcoin';
+    } catch { /* network may not implement getChainKey in tests */ }
+    try {
+      const account = await this.wallet.getCurrentAccount();
+      const ns = String(account?.namespace || account?.chainFamily || '').toLowerCase();
+      if (ns === 'tron') return 'tron';
+      if (ns === 'solana') return 'solana';
+      if (ns === 'bip122') return 'bitcoin';
+    } catch { /* */ }
+    return 'eip155';
+  }
+
   async handleSendTransaction({ requestPassword, onSuccess, silentBalanceRefresh = false, token = null } = {}) {
     const recipientInput = document.getElementById('recipientAddress');
     const amountInput = document.getElementById('amount');
@@ -35,8 +58,20 @@ export class TransactionSendController {
       return;
     }
 
-    if (!isValidAddress(recipient)) {
-      showError('地址格式无效');
+    const chainKind = await this.detectChainKind();
+    const family = chainKind === 'tron'
+      ? 'tron'
+      : (chainKind === 'solana' ? 'solana' : (chainKind === 'bitcoin' ? 'utxo' : 'eip155'));
+    const isAddressValid = family === 'eip155'
+      ? isValidAddress(recipient)
+      : isValidAddressForFamily(recipient, family);
+    if (!isAddressValid) {
+      const errorText = family === 'tron'
+        ? 'Tron 地址格式无效'
+        : (family === 'solana'
+          ? 'Solana 地址格式无效'
+          : (family === 'utxo' ? 'Bitcoin 地址格式无效' : '地址格式无效'));
+      showError(errorText);
       return;
     }
 
@@ -55,14 +90,76 @@ export class TransactionSendController {
 
       const chainId = await this.network.getChainId();
       const rpcUrl = await this.network.getRpcUrl();
-      const txParams = this.buildTransactionParams({
-        from: account.address,
-        recipient,
-        amount,
-        chainId,
-        rpcUrl,
-        token
-      });
+      const chainKind2 = await this.detectChainKind();
+      // 非 EVM 链上是否选中了非原生 token（TRC20 / SPL）。
+      const isNonEvmTokenTransfer = !!(token && token.address && !token.isNative
+        && (chainKind2 === 'tron' || chainKind2 === 'solana'));
+      let txParams;
+      if (isNonEvmTokenTransfer) {
+        // Tron TRC20 / Solana SPL token 转账：amount 人类可读，按 token.decimals
+        // 转成最小单位（hex）交给 background 换算。
+        const decimals = Number.isFinite(Number(token.decimals)) ? Number(token.decimals) : 6;
+        const amountBaseHex = this.transaction.parseUnits(String(amount), decimals, token.symbol || '通证');
+        txParams = {
+          chainId,
+          rpcUrl,
+          chainFamily: chainKind2 === 'tron' ? 'tron' : 'solana',
+          from: account.address,
+          to: recipient,
+          token: {
+            address: token.address,
+            symbol: token.symbol || '',
+            name: token.name || token.symbol || '',
+            decimals,
+            amount: amountBaseHex
+          },
+          tokenAmountDisplay: String(amount)
+        };
+        if (chainKind2 === 'tron') txParams.feeLimitSun = 15000000;
+      } else if (chainKind2 === 'tron') {
+        // Tron native TRX transfer — amount unit is TRX (sun = TRX × 1e6)
+        txParams = {
+          chainId,
+          rpcUrl,
+          chainFamily: 'tron',
+          asset: 'TRX',
+          from: account.address,
+          to: recipient,
+          valueTrx: String(amount),
+          feeLimitSun: 15000000 // 15 TRX default fee cap
+        };
+      } else if (chainKind2 === 'solana') {
+        // Solana native SOL transfer — amount unit is SOL (lamports = SOL × 1e9)
+        txParams = {
+          chainId,
+          rpcUrl,
+          chainFamily: 'solana',
+          asset: 'SOL',
+          from: account.address,
+          to: recipient,
+          amountSol: String(amount)
+        };
+      } else if (chainKind2 === 'bitcoin') {
+        // Bitcoin native BTC transfer — amount unit is BTC (satoshi = BTC × 1e8)
+        txParams = {
+          chainId,
+          rpcUrl,
+          chainFamily: 'utxo',
+          asset: 'BTC',
+          from: account.address,
+          to: recipient,
+          amountBtc: String(amount)
+        };
+      } else {
+        txParams = this.buildTransactionParams({
+          from: account.address,
+          recipient,
+          amount,
+          chainId,
+          rpcUrl,
+          token
+        });
+      }
 
       const txHash = await this.transaction.sendTransaction(txParams);
 
@@ -132,6 +229,32 @@ export class TransactionSendController {
     const amountInput = document.getElementById('amount');
     const recipient = recipientInput?.value.trim();
     const amount = amountInput?.value;
+
+    const chainKind = await this.detectChainKind();
+    if (chainKind === 'tron') {
+      // Tron fixed fee cap (15 TRX = 15_000_000 SUN); TRC20 not in v1
+      this.setFeeEstimateText('0–15 TRX');
+      return;
+    }
+    if (chainKind === 'solana') {
+      // Solana base fee is 5000 lamports per signature; SPL 不在 Phase 1 范围
+      this.setFeeEstimateText('~0.000005 SOL');
+      return;
+    }
+    if (chainKind === 'bitcoin') {
+      // Bitcoin fee 走 Esplora fee-estimates（sat/vB）；此处给出费率提示，
+      // 精确金额在 buildUnsigned 选币后按 vsize 计算。
+      try {
+        const rate = await this.transaction.getBitcoinFeeRate?.({
+          rpcUrl: await this.network.getRpcUrl(),
+          chainKey: await this.network?.getChainKey?.()
+        });
+        this.setFeeEstimateText(rate ? `~${rate} sat/vB` : '~10 sat/vB');
+      } catch {
+        this.setFeeEstimateText('~10 sat/vB');
+      }
+      return;
+    }
 
     if (!recipient || !isValidAddress(recipient) || !amount || Number(amount) <= 0) {
       this.setFeeEstimateText('-');

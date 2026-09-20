@@ -3,20 +3,15 @@
  * 负责：交易签名、消息签名、类型化数据签名
  */
 
-import { getWalletInstance } from './keyring.js';
-import { state } from './state.js';
 import {
   getMpcKeyShares,
   getMpcSignRequest,
   getMpcWallet,
   getMpcWalletList,
   getSelectedAccount,
-  getNetworkByChainId,
-  getNetworkConfigByKey,
   getUserSetting,
   saveMpcSignRequest
 } from '../storage/index.js';
-import { DEFAULT_NETWORK } from '../config/index.js';
 import { ethers } from '../../lib/ethers-6.16.esm.min.js';
 import { mpcService } from './mpc-service.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
@@ -24,6 +19,7 @@ import { generateId } from '../common/utils/index.js';
 import { buildActionPayloadHash, createActionSignature } from './action-signature.js';
 import { MpcCoordinatorClient } from './mpc-coordinator-client.js';
 import { getUnlockedCoordinatorSigningAccount } from './coordinator-signing-account.js';
+import { getCurrentEvmChainIdHex } from '../chain/current-chain.js';
 
 export const MPC_ACCOUNT_ID_PREFIX = 'mpc:';
 const DEFAULT_MPC_COORDINATOR_ENDPOINT = 'https://node.yeying.pub';
@@ -80,7 +76,7 @@ async function getMpcWalletForSigning(accountId) {
   return walletId ? await getMpcWallet(walletId) : null;
 }
 
-async function prepareMpcWalletForSigning(accountId) {
+export async function prepareMpcWalletForSigning(accountId) {
   const wallet = ensureMpcWalletCanSign(await getMpcWalletForSigning(accountId));
   const readiness = await mpcService.reconcileWalletSigningReadiness(wallet);
   return ensureMpcWalletCanSign(readiness?.wallet || wallet);
@@ -145,7 +141,7 @@ function getMpcParties(wallet) {
   return participants.length ? participants.map((_participant, index) => index) : [0, 1];
 }
 
-async function createMpcSignContext(wallet, kind, payload) {
+export async function createMpcSignContext(wallet, kind, payload) {
   const keyShare = await getLatestMpcKeyShare(wallet.id);
   if (!keyShare?.share) {
     throw new Error('MPC_KEY_SHARE_NOT_FOUND');
@@ -164,7 +160,7 @@ async function createMpcSignContext(wallet, kind, payload) {
     payload: signingPayload,
     keyVersion: Number(wallet.keyVersion || keyShare.keyVersion || 1),
     shareVersion: Number(keyShare.shareVersion || wallet.shareVersion || 1),
-    chainId: state.currentChainId || '',
+    chainId: getCurrentEvmChainIdHex() || '',
     createdAt: now,
     updatedAt: now
   };
@@ -300,7 +296,7 @@ export function buildMpcSignedTransactionFromSignRequest(signRequest) {
   return buildMpcSignedTransaction({ request }, request);
 }
 
-async function startMpcWireSigning(wallet, context) {
+export async function startMpcWireSigning(wallet, context) {
   const sessionId = String(context.request?.sessionId || wallet.keygenSessionId || '').trim();
   if (!sessionId) {
     throw new Error('MPC_SESSION_NOT_FOUND');
@@ -355,57 +351,9 @@ async function startMpcWireSigning(wallet, context) {
 }
 
 /**
- * 签名交易
- * @param {string} accountId - 账户 ID
- * @param {Object} transaction - 交易对象
- * @returns {Promise<Object>} 交易哈希和详情
+ * 交易归一化（供 MPC 签名 payload 构造使用）。
+ * 本地 / MPC 的交易签名入口已迁至 js/chain/signing-service.js。
  */
-export async function signTransaction(accountId, transaction) {
-  try {
-    if (isMpcAccountId(accountId)) {
-      const wallet = await prepareMpcWalletForSigning(accountId);
-      const context = await createMpcSignContext(wallet, 'transaction', { transaction });
-      return await startMpcWireSigning(wallet, context);
-    }
-    const wallet = getWalletInstance(accountId);
-    const normalizedTx = normalizeTransaction(transaction);
-
-    // 连接到 provider
-    const network = await getNetworkByChainId(state.currentChainId);
-    let rpcUrl = state.currentRpcUrl || network?.rpcUrl || network?.rpc;
-    if (!rpcUrl) {
-      const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
-      rpcUrl = fallbackConfig?.rpcUrl || fallbackConfig?.rpc || '';
-    }
-    if (!rpcUrl) {
-      throw new Error('RPC URL not configured');
-    }
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const connectedWallet = wallet.connect(provider);
-
-    // 签名并发送交易
-    const tx = await connectedWallet.sendTransaction(normalizedTx);
-
-    console.log('✅ Transaction signed:', tx.hash);
-
-    return {
-      hash: tx.hash,
-      from: tx.from,
-      to: tx.to,
-      value: tx.value?.toString(),
-      nonce: tx.nonce,
-      gasLimit: tx.gasLimit?.toString(),
-      gasPrice: tx.gasPrice?.toString()
-    };
-
-  } catch (error) {
-    if (!isPendingMpcSignError(error)) {
-      console.error('❌ Sign transaction failed:', error);
-    }
-    throw error;
-  }
-}
-
 function normalizeTransaction(transaction) {
   if (!transaction || typeof transaction !== 'object') return transaction;
   const tx = { ...transaction };
@@ -445,68 +393,9 @@ function normalizeTransaction(transaction) {
 }
 
 /**
- * 签名消息
- * @param {string} accountId - 账户 ID
- * @param {string} message - 要签名的消息
- * @returns {Promise<string>} 签名
+ * 类型化数据归一化（供 MPC 签名 payload 构造使用）。
+ * 本地 / MPC 的消息 / typed data 签名入口已迁至 js/chain/signing-service.js。
  */
-export async function signMessage(accountId, message) {
-  try {
-    if (isMpcAccountId(accountId)) {
-      const wallet = await prepareMpcWalletForSigning(accountId);
-      const context = await createMpcSignContext(wallet, 'message', { message });
-      return await startMpcWireSigning(wallet, context);
-    }
-    const wallet = getWalletInstance(accountId);
-    const signature = await wallet.signMessage(message);
-
-    console.log('✅ Message signed');
-
-    return signature;
-
-  } catch (error) {
-    if (!isPendingMpcSignError(error)) {
-      console.error('❌ Sign message failed:', error);
-    }
-    throw error;
-  }
-}
-
-/**
- * 签名类型化数据
- * @param {string} accountId - 账户 ID
- * @param {Object} domain - 域
- * @param {Object} types - 类型
- * @param {Object} value - 值
- * @returns {Promise<string>} 签名
- */
-export async function signTypedData(accountId, domain, types, value) {
-  try {
-    if (isMpcAccountId(accountId)) {
-      const wallet = await prepareMpcWalletForSigning(accountId);
-      const context = await createMpcSignContext(wallet, 'typed_data', { domain, types, value });
-      return await startMpcWireSigning(wallet, context);
-    }
-    const wallet = getWalletInstance(accountId);
-    const normalized = normalizeTypedData(domain, types, value);
-    const signature = await wallet.signTypedData(
-      normalized.domain,
-      normalized.types,
-      normalized.value
-    );
-
-    console.log('✅ Typed data signed');
-
-    return signature;
-
-  } catch (error) {
-    if (!isPendingMpcSignError(error)) {
-      console.error('❌ Sign typed data failed:', error);
-    }
-    throw error;
-  }
-}
-
 function normalizeTypedData(domain, types, value) {
   const normalizedDomain = { ...(domain || {}) };
   if (normalizedDomain.chainId) {

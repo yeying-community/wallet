@@ -40,7 +40,232 @@ export const NETWORKS = {
     nativeCurrency: {
       name: 'Ether',
       symbol: 'ETH',
+      decimals: 18,
+      icon: 'assets/token-icons/source-official/ethereum.svg'
+    }
+  },
+  sepolia: {
+    id: 'sepolia',
+    name: 'Ethereum Sepolia',
+    rpc: 'https://ethereum-sepolia-rpc.publicnode.com',
+    rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
+    chainId: 11155111,
+    chainIdHex: '0xaa36a7',
+    symbol: 'ETH',
+    decimals: 18,
+    explorer: 'https://sepolia.etherscan.io',
+    type: 'testnet',
+    isTestnet: true,
+    nativeCurrency: {
+      name: 'Sepolia Ether',
+      symbol: 'ETH',
+      decimals: 18,
+      icon: 'assets/token-icons/source-official/ethereum.svg'
+    }
+  },
+  'polygon-amoy': {
+    id: 'polygon-amoy',
+    name: 'Polygon Amoy',
+    rpc: 'https://polygon-amoy-bor-rpc.publicnode.com',
+    rpcUrl: 'https://polygon-amoy-bor-rpc.publicnode.com',
+    chainId: 80002,
+    chainIdHex: '0x13882',
+    symbol: 'POL',
+    decimals: 18,
+    explorer: 'https://amoy.polygonscan.com',
+    type: 'testnet',
+    isTestnet: true,
+    nativeCurrency: {
+      name: 'Polygon',
+      symbol: 'POL',
       decimals: 18
+    }
+  },
+  'bsc-testnet': {
+    id: 'bsc-testnet',
+    name: 'BNB Smart Chain Testnet',
+    rpc: 'https://bsc-testnet-rpc.publicnode.com',
+    rpcUrl: 'https://bsc-testnet-rpc.publicnode.com',
+    chainId: 97,
+    chainIdHex: '0x61',
+    symbol: 'tBNB',
+    decimals: 18,
+    explorer: 'https://testnet.bscscan.com',
+    type: 'testnet',
+    isTestnet: true,
+    nativeCurrency: {
+      name: 'Test BNB',
+      symbol: 'tBNB',
+      decimals: 18
+    }
+  },
+  // ===== Tron（v1：secp256k1 / native TRX only；TRC20 不在 v1 范围）=====
+  // chainKey 用 CAIP-2 `tron:<reference>`，无 chainId/chainIdHex 字段；
+  // Tron adapter 通过 namespace=tron + reference 字段识别。
+  tronMainnet: {
+    id: 'tronMainnet',
+    name: 'Tron Mainnet',
+    rpc: 'https://api.trongrid.io',
+    rpcUrl: 'https://api.trongrid.io',
+    tronRpcUrl: 'https://api.trongrid.io',
+    symbol: 'TRX',
+    decimals: 6,
+    explorer: 'https://tronscan.org',
+    type: 'mainnet',
+    isTestnet: false,
+    namespace: 'tron',
+    reference: 'mainnet',
+    chainKey: 'tron:mainnet',
+    nativeCurrency: {
+      name: 'TRX',
+      symbol: 'TRX',
+      decimals: 6
+    }
+  },
+  tronShasta: {
+    id: 'tronShasta',
+    name: 'Tron Shasta Testnet',
+    rpc: 'https://api.shasta.trongrid.io',
+    rpcUrl: 'https://api.shasta.trongrid.io',
+    tronRpcUrl: 'https://api.shasta.trongrid.io',
+    symbol: 'TRX',
+    decimals: 6,
+    explorer: 'https://shasta.tronscan.org',
+    type: 'testnet',
+    isTestnet: true,
+    namespace: 'tron',
+    reference: 'shasta',
+    chainKey: 'tron:shasta',
+    nativeCurrency: {
+      name: 'Test TRX',
+      symbol: 'TRX',
+      decimals: 6
+    }
+  },
+  tronNile: {
+    id: 'tronNile',
+    name: 'Tron Nile Testnet',
+    rpc: 'https://api.nile.trongrid.io',
+    rpcUrl: 'https://api.nile.trongrid.io',
+    tronRpcUrl: 'https://api.nile.trongrid.io',
+    symbol: 'TRX',
+    decimals: 6,
+    explorer: 'https://nile.tronscan.io',
+    type: 'testnet',
+    isTestnet: true,
+    namespace: 'tron',
+    reference: 'nile',
+    chainKey: 'tron:nile',
+    nativeCurrency: {
+      name: 'Test TRX',
+      symbol: 'TRX',
+      decimals: 6
+    }
+  },
+  // ===== Solana（v1：ed25519 / native SOL only；SPL token Phase 3）=====
+  // chainKey 用 CAIP-2 `solana:<reference>`，无 chainId/chainIdHex。
+  solanaMainnet: {
+    id: 'solanaMainnet',
+    name: 'Solana Mainnet',
+    rpc: 'https://api.mainnet-beta.solana.com',
+    rpcUrl: 'https://api.mainnet-beta.solana.com',
+    solanaRpcUrl: 'https://api.mainnet-beta.solana.com',
+    symbol: 'SOL',
+    decimals: 9,
+    explorer: 'https://solscan.io',
+    type: 'mainnet',
+    isTestnet: false,
+    namespace: 'solana',
+    reference: 'mainnet-beta',
+    chainKey: 'solana:mainnet-beta',
+    nativeCurrency: {
+      name: 'Solana',
+      symbol: 'SOL',
+      decimals: 9
+    }
+  },
+  solanaDevnet: {
+    id: 'solanaDevnet',
+    name: 'Solana Devnet',
+    rpc: 'https://api.devnet.solana.com',
+    rpcUrl: 'https://api.devnet.solana.com',
+    solanaRpcUrl: 'https://api.devnet.solana.com',
+    symbol: 'SOL',
+    decimals: 9,
+    explorer: 'https://solscan.io',
+    type: 'testnet',
+    isTestnet: true,
+    namespace: 'solana',
+    reference: 'devnet',
+    chainKey: 'solana:devnet',
+    nativeCurrency: {
+      name: 'Test SOL',
+      symbol: 'SOL',
+      decimals: 9
+    }
+  },
+  solanaTestnet: {
+    id: 'solanaTestnet',
+    name: 'Solana Testnet',
+    rpc: 'https://api.testnet.solana.com',
+    rpcUrl: 'https://api.testnet.solana.com',
+    solanaRpcUrl: 'https://api.testnet.solana.com',
+    symbol: 'SOL',
+    decimals: 9,
+    explorer: 'https://solscan.io',
+    type: 'testnet',
+    isTestnet: true,
+    namespace: 'solana',
+    reference: 'testnet',
+    chainKey: 'solana:testnet',
+    nativeCurrency: {
+      name: 'Test SOL',
+      symbol: 'SOL',
+      decimals: 9
+    }
+  },
+
+  // ===== Bitcoin（v1：secp256k1 / native BTC P2WPKH；不上稳定币）=====
+  // chainKey 用 CAIP-2 `bip122:<reference>`，无 chainId/chainIdHex；
+  // Bitcoin adapter 通过 namespace=bip122 + reference 识别（mainnet / testnet）。
+  bitcoinMainnet: {
+    id: 'bitcoinMainnet',
+    name: 'Bitcoin Mainnet',
+    rpc: 'https://blockstream.info/api',
+    rpcUrl: 'https://blockstream.info/api',
+    bitcoinRpcUrl: 'https://blockstream.info/api',
+    symbol: 'BTC',
+    decimals: 8,
+    explorer: 'https://mempool.space',
+    type: 'mainnet',
+    isTestnet: false,
+    namespace: 'bip122',
+    reference: 'mainnet',
+    chainKey: 'bip122:mainnet',
+    nativeCurrency: {
+      name: 'Bitcoin',
+      symbol: 'BTC',
+      decimals: 8
+    }
+  },
+  bitcoinTestnet: {
+    id: 'bitcoinTestnet',
+    name: 'Bitcoin Testnet',
+    rpc: 'https://blockstream.info/testnet/api',
+    rpcUrl: 'https://blockstream.info/testnet/api',
+    bitcoinRpcUrl: 'https://blockstream.info/testnet/api',
+    symbol: 'BTC',
+    decimals: 8,
+    explorer: 'https://mempool.space/testnet',
+    type: 'testnet',
+    isTestnet: true,
+    namespace: 'bip122',
+    reference: 'testnet',
+    chainKey: 'bip122:testnet',
+    nativeCurrency: {
+      name: 'Test BTC',
+      symbol: 'BTC',
+      decimals: 8
     }
   }
 };
@@ -54,6 +279,7 @@ export const BUILTIN_TOKENS_BY_CHAIN_ID = {
       name: 'USD Coin',
       decimals: 6,
       chainId: '0x1',
+      image: 'assets/token-icons/source-official/usdc.svg',
       builtin: true
     },
     {
@@ -62,6 +288,63 @@ export const BUILTIN_TOKENS_BY_CHAIN_ID = {
       name: 'Tether USD',
       decimals: 6,
       chainId: '0x1',
+      image: 'assets/token-icons/source-official/usdt.svg',
+      builtin: true
+    }
+  ]
+};
+
+// 内置通证（按 CAIP-2 chainKey 索引）——三链稳定币入口，用户无需手贴合约地址。
+// EVM 段与 BUILTIN_TOKENS_BY_CHAIN_ID['0x1'] 等价（family=eip155）；
+// Tron TRC20 USDT / Solana SPL USDC 无 numeric chainId，只有 chainKey。
+// Bitcoin（bip122）不上稳定币，故无条目。
+export const BUILTIN_TOKENS_BY_CHAIN_KEY = {
+  'eip155:1': [
+    {
+      address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+      symbol: 'USDC',
+      name: 'USD Coin',
+      decimals: 6,
+      chainId: '0x1',
+      chainKey: 'eip155:1',
+      family: 'eip155',
+      image: 'assets/token-icons/source-official/usdc.svg',
+      builtin: true
+    },
+    {
+      address: '0xdac17f958d2ee523a2206206994597c13d831ec7',
+      symbol: 'USDT',
+      name: 'Tether USD',
+      decimals: 6,
+      chainId: '0x1',
+      chainKey: 'eip155:1',
+      family: 'eip155',
+      image: 'assets/token-icons/source-official/usdt.svg',
+      builtin: true
+    }
+  ],
+  'tron:mainnet': [
+    {
+      address: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+      symbol: 'USDT',
+      name: 'Tether USD (TRC20)',
+      decimals: 6,
+      chainKey: 'tron:mainnet',
+      family: 'tron',
+      image: 'assets/token-icons/source-official/usdt.svg',
+      builtin: true
+    }
+  ],
+  'solana:mainnet-beta': [
+    {
+      address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+      symbol: 'USDC',
+      name: 'USD Coin (SPL)',
+      decimals: 6,
+      chainKey: 'solana:mainnet-beta',
+      family: 'solana',
+      mint: true,
+      image: 'assets/token-icons/source-official/usdc.svg',
       builtin: true
     }
   ]
@@ -113,7 +396,7 @@ export function getNetworkByChainId(chainId) {
     : parseInt(chainId, 10);
 
   const networks = Object.values(NETWORKS);
-  return networks.find(n => n.chainId === chainIdNum) || null;
+  return networks.find(n => typeof n.chainId === 'number' && n.chainId === chainIdNum) || null;
 }
 
 /**
@@ -178,28 +461,128 @@ export function getTestnets() {
  * @returns {Object} 格式化后的配置
  */
 export function formatNetworkConfig(config) {
-  const chainId = typeof config.chainId === 'string' && config.chainId.startsWith('0x')
-    ? parseInt(config.chainId, 16)
-    : parseInt(config.chainId, 10);
-  
+  const raw = config && typeof config === 'object' ? config : {};
+  const ns = String(raw.namespace || '').toLowerCase();
+
+  // Tron / non-EVM 网络（namespace=tron 等）没有 EVM 数字 chainId；
+  // 直接 return chainKey 形式，跳过 chainId 数字转换。
+  if (ns === 'tron') {
+    const reference = String(raw.reference || '').toLowerCase();
+    if (!reference) {
+      throw new Error('Tron network config requires reference');
+    }
+    return {
+      id: raw.id || `tron-${reference}`,
+      name: raw.name || `Tron ${capitalize(reference)}`,
+      rpc: raw.rpc || raw.rpcUrl || '',
+      rpcUrl: raw.rpcUrl || raw.rpc || '',
+      tronRpcUrl: raw.tronRpcUrl || raw.rpcUrl || raw.rpc || '',
+      symbol: raw.symbol || 'TRX',
+      decimals: raw.decimals || 6,
+      explorer: raw.explorer || '',
+      type: raw.type || NETWORK_TYPES.CUSTOM,
+      isTestnet: raw.isTestnet || false,
+      namespace: 'tron',
+      reference,
+      chainKey: raw.chainKey || `tron:${reference}`,
+      nativeCurrency: raw.nativeCurrency || {
+        name: raw.symbol || 'TRX',
+        symbol: raw.symbol || 'TRX',
+        decimals: raw.decimals || 6
+      }
+    };
+  }
+
+  // Solana / ed25519 网络：与 Tron 同样无 numeric chainId；
+  // chainKey = solana:<reference>，native symbol SOL，decimals 9。
+  if (ns === 'solana') {
+    const reference = String(raw.reference || '').toLowerCase();
+    if (!reference) {
+      throw new Error('Solana network config requires reference');
+    }
+    return {
+      id: raw.id || `solana-${reference}`,
+      name: raw.name || `Solana ${capitalize(reference)}`,
+      rpc: raw.rpc || raw.rpcUrl || '',
+      rpcUrl: raw.rpcUrl || raw.rpc || '',
+      solanaRpcUrl: raw.solanaRpcUrl || raw.rpcUrl || raw.rpc || '',
+      symbol: raw.symbol || 'SOL',
+      decimals: raw.decimals || 9,
+      explorer: raw.explorer || '',
+      type: raw.type || NETWORK_TYPES.CUSTOM,
+      isTestnet: raw.isTestnet || false,
+      namespace: 'solana',
+      reference,
+      chainKey: raw.chainKey || `solana:${reference}`,
+      nativeCurrency: raw.nativeCurrency || {
+        name: raw.symbol || 'SOL',
+        symbol: raw.symbol || 'SOL',
+        decimals: raw.decimals || 9
+      }
+    };
+  }
+
+  // Bitcoin / bip122 网络：无 numeric chainId；chainKey = bip122:<reference>，
+  // native symbol BTC，decimals 8（satoshi）。
+  if (ns === 'bip122') {
+    const reference = String(raw.reference || '').toLowerCase();
+    if (!reference) {
+      throw new Error('Bitcoin network config requires reference');
+    }
+    return {
+      id: raw.id || `bitcoin-${reference}`,
+      name: raw.name || `Bitcoin ${capitalize(reference)}`,
+      rpc: raw.rpc || raw.rpcUrl || '',
+      rpcUrl: raw.rpcUrl || raw.rpc || '',
+      bitcoinRpcUrl: raw.bitcoinRpcUrl || raw.rpcUrl || raw.rpc || '',
+      symbol: raw.symbol || 'BTC',
+      decimals: raw.decimals || 8,
+      explorer: raw.explorer || '',
+      type: raw.type || NETWORK_TYPES.CUSTOM,
+      isTestnet: raw.isTestnet || false,
+      namespace: 'bip122',
+      reference,
+      chainKey: raw.chainKey || `bip122:${reference}`,
+      nativeCurrency: raw.nativeCurrency || {
+        name: raw.symbol || 'BTC',
+        symbol: raw.symbol || 'BTC',
+        decimals: raw.decimals || 8
+      }
+    };
+  }
+
+  // EVM 网络：保持原有数字 chainId 路径
+  const chainId = typeof raw.chainId === 'string' && raw.chainId.startsWith('0x')
+    ? parseInt(raw.chainId, 16)
+    : parseInt(raw.chainId, 10);
+
   return {
-    id: config.id || config.name.toLowerCase().replace(/\s+/g, '-'),
-    name: config.name,
-    rpc: config.rpc || config.rpcUrl,
-    rpcUrl: config.rpcUrl || config.rpc,
+    id: raw.id || (raw.name || '').toLowerCase().replace(/\s+/g, '-'),
+    name: raw.name,
+    rpc: raw.rpc || raw.rpcUrl,
+    rpcUrl: raw.rpcUrl || raw.rpc,
     chainId: chainId,
     chainIdHex: '0x' + chainId.toString(16),
-    symbol: config.symbol,
-    decimals: config.decimals || 18,
-    explorer: config.explorer || '',
-    type: config.type || NETWORK_TYPES.CUSTOM,
-    isTestnet: config.isTestnet || false,
-    nativeCurrency: config.nativeCurrency || {
-      name: config.symbol,
-      symbol: config.symbol,
-      decimals: config.decimals || 18
+    symbol: raw.symbol,
+    decimals: raw.decimals || 18,
+    explorer: raw.explorer || '',
+    type: raw.type || NETWORK_TYPES.CUSTOM,
+    isTestnet: raw.isTestnet || false,
+    nativeCurrency: raw.nativeCurrency || {
+      name: raw.symbol,
+      symbol: raw.symbol,
+      decimals: raw.decimals || 18
     }
   };
+}
+
+/**
+ * @param {string} s
+ * @returns {string}
+ */
+function capitalize(s) {
+  const str = String(s || '');
+  return str ? str[0].toUpperCase() + str.slice(1) : '';
 }
 
 /**
@@ -214,6 +597,32 @@ export function isSameNetwork(network1, network2) {
 }
 
 /**
+ * 按链 namespace 拼接 explorer 路径。
+ *   - tron（tronscan）：SPA hash 路由 `/#/transaction/`、`/#/address/`、`/#/block/`
+ *   - solana（solscan）：非 mainnet 追加 `?cluster=<reference>` query
+ *   - 其余（EVM/BTC mempool.space 等）：标准 `/tx/`、`/address/`、`/block/`
+ * @param {object} network
+ * @param {'tx'|'address'|'block'} kind
+ * @param {string} value
+ * @returns {string}
+ */
+function buildExplorerPath(network, kind, value) {
+  const base = String(network.explorer || '').replace(/\/+$/, '');
+  const ns = network.namespace || '';
+  if (ns === 'tron') {
+    const seg = kind === 'tx' ? 'transaction' : kind;
+    return `${base}/#/${seg}/${value}`;
+  }
+  const seg = kind === 'tx' ? 'tx' : kind;
+  if (ns === 'solana') {
+    const ref = network.reference || 'mainnet-beta';
+    const cluster = ref === 'mainnet-beta' ? '' : `?cluster=${ref}`;
+    return `${base}/${seg}/${value}${cluster}`;
+  }
+  return `${base}/${seg}/${value}`;
+}
+
+/**
  * 获取区块浏览器地址 URL
  * @param {string} networkName - 网络名称
  * @param {string} address - 地址
@@ -222,7 +631,7 @@ export function isSameNetwork(network1, network2) {
 export function getExplorerAddressUrl(networkName, address) {
   const network = getNetworkConfig(networkName);
   if (!network || !network.explorer) return '';
-  return `${network.explorer}/address/${address}`;
+  return buildExplorerPath(network, 'address', address);
 }
 
 /**
@@ -234,7 +643,7 @@ export function getExplorerAddressUrl(networkName, address) {
 export function getExplorerTxUrl(networkName, txHash) {
   const network = getNetworkConfig(networkName);
   if (!network || !network.explorer) return '';
-  return `${network.explorer}/tx/${txHash}`;
+  return buildExplorerPath(network, 'tx', txHash);
 }
 
 /**
@@ -246,5 +655,5 @@ export function getExplorerTxUrl(networkName, txHash) {
 export function getExplorerBlockUrl(networkName, blockNumber) {
   const network = getNetworkConfig(networkName);
   if (!network || !network.explorer) return '';
-  return `${network.explorer}/block/${blockNumber}`;
+  return buildExplorerPath(network, 'block', String(blockNumber));
 }

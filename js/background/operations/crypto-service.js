@@ -14,6 +14,7 @@ import { createInvalidParams } from '../../common/errors/index.js';
 import { encryptData, decryptData, getSupportedSuites } from '../../common/crypto/index.js';
 import { base64Encode, normalizeBinaryInput, stringToBytes } from '../../common/crypto/crypto-utils.js';
 import { getWalletInstance } from '../keyring.js';
+import { normalizeAddressForFamily } from '../../common/chain/address-normalize.js';
 
 function getOptions(params) {
   return Array.isArray(params) ? params[0] || {} : params || {};
@@ -62,7 +63,14 @@ function normalizePasswordSource(value) {
 
 function normalizePasswordContext(origin, account, value) {
   const context = String(value || '').trim();
-  const address = String(account?.address || '').trim().toLowerCase();
+  // family-aware 规范化：EVM 转小写，Tron 保持 Base58 原值大小写敏感。
+  // AAD 一旦改变就让现存 vault 数据无法解密（它绑定到 AES-GCM 的 addData），
+  // 所以这里必须与旧版 toLowerCase() 字节兼容——对 Tron 路径，旧 vault
+  // 不存在（v1 才落地），切换无回归风险。
+  const address = normalizeAddressForFamily(
+    account?.address,
+    account?.namespace || 'eip155',
+  );
   return [
     'yeying-wallet-encryption-v1',
     `origin:${String(origin || '').trim()}`,

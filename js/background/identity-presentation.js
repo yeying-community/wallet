@@ -4,6 +4,7 @@ import { IdentityStorageKeys } from '../storage/storage-keys.js';
 import { createInvalidParams } from '../common/errors/index.js';
 import { signIdentityDocument } from '../common/identity/identity-document.js';
 import { getCachedPassword, refreshPasswordCache } from './password-cache.js';
+import { compareAddresses } from '../common/chain/address-normalize.js';
 
 const METHOD = 'wallet_identity_presentation';
 const DEFAULT_ISSUER_ENDPOINT = 'https://node.yeying.pub';
@@ -131,8 +132,13 @@ function requestCredentialTypes(scopes) {
 function credentialMatchesAccount(credential, account) {
   const subject = credentialPayload(credential)?.vc?.credentialSubject;
   const expectedChainKey = account?.chainKey || `eip155:${account?.chainId || 1}`;
-  return subject?.chainKey === expectedChainKey
-    && String(subject?.address || '').toLowerCase() === String(account?.address || '').toLowerCase();
+  if (subject?.chainKey !== expectedChainKey) return false;
+  // family-aware 比较：EVM 大小写等价、Tron 大小写敏感。account 缺 namespace 时默认 EVM。
+  return compareAddresses(
+    subject?.address,
+    account?.address,
+    account?.namespace || 'eip155',
+  );
 }
 
 function selectFreshCredentials(credentials, scopes, account) {

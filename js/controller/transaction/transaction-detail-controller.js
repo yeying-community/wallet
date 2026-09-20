@@ -74,7 +74,7 @@ export class TransactionDetailController {
       this.toggleDetailRow('txDetailChainRow', false);
     }
 
-    const explorerUrl = this.buildExplorerTxUrl(networkMeta?.explorer, tx?.hash);
+    const explorerUrl = this.buildExplorerTxUrl(networkMeta, tx?.hash);
     const explorerRow = document.getElementById('txDetailExplorerRow');
     const explorerLink = document.getElementById('txDetailExplorerLink');
     if (explorerRow && explorerLink && explorerUrl) {
@@ -114,7 +114,16 @@ export class TransactionDetailController {
       const amount = this.transaction?.formatUnits?.(token.amount, decimals) || '0';
       return `${amount} ${token.symbol || 'TOKEN'}`;
     }
-    const amount = this.transaction?.formatEther?.(tx?.value || '0') || '0';
+    // 非 EVM 链 value 已是格式化展示串（"0.1 SOL"），直接透传；
+    // 仅 hex/十进制原始单位才按 18 位 wei→ETH。
+    const rawValue = tx?.value;
+    const isRawUnits = typeof rawValue === 'string'
+      ? (/^0x[0-9a-fA-F]+$/.test(rawValue.trim()) || /^[0-9]+$/.test(rawValue.trim()))
+      : (typeof rawValue === 'bigint' || typeof rawValue === 'number');
+    if (!isRawUnits && rawValue) {
+      return String(rawValue).trim();
+    }
+    const amount = this.transaction?.formatEther?.(rawValue || '0') || '0';
     return `${amount} ${nativeSymbol}`;
   }
 
@@ -207,12 +216,25 @@ export class TransactionDetailController {
     const name = matched?.chainName || matched?.name || matched?.nativeCurrency?.name || matched?.symbol || '网络';
     const symbol = matched?.nativeCurrency?.symbol || matched?.symbol || 'ETH';
     const explorer = matched?.explorer || matched?.blockExplorerUrls?.[0] || '';
-    return { name, symbol, explorer };
+    const namespace = matched?.namespace || '';
+    const reference = matched?.reference || '';
+    return { name, symbol, explorer, namespace, reference };
   }
 
-  buildExplorerTxUrl(baseUrl, txHash) {
-    if (!baseUrl || !txHash) return '';
-    const trimmed = String(baseUrl).replace(/\/+$/, '');
-    return `${trimmed}/tx/${txHash}`;
+  buildExplorerTxUrl(meta, txHash) {
+    // 向后兼容：旧调用传 baseUrl 字符串；新调用传 networkMeta 对象。
+    const explorer = typeof meta === 'string' ? meta : (meta?.explorer || '');
+    const namespace = typeof meta === 'string' ? '' : (meta?.namespace || '');
+    const reference = typeof meta === 'string' ? '' : (meta?.reference || '');
+    if (!explorer || !txHash) return '';
+    const base = String(explorer).replace(/\/+$/, '');
+    if (namespace === 'tron') {
+      return `${base}/#/transaction/${txHash}`;
+    }
+    if (namespace === 'solana') {
+      const cluster = reference && reference !== 'mainnet-beta' ? `?cluster=${reference}` : '';
+      return `${base}/tx/${txHash}${cluster}`;
+    }
+    return `${base}/tx/${txHash}`;
   }
 }

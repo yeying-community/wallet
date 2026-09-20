@@ -4,6 +4,7 @@
  */
 import { EventType, MessageBuilder } from '../protocol/dapp-protocol.js';
 import { state } from './state.js';
+import { getCurrentEvmChainIdHex } from '../chain/current-chain.js';
 import { getSelectedAccount, isAuthorized } from '../storage/index.js';
 
 /**
@@ -55,7 +56,7 @@ export async function checkSessionAndNotify(port, origin) {
 
     // 发送连接事件
     sendEvent(port, EventType.CONNECT, {
-      chainId: state.currentChainId,
+      chainId: getCurrentEvmChainIdHex(),
       accounts: [account.address]
     });
 

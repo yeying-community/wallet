@@ -52,14 +52,17 @@ test('NETWORKS：YeYing chainId 5432 / 0x1538、ETH chainId 1 / 0x1', () => {
   assert.equal(ETHEREUM.nativeCurrency.symbol, 'ETH');
 });
 
-test('NETWORKS：每条都有 chainId/rpc/rpcUrl/explorer/symbol/decimals', () => {
+test('NETWORKS：每条都有 rpc/rpcUrl/explorer/symbol/decimals', () => {
   for (const [name, cfg] of Object.entries(NETWORKS)) {
-    assert.equal(typeof cfg.chainId, 'number', `${name} chainId`);
     assert.equal(typeof cfg.rpc, 'string', `${name} rpc`);
     assert.equal(typeof cfg.rpcUrl, 'string', `${name} rpcUrl`);
     assert.equal(typeof cfg.explorer, 'string', `${name} explorer`);
     assert.equal(typeof cfg.symbol, 'string', `${name} symbol`);
     assert.equal(typeof cfg.decimals, 'number', `${name} decimals`);
+    // EVM 网络必须含数字 chainId；Tron 等非 EVM 网络用 namespace+reference 标识，无 chainId
+    if (!cfg.namespace || cfg.namespace === 'eip155') {
+      assert.equal(typeof cfg.chainId, 'number', `${name} chainId`);
+    }
   }
 });
 
@@ -142,14 +145,134 @@ test('getAllNetworks：长度 == getSupportedNetworks 长度', () => {
 
 // ==================== getMainnets / getTestnets ====================
 
-test('getMainnets：当前两条都是主网', () => {
+test('getMainnets：当前五条主网（yeying / ethereum / tronMainnet / solanaMainnet / bitcoinMainnet）', () => {
   const mainnets = getMainnets();
-  assert.equal(mainnets.length, 2);
+  assert.equal(mainnets.length, 5);
   for (const n of mainnets) assert.equal(n.isTestnet, false);
+  const ids = mainnets.map((n) => n.id);
+  assert.ok(ids.includes('yeying'));
+  assert.ok(ids.includes('ethereum'));
+  assert.ok(ids.includes('tronMainnet'));
+  assert.ok(ids.includes('solanaMainnet'));
+  assert.ok(ids.includes('bitcoinMainnet'));
 });
 
-test('getTestnets：当前没有测试网', () => {
-  assert.deepEqual(getTestnets(), []);
+test('getTestnets：sepolia / polygon-amoy / bsc-testnet 均为测试网', () => {
+  const testnets = getTestnets();
+  const ids = testnets.map((n) => n.id);
+  assert.ok(ids.includes('sepolia'), 'sepolia 应在测试网列表');
+  assert.ok(ids.includes('polygon-amoy'), 'polygon-amoy 应在测试网列表');
+  assert.ok(ids.includes('bsc-testnet'), 'bsc-testnet 应在测试网列表');
+  for (const n of testnets) {
+    assert.equal(n.isTestnet, true);
+    assert.equal(n.type, 'testnet');
+  }
+});
+
+test('NETWORKS：新增测试网 chainId / hex 正确', () => {
+  assert.equal(NETWORKS.sepolia.chainId, 11155111);
+  assert.equal(NETWORKS.sepolia.chainIdHex, '0xaa36a7');
+  assert.equal(NETWORKS['polygon-amoy'].chainId, 80002);
+  assert.equal(NETWORKS['polygon-amoy'].chainIdHex, '0x13882');
+  assert.equal(NETWORKS['bsc-testnet'].chainId, 97);
+  assert.equal(NETWORKS['bsc-testnet'].chainIdHex, '0x61');
+});
+
+test('getNetworkByChainId：测试网 chainId 也能命中', () => {
+  assert.equal(getNetworkByChainId(11155111), NETWORKS.sepolia);
+  assert.equal(getNetworkByChainId('0xaa36a7'), NETWORKS.sepolia);
+  assert.equal(getNetworkByChainId(80002), NETWORKS['polygon-amoy']);
+  assert.equal(getNetworkByChainId('0x61'), NETWORKS['bsc-testnet']);
+});
+
+// ==================== Tron 网络 ====================
+
+test('NETWORKS：tronMainnet / tronShasta / tronNile 三条注册', () => {
+  assert.ok(NETWORKS.tronMainnet);
+  assert.ok(NETWORKS.tronShasta);
+  assert.ok(NETWORKS.tronNile);
+});
+
+test('Tron 网络字段：namespace=tron、reference=mainnet/shasta/nile、chainKey=tron:<ref>', () => {
+  assert.equal(NETWORKS.tronMainnet.namespace, 'tron');
+  assert.equal(NETWORKS.tronMainnet.reference, 'mainnet');
+  assert.equal(NETWORKS.tronMainnet.chainKey, 'tron:mainnet');
+  assert.equal(NETWORKS.tronShasta.namespace, 'tron');
+  assert.equal(NETWORKS.tronShasta.reference, 'shasta');
+  assert.equal(NETWORKS.tronShasta.chainKey, 'tron:shasta');
+  assert.equal(NETWORKS.tronNile.namespace, 'tron');
+  assert.equal(NETWORKS.tronNile.reference, 'nile');
+  assert.equal(NETWORKS.tronNile.chainKey, 'tron:nile');
+});
+
+test('Tron 网络：tronRpcUrl / rpcUrl / rpc 都指向 TronGrid 端点', () => {
+  assert.equal(NETWORKS.tronMainnet.tronRpcUrl, 'https://api.trongrid.io');
+  assert.equal(NETWORKS.tronShasta.tronRpcUrl, 'https://api.shasta.trongrid.io');
+  assert.equal(NETWORKS.tronNile.tronRpcUrl, 'https://api.nile.trongrid.io');
+});
+
+test('Tron 网络：symbol=TRX / decimals=6 / explorer 区分主测试网', () => {
+  assert.equal(NETWORKS.tronMainnet.symbol, 'TRX');
+  assert.equal(NETWORKS.tronMainnet.decimals, 6);
+  assert.equal(NETWORKS.tronMainnet.explorer, 'https://tronscan.org');
+  assert.equal(NETWORKS.tronShasta.explorer, 'https://shasta.tronscan.org');
+  assert.equal(NETWORKS.tronNile.explorer, 'https://nile.tronscan.io');
+});
+
+test('Tron 网络：mainnet / shasta / nile 主测试网属性正确', () => {
+  assert.equal(NETWORKS.tronMainnet.isTestnet, false);
+  assert.equal(NETWORKS.tronMainnet.type, 'mainnet');
+  assert.equal(NETWORKS.tronShasta.isTestnet, true);
+  assert.equal(NETWORKS.tronShasta.type, 'testnet');
+  assert.equal(NETWORKS.tronNile.isTestnet, true);
+  assert.equal(NETWORKS.tronNile.type, 'testnet');
+});
+
+test('Tron 网络：getTestnets 含 shasta/tronNile；getMainnets 含 tronMainnet', () => {
+  const testnets = getTestnets().map(n => n.id);
+  assert.ok(testnets.includes('tronShasta'));
+  assert.ok(testnets.includes('tronNile'));
+  const mainnets = getMainnets().map(n => n.id);
+  assert.ok(mainnets.includes('tronMainnet'));
+});
+
+test('Tron 网络：getNetworkConfig(\'tronMainnet\') 返回完整配置', () => {
+  const cfg = getNetworkConfig('tronMainnet');
+  assert.equal(cfg, NETWORKS.tronMainnet);
+});
+
+test('getNetworkByChainId：Tron 没有数字 chainId，TronGrid 数字查询不影响', () => {
+  // Tron 网络没有 chainId 数字字段；查询任意 Tron reference 的 hash 不应返回 Tron
+  assert.equal(getNetworkByChainId('tron:mainnet'), null);
+  // EVM 数字查询不误命中 Tron
+  assert.notEqual(getNetworkByChainId(1)?.id, 'tronMainnet');
+});
+
+test('formatNetworkConfig：Tron namespace=tron 输入', () => {
+  const out = formatNetworkConfig({
+    name: 'Tron Foo',
+    namespace: 'tron',
+    reference: 'mainnet',
+    rpc: 'https://api.trongrid.io'
+  });
+  assert.equal(out.id, 'tron-mainnet');
+  assert.equal(out.namespace, 'tron');
+  assert.equal(out.reference, 'mainnet');
+  assert.equal(out.chainKey, 'tron:mainnet');
+  assert.equal(out.tronRpcUrl, 'https://api.trongrid.io');
+  assert.equal(out.symbol, 'TRX');
+  assert.equal(out.decimals, 6);
+  assert.equal(out.type, 'custom');
+  // Tron 没有数字 chainId / chainIdHex
+  assert.equal(out.chainId, undefined);
+  assert.equal(out.chainIdHex, undefined);
+});
+
+test('formatNetworkConfig：Tron reference 缺失抛错', () => {
+  assert.throws(
+    () => formatNetworkConfig({ name: 'X', namespace: 'tron' }),
+    /Tron network config requires reference/
+  );
 });
 
 // ==================== formatNetworkConfig ====================
@@ -220,4 +343,31 @@ test('getExplorer*Url：未知网络或 explorer 缺失 → 空串', () => {
   assert.equal(getExplorerAddressUrl('unknown', '0xabc'), '');
   assert.equal(getExplorerTxUrl(null, '0xabc'), '');
   assert.equal(getExplorerBlockUrl('', '123'), '');
+});
+
+test('getExplorerTxUrl：非 EVM 链按 namespace 拼接（Tron hash 路由 / Solana cluster / BTC 标准）', () => {
+  // Tron tronscan 是 SPA hash 路由 /#/transaction/
+  assert.equal(
+    getExplorerTxUrl('tronMainnet', 'abc123'),
+    'https://tronscan.org/#/transaction/abc123'
+  );
+  assert.equal(
+    getExplorerAddressUrl('tronMainnet', 'TXaddr'),
+    'https://tronscan.org/#/address/TXaddr'
+  );
+  // Solana mainnet-beta：solscan 标准 /tx/，无 cluster query
+  assert.equal(
+    getExplorerTxUrl('solanaMainnet', 'sig123'),
+    'https://solscan.io/tx/sig123'
+  );
+  // Solana devnet：追加 ?cluster=devnet
+  assert.equal(
+    getExplorerTxUrl('solanaDevnet', 'sig456'),
+    'https://solscan.io/tx/sig456?cluster=devnet'
+  );
+  // Bitcoin mempool.space：标准 /tx/
+  assert.equal(
+    getExplorerTxUrl('bitcoinMainnet', 'txid789'),
+    'https://mempool.space/tx/txid789'
+  );
 });

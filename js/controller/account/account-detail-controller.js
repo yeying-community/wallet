@@ -109,9 +109,16 @@ export class AccountDetailController {
       if (avatarEl) {
         avatarEl.innerHTML = '';
         try {
-          const size = avatarEl.clientWidth || 64;
-          const canvas = generateAvatar(account.address, size);
-          avatarEl.appendChild(canvas);
+          // Tron 不画 jazzicon：generateAvatar 用 `address.slice(2)`
+          // 取 hex，Tron Base58 字符串没有 0x 前缀，会抛 Invalid address；
+          // 这里直接跳过，由列表/详情页 fallback 到默认头像。
+          if (account?.namespace === 'tron') {
+            avatarEl.textContent = (account.address || '').slice(0, 2) || 'T';
+          } else {
+            const size = avatarEl.clientWidth || 64;
+            const canvas = generateAvatar(account.address, size);
+            avatarEl.appendChild(canvas);
+          }
         } catch (error) {
           // ignore invalid address
         }

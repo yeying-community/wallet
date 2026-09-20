@@ -5,18 +5,42 @@
 import { EventType } from '../protocol/dapp-protocol.js';
 import { state } from './state.js';
 import { createInvalidParams, createUnrecognizedChainError } from '../common/errors/index.js';
+import { ErrorCode } from '../common/errors/error-codes.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
 import { normalizeChainId } from '../common/chain/index.js';
 import { validateNetworkConfig } from '../config/validation-rules.js';
 import { saveSelectedNetworkName, getNetworkByChainId, getNetworkConfigByKey, addNetwork } from '../storage/index.js';
 import { broadcastEvent } from './connection.js';
+import {
+  getCurrentEvmChainIdHex,
+  getCurrentChainIdDecimal,
+  setCurrentChainKey,
+  chainIdToChainKey
+} from '../chain/current-chain.js';
+
+/**
+ * EVM 协议入口守门：当钱包当前链是 `tron:*` 时，dApp 调用 eth_chainId /
+ * net_version / wallet_switchEthereumChain 抛 EIP-1193 UNSUPPORTED_METHOD。
+ *
+ * 阶段 1（v1）：wallet 不在 Tron 链下响应 dApp 的 EVM 协议调用，避免
+ * 把错误的 chainId 答回 dApp。
+ */
+function ensureEvmActive() {
+  const chainKey = state.currentChainKey || '';
+  if (chainKey.startsWith('tron:')) {
+    const err = new Error('EVM dApp protocol is unavailable while Tron is active');
+    err.code = ErrorCode.UNSUPPORTED_METHOD;
+    throw err;
+  }
+}
 
 /**
  * 处理 eth_chainId
  * @returns {string} 当前链 ID
  */
 export function handleEthChainId() {
-  return state.currentChainId;
+  ensureEvmActive();
+  return getCurrentEvmChainIdHex();
 }
 
 /**
@@ -24,7 +48,8 @@ export function handleEthChainId() {
  * @returns {string} 当前链 ID（十进制）
  */
 export function handleNetVersion() {
-  return parseInt(state.currentChainId, 16).toString();
+  ensureEvmActive();
+  return getCurrentChainIdDecimal();
 }
 
 /**
@@ -33,6 +58,7 @@ export function handleNetVersion() {
  * @returns {Promise<null>}
  */
 export async function handleSwitchChain(params) {
+  ensureEvmActive();
   const [{ chainId }] = params;
 
   if (!chainId) {
@@ -46,8 +72,9 @@ export async function handleSwitchChain(params) {
     throw createUnrecognizedChainError(chainId);
   }
 
-  const oldChainId = state.currentChainId;
-  state.currentChainId = normalizedChainId;
+  const oldChainKey = state.currentChainKey;
+  setCurrentChainKey(chainIdToChainKey(normalizedChainId));
+  const newChainKey = state.currentChainKey;
   const rpcUrl = network?.rpcUrl || network?.rpc || null;
   if (rpcUrl) {
     state.currentRpcUrl = rpcUrl;
@@ -69,7 +96,7 @@ export async function handleSwitchChain(params) {
   }
 
   // 如果链 ID 改变，广播事件
-  if (oldChainId !== normalizedChainId) {
+  if (oldChainKey !== newChainKey) {
     broadcastEvent(EventType.CHAIN_CHANGED, { chainId: normalizedChainId });
   }
 

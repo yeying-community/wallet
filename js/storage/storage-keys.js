@@ -17,6 +17,8 @@
 
 /**
  * 钱包下的一个账户（地址）。
+ * 阶段 0 起（schemaVersion=2）携带链身份字段，老数据由
+ * account-storage.withAccountDefaults 读时补全。
  * @typedef {Object} StoredAccount
  * @property {string} id  形如 `${walletId}_${index}`
  * @property {string} walletId
@@ -25,6 +27,11 @@
  * @property {string} [derivationPath]
  * @property {string} address
  * @property {string} encryptedPrivateKey AES-GCM 加密的私钥（Base64）
+ * @property {string} [namespace] CAIP-2 命名空间（如 `eip155`）；阶段 0 默认补全
+ * @property {string} [chainKey] CAIP-2 chainKey（如 `eip155:1`）；阶段 0 默认补全
+ * @property {number} [coinType] SLIP-0044 coin type（EVM=60）；阶段 0 默认补全
+ * @property {string} [publicKey] 压缩公钥 hex（`02/03 + 32 字节`），与 MPC 视图口径一致
+ * @property {number} [schemaVersion] 写入时落 schema 版本；缺省视为 1
  * @property {number} createdAt
  * @property {number} [nameUpdatedAt]
  * @property {string} [username] Public username shared with approved DApps

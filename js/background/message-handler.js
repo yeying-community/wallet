@@ -8,15 +8,32 @@ import { APPROVAL_PORT_NAME, ApprovalMessageType, WalletMessageType, NetworkMess
 import { sendResponse, sendError, registerConnection, unregisterConnection, checkSessionAndNotify } from './connection.js';
 import { routeRequest } from './request-router.js';
 import { unlockWallet, lockWallet, isAccountUnlocked } from './keyring.js';
-import { resolveMpcAccountIdByAddress, signMessage, signTransaction } from './signing.js';
+import { resolveMpcAccountIdByAddress } from './signing.js';
+import {
+  signMessage,
+  signTransactionRaw,
+  broadcastRawTransaction
+} from '../chain/signing-service.js';
 import { ethers } from '../../lib/ethers-6.16.esm.min.js';
 import {
   isWalletInitialized,
   HandleGetWalletList,
   handleCreateHDWallet,
+  handleCreateTronHDWallet,
+  handleCreateSolanaHDWallet,
+  handleCreateBitcoinHDWallet,
   handleImportHDWallet,
+  handleImportTronHDWallet,
+  handleImportSolanaHDWallet,
+  handleImportBitcoinHDWallet,
   handleImportPrivateKeyWallet,
+  handleImportTronPrivateKeyWallet,
+  handleImportSolanaPrivateKeyWallet,
+  handleImportBitcoinPrivateKeyWallet,
   handleCreateSubAccount,
+  handleCreateTronSubAccount,
+  handleCreateSolanaSubAccount,
+  handleCreateBitcoinSubAccount,
   handleSwitchAccount,
   handleGetCurrentAccount,
   handleGetAccountById,
@@ -114,8 +131,15 @@ import {
   handleDisableCustody
 } from './operations/custody.js';
 import { state } from './state.js';
+import { getFeeRate as getBitcoinFeeRate } from '../chain/adapters/bip122/rpc.js';
+import {
+  getCurrentEvmChainIdHex,
+  setCurrentChainKey,
+  chainIdToChainKey
+} from '../chain/current-chain.js';
 import { DEFAULT_NETWORK } from '../config/index.js';
 import { normalizeChainId } from '../common/chain/index.js';
+import { compareAddresses } from '../common/chain/address-normalize.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import {
   saveSelectedNetworkName,
@@ -191,6 +215,7 @@ async function handleSwitchNetworkMessage(data) {
   const { chainId, rpcUrl, networkKey } = data || {};
 
   let nextChainId = null;
+  let nextChainKey = null;
   let nextRpcUrl = null;
   let selectedNetworkName = networkKey;
 
@@ -199,8 +224,16 @@ async function handleSwitchNetworkMessage(data) {
     if (!network) {
       return { success: false, error: 'Unknown network key' };
     }
-    nextChainId = network.chainIdHex || normalizeChainId(network.chainId);
-    nextRpcUrl = network.rpcUrl || network.rpc;
+    // Tron 等非 EVM 链没有 numeric chainId；它们携带 `chainKey` 字段
+    // （CAIP-2 `tron:<reference>`），下游 setCurrentChainKey 直接读它。
+    // EVM 网络走 `chainIdHex`/`chainId` 路径；Tron 走 chainKey 路径，
+    // `nextChainId` 留 null，让 line 246-252 的 fallback 不被触发。
+    if (network.chainKey) {
+      nextChainKey = network.chainKey;
+    } else {
+      nextChainId = network.chainIdHex || normalizeChainId(network.chainId);
+    }
+    nextRpcUrl = network.rpcUrl || network.rpc || network.tronRpcUrl;
   } else if (chainId) {
     const normalizedChainId = normalizeChainId(chainId);
     const network = await getStoredNetworkByChainId(normalizedChainId);
@@ -228,12 +261,17 @@ async function handleSwitchNetworkMessage(data) {
     return { success: false, error: 'rpcUrl is required' };
   }
 
-  const prevChainId = state.currentChainId;
-  if (!nextChainId) {
+  const prevChainKey = state.currentChainKey;
+  if (!nextChainId && !nextChainKey) {
     const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
     nextChainId = fallbackConfig?.chainIdHex || (fallbackConfig?.chainId ? normalizeChainId(fallbackConfig.chainId) : null);
   }
-  state.currentChainId = nextChainId || state.currentChainId;
+  if (nextChainKey) {
+    // Tron 等非 EVM 链：直接用 network.chainKey（CAIP-2 `tron:<reference>`）
+    setCurrentChainKey(nextChainKey);
+  } else if (nextChainId) {
+    setCurrentChainKey(chainIdToChainKey(nextChainId));
+  }
   state.currentRpcUrl = nextRpcUrl;
 
   if (!selectedNetworkName && nextChainId) {
@@ -243,14 +281,14 @@ async function handleSwitchNetworkMessage(data) {
     await saveSelectedNetworkName(selectedNetworkName);
   }
 
-  if (prevChainId !== state.currentChainId) {
-    broadcastEvent(EventType.CHAIN_CHANGED, { chainId: state.currentChainId });
+  if (prevChainKey !== state.currentChainKey) {
+    broadcastEvent(EventType.CHAIN_CHANGED, { chainId: getCurrentEvmChainIdHex() });
   }
 
   return {
     success: true,
-    chainId: state.currentChainId,
-    rpcUrl: state.currentRpcUrl
+    chainId: getCurrentEvmChainIdHex(),
+    rpcUrl: state.currentRpcUrl,
   };
 }
 
@@ -320,14 +358,28 @@ async function handleGetSupportedNetworksMessage() {
 
 async function handleGetNetworkInfoMessage() {
   try {
-    let chainId = state.currentChainId;
+    let chainId = state.currentChainKey ? getCurrentEvmChainIdHex() : null;
+    if (!chainId && state.currentChainKey) {
+      // 非 EVM 链（Tron 等）没有 numeric chainId → 返回当前 chainKey
+      // 让 dApp/popup 自行按 chainKey 路由；不要 fallback 到 defaultConfig
+      // 的 EVM chainId，否则会把 currentChainKey 强制改写成 EVM 形态，
+      // 破坏 SWITCH_NETWORK 写入的目标链。
+      return {
+        success: true,
+        network: {
+          chainId: null,
+          chainKey: state.currentChainKey,
+          rpcUrl: state.currentRpcUrl,
+        },
+      };
+    }
     if (!chainId) {
       const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
       chainId = fallbackConfig?.chainIdHex
         || (fallbackConfig?.chainId ? normalizeChainId(fallbackConfig.chainId) : null)
         || null;
       if (chainId) {
-        state.currentChainId = chainId;
+        setCurrentChainKey(chainIdToChainKey(chainId));
       }
     }
     const network = await getStoredNetworkByChainId(chainId);
@@ -348,14 +400,74 @@ async function resolveAccountIdByAddress(address) {
   const mpcAccountId = await resolveMpcAccountIdByAddress(address);
   if (mpcAccountId) return mpcAccountId;
   const accounts = await getAccountList();
-  const lowered = address.toLowerCase();
-  const match = accounts.find(account => account?.address?.toLowerCase() === lowered);
+  // family-aware 比较：每个 account 独立按 `namespace` 选比较语义；
+  // Tron 账户的 address（T...）不再被 EVM lowercase 强行转换。
+  const match = accounts.find(account => (
+    compareAddresses(address, account?.address, account?.namespace || 'eip155')
+  ));
   return match?.id || null;
 }
 
+/**
+ * 把 token 最小单位（十进制整数字符串）格式化为人类可读金额（用于交易记录展示）。
+ * @param {string} baseUnits
+ * @param {number} decimals
+ * @returns {string}
+ */
+function formatTokenAmountForRecord(baseUnits, decimals) {
+  try {
+    const d = Number.isFinite(Number(decimals)) ? Number(decimals) : 6;
+    const v = BigInt(baseUnits);
+    const base = 10n ** BigInt(d);
+    const intPart = v / base;
+    const frac = v % base;
+    if (d <= 0 || frac === 0n) return intPart.toString();
+    const fracStr = frac.toString().padStart(d, '0').replace(/0+$/, '');
+    return `${intPart.toString()}.${fracStr}`;
+  } catch {
+    return String(baseUnits ?? '');
+  }
+}
+
 async function handleSendTransactionMessage(data) {
-  const { from, to, value, data: txData, gas, gasLimit, chainId, token } = data || {};
-  if (!from || !to || !value) {
+  const {
+    from, to, value, data: txData, gas, gasLimit, chainId, token,
+    chainFamily, valueTrx, feeLimitSun, asset, rpcUrl
+  } = data || {};
+  if (!from || !to) {
+    return { success: false, error: 'Invalid transaction params' };
+  }
+
+  // Tron 路径：valueTrx 是人类可读 TRX 数量，不强制 hex value；Solana 路径：
+  // amountSol 人类可读 SOL 数量（lamports = amount × 1e9）；Bitcoin 路径：
+  // amountBtc 人类可读 BTC 数量（satoshi = amount × 1e8）；EVM 必须有 value
+  const family = chainFamily === 'solana'
+    ? 'solana'
+    : (chainFamily === 'tron'
+      ? 'tron'
+      : (chainFamily === 'utxo' ? 'utxo' : 'eip155'));
+  // 非 EVM（Tron/Solana）token 转账：token 非原生且带最小单位 amount（hex）。
+  const isNonEvmTokenTransfer = (family === 'tron' || family === 'solana')
+    && !!(token && token.address && !token.isNative && token.amount);
+  if (isNonEvmTokenTransfer) {
+    try {
+      if (BigInt(token.amount) <= 0n) throw new Error();
+    } catch {
+      return { success: false, error: 'Invalid transaction params' };
+    }
+  } else if (family === 'tron') {
+    if (!valueTrx || parseFloat(valueTrx) <= 0) {
+      return { success: false, error: 'Invalid transaction params' };
+    }
+  } else if (family === 'solana') {
+    if (!data?.amountSol || parseFloat(data.amountSol) <= 0) {
+      return { success: false, error: 'Invalid transaction params' };
+    }
+  } else if (family === 'utxo') {
+    if (!data?.amountBtc || parseFloat(data.amountBtc) <= 0) {
+      return { success: false, error: 'Invalid transaction params' };
+    }
+  } else if (!value) {
     return { success: false, error: 'Invalid transaction params' };
   }
 
@@ -365,18 +477,95 @@ async function handleSendTransactionMessage(data) {
   }
 
   try {
-    const tx = {
-      to,
-      value,
-      data: txData || '0x'
-    };
-    const limit = gasLimit || gas;
-    if (limit) {
-      tx.gasLimit = limit;
-    }
+    // 统一构造 transaction 对象：Tron 路径带 type='native-transfer' +
+    // amount(SUN 字符串)；signing-service 的 signTransactionRaw 在
+    // tron:* chainKey 上切到 signTronTransactionLocal（走
+    // /wallet/createtransaction + 本地 secp256k1 签名）；
+    // EVM 路径仍走 ethers populateTransaction + signTransaction。
+    const SUN_PER_TRX = 1_000_000n;
+    const LAMPORTS_PER_SOL = 1_000_000_000n;
+    const tokenAmountBase = isNonEvmTokenTransfer ? BigInt(token.amount).toString() : null;
+    const tx = isNonEvmTokenTransfer
+      ? (family === 'tron'
+          ? {
+              type: 'token-transfer',
+              chainFamily: 'tron',
+              from,
+              to,
+              tokenAddress: token.address,
+              amount: tokenAmountBase,
+              feeLimitSun: Number(feeLimitSun) > 0 ? Number(feeLimitSun) : 15_000_000
+            }
+          : {
+              type: 'token-transfer',
+              chainFamily: 'solana',
+              from,
+              to,
+              mint: token.address,
+              amount: tokenAmountBase,
+              decimals: Number.isFinite(Number(token.decimals)) ? Number(token.decimals) : 6
+            })
+      : family === 'tron'
+      ? {
+          type: 'native-transfer',
+          chainFamily: 'tron',
+          asset: asset || 'TRX',
+          from,
+          to,
+          amount: String(BigInt(Math.floor(parseFloat(valueTrx) * 1e6)))
+        }
+      : family === 'solana'
+        ? {
+            type: 'native-transfer',
+            chainFamily: 'solana',
+            asset: 'SOL',
+            from,
+            to,
+            amount: String(BigInt(Math.floor(parseFloat(data.amountSol) * 1e9)))
+          }
+        : family === 'utxo'
+          ? {
+              type: 'native-transfer',
+              chainFamily: 'utxo',
+              asset: 'BTC',
+              from,
+              to,
+              amount: String(BigInt(Math.floor(parseFloat(data.amountBtc) * 1e8)))
+            }
+          : (() => {
+              const evmTx = {
+                to,
+                value,
+                data: txData || '0x'
+              };
+              const limit = gasLimit || gas;
+              if (limit) evmTx.gasLimit = limit;
+              return evmTx;
+            })();
 
-    const result = await signTransaction(accountId, tx);
-    const txHash = result?.hash || result?.transactionHash || result?.txHash || result;
+    // 优先使用消息携带的 chainKey（popup 显式声明）；其次 fallback state。
+    // Tron / Solana / Bitcoin 路径各自有 family-specific 兜底：
+    //   - tron:* → tron:mainnet
+    //   - solana:* → solana:mainnet-beta
+    //   - bip122:* → bip122:mainnet
+    // EVM 仍走 state.currentChainKey（保留 eip155:1）。
+    const currentKey = state.currentChainKey || '';
+    const chainKey = currentKey.startsWith('tron:')
+      ? currentKey
+      : currentKey.startsWith('solana:')
+        ? currentKey
+        : currentKey.startsWith('bip122:')
+          ? currentKey
+          : (family === 'tron'
+              ? 'tron:mainnet'
+              : (family === 'solana'
+                  ? 'solana:mainnet-beta'
+                  : (family === 'utxo'
+                      ? 'bip122:mainnet'
+                      : (state.currentChainKey || 'eip155:1'))));
+
+    const rawTx = await signTransactionRaw(chainKey, accountId, tx);
+    const txHash = await broadcastRawTransaction(chainKey, rawTx);
     let normalizedChainId = null;
     if (chainId) {
       try {
@@ -389,11 +578,17 @@ async function handleSendTransactionMessage(data) {
       hash: txHash,
       from,
       to,
-      value: result?.value ?? value,
+      value: isNonEvmTokenTransfer
+        ? `${formatTokenAmountForRecord(tokenAmountBase, token.decimals)} ${token.symbol || ''}`.trim()
+        : (family === 'tron'
+          ? `${valueTrx} TRX`
+          : (family === 'solana'
+            ? `${data.amountSol} SOL`
+            : (family === 'utxo' ? `${data.amountBtc} BTC` : value))),
       token: token || null,
       timestamp: getTimestamp(),
       status: 'pending',
-      chainId: normalizedChainId || state.currentChainId || null
+      chainId: normalizedChainId || (state.currentChainKey ? getCurrentEvmChainIdHex() : null)
     });
     return {
       success: true,
@@ -437,6 +632,17 @@ async function handleGetGasPriceMessage(data = {}) {
     return { success: true, gasPrice };
   } catch (error) {
     return { success: false, error: normalizeRpcUiError(error, 'Failed to get gas price') };
+  }
+}
+
+async function handleGetBitcoinFeeRateMessage(data = {}) {
+  try {
+    const chainKey = data?.chainKey || state.currentChainKey || 'bip122:mainnet';
+    const feeRate = await getBitcoinFeeRate(chainKey);
+    return { success: true, feeRate };
+  } catch (error) {
+    // fee rate 失败不阻断转账：回退到保守 10 sat/vB（与 buildUnsigned 兜底一致）。
+    return { success: true, feeRate: 10 };
   }
 }
 
@@ -520,7 +726,7 @@ function truncateRpcUiError(message) {
 }
 
 async function resolveRpcUrl(chainIdOverride = null) {
-  const targetChainId = chainIdOverride || state.currentChainId;
+  const targetChainId = chainIdOverride || (state.currentChainKey ? getCurrentEvmChainIdHex() : null);
   let rpcUrl = state.currentRpcUrl;
   if (targetChainId) {
     const network = await getStoredNetworkByChainId(targetChainId);
@@ -580,7 +786,7 @@ async function handleGetTransactionsMessage(data) {
     }
   }
   if (!normalizedChainId) {
-    normalizedChainId = state.currentChainId;
+    normalizedChainId = state.currentChainKey ? getCurrentEvmChainIdHex() : null;
   }
   const transactions = await getTransactionsByAddress(address, normalizedChainId || null);
   const refreshed = await refreshTransactionStatuses(transactions, normalizedChainId || null);
@@ -598,7 +804,7 @@ async function handleClearTransactionsMessage(data) {
     }
   }
   if (!normalizedChainId) {
-    normalizedChainId = state.currentChainId;
+    normalizedChainId = state.currentChainKey ? getCurrentEvmChainIdHex() : null;
   }
   const removed = await clearTransactionsByAddress(address || null, normalizedChainId || null);
   return { success: true, removed };
@@ -667,7 +873,7 @@ async function handleUpdateCustomNetworkMessage(data) {
   try {
     await updateNetwork(normalizedChainId, updates);
 
-    if (state.currentChainId === normalizedChainId) {
+    if (state.currentChainKey && getCurrentEvmChainIdHex() === normalizedChainId) {
       state.currentRpcUrl = updates.rpcUrl;
     }
 
@@ -745,10 +951,22 @@ const popupHandlers = new Map([
   ['IS_WALLET_INITIALIZED', async () => await isWalletInitialized()],
   ['GET_ALL_WALLETS', async () => await HandleGetWalletList()],
   ['CREATE_HD_WALLET', async (data) => await handleCreateHDWallet(data.accountName, data.password)],
+  ['CREATE_TRON_HD_WALLET', async (data) => await handleCreateTronHDWallet(data.accountName, data.password, data.options || {})],
+  ['CREATE_SOLANA_HD_WALLET', async (data) => await handleCreateSolanaHDWallet(data.accountName, data.password, data.options || {})],
+  ['CREATE_BITCOIN_HD_WALLET', async (data) => await handleCreateBitcoinHDWallet(data.accountName, data.password, data.options || {})],
   ['IMPORT_HD_WALLET', async (data) => await handleImportHDWallet(data.accountName, data.mnemonic, data.password)],
+  ['IMPORT_TRON_HD_WALLET', async (data) => await handleImportTronHDWallet(data.accountName, data.mnemonic, data.password, data.options || {})],
+  ['IMPORT_SOLANA_HD_WALLET', async (data) => await handleImportSolanaHDWallet(data.accountName, data.mnemonic, data.password, data.options || {})],
+  ['IMPORT_BITCOIN_HD_WALLET', async (data) => await handleImportBitcoinHDWallet(data.accountName, data.mnemonic, data.password, data.options || {})],
   ['IMPORT_PRIVATE_KEY_WALLET', async (data) => await handleImportPrivateKeyWallet(data.accountName, data.privateKey, data.password)],
+  ['IMPORT_TRON_PRIVATE_KEY_WALLET', async (data) => await handleImportTronPrivateKeyWallet(data.accountName, data.privateKey, data.password, data.options || {})],
+  ['IMPORT_SOLANA_PRIVATE_KEY_WALLET', async (data) => await handleImportSolanaPrivateKeyWallet(data.accountName, data.privateKey, data.password, data.options || {})],
+  ['IMPORT_BITCOIN_PRIVATE_KEY_WALLET', async (data) => await handleImportBitcoinPrivateKeyWallet(data.accountName, data.privateKey, data.password, data.options || {})],
   ['CREATE_MPC_WALLET', async (data) => await handleCreateMpcWallet(data)],
   ['CREATE_SUB_ACCOUNT', async (data) => await handleCreateSubAccount(data.walletId, data.accountName, data.password)],
+  ['CREATE_TRON_SUB_ACCOUNT', async (data) => await handleCreateTronSubAccount(data.walletId, data.password)],
+  ['CREATE_SOLANA_SUB_ACCOUNT', async (data) => await handleCreateSolanaSubAccount(data.walletId, data.password, data.options || {})],
+  ['CREATE_BITCOIN_SUB_ACCOUNT', async (data) => await handleCreateBitcoinSubAccount(data.walletId, data.password, data.options || {})],
   ['SWITCH_ACCOUNT', async (data) => await handleSwitchAccount(data.accountId, data.password)],
 
   // ==================== 解锁/锁定 ====================
@@ -765,7 +983,7 @@ const popupHandlers = new Map([
     return {
       success: true,
       unlocked: isAccountUnlocked(account?.id),
-      chainId: state.currentChainId,
+      chainId: state.currentChainKey ? getCurrentEvmChainIdHex() : null,
       lastUnlockRequest
     };
   }],
@@ -778,13 +996,10 @@ const popupHandlers = new Map([
   [WalletMessageType.GET_CURRENT_ACCOUNT, async () => await handleGetCurrentAccount()],
 
   [NetworkMessageType.GET_CURRENT_CHAIN_ID, async () => {
-    if (!state.currentChainId) {
-      const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
-      state.currentChainId = fallbackConfig?.chainIdHex
-        || (fallbackConfig?.chainId ? normalizeChainId(fallbackConfig.chainId) : null)
-        || state.currentChainId;
-    }
-    return { success: true, chainId: state.currentChainId };
+    return {
+      success: true,
+      chainId: state.currentChainKey ? getCurrentEvmChainIdHex() : null,
+    };
   }],
   [NetworkMessageType.GET_CURRENT_RPC_URL, async () => {
     let rpcUrl = state.currentRpcUrl;
@@ -909,6 +1124,7 @@ const popupHandlers = new Map([
   [TransactionMessageType.SEND_TRANSACTION, async (data) => await handleSendTransactionMessage(data)],
   [TransactionMessageType.ESTIMATE_GAS, async (data) => await handleEstimateGasMessage(data)],
   [TransactionMessageType.GET_GAS_PRICE, async (data) => await handleGetGasPriceMessage(data)],
+  [TransactionMessageType.GET_BITCOIN_FEE_RATE, async (data) => await handleGetBitcoinFeeRateMessage(data)],
   [TransactionMessageType.GET_TRANSACTIONS, async (data) => await handleGetTransactionsMessage(data)],
   [TransactionMessageType.CLEAR_TRANSACTIONS, async (data) => await handleClearTransactionsMessage(data)],
 
@@ -989,7 +1205,11 @@ const popupHandlers = new Map([
         }
         await unlockWallet(data.password, account.id, 'popup');
       }
-      const signedTransaction = await signTransaction(account.id, data.transaction);
+      const signedTransaction = await signTransactionRaw(
+        state.currentChainKey || 'eip155:1',
+        account.id,
+        data.transaction
+      );
       return { success: true, signedTransaction };
     } catch (error) {
       return { success: false, error: error.message };

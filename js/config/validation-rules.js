@@ -4,6 +4,11 @@
 import { ethers } from '../../lib/ethers-6.16.esm.min.js';
 
 // ==================== 地址验证规则 ====================
+// EVM（Ethereum / YeYing L2 / 各类 EVM 兼容链）：标准 0x + 40hex 形式，
+// 保留 ethers checksum 校验。
+// Tron trc20 token：Base58 34 字符，v1 不实现 token import 但
+// normalize/call-sites 已通过 `normalizeAddressForFamily` 支持；落地
+// trc20 时新增 `TRON` 条目并让 `tokens.js` 走 `chainIdToFamily === 'tron'`。
 export const ADDRESS_VALIDATION = {
   ETHEREUM: {
     pattern: /^0x[a-fA-F0-9]{40}$/,
@@ -50,6 +55,9 @@ export const NETWORK_VALIDATION = {
 };
 
 // ==================== 代币验证规则 ====================
+// TOKEN_VALIDATION.ADDRESS.PATTERN 约束 EVM 合约地址；trc20 落地时新增
+// `TRON.PATTERN = /^T[1-9A-HJ-NP-Za-km-z]{33}$/` 并让
+// `tokens.js#handleAddToken` 按 `chainIdToFamily(chainId)` 切换。
 export const TOKEN_VALIDATION = {
   ADDRESS: {
     PATTERN: /^0x[a-fA-F0-9]{40}$/,

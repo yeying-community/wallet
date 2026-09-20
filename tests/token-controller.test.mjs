@@ -20,12 +20,14 @@ function setupDom() {
   elements = doc.elements;
   globalThis.document = doc.document;
   globalThis.window = globalThis.window || {};
+  globalThis.chrome = { runtime: { getURL: (value) => `chrome-extension://test/${value}` } };
   return doc.elements;
 }
 
 function teardown() {
   delete globalThis.document;
   delete globalThis.window;
+  delete globalThis.chrome;
 }
 
 test.beforeEach(async () => {
@@ -121,6 +123,14 @@ test('renderTokenBalances：每行左侧显示通证图标并转义图片地址'
   assert.match(html, /<img/);
   assert.match(html, /https:\/\/example\.test\/usdc\.png\?x=&lt;tag&gt;/);
   assert.match(html, />U<\/span>/);
+});
+
+test('renderTokenBalances：本地官方图标转换为扩展绝对资源地址', () => {
+  const c = new TokenController({});
+  c.renderTokenBalances([
+    { symbol: 'ETH', name: 'Ether', image: 'assets/token-icons/source-official/ethereum.svg', balance: '1' }
+  ]);
+  assert.match(elements.tokenList.innerHTML, /chrome-extension:\/\/test\/assets\/token-icons\/source-official\/ethereum\.svg/);
 });
 
 test('renderTokenBalances：缺 balance 显示 0', () => {

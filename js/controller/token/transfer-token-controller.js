@@ -6,10 +6,15 @@ export class TransferTokenController {
     this.transferTokenMap = new Map();
     this.currentTransferToken = null;
     this.boundTokenDocClick = false;
+    this.chainFamily = 'eip155';
   }
 
   setNetworkController(controller) {
     this.networkController = controller;
+  }
+
+  setChainFamily(family) {
+    this.chainFamily = String(family || 'eip155').toLowerCase();
   }
 
   setTokenChangedHandler(handler) {
@@ -59,8 +64,9 @@ export class TransferTokenController {
 
     const list = Array.isArray(tokens) ? tokens : [];
     if (list.length === 0) {
-      this.transferTokenMap.set('native', { symbol: 'ETH', name: '原生代币', isNative: true });
-      labelEl.textContent = '原生代币';
+      const native = this.nativeFallbackToken();
+      this.transferTokenMap.set('native', native);
+      labelEl.textContent = `${native.symbol} (原生)`;
       labelEl.dataset.value = 'native';
       return;
     }
@@ -69,7 +75,7 @@ export class TransferTokenController {
       const id = token.isNative ? 'native' : (token.address || token.symbol || '');
       if (!id) return;
       const label = token.isNative
-        ? `${token.symbol || 'ETH'} (原生)`
+        ? `${token.symbol || this.nativeSymbol()} (原生)`
         : `${token.symbol || '-'}${token.name ? ` · ${token.name}` : ''}`;
       const option = document.createElement('button');
       option.type = 'button';
@@ -86,8 +92,9 @@ export class TransferTokenController {
     });
 
     if (menu.children.length === 0) {
-      this.transferTokenMap.set('native', { symbol: 'ETH', name: '原生代币', isNative: true });
-      labelEl.textContent = '原生代币';
+      const native = this.nativeFallbackToken();
+      this.transferTokenMap.set('native', native);
+      labelEl.textContent = `${native.symbol} (原生)`;
       labelEl.dataset.value = 'native';
       return;
     }
@@ -113,7 +120,7 @@ export class TransferTokenController {
 
     const symbolEl = document.getElementById('transferTokenSymbol');
     if (symbolEl) {
-      const symbol = token?.symbol || 'ETH';
+      const symbol = token?.symbol || this.nativeSymbol();
       symbolEl.textContent = `(${symbol})`;
     }
 
@@ -141,6 +148,21 @@ export class TransferTokenController {
       return;
     }
     hintEl.textContent = `可转数量：${balance} ${symbol}`;
+  }
+
+  nativeSymbol() {
+    switch (this.chainFamily) {
+      case 'tron': return 'TRX';
+      case 'solana': return 'SOL';
+      case 'utxo':
+      case 'bip122': return 'BTC';
+      default: return 'ETH';
+    }
+  }
+
+  nativeFallbackToken() {
+    const symbol = this.nativeSymbol();
+    return { symbol, name: '原生代币', isNative: true };
   }
 
   bindTransferTokenSelector() {

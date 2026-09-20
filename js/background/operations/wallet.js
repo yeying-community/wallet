@@ -5,11 +5,24 @@
  */
 import { EventType } from '../../protocol/dapp-protocol.js';
 import { state } from '../state.js';
+import { ed25519KeypairFromSecp256k1Hex } from '../../chain/adapters/solana/ed25519-keypair.js';
 import {
   createHDWallet,
   importHDWallet,
   importPrivateKeyWallet,
   deriveSubAccount,
+  createTronHDWallet,
+  importTronHDWallet,
+  importTronPrivateKeyWallet,
+  deriveTronSubAccount,
+  createSolanaHDWallet,
+  importSolanaHDWallet,
+  importSolanaPrivateKeyWallet,
+  deriveSolanaSubAccount,
+  createBitcoinHDWallet,
+  importBitcoinHDWallet,
+  importBitcoinPrivateKeyWallet,
+  deriveBitcoinSubAccount,
   WALLET_TYPE,
   createWalletInstance,
   getAccountPrivateKey,
@@ -49,6 +62,8 @@ import { validateAccountName, validateUsername } from '../../config/validation-r
 import { getCachedPassword, cachePassword, refreshPasswordCache, clearPasswordCache } from '../password-cache.js';
 import { resetLockTimer, lockWallet } from '../keyring.js';
 import { normalizeChainId } from '../../common/chain/index.js';
+import { normalizeAddressForFamily } from '../../common/chain/address-normalize.js';
+import { setCurrentChainKey, chainIdToChainKey } from '../../chain/current-chain.js';
 import { broadcastEvent } from '../connection.js';
 import { TIMEOUTS, NETWORKS, DEFAULT_NETWORK } from '../../config/index.js';
 import { notifyUnlocked } from '../unlock-flow.js';
@@ -236,6 +251,17 @@ async function rememberUnlockedAccount(account, password) {
     state.keyring = new Map();
   }
   state.keyring.set(account.id, walletInstance);
+
+  // Solana（ed25519 曲线）账户：与 unlockWallet 一致，把同一私钥字节派生 ed25519
+  // keypair 缓存到 state.ed25519Keyring，否则导入后立即签名会因 keyring 为空而
+  // 抛 “Wallet is locked”。
+  if (account.namespace === 'solana' && walletInstance && walletInstance.privateKey) {
+    if (!state.ed25519Keyring) {
+      state.ed25519Keyring = new Map();
+    }
+    state.ed25519Keyring.set(account.id, ed25519KeypairFromSecp256k1Hex(walletInstance.privateKey));
+  }
+
   cachePassword(password, TIMEOUTS.PASSWORD);
   resetLockTimer();
   updateKeepAlive();
@@ -523,8 +549,272 @@ export async function handleCreateSubAccount(walletId, accountName, password) {
   }
 }
 
+// ==================== Tron 钱包 / 子账户（v1：secp256k1 / native TRX） ====================
+
 /**
- * 切换账户（支持自动解锁）
+ * 创建 Tron HD 钱包（生成新助记词）
+ * @param {string} accountName
+ * @param {string} password
+ * @param {{tronReference?: string}} [options]
+ * @returns {Promise<Object>} { success, wallet, account, mnemonic }
+ */
+export async function handleCreateTronHDWallet(accountName, password, options = {}) {
+  try {
+    const { wallet, mainAccount, mnemonic } = await createTronHDWallet(accountName, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Tron HD wallet created and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount, mnemonic };
+  } catch (error) {
+    console.error('❌ Handle create Tron HD wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 导入 Tron HD 钱包（从助记词）
+ * @param {string} accountName
+ * @param {string} mnemonic
+ * @param {string} password
+ * @param {{tronReference?: string}} [options]
+ * @returns {Promise<Object>} { success, wallet, account }
+ */
+export async function handleImportTronHDWallet(accountName, mnemonic, password, options = {}) {
+  try {
+    const { wallet, mainAccount } = await importTronHDWallet(accountName, mnemonic, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Tron HD wallet imported and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount };
+  } catch (error) {
+    console.error('❌ Handle import Tron HD wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 导入 Tron 私钥
+ * @param {string} accountName
+ * @param {string} privateKey
+ * @param {string} password
+ * @param {{tronReference?: string}} [options]
+ * @returns {Promise<Object>} { success, wallet, account }
+ */
+export async function handleImportTronPrivateKeyWallet(accountName, privateKey, password, options = {}) {
+  try {
+    const { wallet, mainAccount } = await importTronPrivateKeyWallet(accountName, privateKey, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Tron private key wallet imported and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount };
+  } catch (error) {
+    console.error('❌ Handle import Tron private key wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 派生 Tron 子账户（仅 Tron HD 钱包）
+ * @param {string} walletId
+ * @param {string|null} password
+ * @returns {Promise<Object>} { success, account }
+ */
+export async function handleCreateTronSubAccount(walletId, password) {
+  try {
+    const wallet = await getWallet(walletId);
+    if (!wallet || wallet.type !== WALLET_TYPE.HD) {
+      return { success: false, error: 'Tron HD wallet not found' };
+    }
+
+    // 计算新索引：与 EVM 路径一致，避免 index 复用
+    const walletAccounts = await getWalletAccounts(walletId);
+    const maxIndex = walletAccounts.reduce(
+      (max, account) => Math.max(max, Number.isFinite(account.index) ? account.index : 0),
+      -1
+    );
+    const newIndex = maxIndex + 1;
+
+    const subAccount = await deriveTronSubAccount(wallet, newIndex, undefined, password);
+    await saveAccount(subAccount);
+
+    wallet.accountCount = (wallet.accountCount || 0) + 1;
+    await saveWallet(wallet);
+
+    if (password) {
+      cachePassword(password, TIMEOUTS.PASSWORD);
+    } else {
+      refreshPasswordCache();
+    }
+    resetLockTimer();
+
+    console.log('✅ Tron sub account created and saved:', subAccount.name);
+    return { success: true, account: subAccount };
+  } catch (error) {
+    console.error('❌ Handle create Tron sub account failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ==================== Solana 钱包 / 子账户（v1：ed25519 / native SOL） ====================
+
+export async function handleCreateSolanaHDWallet(accountName, password, options = {}) {
+  try {
+    const { wallet, mainAccount, mnemonic } = await createSolanaHDWallet(accountName, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Solana HD wallet created and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount, mnemonic };
+  } catch (error) {
+    console.error('❌ Handle create Solana HD wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function handleImportSolanaHDWallet(accountName, mnemonic, password, options = {}) {
+  try {
+    const { wallet, mainAccount } = await importSolanaHDWallet(accountName, mnemonic, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Solana HD wallet imported and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount };
+  } catch (error) {
+    console.error('❌ Handle import Solana HD wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function handleImportSolanaPrivateKeyWallet(accountName, privateKey, password, options = {}) {
+  try {
+    const { wallet, mainAccount } = await importSolanaPrivateKeyWallet(accountName, privateKey, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Solana private key wallet imported and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount };
+  } catch (error) {
+    console.error('❌ Handle import Solana private key wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function handleCreateSolanaSubAccount(walletId, password, options = {}) {
+  try {
+    const wallet = await getWallet(walletId);
+    if (!wallet || wallet.type !== WALLET_TYPE.HD) {
+      return { success: false, error: 'Solana HD wallet not found' };
+    }
+    const walletAccounts = await getWalletAccounts(walletId);
+    const maxIndex = walletAccounts.reduce(
+      (max, account) => Math.max(max, Number.isFinite(account.index) ? account.index : 0),
+      -1
+    );
+    const newIndex = maxIndex + 1;
+    const subAccount = await deriveSolanaSubAccount(wallet, newIndex, undefined, password, options || {});
+    await saveAccount(subAccount);
+    wallet.accountCount = (wallet.accountCount || 0) + 1;
+    await saveWallet(wallet);
+    if (password) {
+      cachePassword(password, TIMEOUTS.PASSWORD);
+    } else {
+      refreshPasswordCache();
+    }
+    resetLockTimer();
+    return { success: true, account: subAccount };
+  } catch (error) {
+    console.error('❌ Handle create Solana sub account failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ==================== Bitcoin 钱包 / 子账户（v1：secp256k1 / native BTC P2WPKH） ====================
+
+export async function handleCreateBitcoinHDWallet(accountName, password, options = {}) {
+  try {
+    const { wallet, mainAccount, mnemonic } = await createBitcoinHDWallet(accountName, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Bitcoin HD wallet created and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount, mnemonic };
+  } catch (error) {
+    console.error('❌ Handle create Bitcoin HD wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function handleImportBitcoinHDWallet(accountName, mnemonic, password, options = {}) {
+  try {
+    const { wallet, mainAccount } = await importBitcoinHDWallet(accountName, mnemonic, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Bitcoin HD wallet imported and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount };
+  } catch (error) {
+    console.error('❌ Handle import Bitcoin HD wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function handleImportBitcoinPrivateKeyWallet(accountName, privateKey, password, options = {}) {
+  try {
+    const { wallet, mainAccount } = await importBitcoinPrivateKeyWallet(accountName, privateKey, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Bitcoin private key wallet imported and saved:', wallet.id);
+    return { success: true, wallet, account: mainAccount };
+  } catch (error) {
+    console.error('❌ Handle import Bitcoin private key wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function handleCreateBitcoinSubAccount(walletId, password, options = {}) {
+  try {
+    const wallet = await getWallet(walletId);
+    if (!wallet || wallet.type !== WALLET_TYPE.HD) {
+      return { success: false, error: 'Bitcoin HD wallet not found' };
+    }
+    const walletAccounts = await getWalletAccounts(walletId);
+    const maxIndex = walletAccounts.reduce(
+      (max, account) => Math.max(max, Number.isFinite(account.index) ? account.index : 0),
+      -1
+    );
+    const newIndex = maxIndex + 1;
+    const subAccount = await deriveBitcoinSubAccount(wallet, newIndex, undefined, password, options || {});
+    await saveAccount(subAccount);
+    wallet.accountCount = (wallet.accountCount || 0) + 1;
+    await saveWallet(wallet);
+    if (password) {
+      cachePassword(password, TIMEOUTS.PASSWORD);
+    } else {
+      refreshPasswordCache();
+    }
+    resetLockTimer();
+    return { success: true, account: subAccount };
+  } catch (error) {
+    console.error('❌ Handle create Bitcoin sub account failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 切换账户
  * @param {string} accountId - 要切换到的账户 ID
  * @param {string|null} password - 密码（可选，如果有缓存则不需要）
  * @returns {Promise<Object>} { success, account, requirePassword }
@@ -843,7 +1133,9 @@ export async function handleImportAccountsFile(file, password) {
       return { success: false, error: '账户备份内容无效' };
     }
     const existingAddresses = new Set(
-      Object.values(await getAccounts()).map(account => String(account.address || '').toLowerCase()).filter(Boolean)
+      Object.values(await getAccounts())
+        .map(account => normalizeAddressForFamily(account.address, account.namespace))
+        .filter(Boolean)
     );
     let imported = 0;
     let skipped = 0;
@@ -866,7 +1158,7 @@ export async function handleImportAccountsFile(file, password) {
       if (source.type === WALLET_TYPE.HD && source.mnemonic) {
         const firstMeta = sourceAccounts.find(account => account.index === 0) || sourceAccounts[0] || {};
         const preview = await importHDWallet(firstMeta.name || '导入账户', source.mnemonic, password);
-        if (existingAddresses.has(preview.mainAccount.address.toLowerCase())) {
+        if (existingAddresses.has(normalizeAddressForFamily(preview.mainAccount.address, preview.mainAccount.namespace))) {
           skipped += sourceAccounts.length || 1;
           continue;
         }
@@ -879,15 +1171,15 @@ export async function handleImportAccountsFile(file, password) {
         });
         await saveAccount(preview.mainAccount);
         if (!firstImportedAccountId) firstImportedAccountId = preview.mainAccount.id;
-        existingAddresses.add(preview.mainAccount.address.toLowerCase());
+        existingAddresses.add(normalizeAddressForFamily(preview.mainAccount.address, preview.mainAccount.namespace));
         imported += 1;
         for (const meta of sourceAccounts.filter(account => Number.isInteger(account.index) && account.index > 0).sort((a, b) => a.index - b.index)) {
           const account = await deriveSubAccount(preview.wallet, meta.index, meta.name, password);
-          if (existingAddresses.has(account.address.toLowerCase())) { skipped += 1; continue; }
+          if (existingAddresses.has(normalizeAddressForFamily(account.address, account.namespace))) { skipped += 1; continue; }
           account.username = meta.username || '';
           account.usernameUpdatedAt = meta.usernameUpdatedAt || 0;
           await saveAccount(account);
-          existingAddresses.add(account.address.toLowerCase());
+          existingAddresses.add(normalizeAddressForFamily(account.address, account.namespace));
           imported += 1;
           preview.wallet.accountCount = Math.max(preview.wallet.accountCount || 1, meta.index + 1);
         }
@@ -896,14 +1188,14 @@ export async function handleImportAccountsFile(file, password) {
         for (let index = 0; index < source.privateKeys.length; index += 1) {
           const meta = sourceAccounts[index] || {};
           const preview = await importPrivateKeyWallet(meta.name || '导入账户', source.privateKeys[index], password);
-          if (existingAddresses.has(preview.mainAccount.address.toLowerCase())) { skipped += 1; continue; }
+          if (existingAddresses.has(normalizeAddressForFamily(preview.mainAccount.address, preview.mainAccount.namespace))) { skipped += 1; continue; }
           preview.wallet.name = source.name || preview.wallet.name;
           preview.mainAccount.username = meta.username || '';
           preview.mainAccount.usernameUpdatedAt = meta.usernameUpdatedAt || 0;
           await saveWallet(preview.wallet);
           await saveAccount(preview.mainAccount);
           if (!firstImportedAccountId) firstImportedAccountId = preview.mainAccount.id;
-          existingAddresses.add(preview.mainAccount.address.toLowerCase());
+          existingAddresses.add(normalizeAddressForFamily(preview.mainAccount.address, preview.mainAccount.namespace));
           imported += 1;
         }
       }
@@ -1197,10 +1489,10 @@ export async function handleResetWallet() {
     const defaultConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
     if (defaultConfig) {
       const chainIdHex = defaultConfig.chainIdHex || normalizeChainId(defaultConfig.chainId);
-      state.currentChainId = chainIdHex;
+      setCurrentChainKey(chainIdToChainKey(chainIdHex));
       state.currentRpcUrl = defaultConfig.rpcUrl || defaultConfig.rpc || null;
     } else {
-      state.currentChainId = null;
+      state.currentChainKey = null;
       state.currentRpcUrl = null;
     }
 

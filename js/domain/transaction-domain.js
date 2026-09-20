@@ -10,6 +10,7 @@
  * 通信协议：{ type, data }
  */
 import { isValidAddress } from '../common/chain/index.js';
+import { isValidAddressForFamily } from '../common/chain/address-normalize.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { TransactionMessageType } from '../protocol/extension-protocol.js';
 import { BaseDomain } from './base-domain.js';
@@ -120,54 +121,139 @@ export class TransactionDomain extends BaseDomain {
 
   /**
    * 发送交易
+   *
+   * 支持 EVM（hex 形态 value/data/gas）与 Tron native TRX
+   * （valueTrx/feeLimitSun/rpcUrl）两族。Tron 路径通过 chainFamily === 'tron'
+   * 路由到 SW 的 Tron signing + /wallet/broadcasttransaction 链路。
+   *
    * @param {Object} txParams - 交易参数
    * @param {string} txParams.from - 发送地址
    * @param {string} txParams.to - 接收地址
-   * @param {string} txParams.value - 发送金额（十六进制）
-   * @param {string} txParams.data - 交易数据（可选）
-   * @param {string} txParams.gas - Gas 限制（可选）
+   * @param {string} txParams.value - 发送金额（十六进制；EVM 专用）
+   * @param {string} txParams.data - 交易数据（可选；EVM 专用）
+   * @param {string} txParams.gas - Gas 限制（可选；EVM 专用）
    * @param {string} txParams.chainId - 链 ID
    * @param {string} txParams.rpcUrl - RPC URL
+   * @param {string} [txParams.chainFamily] - 'eip155'（默认）| 'tron'
+   * @param {string} [txParams.valueTrx] - Tron 原生 TRX 数量（人类可读，TRX 单位）
+   * @param {string} [txParams.feeLimitSun] - Tron fee cap（SUN 单位；默认 15_000_000）
+   * @param {string} [txParams.asset] - Tron 资产标识（v1 仅 'TRX'）
    * @returns {Promise<string>} 交易哈希
    */
   async sendTransaction(txParams) {
-    const { from, to, value, data, gas, chainId, rpcUrl, token } = txParams;
+    const {
+      from, to, value, data, gas, chainId, rpcUrl, token,
+      chainFamily, valueTrx, feeLimitSun, asset, amountSol, amountBtc,
+      tokenAmountDisplay
+    } = txParams || {};
+    const family = chainFamily === 'solana'
+      ? 'solana'
+      : (chainFamily === 'tron'
+        ? 'tron'
+        : (chainFamily === 'utxo' ? 'utxo' : 'eip155'));
 
-    // 参数验证
-    if (!from || !isValidAddress(from)) {
+    // 非 EVM（Tron/Solana）token 转账：token 非原生且带 amount（最小单位 hex）。
+    const isNonEvmTokenTransfer = (family === 'tron' || family === 'solana')
+      && !!(token && token.address && !token.isNative && token.amount);
+
+    // 参数验证：family-aware；Tron Base58 与 Solana base58(32B) 都不通过
+    // EVM-only isValidAddress；address-normalize 已按 family 严格校验。
+    if (!from || !isValidAddressForFamily(from, family)) {
       throw new Error('无效的发送地址');
     }
-
-    if (!to || !isValidAddress(to)) {
+    if (!to || !isValidAddressForFamily(to, family)) {
       throw new Error('无效的接收地址');
     }
-
-    if (!value) {
-      throw new Error('请输入发送金额');
+    if (isNonEvmTokenTransfer) {
+      // token.amount 已是最小单位（hex），> 0 即可。
+      try {
+        if (BigInt(token.amount) <= 0n) throw new Error();
+      } catch {
+        throw new Error('请输入发送金额');
+      }
+    } else if (family === 'tron') {
+      // v1 Tron 仅支持 TRX native transfer
+      const trx = parseFloat(valueTrx);
+      if (!Number.isFinite(trx) || trx <= 0) {
+        throw new Error('请输入发送金额');
+      }
+    } else if (family === 'solana') {
+      // v1 Solana 仅支持 SOL native transfer；amount 人类可读 SOL，lamports = × 1e9
+      const sol = parseFloat(amountSol);
+      if (!Number.isFinite(sol) || sol <= 0) {
+        throw new Error('请输入发送金额');
+      }
+    } else if (family === 'utxo') {
+      // v1 Bitcoin 仅支持 BTC native transfer；amount 人类可读 BTC，satoshi = × 1e8
+      const btc = parseFloat(amountBtc);
+      if (!Number.isFinite(btc) || btc <= 0) {
+        throw new Error('请输入发送金额');
+      }
+    } else {
+      if (!value) {
+        throw new Error('请输入发送金额');
+      }
     }
 
-    const result = await this._sendMessage(TransactionMessageType.SEND_TRANSACTION, {
+    const payload = {
       from,
       to,
-      value,
-      data: data || '0x',
-      gas: gas || undefined,
+      chainFamily: family,
       chainId,
-      rpcUrl,
-      token: token || null
-    });
+      rpcUrl
+    };
+    if (isNonEvmTokenTransfer) {
+      // token 转账：只带 token（含最小单位 amount）+ 显示金额；不带 native amount 字段。
+      payload.token = token;
+      if (family === 'tron') payload.feeLimitSun = String(feeLimitSun || 15000000);
+    } else if (family === 'tron') {
+      payload.asset = asset || 'TRX';
+      payload.valueTrx = String(valueTrx);
+      payload.feeLimitSun = String(feeLimitSun || 15000000);
+    } else if (family === 'solana') {
+      payload.asset = asset || 'SOL';
+      payload.amountSol = String(amountSol);
+    } else if (family === 'utxo') {
+      payload.asset = asset || 'BTC';
+      payload.amountBtc = String(amountBtc);
+    } else {
+      payload.value = value;
+      payload.data = data || '0x';
+      payload.gas = gas || undefined;
+    }
+    if (token && !isNonEvmTokenTransfer) payload.token = token;
+
+    const result = await this._sendMessage(TransactionMessageType.SEND_TRANSACTION, payload);
 
     // 添加到交易记录
-    this._addTransaction({
+    const record = {
       hash: result.txHash,
       from,
       to,
-      value,
-      token: token || null,
       timestamp: getTimestamp(),
       status: 'pending',
       chainId: chainId || null
-    });
+    };
+    if (isNonEvmTokenTransfer) {
+      // 用人类可读金额 + symbol 作为展示占位。
+      record.value = `${tokenAmountDisplay ?? ''} ${token.symbol || ''}`.trim();
+    } else if (family === 'tron') {
+      // v1 transaction 存储层 normalize 假设 hex (transaction-storage.js)，
+      // 这里用 `value` 字段存 TRX 字符串作为占位，避免破坏现有 record 形态。
+      // 未来 transaction-storage family-aware 改造时统一替换为
+      // `valueTrx` 字段。
+      record.value = `${valueTrx} TRX`;
+    } else if (family === 'solana') {
+      // 同 Tron：用人类可读 SOL 字符串作为占位（hex 形态 normalize 假设）。
+      record.value = `${amountSol} SOL`;
+    } else if (family === 'utxo') {
+      // 同上：用人类可读 BTC 字符串作为占位。
+      record.value = `${amountBtc} BTC`;
+    } else {
+      record.value = value;
+    }
+    if (token) record.token = token;
+    this._addTransaction(record);
 
     return result.txHash;
   }
@@ -234,6 +320,17 @@ export class TransactionDomain extends BaseDomain {
   async getGasPrice(params = {}) {
     const result = await this._sendMessage(TransactionMessageType.GET_GAS_PRICE, params);
     return result.gasPrice;
+  }
+
+  /**
+   * 获取 Bitcoin fee rate（sat/vB）。走 Esplora /fee-estimates（6 区块目标），
+   * 失败由后台兜底 10 sat/vB。仅 bip122 链使用。
+   * @param {Object} params - { chainKey?, rpcUrl? }
+   * @returns {Promise<number>} sat/vB 费率
+   */
+  async getBitcoinFeeRate(params = {}) {
+    const result = await this._sendMessage(TransactionMessageType.GET_BITCOIN_FEE_RATE, params);
+    return result?.feeRate;
   }
 
   // ==================== 交易记录 ====================
@@ -303,8 +400,18 @@ export class TransactionDomain extends BaseDomain {
    * @returns {string} 格式化后的金额
    */
   formatTransactionValue(value, isSent = true) {
-    const ether = this.formatEther(value);
     const prefix = isSent ? '-' : '+';
+    // 非 EVM 链（Tron/Solana/Bitcoin）记录里 value 已是格式化好的展示串
+    // （如 "0.1 SOL" / "0.001 BTC" / "5 TRX"），不是 hex/十进制原始单位。
+    // 仅当 value 是纯 hex（0x..）或纯十进制整数时才按 18 位 wei→ETH 格式化。
+    const raw = typeof value === 'string' ? value.trim() : value;
+    const isRawUnits = typeof raw === 'string'
+      ? (/^0x[0-9a-fA-F]+$/.test(raw) || /^[0-9]+$/.test(raw))
+      : (typeof raw === 'bigint' || typeof raw === 'number');
+    if (!isRawUnits && raw) {
+      return `${prefix}${raw}`;
+    }
+    const ether = this.formatEther(value);
     return `${prefix}${ether} ETH`;
   }
 

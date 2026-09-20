@@ -1,6 +1,7 @@
 import { showSuccess, showError, showPage } from '../common/ui/index.js';
 import { copyAddressToClipboard } from '../common/ui/clipboard-ui.js';
 import { shortenAddress } from '../common/chain/index.js';
+import { normalizeAddressForFamily } from '../common/chain/address-normalize.js';
 
 export class ContactController {
   constructor({ wallet, onContactsUpdated } = {}) {
@@ -306,7 +307,10 @@ export class ContactController {
 
       const existing = await this.wallet.getContacts();
       const existingMap = new Map(
-        (existing || []).map(item => [String(item.address || '').toLowerCase(), item])
+        (existing || []).map(item => [
+          normalizeAddressForFamily(item.address, item.namespace || 'eip155') || String(item.address || '').toLowerCase(),
+          item,
+        ])
       );
 
       let added = 0;
@@ -321,7 +325,12 @@ export class ContactController {
           failed += 1;
           continue;
         }
-        const key = address.toLowerCase();
+        // Contacts v1 不携带 namespace 字段；导入条目里的 Tron 地址走
+        // Base58Check 大小写敏感，所以按 normalizeAddressForFamily 默认
+        // EVM 仅对 `0x...` 大小写归一，Tron 原值保留。未来 schema 携带
+        // namespace 后这里改成读 `item.namespace || 'eip155'`。
+        const family = item.namespace || 'eip155';
+        const key = normalizeAddressForFamily(address, family) || address.toLowerCase();
         try {
           const existingContact = existingMap.get(key);
           if (existingContact) {
