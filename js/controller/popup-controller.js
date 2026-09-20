@@ -234,13 +234,39 @@ export class PopupController {
           importPage?.dataset && (importPage.dataset.origin = state.origin);
         }
         const type = state.importType || 'mnemonic';
-        const tab = document.querySelector(`.import-tab[data-type="${type}"]`);
+        // 同步方法 switch + 网络选择器（与新 UI 兼容）
+        const methodOpts = Array.from(document.querySelectorAll('.import-method-option'));
+        methodOpts.forEach((opt) => {
+          const active = opt.dataset.method === type;
+          opt.classList.toggle('active', active);
+          opt.setAttribute('aria-checked', String(active));
+        });
+        const network = state.importNetwork || 'evm';
+        const networkSelect = document.getElementById('importNetworkSelect');
+        if (networkSelect) networkSelect.value = network;
+        const networkLabel = document.getElementById('importNetworkLabel');
+        const networkMenu = document.getElementById('importNetworkMenu');
+        const activeOpt = networkMenu?.querySelector(`.network-option[data-network-value="${network}"]`);
+        if (networkLabel && activeOpt) networkLabel.textContent = activeOpt.textContent.trim();
+        networkMenu?.querySelectorAll('.network-option').forEach((opt) => {
+          opt.classList.toggle('active', opt.dataset.networkValue === network);
+        });
+        // reference 重置到当前网络的默认
+        const referenceSelect = document.getElementById('importReferenceSelect');
+        const defaultRef = state.importReference || referenceSelect?.value || '';
+        if (referenceSelect) referenceSelect.value = defaultRef;
+        const referenceLabel = document.getElementById('importReferenceLabel');
+        const referenceMenu = document.getElementById('importReferenceMenu');
+        const refOpt = referenceMenu?.querySelector(`.network-option[data-reference-value="${defaultRef}"]`);
+        if (referenceLabel && refOpt) referenceLabel.textContent = refOpt.textContent.trim();
+        referenceMenu?.querySelectorAll('.network-option').forEach((opt) => {
+          opt.classList.toggle('active', opt.dataset.referenceValue === defaultRef);
+        });
         const mnemonicSection = document.getElementById('mnemonicImportSection');
         const privateKeySection = document.getElementById('privateKeyImportSection');
         const fileSection = document.getElementById('fileImportSection');
         const nameGroup = document.getElementById('importWalletNameGroup');
         const importBtn = document.getElementById('importBtn');
-        document.querySelectorAll('.import-tab').forEach(item => item.classList.toggle('active', item === tab));
         mnemonicSection?.classList.toggle('hidden', type !== 'mnemonic');
         privateKeySection?.classList.toggle('hidden', type !== 'privateKey');
         fileSection?.classList.toggle('hidden', type !== 'file');

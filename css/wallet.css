@@ -1247,6 +1247,26 @@ body {
   overflow-y: auto;
 }
 
+/* 云端恢复时只滚动钱包卡片列表，页面标题、密码输入和底部操作保持固定。 */
+#importPage:has(#custodyImportSection:not(.hidden)) {
+  overflow: hidden;
+}
+
+#importPage:has(#custodyImportSection:not(.hidden)) #custodyImportSection {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#importPage:has(#custodyImportSection:not(.hidden)) #custodyRecoveryList {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .import-tabs {
   display: flex;
   gap: 8px;
@@ -1263,6 +1283,41 @@ body {
   padding: 3px;
   background: #f5f5f5;
   border-radius: 7px;
+}
+
+/* 助记词 / 私钥 二选一 switch —— 替代旧的 6 个 import-tab */
+.import-method-switch {
+  display: flex;
+  gap: 0;
+  margin-bottom: 14px;
+  padding: 4px;
+  background: #f5f5f5;
+  border-radius: 8px;
+}
+
+.import-method-option {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.import-method-option:hover {
+  background: rgba(102, 126, 234, 0.1);
+  color: #667eea;
+}
+
+.import-method-option.active {
+  background: white;
+  color: #667eea;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .import-tab,
