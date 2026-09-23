@@ -86,7 +86,6 @@ const MPC_WIRE_PUMP_MAX_TICKS = 90;
 const MPC_WIRE_PUMP_MAX_IDLE_TICKS = 12;
 const MPC_AUX_INFO_WIRE_PUMP_MAX_TICKS = 900;
 const MPC_AUX_INFO_WIRE_PUMP_MAX_IDLE_TICKS = 180;
-const MPC_WIRE_START_TIMEOUT_MS = 5000;
 // Aux-info wall-clock deadline. Kept shorter than the offscreen single-request
 // timeout (15 min) so production CGGMP24 aux-info is guaranteed to converge to
 // a terminal `failed` state (with reason `MPC_AUX_INFO_DEADLINE_EXCEEDED`)

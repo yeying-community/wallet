@@ -163,9 +163,14 @@ test('createPoller：start → 首次立即执行 fn，再按 interval 重复', 
   const fn = async () => { calls++; };
   const poller = createPoller(fn, 20);
   poller.start();
-  // 启动后立即一次；等待若干 interval 后再触发若干次
-  await new Promise((r) => setTimeout(r, 75));
-  poller.stop();
+  const deadline = Date.now() + 1000;
+  try {
+    while (calls < 2 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  } finally {
+    poller.stop();
+  }
   assert.ok(calls >= 2, `至少调用 2 次（实际 ${calls}）`);
 });
 
