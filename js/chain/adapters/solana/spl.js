@@ -7,9 +7,10 @@
  *   - findProgramAddress（PDA 派生，含 ed25519 off-curve 校验）
  *   - getAssociatedTokenAddress（owner + mint → ATA）
  *   - splTransferCheckedInstruction（TransferChecked，指令 tag=12）
+ *   - createAssociatedTokenAccountInstruction（收款方 ATA 不存在时按需补建，
+ *     用 CreateIdempotent 变体避免竞态失败）
  *
- * 不含：createAssociatedTokenAccount（v1 假设收款方 ATA 已存在）、
- * multisig、TransferChecked 之外的 SPL 指令。
+ * 不含：multisig、TransferChecked / Create 之外的 SPL 指令。
  *
  * PDA 参考：https://solana.com/docs/core/pda
  * off-curve 校验用 BigInt 直接做 ed25519 域算术（p = 2^255-19），
@@ -18,7 +19,7 @@
 
 import { ethers } from '../../../../lib/ethers-6.16.esm.min.js';
 import { base58Decode } from '../../../../lib/base58.js';
-import { concatBytes, u64LE } from './sysprog.js';
+import { concatBytes, u64LE, SOLANA_CONSTANTS } from './sysprog.js';
 
 // SPL Token Program：TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
 export const TOKEN_PROGRAM_ID = base58Decode('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
@@ -164,5 +165,41 @@ export function splTransferCheckedInstruction({ source, mint, destination, owner
       { pubkey: owner, isSigner: true, isWritable: false }
     ],
     data
+  };
+}
+
+/**
+ * Associated Token Account Program：CreateIdempotent 指令（data=[1]）。
+ * 收款方从未持有该 mint（ATA 不存在）时补建其 ATA；用 idempotent 变体，
+ * 即使账户已存在也不会失败（防竞态）。
+ *
+ *   accounts（当前 mainnet ATA 程序布局，无需 rent sysvar）：
+ *     [0] payer         (signer, writable) —— 出资方（= feePayer）
+ *     [1] ata           (writable)         —— 待创建的 associated token account
+ *     [2] owner         (readonly)         —— ATA 归属的钱包地址（收款方）
+ *     [3] mint          (readonly)
+ *     [4] systemProgram (readonly)
+ *     [5] tokenProgram  (readonly)
+ *
+ * @param {{ payer: Uint8Array, ata: Uint8Array, owner: Uint8Array, mint: Uint8Array }} args
+ * @returns {{ programId: Uint8Array, keys: Array<{pubkey: Uint8Array, isSigner: boolean, isWritable: boolean}>, data: Uint8Array }}
+ */
+export function createAssociatedTokenAccountInstruction({ payer, ata, owner, mint }) {
+  for (const [name, v] of [['payer', payer], ['ata', ata], ['owner', owner], ['mint', mint]]) {
+    if (!(v instanceof Uint8Array) || v.length !== 32) {
+      throw new Error(`createAssociatedTokenAccount: ${name} must be 32 bytes`);
+    }
+  }
+  return {
+    programId: ASSOCIATED_TOKEN_PROGRAM_ID,
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: ata, isSigner: false, isWritable: true },
+      { pubkey: owner, isSigner: false, isWritable: false },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: SOLANA_CONSTANTS.SYSTEM_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false }
+    ],
+    data: new Uint8Array([1]) // CreateIdempotent
   };
 }

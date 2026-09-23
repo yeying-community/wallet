@@ -64,9 +64,13 @@ export function buildPopupSessionState(pageId, documentRef = globalThis.document
   // Keep only the non-sensitive UI context needed to reopen the import page.
   if (pageId === 'importPage') {
     const page = documentRef?.getElementById?.('importPage');
-    const activeTab = documentRef?.querySelector?.('.import-tab.active');
+    const activeOption = documentRef?.querySelector?.('.import-method-option.active');
+    const networkSelect = documentRef?.getElementById?.('importNetworkSelect');
+    const referenceSelect = documentRef?.getElementById?.('importReferenceSelect');
     state.origin = page?.dataset?.origin || 'welcome';
-    state.importType = activeTab?.dataset?.type || 'mnemonic';
+    state.importType = activeOption?.dataset?.method || 'mnemonic';
+    state.importNetwork = networkSelect?.value || 'evm';
+    state.importReference = referenceSelect?.value || '';
     state.fields = {};
   }
 

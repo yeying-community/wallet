@@ -434,6 +434,73 @@ test('buildSplTokenTransfer：token-transfer → curve=ed25519 / message / hashA
   }
 });
 
+test('buildSplTokenTransfer：收款方 ATA 不存在 → 补一条 CreateIdempotent 指令（共 2 条）', async () => {
+  const blockhash32 = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) blockhash32[i] = i;
+  const blockhash = base58Encode(blockhash32);
+  const origFetch = globalThis.fetch;
+  // 按 method 分流：getRecentBlockhash → blockhash；getAccountInfo → value=null（ATA 不存在）。
+  globalThis.fetch = async (_url, opts) => {
+    let method = '';
+    try { method = JSON.parse(opts.body).method; } catch { /* ignore */ }
+    const result = method === 'getAccountInfo'
+      ? { context: { slot: 1 }, value: null }
+      : { context: { slot: 1 }, value: { blockhash, feeCalculator: { lamportsPerSignature: 5000 } } };
+    return { ok: true, json: async () => ({ jsonrpc: '2.0', id: 'x', result }) };
+  };
+  try {
+    const u = await buildUnsigned(
+      {
+        type: 'token-transfer',
+        from: FROM_ADDR,
+        to: TO_ADDR,
+        mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+        amount: '1000000',
+        decimals: 6
+      },
+      { chainKey: 'solana:mainnet-beta' }
+    );
+    // ATA 不存在 → create-ATA + transfer 共 2 条指令。
+    assert.equal(u.serializeState.tx.message.instructions.length, 2);
+    // 仍是单 signer（feePayer 出资建账并签名）。
+    assert.equal(u.serializeState.messageBytes[0], 1);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('buildSplTokenTransfer：收款方 ATA 已存在 → 仅 1 条 TransferChecked 指令', async () => {
+  const blockhash32 = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) blockhash32[i] = i + 1;
+  const blockhash = base58Encode(blockhash32);
+  const origFetch = globalThis.fetch;
+  // getAccountInfo → value 非空（ATA 已存在）→ 不补建。
+  globalThis.fetch = async (_url, opts) => {
+    let method = '';
+    try { method = JSON.parse(opts.body).method; } catch { /* ignore */ }
+    const result = method === 'getAccountInfo'
+      ? { context: { slot: 1 }, value: { lamports: 2039280, data: ['', 'base64'], owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' } }
+      : { context: { slot: 1 }, value: { blockhash, feeCalculator: { lamportsPerSignature: 5000 } } };
+    return { ok: true, json: async () => ({ jsonrpc: '2.0', id: 'x', result }) };
+  };
+  try {
+    const u = await buildUnsigned(
+      {
+        type: 'token-transfer',
+        from: FROM_ADDR,
+        to: TO_ADDR,
+        mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+        amount: '1000000',
+        decimals: 6
+      },
+      { chainKey: 'solana:mainnet-beta' }
+    );
+    assert.equal(u.serializeState.tx.message.instructions.length, 1);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
 test('buildSplTokenTransfer：缺 mint / 非法 amount → 抛错', async () => {
   await assert.rejects(
     () => buildUnsigned(

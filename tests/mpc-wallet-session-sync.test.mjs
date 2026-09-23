@@ -699,87 +699,6 @@ test('MPC 钱包签名准备优先使用本地 keyShare participantIndex 恢复 
   }
 });
 
-test('MPC 钱包签名准备启动 aux-info 超时时返回 pending', async () => {
-  await saveMpcWallet({
-    id: 'mpc-wallet-prepare-timeout',
-    name: 'mpc-prepare-timeout',
-    type: 'mpc',
-    status: 'keygen_completed',
-    address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093',
-    keygenSessionId: 'session-prepare-timeout',
-    threshold: 2,
-    participants: [
-      '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
-      '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
-    ],
-    signingStatus: 'unavailable',
-    signingUnavailableReason: 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND',
-    completeKeyShareStatus: 'missing',
-    createdAt: 1000,
-    updatedAt: 1000,
-  });
-  await saveMpcSession({
-    id: 'session-prepare-timeout',
-    walletId: 'mpc-wallet-prepare-timeout',
-    name: 'mpc-prepare-timeout',
-    type: 'keygen',
-    status: 'keygen_completed',
-    participants: [
-      '0x084A6171f6eCf0A4C8fA1C88ce53Cf725a23E630',
-      '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
-    ],
-    threshold: 2,
-    result: {
-      address: '0xfd608b60f57f1cade5006faaca5f8df812a0e093'
-    },
-    createdAt: 1000,
-    updatedAt: 1000,
-  });
-  await saveMpcKeyShare({
-    id: 'mpc-wallet-prepare-timeout:0x5c7bf91C493126314bb821C123Dee889FFCa3932:1',
-    walletId: 'mpc-wallet-prepare-timeout',
-    sessionId: 'session-prepare-timeout',
-    participantId: '0x5c7bf91C493126314bb821C123Dee889FFCa3932',
-    participantIndex: 1,
-    share: { secret: 'local-share' },
-    auxInfoStatus: 'missing',
-    completeKeyShareStatus: 'missing',
-    signingStatus: 'unavailable',
-    signingUnavailableReason: 'MPC_COMPLETE_KEY_SHARE_NOT_FOUND',
-    shareVersion: 1,
-    keyVersion: 1,
-  });
-  const originalStartWireSession = mpcService.startWireSession;
-  const originalStartWireSessionPump = mpcService._startWireSessionPump;
-  const originalSetTimeout = globalThis.setTimeout;
-  let pumpStarted = false;
-  mpcService.startWireSession = async () => new Promise(() => {});
-  mpcService._startWireSessionPump = () => {
-    pumpStarted = true;
-    return { started: true };
-  };
-  globalThis.setTimeout = (fn) => {
-    queueMicrotask(fn);
-    return { unref() {} };
-  };
-
-  try {
-    const result = await handleMpcPrepareWalletSigning({ walletId: 'mpc-wallet-prepare-timeout' });
-
-    assert.equal(result.success, true);
-    assert.equal(result.started, true);
-    assert.equal(result.pending, true);
-    assert.equal(result.action, 'started');
-    const wallet = await getMpcWallet('mpc-wallet-prepare-timeout');
-    assert.equal(wallet.auxInfoStatus, 'running');
-    assert.equal(pumpStarted, false);
-  } finally {
-    mpcService.startWireSession = originalStartWireSession;
-    mpcService._startWireSessionPump = originalStartWireSessionPump;
-    globalThis.setTimeout = originalSetTimeout;
-  }
-});
-
 test('MPC 钱包签名准备启动 aux-info 失败时返回错误', async () => {
   await saveMpcWallet({
     id: 'mpc-wallet-prepare-failed',
@@ -911,21 +830,16 @@ test('MPC 钱包签名准备在 aux-info delayed start 完成后才启动 pump',
   });
   const originalStartWireSession = mpcService.startWireSession;
   const originalStartWireSessionPump = mpcService._startWireSessionPump;
-  const originalSetTimeout = globalThis.setTimeout;
-  const realSetTimeout = originalSetTimeout;
-  let resolveStart;
-  const startPromise = new Promise((resolve) => {
-    resolveStart = resolve;
-  });
   const pumpInputs = [];
-  mpcService.startWireSession = async () => startPromise;
+  mpcService.startWireSession = async () => {
+    assert.equal(pumpInputs.length, 0);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(pumpInputs.length, 0);
+    return { started: true };
+  };
   mpcService._startWireSessionPump = (input) => {
     pumpInputs.push(input);
     return { started: true };
-  };
-  globalThis.setTimeout = (fn) => {
-    queueMicrotask(fn);
-    return { unref() {} };
   };
 
   try {
@@ -933,17 +847,13 @@ test('MPC 钱包签名准备在 aux-info delayed start 完成后才启动 pump',
 
     assert.equal(result.success, true);
     assert.equal(result.started, true);
-    assert.equal(pumpInputs.length, 0);
-    resolveStart({ started: true });
-    await new Promise((resolve) => realSetTimeout(resolve, 0));
     assert.equal(pumpInputs.length, 1);
     assert.equal(pumpInputs[0].protocol, 'aux-info');
-    assert.equal(pumpInputs[0].requestId, 'aux-info:v2:session-prepare-delayed:1:1');
+    assert.equal(pumpInputs[0].requestId, 'aux-info:v3:session-prepare-delayed:1:1:1');
     assert.equal(pumpInputs[0].maxIdleTicks > 12, true);
   } finally {
     mpcService.startWireSession = originalStartWireSession;
     mpcService._startWireSessionPump = originalStartWireSessionPump;
-    globalThis.setTimeout = originalSetTimeout;
   }
 });
 

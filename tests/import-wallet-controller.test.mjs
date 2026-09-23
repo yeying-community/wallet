@@ -23,6 +23,7 @@ function setupDom() {
     custodyRecoveryCount: { tagName: 'div' },
     custodyRecoveryList: { tagName: 'div' },
     custodyRecoveryPassword: { tagName: 'input' },
+    importWalletPasswordGroup: { tagName: 'div' },
     accountsPage: { tagName: 'div' },
     walletPage: { tagName: 'div' },
     importAccountName: { tagName: 'input' },
@@ -38,9 +39,16 @@ function setupDom() {
     cancelImportBtn: { tagName: 'button' },
     welcomeImportWalletBtn: { tagName: 'button' },
     accountsImportWalletBtn: { tagName: 'button' },
-    mnemonicTab: { tagName: 'button', _classes: 'import-tab active', dataset: { type: 'mnemonic' } },
-    privateKeyTab: { tagName: 'button', _classes: 'import-tab', dataset: { type: 'privateKey' } },
-    fileTab: { tagName: 'button', _classes: 'import-tab', dataset: { type: 'file' } }
+    // source tabs 仍保留「助记词/私钥 · 备份文件 · 云端恢复」三选一
+    walletSourceTab: { tagName: 'button', _classes: 'import-source-tab active', dataset: { source: 'wallet' } },
+    fileSourceTab: { tagName: 'button', _classes: 'import-source-tab', dataset: { source: 'file' } },
+    custodySourceTab: { tagName: 'button', _classes: 'import-source-tab', dataset: { source: 'custody' } },
+    // 助记词/私钥 switch + 网络选择器（仅 evm 选项；reference 选择器对 evm 隐藏）
+    importMethodMnemonicOption: { tagName: 'button', _classes: 'import-method-option active', dataset: { method: 'mnemonic' } },
+    importMethodPrivateKeyOption: { tagName: 'button', _classes: 'import-method-option', dataset: { method: 'privateKey' } },
+    importNetworkSelect: { tagName: 'select', value: 'evm' },
+    importNetworkMenu: { tagName: 'div', _classes: 'network-menu hidden' },
+    importReferenceGroup: { tagName: 'div', _classes: 'form-group hidden' }
   });
   elements = doc.elements;
 
@@ -61,8 +69,8 @@ function fillImportSecrets() {
   elements.importMnemonic.value = 'test test test test test test test test test test test junk';
   elements.importPrivateKey.value = '0xabc';
   elements.importWalletPassword.value = 'Secret-Pass-123';
-  elements.privateKeyTab.classList.add('active');
-  elements.mnemonicTab.classList.remove('active');
+  elements.importMethodPrivateKeyOption.classList.add('active');
+  elements.importMethodMnemonicOption.classList.remove('active');
   elements.mnemonicImportSection.classList.add('hidden');
   elements.privateKeyImportSection.classList.remove('hidden');
 }
@@ -72,8 +80,8 @@ function assertImportFormCleared() {
   assert.equal(elements.importMnemonic.value, '');
   assert.equal(elements.importPrivateKey.value, '');
   assert.equal(elements.importWalletPassword.value, '');
-  assert.ok(elements.mnemonicTab.classList.contains('active'));
-  assert.ok(!elements.privateKeyTab.classList.contains('active'));
+  assert.ok(elements.importMethodMnemonicOption.classList.contains('active'));
+  assert.ok(!elements.importMethodPrivateKeyOption.classList.contains('active'));
   assert.ok(!elements.mnemonicImportSection.classList.contains('hidden'));
   assert.ok(elements.privateKeyImportSection.classList.contains('hidden'));
   assert.ok(elements.fileImportSection.classList.contains('hidden'));
@@ -83,7 +91,7 @@ function assertImportFormCleared() {
 test('切换到备份文件时隐藏钱包名称', () => {
   const c = new ImportWalletController({ wallet: {} });
   c.bindEvents();
-  elements.fileTab.click();
+  elements.fileSourceTab.click();
   assert.ok(elements.importWalletNameGroup.classList.contains('hidden'));
   assert.ok(!elements.fileImportSection.classList.contains('hidden'));
 });
@@ -162,6 +170,7 @@ test('云端密钥恢复列表展示钱包数量、名称、账户数和 Wallet 
     assert.equal(elements.custodyRecoveryList.children[0].children[1].textContent, '3 个账户');
     assert.equal(elements.custodyRecoveryList.children[0].children[2].textContent, identityDid);
     assert.equal(c.recoveryWalletId, 'wallet_1782978556067_sroz69v');
+    assert.ok(elements.importWalletPasswordGroup.classList.contains('hidden'));
   } finally {
     if (previousChrome === undefined) delete globalThis.chrome;
     else globalThis.chrome = previousChrome;

@@ -2,14 +2,13 @@
 /**
  * Solana chain-adapter（solana / ed25519 / coinType 501）
  *
- * 阶段 1+ 落地：
+ * 已落地：
  *   - chainKey / isValidAddress / displayAddress
- *   - buildUnsigned / assembleSigned / broadcast（v1 仅 native-transfer）
- *   - getNativeBalance（SOL lamports；SPL token 抛 NOT_IMPLEMENTED，Phase 3）
+ *   - buildUnsigned / assembleSigned / broadcast（native-transfer + SPL token-transfer）
+ *   - getNativeBalance（SOL lamports）/ getTokenBalance（SPL，getTokenAccountsByOwner 累加）
  *
  * v1 不实现（抛 CHAIN_ADAPTER_NOT_IMPLEMENTED）：
  *   - signMessage / signTypedData / estimateFee / getTxStatus / deriveAddress
- *   - SPL token transfer
  */
 
 import {
