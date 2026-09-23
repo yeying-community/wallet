@@ -46,11 +46,10 @@
             <label class="unlock-label" for="unlockPassword">密码</label>
             <input type="password" id="unlockPassword" class="unlock-input" placeholder="输入密码" />
           </div>
+          <div class="warning-box">⚠️ 解锁后会继续当前网站的授权流程</div>
         </div>
 
         <div class="request-footer">
-          <div class="warning-box">⚠️ 解锁后会继续当前网站的授权流程</div>
-
           <div class="button-group">
             <button id="cancelUnlock" class="btn btn-secondary">取消</button>
             <button id="approveUnlock" class="btn btn-primary">解锁并继续</button>
@@ -97,11 +96,10 @@
           </div>
 
           <div id="connectFlowHint" class="flow-hint hidden"></div>
+          <div class="warning-box" id="connectWarning">⚠️ 只连接您信任的网站</div>
         </div>
 
         <div class="request-footer">
-          <div class="warning-box" id="connectWarning">⚠️ 只连接您信任的网站</div>
-
           <div class="button-group">
             <button id="rejectConnect" class="btn btn-secondary">拒绝</button>
             <button id="approveConnect" class="btn btn-primary">连接</button>
@@ -165,11 +163,10 @@
               <span class="detail-value" id="txData"></span>
             </div>
           </div>
+          <div class="warning-box">⚠️ 请仔细检查交易详情，确认后将无法撤销</div>
         </div>
 
         <div class="request-footer">
-          <div class="warning-box">⚠️ 请仔细检查交易详情，确认后将无法撤销</div>
-
           <div class="button-group">
             <button id="rejectTx" class="btn btn-secondary">拒绝</button>
             <button id="approveTx" class="btn btn-primary">确认</button>
@@ -276,14 +273,13 @@
               <summary>查看原始消息</summary>
               <div class="message-content" id="recapRaw"></div>
             </details>
+            <div class="warning-box">
+              ⚠️ 签名可能授权网站执行操作，请确认消息内容
+            </div>
           </div>
         </div>
 
         <div class="request-footer">
-          <div class="warning-box">
-            ⚠️ 签名可能授权网站执行操作，请确认消息内容
-          </div>
-
           <div class="button-group">
             <button id="rejectSign" class="btn btn-secondary">拒绝</button>
             <button id="approveSign" class="btn btn-primary">签名</button>
@@ -325,13 +321,12 @@
               <span class="detail-value" id="chainExplorer"></span>
             </div>
           </div>
-        </div>
-
-        <div class="request-footer">
           <div class="warning-box">
             ⚠️ 请确认网络信息准确，恶意网络可能导致资产损失
           </div>
+        </div>
 
+        <div class="request-footer">
           <div class="button-group">
             <button id="rejectAddChain" class="btn btn-secondary">拒绝</button>
             <button id="approveAddChain" class="btn btn-primary">添加</button>
@@ -376,13 +371,12 @@
               <span class="detail-value" id="assetDecimals"></span>
             </div>
           </div>
-        </div>
-
-        <div class="request-footer">
           <div class="warning-box">
             ⚠️ 任何人都可以创建代币，请确认代币合约地址
           </div>
+        </div>
 
+        <div class="request-footer">
           <div class="button-group">
             <button id="rejectWatchAsset" class="btn btn-secondary">拒绝</button>
             <button id="approveWatchAsset" class="btn btn-primary">添加</button>

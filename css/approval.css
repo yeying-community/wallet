@@ -41,6 +41,7 @@ body {
   overflow-y: auto;
   padding-right: 4px;
   min-height: 0;
+  padding-bottom: 4px;
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
@@ -500,7 +501,7 @@ body {
   border: 1px solid #ffc107;
   border-radius: 8px;
   padding: 12px;
-  margin: 15px 0;
+  margin: 20px 0 8px;
   font-size: 13px;
   color: #856404;
 }

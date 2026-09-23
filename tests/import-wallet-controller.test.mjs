@@ -23,6 +23,7 @@ function setupDom() {
     custodyRecoveryCount: { tagName: 'div' },
     custodyRecoveryList: { tagName: 'div' },
     custodyRecoveryPassword: { tagName: 'input' },
+    importWalletPasswordGroup: { tagName: 'div' },
     accountsPage: { tagName: 'div' },
     walletPage: { tagName: 'div' },
     importAccountName: { tagName: 'input' },
@@ -169,6 +170,7 @@ test('云端密钥恢复列表展示钱包数量、名称、账户数和 Wallet 
     assert.equal(elements.custodyRecoveryList.children[0].children[1].textContent, '3 个账户');
     assert.equal(elements.custodyRecoveryList.children[0].children[2].textContent, identityDid);
     assert.equal(c.recoveryWalletId, 'wallet_1782978556067_sroz69v');
+    assert.ok(elements.importWalletPasswordGroup.classList.contains('hidden'));
   } finally {
     if (previousChrome === undefined) delete globalThis.chrome;
     else globalThis.chrome = previousChrome;

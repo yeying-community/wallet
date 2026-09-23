@@ -1260,6 +1260,18 @@ body {
   overflow: hidden;
 }
 
+#importPage:has(#custodyImportSection:not(.hidden)) #custodyImportSection > .settings-card-description,
+#importPage:has(#custodyImportSection:not(.hidden)) #custodyRecoveryCount,
+#importPage:has(#custodyImportSection:not(.hidden)) #custodyImportSection > .form-group {
+  flex: 0 0 auto;
+}
+
+#importPage:has(#custodyImportSection:not(.hidden)) #custodyImportSection > .settings-card-description {
+  margin: 10px 0 12px;
+  line-height: 1.6;
+  overflow: visible;
+}
+
 #importPage:has(#custodyImportSection:not(.hidden)) #custodyRecoveryList {
   flex: 1 1 auto;
   min-height: 0;

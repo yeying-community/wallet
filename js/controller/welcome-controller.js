@@ -14,6 +14,7 @@ export class WelcomeController {
     this.onRecoverySuccess = typeof onRecoverySuccess === 'function' ? onRecoverySuccess : null;
     this.recoveryWalletId = '';
     this.recoveryReturnPage = 'welcomePage';
+    this.recoveryRestorePromise = null;
   }
 
   identityNodeEndpoint() {
@@ -135,7 +136,12 @@ export class WelcomeController {
     document.getElementById('welcomeRecoverWalletBtn')?.addEventListener('click', () => beginRecovery('welcomePage'));
     document.getElementById('custodyRecoveryBackBtn')?.addEventListener('click', () => showPage(this.recoveryReturnPage || 'welcomePage'));
     document.getElementById('custodyRecoveryConfirmBtn')?.addEventListener('click', () => {
-      this.restoreSelectedCustodyWallet().catch((error) => showError(`恢复失败：${error.message}`));
+      // The recovery token is single-use on the custody service. Keep one
+      // in-flight request so a double click or a duplicated DOM event cannot
+      // consume the token twice.
+      if (this.recoveryRestorePromise) return;
+      this.restoreSelectedCustodyWallet()
+        .catch((error) => showError(`恢复失败：${error.message}`));
     });
   }
 
@@ -278,25 +284,48 @@ export class WelcomeController {
     document.getElementById('fileImportSection')?.classList.add('hidden');
     document.getElementById('custodyImportSection')?.classList.remove('hidden');
     document.getElementById('importWalletNameGroup')?.classList.add('hidden');
+    document.getElementById('importWalletPasswordGroup')?.classList.add('hidden');
     const importButton = document.getElementById('importBtn');
     if (importButton) importButton.textContent = '开始恢复';
   }
 
   async restoreSelectedCustodyWallet() {
-    if (!this.recoveryWalletId) throw new Error('请选择要恢复的钱包身份');
-    const passwordInput = document.getElementById('custodyRecoveryPassword');
-    const password = String(passwordInput?.value || '');
-    if (password.length < 8) throw new Error('请输入托管钱包密码');
-    const { walletRecoveryAuthorization } = await chrome.storage.local.get('walletRecoveryAuthorization');
-    const result = await this.wallet.restoreCustodySecret(this.recoveryWalletId, password, {
-      endpoint: walletRecoveryAuthorization?.endpoint,
-      recoveryToken: walletRecoveryAuthorization?.token
+    if (this.recoveryRestorePromise) return this.recoveryRestorePromise;
+    const confirmButton = document.getElementById('custodyRecoveryConfirmBtn') || document.getElementById('importBtn');
+    if (confirmButton) confirmButton.disabled = true;
+    const operation = (async () => {
+      if (!this.recoveryWalletId) throw new Error('请选择要恢复的钱包身份');
+      const passwordInput = document.getElementById('custodyRecoveryPassword');
+      const password = String(passwordInput?.value || '');
+      if (password.length < 8) throw new Error('请输入托管钱包密码');
+      const { walletRecoveryAuthorization } = await chrome.storage.local.get('walletRecoveryAuthorization');
+      let result;
+      try {
+        result = await this.wallet.restoreCustodySecret(this.recoveryWalletId, password, {
+          endpoint: walletRecoveryAuthorization?.endpoint,
+          recoveryToken: walletRecoveryAuthorization?.token
+        });
+      } catch (error) {
+        if (/recovery token|恢复令牌/i.test(String(error?.message || ''))) {
+          await this.clearCustodyRecoveryState();
+          this.recoveryWalletId = '';
+          throw new Error('恢复授权已失效，请重新验证身份后再试');
+        }
+        throw error;
+      }
+      if (!result?.success && result?.error) throw new Error(result.error);
+      if (passwordInput) passwordInput.value = '';
+      await this.clearCustodyRecoveryState();
+      showPage('walletPage');
+      await this.onRecoverySuccess?.(result);
+      showSuccess('钱包恢复成功');
+      return result;
+    })();
+    this.recoveryRestorePromise = operation.finally(() => {
+      if (confirmButton) confirmButton.disabled = false;
+      this.recoveryRestorePromise = null;
     });
-    if (passwordInput) passwordInput.value = '';
-    await this.clearCustodyRecoveryState();
-    showPage('walletPage');
-    await this.onRecoverySuccess?.(result);
-    showSuccess('钱包恢复成功');
+    return this.recoveryRestorePromise;
   }
 
   async startCustodyRecovery(endpoint = '') {
