@@ -146,8 +146,24 @@ function selectFreshCredentials(credentials, scopes, account) {
   return credentials.filter((credential) => {
     const types = credentialTypes(credential);
     if (!credentialIsFresh(credential) || !requestedTypes.some((type) => types.includes(type))) return false;
-    return !types.includes('WalletAccountCredential') || credentialMatchesAccount(credential, account);
+    // identity.wallet proves the identity's bound address. It is not tied to
+    // the currently selected account; keep account as a ranking hint only.
+    return true;
   });
+}
+
+function selectWalletCredential(credentials, account) {
+  const walletCredentials = credentials.filter((credential) =>
+    credentialIsFresh(credential) && credentialTypes(credential).includes('WalletAccountCredential')
+  );
+  if (walletCredentials.length === 0) return null;
+  if (!account) return walletCredentials[0];
+  return walletCredentials.find((credential) => credentialMatchesAccount(credential, account)) || walletCredentials[0];
+}
+
+function credentialAccount(credential) {
+  const subject = credentialPayload(credential)?.vc?.credentialSubject || {};
+  return { chainKey: String(subject.chainKey || ''), address: String(subject.address || '') };
 }
 
 function missingCredentialTypes(selectedCredentials, scopes) {
@@ -220,6 +236,13 @@ export async function requestIdentityPresentation({ account, params, origin, pas
   const expiresAt = request.expiresAt || new Date(Date.now() + 5 * 60 * 1000).toISOString();
   let credentials = await getIdentityCredentials(identityId);
   let selectedCredentials = selectFreshCredentials(credentials, request.scopes, account);
+  let walletCredential = request.scopes.includes('identity.wallet') ? selectWalletCredential(credentials, account) : null;
+  if (walletCredential) {
+    selectedCredentials = [
+      ...selectedCredentials.filter((credential) => !credentialTypes(credential).includes('WalletAccountCredential')),
+      walletCredential
+    ];
+  }
   const effectivePassword = String(password || '').trim() || getCachedPassword();
   if (!effectivePassword) {
     throw new Error('Wallet is locked');
@@ -240,6 +263,13 @@ export async function requestIdentityPresentation({ account, params, origin, pas
     try {
       credentials = await reissueMissingCredentials({ identityId, record, credentials, missingTypes, issuerEndpoint, privateKey });
       selectedCredentials = selectFreshCredentials(credentials, request.scopes, account);
+      walletCredential = request.scopes.includes('identity.wallet') ? selectWalletCredential(credentials, account) : null;
+      if (walletCredential) {
+        selectedCredentials = [
+          ...selectedCredentials.filter((credential) => !credentialTypes(credential).includes('WalletAccountCredential')),
+          walletCredential
+        ];
+      }
     } catch (error) {
       reissueError = error;
       console.warn('[IdentityPresentation] credential reissue failed:', error?.message || error);
@@ -267,9 +297,10 @@ export async function requestIdentityPresentation({ account, params, origin, pas
       throw error;
     }
   }
-  const unsigned = { version: 1, holder: record.document.id, audience: request.audience, nonce: request.nonce, issuedAt, expiresAt, scopes: request.scopes, identityDocument: request.scopes.includes('identity.basic') ? signedIdentityDocument : undefined, walletProof: request.scopes.includes('identity.wallet') ? { chainKey: account.chainKey || `eip155:${account.chainId || 1}`, address: account.address } : undefined, credentials: selectedCredentials.map(credentialToken) };
+  const walletBinding = walletCredential ? credentialAccount(walletCredential) : null;
+  const unsigned = { version: 1, holder: record.document.id, audience: request.audience, nonce: request.nonce, issuedAt, expiresAt, scopes: request.scopes, identityDocument: request.scopes.includes('identity.basic') ? signedIdentityDocument : undefined, walletProof: request.scopes.includes('identity.wallet') ? walletBinding : undefined, credentials: selectedCredentials.map(credentialToken) };
   const signature = await crypto.subtle.sign('Ed25519', privateKey, new TextEncoder().encode(canonicalize(unsigned)));
   return { ...unsigned, proof: { type: 'YeyingIdentityPresentationProofV1', verificationMethod: `${record.document.id}#${record.controllerId}`, purpose: 'authentication', proofValue: toBase64Url(new Uint8Array(signature)) } };
 }
 
-export { METHOD, credentialIsFresh, requestCredentialTypes, selectFreshCredentials, missingCredentialTypes, mergeCredentials, credentialIssuerEndpoint };
+export { METHOD, credentialIsFresh, requestCredentialTypes, selectFreshCredentials, selectWalletCredential, missingCredentialTypes, mergeCredentials, credentialIssuerEndpoint };
