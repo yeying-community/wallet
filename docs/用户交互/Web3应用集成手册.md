@@ -81,7 +81,7 @@ identity.email
 2. 身份文档 controller 处于 active，且具备 authentication 用途。
 3. presentation Ed25519 签名有效。
 4. `audience`、`nonce`、scope 和有效期与本地登录 session 一致。
-5. `identity.wallet` 的账户已由 Node 账户关联 proof 验证过。
+5. `identity.wallet` 的地址已由 Node 账户关联 proof 验证过。Wallet 会在当前身份的全部有效绑定凭证中选择地址，不要求用户切换到该地址。
 6. 如使用邮箱或用户名，必须验证 JWT-VC issuer、JWKS、`sub`、type 和有效期；credential status 按业务撤销策略使用本地缓存或在线 Node 查询，高风险流程必须在线查询。
 
 ## 4. 无钱包插件登录

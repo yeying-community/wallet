@@ -400,12 +400,12 @@ export async function routeRequest(method, params, metadata) {
 
   // 获取当前账户
   const account = await getSelectedAccount();
-  if (!account) {
+  if (!account && method !== 'wallet_identity_presentation') {
     throw createAccountNotFoundError('No account selected');
   }
 
   // 检查当前账户是否已解锁
-  if (unlockMethods.has(method) && !state.keyring?.has(account.id)) {
+  if (unlockMethods.has(method) && account && !state.keyring?.has(account.id)) {
     throw createWalletLockedError();
   }
 

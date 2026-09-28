@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { credentialIsFresh, mergeCredentials, missingCredentialTypes, requestCredentialTypes, selectFreshCredentials, credentialIssuerEndpoint } from '../js/background/identity-presentation.js';
+import { credentialIsFresh, mergeCredentials, missingCredentialTypes, requestCredentialTypes, selectFreshCredentials, selectWalletCredential, credentialIssuerEndpoint } from '../js/background/identity-presentation.js';
 
 function credential(payload) {
   return {
@@ -66,4 +66,17 @@ test('restored credentials determine the issuer endpoint for renewal', () => {
   }).credential;
   assert.equal(credentialIssuerEndpoint([{ credential: didToken }]), 'http://localhost:8100');
   assert.equal(credentialIssuerEndpoint([{ credential: 'invalid' }]), '');
+});
+
+test('identity.wallet uses a bound credential even when another account is selected', () => {
+  const account = { chainKey: 'eip155:1', address: '0x1111111111111111111111111111111111111111' };
+  const bound = credential({
+    vc: { type: ['VerifiableCredential', 'WalletAccountCredential'], credentialSubject: {
+      chainKey: 'eip155:1', address: '0x2222222222222222222222222222222222222222'
+    } },
+    exp: 9999999999
+  });
+  const selected = selectWalletCredential([bound], account);
+  assert.equal(selected, bound);
+  assert.deepEqual(selectFreshCredentials([bound], ['identity.wallet'], account), [bound]);
 });
