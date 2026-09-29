@@ -174,10 +174,21 @@ export class WalletIdentitySettingsController {
 
   identityCredentialsVerified(credentials, account) {
     const items = Array.isArray(credentials) ? credentials : [];
-    const hasAccount = items.some(item => this.walletAccountCredentialMatches(item, account));
+    const accounts = Array.isArray(account) ? account : (account ? [account] : []);
+    const hasAccount = items.some(item => accounts.some(candidate => this.walletAccountCredentialMatches(item, candidate)));
     const hasEmail = items.some(item => this.credentialTypes(item).has('EmailCredential'));
     const hasUsername = items.some(item => this.credentialTypes(item).has('UsernameCredential'));
     return hasAccount && hasEmail && hasUsername;
+  }
+
+  findIdentityLinkedWalletAccount(credentials, accounts) {
+    const items = Array.isArray(credentials) ? credentials : [];
+    const availableAccounts = Array.isArray(accounts) ? accounts : [];
+    for (const item of items) {
+      const account = availableAccounts.find(candidate => this.walletAccountCredentialMatches(item, candidate));
+      if (account) return account;
+    }
+    return null;
   }
 
   async findIdentityLinkedToAccount(identities, account) {
@@ -207,22 +218,19 @@ export class WalletIdentitySettingsController {
     let account = null;
     try {
       account = await this.wallet.getCurrentAccount();
-      await this.renderAddressPicker(account);
+      const accounts = await this.renderAddressPicker(account);
       state = this.loadVerificationState(this.endpoint(), account?.address);
       const identities = await this.wallet.listIdentities();
-      const linked = account ? await this.findIdentityLinkedToAccount(identities, account) : null;
-      if (linked && linked.identityId !== identities?.selectedIdentityId) {
-        await this.wallet.selectIdentity(linked.identityId);
-      }
-      const identityId = linked?.identityId || identities?.selectedIdentityId || identities?.identities?.[0]?.document?.walletIdentityId;
+      const identityId = identities?.selectedIdentityId || identities?.identities?.[0]?.document?.walletIdentityId;
       if (!identityId) {
         state = '';
         this.persistVerificationState(this.endpoint(), account?.address, null);
       } else {
         const credentials = await this.wallet.listIdentityCredentials(identityId);
-        if (this.identityCredentialsVerified(credentials?.credentials, account)) {
+        const linkedAccount = this.findIdentityLinkedWalletAccount(credentials?.credentials, accounts);
+        if (this.identityCredentialsVerified(credentials?.credentials, accounts)) {
           state = VERIFICATION_STATE_COMPLETE;
-          this.persistVerificationState(this.endpoint(), account?.address, state);
+          this.persistVerificationState(this.endpoint(), linkedAccount?.address || account?.address, state);
         } else if (state === VERIFICATION_STATE_COMPLETE) {
           state = '';
           this.persistVerificationState(this.endpoint(), account?.address, null);
@@ -253,10 +261,11 @@ export class WalletIdentitySettingsController {
 
   async renderAddressPicker(currentAccount) {
     const selector = document.getElementById('walletIdentityAddressSelect');
-    if (!selector) return;
-    const wallets = await this.wallet.getWalletList();
-    const accounts = wallets.flatMap(wallet => Array.isArray(wallet.accounts) ? wallet.accounts : []).filter(item => item?.address);
+    let walletResult = typeof this.wallet.getWalletList === 'function' ? await this.wallet.getWalletList() : [];
+    const wallets = Array.isArray(walletResult) ? walletResult : walletResult?.wallets;
+    const accounts = (Array.isArray(wallets) ? wallets : []).flatMap(wallet => Array.isArray(wallet.accounts) ? wallet.accounts : []).filter(item => item?.address);
     const options = accounts.length ? accounts : (currentAccount ? [currentAccount] : []);
+    if (!selector) return options;
     selector.replaceChildren();
     options.forEach(item => {
       const option = document.createElement('option');
@@ -265,6 +274,7 @@ export class WalletIdentitySettingsController {
       option.selected = String(item.address).toLowerCase() === String(currentAccount?.address || '').toLowerCase();
       selector.appendChild(option);
     });
+    return options;
   }
 
   setIdentityStatusIcon(element, state, label) {
@@ -281,27 +291,32 @@ export class WalletIdentitySettingsController {
       if (!identityId) throw new Error('请先创建钱包身份');
       if (!identities?.selectedIdentityId) await this.wallet.selectIdentity(identityId);
       const identity = await this.wallet.getIdentity(identityId);
-      const credentials = await this.wallet.listIdentityCredentials(identityId);
+      const [credentials, walletResult] = await Promise.all([
+        this.wallet.listIdentityCredentials(identityId),
+        typeof this.wallet.getWalletList === 'function'
+          ? this.wallet.getWalletList().catch(() => [])
+          : Promise.resolve([])
+      ]);
+      const wallets = Array.isArray(walletResult) ? walletResult : walletResult?.wallets;
+      const accounts = (Array.isArray(wallets) ? wallets : []).flatMap(wallet => Array.isArray(wallet.accounts) ? wallet.accounts : []).filter(item => item?.address);
+      if (!accounts.length && account?.address) accounts.push(account);
       const values = { username: '-', email: '-', avatarUri: '' };
-      let hasAccountCredential = false;
-      let hasEmailCredential = false;
-      let hasUsernameCredential = false;
       for (const item of credentials?.credentials || []) {
         const token = item?.credential || item?.jwt || item;
         const payload = this.decodeCredentialPayload(token);
         const subject = payload?.vc?.credentialSubject || {};
-        const types = Array.isArray(payload?.vc?.type) ? payload.vc.type : [];
-        if (types.includes('WalletAccountCredential')) hasAccountCredential = true;
-        if (subject.usernameQualified || subject.username) { hasUsernameCredential = true; values.username = this.displayUsername(subject.username || subject.usernameQualified); }
-        if (subject.email) { hasEmailCredential = true; values.email = subject.email; }
+        if (subject.usernameQualified || subject.username) values.username = this.displayUsername(subject.username || subject.usernameQualified);
+        if (subject.email) values.email = subject.email;
         if (subject.avatar || subject.avatarUri) values.avatarUri = subject.avatar || subject.avatarUri;
       }
-      const verified = this.identityCredentialsVerified(credentials?.credentials, account);
+      const linkedAccount = this.findIdentityLinkedWalletAccount(credentials?.credentials, accounts);
+      const verified = this.identityCredentialsVerified(credentials?.credentials, accounts);
       this.setDetailValue('walletIdentityDetailStatusPage', verified ? '已验证' : '未验证');
       this.setDetailValue('walletIdentityDetailUsernamePage', values.username);
       this.setDetailValue('walletIdentityDetailEmailPage', values.email);
       this.setDetailAvatar(values.avatarUri || defaultAvatarUri(identityId || account?.address));
-      this.setCopyableDetailValue('walletIdentityDetailAddressPage', account?.address || '-', this.formatCompactIdentityValue(account?.address, 12, 8));
+      const identityAddress = linkedAccount?.address || account?.address;
+      this.setCopyableDetailValue('walletIdentityDetailAddressPage', identityAddress || '-', this.formatCompactIdentityValue(identityAddress, 12, 8));
       this.setCopyableDetailValue('walletIdentityDetailDidPage', identity?.document?.id || '-', this.formatCompactIdentityValue(identity?.document?.id, 18, 10));
       this.setDetailValue('walletIdentityDetailEndpointPage', this.endpoint() || DEFAULT_IDENTITY_NODE_ENDPOINT);
       showPage('walletIdentityDetailPage');

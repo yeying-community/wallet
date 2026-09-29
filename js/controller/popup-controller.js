@@ -732,6 +732,10 @@ export class PopupController {
         delete document.getElementById('mpcLogsPage')?.dataset.returnPage;
       }
       showPage(targetPage);
+      if (targetPage === 'walletIdentityDetailPage' && currentPage !== 'walletIdentityDetailPage') {
+        await this.settingController.walletIdentityController.openIdentityDetails();
+        return;
+      }
       if (targetPage === 'networkManagePage') {
         await this.networkController?.loadNetworkList();
       }

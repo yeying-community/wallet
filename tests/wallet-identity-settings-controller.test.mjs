@@ -9,7 +9,9 @@ function setup() {
   const dom = createDocument({
     walletIdentityEndpointInput: { tagName: 'input' },
     walletIdentityStatusText: { tagName: 'p' },
+    walletIdentityStatusIcon: { tagName: 'span' },
     walletIdentityVerifyBtn: { tagName: 'button' },
+    viewWalletIdentityBtn: { tagName: 'button' },
     walletIdentityClearVerificationBtn: { tagName: 'button' },
     walletIdentityEmailStatusText: { tagName: 'p' },
     walletIdentityTotpStatusPage: { tagName: 'p' },
@@ -126,6 +128,45 @@ test('imported identity credentials restore verified status without browser-loca
   assert.equal(elements.walletIdentityVerifyBtn.dataset.state, 'complete');
   assert.equal(values.get(`walletIdentityVerification:${endpoint}:${address.toLowerCase()}`), 'complete');
   assert.equal(selectedIdentity, '');
+});
+
+test('identity stays verified when its bound wallet exists but is not the selected account', async () => {
+  const currentAddress = '0x2222222222222222222222222222222222222222';
+  const boundAddress = '0x1111111111111111111111111111111111111111';
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const credential = (type, subject) => `${encode({ alg: 'EdDSA' })}.${encode({
+    iss: 'did:yeying:node',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    vc: { type: ['VerifiableCredential', type], credentialSubject: subject }
+  })}.signature`;
+  const credentials = [
+    credential('WalletAccountCredential', { id: 'did:yeying:wid_1', chainKey: 'eip155:1', address: boundAddress }),
+    credential('UsernameCredential', { id: 'did:yeying:wid_1', username: 'person' }),
+    credential('EmailCredential', { id: 'did:yeying:wid_1', email: 'person@example.com' })
+  ];
+  const selectedIdentityCalls = [];
+  const controller = new WalletIdentitySettingsController({
+    wallet: {
+      getCurrentAccount: async () => ({ address: currentAddress, chainId: 1 }),
+      getWalletList: async () => [{ accounts: [
+        { address: currentAddress, chainId: 1 },
+        { address: boundAddress, chainId: 1, name: '绑定账户' }
+      ] }],
+      listIdentities: async () => ({
+        selectedIdentityId: 'wid_1',
+        identities: [{ document: { walletIdentityId: 'wid_1' } }]
+      }),
+      listIdentityCredentials: async () => ({ credentials }),
+      selectIdentity: async (identityId) => selectedIdentityCalls.push(identityId)
+    }
+  });
+
+  await controller.renderIdentityVerificationAction();
+
+  assert.equal(elements.walletIdentityVerifyBtn.dataset.state, 'complete');
+  assert.equal(elements.walletIdentityStatusIcon.className, 'wallet-identity-status verified');
+  assert.equal(elements.viewWalletIdentityBtn.classList.contains('hidden'), false);
+  assert.deepEqual(selectedIdentityCalls, []);
 });
 
 test('startIdentityVerification prompts for email and code before completing the verification', async () => {
