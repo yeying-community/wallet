@@ -5,7 +5,9 @@
 
 import {
   AES_GCM_CONFIG,
+  PBKDF2_CONFIG,
   ENCRYPTED_DATA_FORMAT,
+  ENCRYPTED_DATA_VERSION,
   CRYPTO_ERROR_MESSAGES
 } from './crypto-constants.js';
 import {
@@ -102,7 +104,7 @@ export async function encryptString(text, password) {
     );
     
     // 转换为 Base64
-    return base64Encode(result);
+    return `${ENCRYPTED_DATA_VERSION}.${base64Encode(result)}`;
     
   } catch (error) {
     logError('crypto-encrypt-string', error);
@@ -127,8 +129,14 @@ export async function decryptString(encryptedBase64, password) {
       throw new Error(CRYPTO_ERROR_MESSAGES.PASSWORD_REQUIRED);
     }
     
-    // Base64 解码
-    const encrypted = base64Decode(encryptedBase64);
+    const versioned = encryptedBase64.startsWith(`${ENCRYPTED_DATA_VERSION}.`);
+    const encodedPayload = versioned
+      ? encryptedBase64.slice(ENCRYPTED_DATA_VERSION.length + 1)
+      : encryptedBase64;
+    const iterations = versioned ? PBKDF2_CONFIG.iterations : PBKDF2_CONFIG.legacyIterations;
+
+    // Base64 解码。无版本前缀的值按历史格式处理，保证旧备份可恢复。
+    const encrypted = base64Decode(encodedPayload);
     
     // 提取 salt, iv, data
     const { saltOffset, saltLength, ivOffset, ivLength, dataOffset } = ENCRYPTED_DATA_FORMAT;
@@ -138,7 +146,7 @@ export async function decryptString(encryptedBase64, password) {
     const data = encrypted.slice(dataOffset);
     
     // 派生密钥
-    const key = await deriveKey(password, salt, ['decrypt']);
+    const key = await deriveKey(password, salt, ['decrypt'], iterations);
     
     // 解密
     const decrypted = await decryptData(data, key, iv);

@@ -1,4 +1,4 @@
-import { showPage, setPageOrigin, showError, showSuccess } from '../common/ui/index.js';
+import { showPage, setPageOrigin, showError, showSuccess, showWarning } from '../common/ui/index.js';
 import { clearImportWalletForm } from './wallet/import-wallet-controller.js';
 import {
   DEFAULT_IDENTITY_NODE_ENDPOINT,
@@ -318,7 +318,11 @@ export class WelcomeController {
       await this.clearCustodyRecoveryState();
       showPage('walletPage');
       await this.onRecoverySuccess?.(result);
-      showSuccess('钱包恢复成功');
+      if (result.identityCredentialsSyncError) {
+        showWarning('钱包已恢复，身份资料暂未同步；请联网后重新打开身份页面');
+      } else {
+        showSuccess('钱包恢复成功');
+      }
       return result;
     })();
     this.recoveryRestorePromise = operation.finally(() => {

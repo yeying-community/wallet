@@ -10,10 +10,15 @@
  */
 export const PBKDF2_CONFIG = {
   name: 'PBKDF2',
-  iterations: 100000,        // 迭代次数
+  iterations: 210000,        // 新版密文的迭代次数
+  legacyIterations: 100000,  // 无版本前缀的历史密文
   hash: 'SHA-256',          // 哈希算法
   saltLength: 16            // 盐值长度（字节）
 };
+
+// v2 is encoded as `v2.<base64(salt || iv || ciphertext)>`.
+// Unprefixed values are the legacy 100k-iteration format.
+export const ENCRYPTED_DATA_VERSION = 'v2';
 
 /**
  * AES-GCM 配置
@@ -152,8 +157,8 @@ export const PRIVATE_KEY_FORMAT = {
 export const TEXT_ENCODING = 'utf-8';
 
 /**
- * 加密数据格式
- * salt(16) + iv(12) + encrypted
+ * 加密数据格式（版本前缀不计入 payload）
+ * v2.<base64(salt(16) + iv(12) + encrypted)>
  */
 export const ENCRYPTED_DATA_FORMAT = {
   saltOffset: 0,

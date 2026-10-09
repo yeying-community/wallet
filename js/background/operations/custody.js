@@ -23,6 +23,7 @@ import { getValue, setValue } from '../../storage/storage-base.js';
 import { validateIdentityDocument } from '../../common/identity/identity-document.js';
 import { getWalletMnemonic, getAccountPrivateKey, deriveSubAccount, WALLET_TYPE } from '../vault.js';
 import { ensureTargetUcanToken } from '../target-ucan-manager.js';
+import { refreshIdentityCredentialsAfterRestore } from '../identity-presentation.js';
 import { CustodyClient } from '../custody-client.js';
 import { handleImportHDWallet, handleImportPrivateKeyWallet, handleSwitchAccount } from './wallet.js';
 
@@ -503,8 +504,17 @@ export async function handleRestoreCustodySecret(options = {}) {
     const linkedIdentity = Object.entries(material.identities || {})
       .find(([, identity]) => identityHasAccountCredential(identity, restoredAddress, restoredChainKey));
     const preferredIdentityId = linkedIdentity?.[0] || material.selectedIdentityId || '';
-    if (preferredIdentityId) await setValue(IdentityStorageKeys.SELECTED_IDENTITY, preferredIdentityId);
-    return { success: true, wallet: result.wallet, account: result.account };
+    let identityCredentialsSyncError = '';
+    if (preferredIdentityId) {
+      await setValue(IdentityStorageKeys.SELECTED_IDENTITY, preferredIdentityId);
+      try {
+        await refreshIdentityCredentialsAfterRestore({ identityId: preferredIdentityId, password });
+      } catch (error) {
+        identityCredentialsSyncError = error.message || '钱包身份资料凭证同步失败';
+        console.warn('[Custody] restored wallet identity credentials were not synchronized:', identityCredentialsSyncError);
+      }
+    }
+    return { success: true, wallet: result.wallet, account: result.account, identityCredentialsSyncError };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to restore custody secret' };
   }

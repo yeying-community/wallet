@@ -36,7 +36,7 @@ async function importPasswordKey(password) {
  * @param {string[]} keyUsages - 密钥用途 ['encrypt', 'decrypt']
  * @returns {Promise<CryptoKey>}
  */
-export async function deriveKey(password, salt, keyUsages = ['encrypt', 'decrypt']) {
+export async function deriveKey(password, salt, keyUsages = ['encrypt', 'decrypt'], iterations = PBKDF2_CONFIG.iterations) {
   try {
     // 验证参数
     if (!password || typeof password !== 'string') {
@@ -55,7 +55,7 @@ export async function deriveKey(password, salt, keyUsages = ['encrypt', 'decrypt
       {
         name: PBKDF2_CONFIG.name,
         salt: salt,
-        iterations: PBKDF2_CONFIG.iterations,
+        iterations,
         hash: PBKDF2_CONFIG.hash
       },
       passwordKey,
@@ -81,9 +81,9 @@ export async function deriveKey(password, salt, keyUsages = ['encrypt', 'decrypt
  * @param {string[]} keyUsages - 密钥用途
  * @returns {Promise<{key: CryptoKey, salt: Uint8Array}>}
  */
-export async function deriveKeyWithSalt(password, keyUsages = ['encrypt', 'decrypt']) {
+export async function deriveKeyWithSalt(password, keyUsages = ['encrypt', 'decrypt'], iterations = PBKDF2_CONFIG.iterations) {
   const salt = generateSalt();
-  const key = await deriveKey(password, salt, keyUsages);
+  const key = await deriveKey(password, salt, keyUsages, iterations);
 
   return { key, salt };
 }
