@@ -65,6 +65,12 @@ test('restored credentials determine the issuer endpoint for renewal', () => {
     exp: 9999999999
   }).credential;
   assert.equal(credentialIssuerEndpoint([{ credential: didToken }]), 'http://localhost:8100');
+  const standardPortToken = credential({
+    iss: 'did:web:localhost%3A8100',
+    vc: { type: ['VerifiableCredential', 'WalletAccountCredential'] },
+    exp: 9999999999
+  }).credential;
+  assert.equal(credentialIssuerEndpoint([{ credential: standardPortToken }]), 'http://localhost:8100');
   assert.equal(credentialIssuerEndpoint([{ credential: 'invalid' }]), '');
 });
 

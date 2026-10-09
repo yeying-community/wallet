@@ -54,10 +54,30 @@ function decodeCredentialPayload(token) {
   const parts = String(token || '').split('.');
   if (parts.length !== 3) return null;
   try {
-    const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(atob(`${normalized}${'='.repeat((4 - normalized.length % 4) % 4)}`));
+    return JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[1])));
   } catch {
     return null;
+  }
+}
+
+function decodeBase64Url(value) {
+  const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+  const binary = atob(`${normalized}${'='.repeat((4 - normalized.length % 4) % 4)}`);
+  return Uint8Array.from(binary, character => character.charCodeAt(0));
+}
+
+function decodeJwt(token) {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3) throw new Error('IDENTITY_CREDENTIAL_INVALID');
+  try {
+    return {
+      header: JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[0]))),
+      payload: JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[1]))),
+      signingInput: new TextEncoder().encode(`${parts[0]}.${parts[1]}`),
+      signature: decodeBase64Url(parts[2]),
+    };
+  } catch {
+    throw new Error('IDENTITY_CREDENTIAL_INVALID');
   }
 }
 
@@ -82,24 +102,39 @@ function credentialPayload(credential) {
   return credential?.payload || decodeCredentialPayload(credentialToken(credential));
 }
 
+function isLoopbackHostname(hostname) {
+  const normalized = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1';
+}
+
 function credentialIssuerEndpoint(credentials) {
   for (const credential of credentials || []) {
     const issuer = String(credentialPayload(credential)?.iss || '').trim();
     if (!issuer) continue;
     if (issuer.startsWith('did:web:')) {
-      const host = issuer.slice('did:web:'.length).split(':');
-      if (host.length >= 1 && host[0]) {
-        const hostname = host[0];
-        const port = host.length > 1 ? Number(host[1]) : 0;
-        if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
-          return `http://${hostname}${Number.isInteger(port) && port > 0 ? `:${port}` : ''}`;
-        }
-        return `https://${issuer.slice('did:web:'.length)}`;
+      const methodId = issuer.slice('did:web:'.length);
+      let authority = '';
+      const bracketedIpv6 = methodId.match(/^(\[[0-9a-f:.]+\])(?::(\d+))?$/i);
+      if (bracketedIpv6) authority = methodId;
+      else if (methodId.includes('%3a') || methodId.includes('%3A')) {
+        try { authority = decodeURIComponent(methodId); } catch { authority = ''; }
+      } else {
+        const parts = methodId.split(':');
+        if (parts.length === 1) authority = parts[0];
+        else if (parts.length === 2 && /^\d+$/.test(parts[1])) authority = `${parts[0]}:${parts[1]}`;
+      }
+      if (authority && !/[/?#@]/.test(authority)) {
+        try {
+          const candidate = new URL(`https://${authority}`);
+          const local = isLoopbackHostname(candidate.hostname);
+          return `${local ? 'http:' : 'https:'}//${candidate.host}`;
+        } catch { /* Ignore malformed DID web authorities. */ }
       }
     }
     try {
       const url = new URL(issuer);
-      if ((url.protocol === 'http:' || url.protocol === 'https:') && url.hostname) {
+      const local = isLoopbackHostname(url.hostname);
+      if ((url.protocol === 'https:' || (url.protocol === 'http:' && local)) && url.hostname && !url.username && !url.password) {
         url.hash = '';
         url.search = '';
         url.pathname = url.pathname.replace(/\/+$/, '');
@@ -108,6 +143,50 @@ function credentialIssuerEndpoint(credentials) {
     } catch { /* Ignore malformed issuer claims and continue. */ }
   }
   return '';
+}
+
+async function getIssuerVerificationContext(endpoint, expectedIssuer) {
+  const base = new URL(String(endpoint || '').trim());
+  if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password) {
+    throw new Error('IDENTITY_ISSUER_ENDPOINT_INVALID');
+  }
+  const localIssuer = isLoopbackHostname(base.hostname);
+  if (base.protocol !== 'https:' && !localIssuer) throw new Error('IDENTITY_ISSUER_HTTPS_REQUIRED');
+  const origin = base.origin;
+  const metadataResponse = await fetch(`${origin}/.well-known/openid-credential-issuer`, {
+    headers: { accept: 'application/json' }, credentials: 'omit', redirect: 'error'
+  });
+  const metadata = await metadataResponse.json().catch(() => ({}));
+  if (!metadataResponse.ok || metadata.issuer !== expectedIssuer) throw new Error('IDENTITY_ISSUER_UNTRUSTED');
+  const jwksUrl = new URL(String(metadata.jwks_uri || ''));
+  if (jwksUrl.origin !== origin || !['http:', 'https:'].includes(jwksUrl.protocol)) {
+    throw new Error('IDENTITY_ISSUER_JWKS_INVALID');
+  }
+  const jwksResponse = await fetch(jwksUrl, {
+    headers: { accept: 'application/json' }, credentials: 'omit', redirect: 'error'
+  });
+  const jwks = await jwksResponse.json().catch(() => ({}));
+  if (!jwksResponse.ok || !Array.isArray(jwks.keys)) throw new Error('IDENTITY_ISSUER_JWKS_UNAVAILABLE');
+  return { issuer: expectedIssuer, keys: jwks.keys };
+}
+
+async function verifyIssuerCredential(token, context, { identityId, credentialType, credentialId, requireFresh = false } = {}) {
+  const { header, payload, signingInput, signature } = decodeJwt(token);
+  const subject = payload?.vc?.credentialSubject || {};
+  const types = Array.isArray(payload?.vc?.type) ? payload.vc.type : [payload?.vc?.type];
+  if (header.alg !== 'EdDSA' || !header.kid || payload.iss !== context.issuer || payload.sub !== identityId || subject.id !== identityId || !types.includes(credentialType)) {
+    throw new Error('IDENTITY_CREDENTIAL_INVALID');
+  }
+  if (credentialId && (payload.jti !== credentialId || subject.credentialStatus?.id !== credentialId)) {
+    throw new Error('IDENTITY_CREDENTIAL_INVALID');
+  }
+  if (requireFresh && !credentialIsFresh({ credential: token })) throw new Error('IDENTITY_CREDENTIAL_EXPIRED');
+  const jwk = context.keys.find(key => key.kid === header.kid && key.kty === 'OKP' && key.crv === 'Ed25519' && (!key.alg || key.alg === 'EdDSA') && (!key.use || key.use === 'sig'));
+  if (!jwk) throw new Error('IDENTITY_CREDENTIAL_ISSUER_KEY_NOT_FOUND');
+  const publicKey = await crypto.subtle.importKey('jwk', jwk, { name: 'Ed25519' }, false, ['verify']);
+  const valid = await crypto.subtle.verify({ name: 'Ed25519' }, publicKey, signature, signingInput);
+  if (!valid) throw new Error('IDENTITY_CREDENTIAL_SIGNATURE_INVALID');
+  return payload;
 }
 
 function credentialIsFresh(credential, now = Date.now()) {
@@ -191,6 +270,7 @@ async function postIssuer(endpoint, path, payload) {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
     credentials: 'omit',
+    redirect: 'error',
     body: JSON.stringify(payload)
   });
   const result = await response.json().catch(() => ({}));
@@ -200,11 +280,33 @@ async function postIssuer(endpoint, path, payload) {
 
 async function reissueMissingCredentials({ identityId, record, credentials, missingTypes, issuerEndpoint, privateKey }) {
   if (missingTypes.length === 0) return credentials;
+  const source = credentials.find(item => credentialIssuerEndpoint([item]) === issuerEndpoint && credentialTypes(item).length > 0);
+  const sourceToken = credentialToken(source);
+  const sourceType = credentialTypes(source)[0];
+  const sourceIssuer = credentialPayload(source)?.iss;
+  if (!sourceToken || !sourceIssuer) throw new Error('IDENTITY_ISSUER_CREDENTIAL_REQUIRED');
+  const verificationContext = await getIssuerVerificationContext(issuerEndpoint, sourceIssuer);
+  const identityDid = record.document.id;
+  await verifyIssuerCredential(sourceToken, verificationContext, { identityId: identityDid, credentialType: sourceType });
   const challenge = await postIssuer(issuerEndpoint, '/api/v1/public/identity/credentials/reissue/challenge', {
     identity: record.document.id,
     credentialTypes: missingTypes
   });
-  const signingInput = String(challenge.signingInput || canonicalize(challenge.proofPayload));
+  const expectedProofPayload = {
+    purpose: 'identity-credential-reissue',
+    challengeId: String(challenge.challengeId || ''),
+    identity: record.document.id,
+    credentialTypes: missingTypes,
+    nonce: String(challenge.nonce || ''),
+    issuedAt: String(challenge.issuedAt || ''),
+    expiresAt: String(challenge.expiresAt || ''),
+  };
+  const issuedAt = Date.parse(expectedProofPayload.issuedAt);
+  const expiresAt = Date.parse(expectedProofPayload.expiresAt);
+  if (!expectedProofPayload.challengeId || expectedProofPayload.nonce.length < 16 || !Number.isFinite(issuedAt) || !Number.isFinite(expiresAt) || issuedAt > Date.now() + 30_000 || expiresAt <= Date.now() || expiresAt - issuedAt > 5 * 60 * 1000 || canonicalize(challenge.proofPayload) !== canonicalize(expectedProofPayload) || challenge.signingInput !== canonicalize(expectedProofPayload)) {
+    throw new Error('IDENTITY_CREDENTIAL_REISSUE_CHALLENGE_INVALID');
+  }
+  const signingInput = canonicalize(expectedProofPayload);
   const signature = await crypto.subtle.sign('Ed25519', privateKey, new TextEncoder().encode(signingInput));
   const identityDocument = await signIdentityDocument(record.document, privateKey, {
     verificationMethod: `${record.document.id}#${record.controllerId}`,
@@ -221,9 +323,43 @@ async function reissueMissingCredentials({ identityId, record, credentials, miss
       proofValue: toBase64Url(new Uint8Array(signature))
     }
   });
-  const nextCredentials = mergeCredentials(credentials, confirmed.credentials || []);
+  const reissuedCredentials = Array.isArray(confirmed.credentials) ? confirmed.credentials : [];
+  const seenTypes = new Set();
+  if (confirmed.identity !== identityDid || canonicalize(confirmed.credentialTypes) !== canonicalize(missingTypes) || reissuedCredentials.length !== missingTypes.length) {
+    throw new Error('IDENTITY_CREDENTIAL_REISSUE_RESPONSE_INVALID');
+  }
+  for (const item of reissuedCredentials) {
+    const type = String(item?.type || '');
+    const credentialId = String(item?.credentialId || '');
+    if (!credentialId || !missingTypes.includes(type) || seenTypes.has(type)) throw new Error('IDENTITY_CREDENTIAL_REISSUE_RESPONSE_INVALID');
+    seenTypes.add(type);
+    await verifyIssuerCredential(credentialToken(item), verificationContext, {
+      identityId: identityDid,
+      credentialType: type,
+      credentialId,
+      requireFresh: true,
+    });
+  }
+  const nextCredentials = mergeCredentials(credentials, reissuedCredentials);
   await saveIdentityCredentials(identityId, nextCredentials);
   return nextCredentials;
+}
+
+export async function refreshIdentityCredentialsAfterRestore({ identityId, password }) {
+  const record = await getIdentity(identityId);
+  if (!record?.document) throw new Error('IDENTITY_NOT_FOUND');
+  const credentials = await getIdentityCredentials(identityId);
+  const profileTypes = ['EmailCredential', 'UsernameCredential', 'AvatarCredential'];
+  const freshTypes = new Set(credentials.filter(credentialIsFresh).flatMap(credentialTypes));
+  const missingTypes = profileTypes.filter((type) => !freshTypes.has(type));
+  if (missingTypes.length === 0) return { identityId, refreshed: [], unchanged: true };
+
+  const endpoint = credentialIssuerEndpoint(credentials);
+  if (!endpoint) throw new Error('IDENTITY_ISSUER_CREDENTIAL_REQUIRED');
+  const keyMaterial = await decryptIdentityKeyMaterial(record, password);
+  const privateKey = await crypto.subtle.importKey('jwk', keyMaterial.privateJwk, { name: 'Ed25519' }, false, ['sign']);
+  await reissueMissingCredentials({ identityId, record, credentials, missingTypes, issuerEndpoint: endpoint, privateKey });
+  return { identityId, refreshed: missingTypes, unchanged: false };
 }
 
 export async function requestIdentityPresentation({ account, params, origin, password }) {
@@ -255,9 +391,8 @@ export async function requestIdentityPresentation({ account, params, origin, pas
     purpose: 'manage'
   });
   const missingTypes = missingCredentialTypes(selectedCredentials, request.scopes);
-  // Restored credentials carry the authoritative issuer URL. Use it for
-  // renewal unless the DApp explicitly supplies an issuer endpoint.
-  const issuerEndpoint = String(request.issuerEndpoint || credentialIssuerEndpoint(credentials) || DEFAULT_ISSUER_ENDPOINT).trim();
+  // Use the issuer bound to the stored credentials; DApps cannot redirect issuer requests.
+  const issuerEndpoint = String(credentialIssuerEndpoint(credentials) || DEFAULT_ISSUER_ENDPOINT).trim();
   let reissueError = null;
   if (missingTypes.length > 0 && issuerEndpoint) {
     try {

@@ -9,6 +9,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { webcrypto } from 'node:crypto';
+
+globalThis.crypto ||= webcrypto;
 
 import {
   encryptString,
@@ -25,14 +28,29 @@ import {
 const PASSWORD = 'Correct-Horse-9';
 const WRONG_PASSWORD = 'Correct-Horse-8';
 
+async function legacyEncrypt(plaintext, password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const passwordKey = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, passwordKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plaintext));
+  return Buffer.concat([Buffer.from(salt), Buffer.from(iv), Buffer.from(encrypted)]).toString('base64');
+}
+
 test('encryptString/decryptString 往返还原明文', async () => {
   const plaintext = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
   const encrypted = await encryptString(plaintext, PASSWORD);
   assert.equal(typeof encrypted, 'string');
   assert.notEqual(encrypted, plaintext, '密文不应等于明文');
+  assert.match(encrypted, /^v2\./, '新密文必须携带 KDF 格式版本');
 
   const decrypted = await decryptString(encrypted, PASSWORD);
   assert.equal(decrypted, plaintext);
+});
+
+test('旧版无版本前缀密文仍可用历史 KDF 参数解密', async () => {
+  const encrypted = await legacyEncrypt('legacy-secret', PASSWORD);
+  assert.equal(await decryptString(encrypted, PASSWORD), 'legacy-secret');
 });
 
 test('错误密码必须解密失败（不得静默返回错误明文）', async () => {
@@ -104,8 +122,9 @@ test('validatePassword 拒绝过短密码、接受合规密码', () => {
   assert.equal(ok.valid, true);
 });
 
-test('加密参数为预期的强配置（PBKDF2 100k + AES-256-GCM）', () => {
-  assert.equal(PBKDF2_CONFIG.iterations, 100000);
+test('新加密参数为 PBKDF2 210k + AES-256-GCM，并保留旧参数标识', () => {
+  assert.equal(PBKDF2_CONFIG.iterations, 210000);
+  assert.equal(PBKDF2_CONFIG.legacyIterations, 100000);
   assert.equal(PBKDF2_CONFIG.hash, 'SHA-256');
   assert.equal(AES_GCM_CONFIG.length, 256);
   assert.equal(AES_GCM_CONFIG.ivLength, 12);
