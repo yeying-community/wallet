@@ -29,6 +29,28 @@ function setupDom() {
     transferPage: { tagName: 'div' },
     unlockPage: { tagName: 'div' },
     welcomePage: { tagName: 'div' },
+    importPage: { tagName: 'div', dataset: {} },
+    importSourceWallet: { tagName: 'button', _classes: 'import-source-tab active', dataset: { source: 'wallet' } },
+    importSourceFile: { tagName: 'button', _classes: 'import-source-tab', dataset: { source: 'file' } },
+    importSourceCustody: { tagName: 'button', _classes: 'import-source-tab', dataset: { source: 'custody' } },
+    importMethodMnemonic: { tagName: 'button', _classes: 'import-method-option active', dataset: { method: 'mnemonic' } },
+    importMethodPrivateKey: { tagName: 'button', _classes: 'import-method-option', dataset: { method: 'privateKey' } },
+    importNetworkSelect: { tagName: 'select', value: 'evm' },
+    importReferenceSelect: { tagName: 'select', value: '' },
+    importReferenceGroup: { tagName: 'div' },
+    importNetworkLabel: { tagName: 'span' },
+    importNetworkMenu: { tagName: 'div' },
+    importReferenceLabel: { tagName: 'span' },
+    importReferenceMenu: { tagName: 'div' },
+    walletImportSection: { tagName: 'div' },
+    mnemonicImportSection: { tagName: 'div' },
+    privateKeyImportSection: { tagName: 'div', _classes: 'hidden' },
+    fileImportSection: { tagName: 'div', _classes: 'hidden' },
+    custodyImportSection: { tagName: 'div', _classes: 'hidden' },
+    importWalletNameGroup: { tagName: 'div' },
+    importWalletPasswordGroup: { tagName: 'div' },
+    importAccountsFileName: { tagName: 'span' },
+    importBtn: { tagName: 'button' },
     unlockPassword: { tagName: 'input' },
     recipientAddress: { tagName: 'input' },
     amount: { tagName: 'input' },
@@ -95,6 +117,27 @@ test('openAccountsPage：调 accountsListController.loadWalletList', async () =>
   await c.openAccountsPage();
   // accountsListController 是真实子 controller；只需验证不抛 + 内部 list 被读
   assert.equal(typeof c.accountListController, 'object');
+});
+
+test('restorePopupSessionState：恢复备份文件来源和重新选择提示', async () => {
+  const c = new PopupController({ wallet: fakeWallet(), transaction: {}, network: {}, token: {} });
+  await c.restorePopupSessionState({
+    pageId: 'importPage',
+    origin: 'welcome',
+    importType: 'mnemonic',
+    importSource: 'file',
+    importNetwork: 'evm',
+    importReference: '',
+    filePickerHandoff: true,
+    fields: {}
+  });
+
+  assert.ok(elements.importSourceFile.classList.contains('active'));
+  assert.ok(!elements.fileImportSection.classList.contains('hidden'));
+  assert.ok(elements.walletImportSection.classList.contains('hidden'));
+  assert.equal(elements.importBtn.textContent, '导入备份');
+  assert.equal(elements.importAccountsFileName.textContent, '请在此窗口重新选择备份文件');
+  assert.equal(elements.importPage.dataset.filePickerHandoff, 'true');
 });
 
 test('openSettingsPage：委派设置页 load 到 settingsController', async () => {

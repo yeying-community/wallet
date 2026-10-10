@@ -64,13 +64,18 @@ export function buildPopupSessionState(pageId, documentRef = globalThis.document
   // Keep only the non-sensitive UI context needed to reopen the import page.
   if (pageId === 'importPage') {
     const page = documentRef?.getElementById?.('importPage');
-    const activeOption = documentRef?.querySelector?.('.import-method-option.active');
+    const activeOption = Array.from(documentRef?.querySelectorAll?.('.import-method-option') || [])
+      .find((option) => option.classList?.contains?.('active'));
+    const activeSource = Array.from(documentRef?.querySelectorAll?.('.import-source-tab') || [])
+      .find((tab) => tab.classList?.contains?.('active'));
     const networkSelect = documentRef?.getElementById?.('importNetworkSelect');
     const referenceSelect = documentRef?.getElementById?.('importReferenceSelect');
     state.origin = page?.dataset?.origin || 'welcome';
     state.importType = activeOption?.dataset?.method || 'mnemonic';
+    state.importSource = activeSource?.dataset?.source || 'wallet';
     state.importNetwork = networkSelect?.value || 'evm';
     state.importReference = referenceSelect?.value || '';
+    state.filePickerHandoff = page?.dataset?.filePickerHandoff === 'true';
     state.fields = {};
   }
 
