@@ -1,6 +1,25 @@
 import { showPage, showError, showSuccess, showWaiting, getPageOrigin } from '../../common/ui/index.js';
 import { savePopupSessionState } from '../../common/ui/popup-session-state.js';
 import { IDENTITY_NODE_ENDPOINT_STORAGE_KEY, normalizeIdentityNodeEndpoint } from '../../config/identity-config.js';
+import { WalletMessageType } from '../../protocol/extension-protocol.js';
+
+function isLinuxDesktop() {
+  const navigatorRef = globalThis.navigator;
+  const platform = [
+    navigatorRef?.userAgentData?.platform,
+    navigatorRef?.platform,
+    navigatorRef?.userAgent
+  ].filter(Boolean).join(' ').toLowerCase();
+  return /\blinux\b/.test(platform) && !/\bandroid\b/.test(platform);
+}
+
+function isPersistentImportWindow() {
+  try {
+    return new URLSearchParams(globalThis.location?.search || '').get('window') === 'import';
+  } catch {
+    return false;
+  }
+}
 
 const IMPORT_FIELD_IDS = [
   'importAccountName',
@@ -160,6 +179,7 @@ export class ImportWalletController {
     this.onRestoreCustodyRecovery = onRestoreCustodyRecovery;
     this.onRecoveryReady = onRecoveryReady;
     this.onCancelCustodyRecovery = onCancelCustodyRecovery;
+    this.openingImportWindow = false;
   }
 
   bindEvents() {
@@ -180,6 +200,8 @@ export class ImportWalletController {
         const passwordGroup = document.getElementById('importWalletPasswordGroup');
         const refGroup = document.getElementById('importReferenceGroup');
         const importBtn = document.getElementById('importBtn');
+        const importPage = document.getElementById('importPage');
+        if (importPage) importPage.dataset.filePickerHandoff = 'false';
         if (source === 'custody') {
           walletSection?.classList.add('hidden');
           mnemonicSection?.classList.add('hidden');
@@ -245,13 +267,19 @@ export class ImportWalletController {
     }
 
     const fileInput = document.getElementById('importAccountsFile');
+    fileInput?.addEventListener('click', (event) => this.handleFilePickerClick(event));
     fileInput?.addEventListener('change', () => {
       const name = fileInput.files?.[0]?.name;
       const nameEl = document.getElementById('importAccountsFileName');
+      const importPage = document.getElementById('importPage');
+      if (importPage) importPage.dataset.filePickerHandoff = 'false';
       if (nameEl) {
         nameEl.textContent = name || '支持 JSON 格式的加密备份文件';
         nameEl.title = name || '';
       }
+      void savePopupSessionState('importPage').catch((error) => {
+        console.warn('[ImportWalletController] 保存导入页面状态失败:', error);
+      });
     });
 
     const cancelImportBtn = document.getElementById('cancelImportBtn');
@@ -259,6 +287,35 @@ export class ImportWalletController {
       cancelImportBtn.addEventListener('click', () => {
         this.handleCancel();
       });
+    }
+  }
+
+  async handleFilePickerClick(event) {
+    if (!isLinuxDesktop() || isPersistentImportWindow()) return false;
+
+    event?.preventDefault?.();
+    if (this.openingImportWindow) return false;
+    this.openingImportWindow = true;
+
+    const importPage = document.getElementById('importPage');
+    if (importPage) importPage.dataset.filePickerHandoff = 'true';
+
+    try {
+      await savePopupSessionState('importPage');
+      const response = await globalThis.chrome?.runtime?.sendMessage?.({
+        type: WalletMessageType.OPEN_IMPORT_WINDOW
+      });
+      if (!response?.success) {
+        throw new Error(response?.error || '无法打开导入窗口');
+      }
+      globalThis.window?.close?.();
+      return true;
+    } catch (error) {
+      if (importPage) importPage.dataset.filePickerHandoff = 'false';
+      showError(`无法打开导入窗口: ${error?.message || '未知错误'}`);
+      return false;
+    } finally {
+      this.openingImportWindow = false;
     }
   }
 

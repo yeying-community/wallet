@@ -234,6 +234,11 @@ export class PopupController {
           importPage?.dataset && (importPage.dataset.origin = state.origin);
         }
         const type = state.importType || 'mnemonic';
+        const source = state.importSource || 'wallet';
+        const sourceTabs = Array.from(document.querySelectorAll('.import-source-tab'));
+        sourceTabs.forEach((tab) => {
+          tab.classList.toggle('active', tab.dataset.source === source);
+        });
         // 同步方法 switch + 网络选择器（与新 UI 兼容）
         const methodOpts = Array.from(document.querySelectorAll('.import-method-option'));
         methodOpts.forEach((opt) => {
@@ -265,13 +270,31 @@ export class PopupController {
         const mnemonicSection = document.getElementById('mnemonicImportSection');
         const privateKeySection = document.getElementById('privateKeyImportSection');
         const fileSection = document.getElementById('fileImportSection');
+        const walletSection = document.getElementById('walletImportSection');
+        const custodySection = document.getElementById('custodyImportSection');
         const nameGroup = document.getElementById('importWalletNameGroup');
+        const passwordGroup = document.getElementById('importWalletPasswordGroup');
+        const referenceGroup = document.getElementById('importReferenceGroup');
         const importBtn = document.getElementById('importBtn');
-        mnemonicSection?.classList.toggle('hidden', type !== 'mnemonic');
-        privateKeySection?.classList.toggle('hidden', type !== 'privateKey');
-        fileSection?.classList.toggle('hidden', type !== 'file');
-        nameGroup?.classList.toggle('hidden', type === 'file');
-        if (importBtn) importBtn.textContent = type === 'file' ? '导入备份' : '导入钱包';
+        const isFileSource = source === 'file';
+        const isCustodySource = source === 'custody';
+        walletSection?.classList.toggle('hidden', isFileSource || isCustodySource);
+        custodySection?.classList.toggle('hidden', !isCustodySource);
+        mnemonicSection?.classList.toggle('hidden', isFileSource || isCustodySource || type !== 'mnemonic');
+        privateKeySection?.classList.toggle('hidden', isFileSource || isCustodySource || type !== 'privateKey');
+        fileSection?.classList.toggle('hidden', !isFileSource);
+        nameGroup?.classList.toggle('hidden', isFileSource || isCustodySource);
+        passwordGroup?.classList.toggle('hidden', isCustodySource);
+        referenceGroup?.classList.toggle('hidden', isFileSource || isCustodySource || (state.importNetwork || 'evm') === 'evm');
+        if (importBtn) importBtn.textContent = isCustodySource ? '开始恢复' : (isFileSource ? '导入备份' : '导入钱包');
+        if (importPage) importPage.dataset.filePickerHandoff = state.filePickerHandoff ? 'true' : 'false';
+        if (state.filePickerHandoff) {
+          const fileName = document.getElementById('importAccountsFileName');
+          if (fileName) {
+            fileName.textContent = '请在此窗口重新选择备份文件';
+            fileName.title = '';
+          }
+        }
         break;
       }
       case 'settingsPage':

@@ -137,7 +137,8 @@ import {
   setCurrentChainKey,
   chainIdToChainKey
 } from '../chain/current-chain.js';
-import { DEFAULT_NETWORK } from '../config/index.js';
+import { DEFAULT_NETWORK, POPUP_DIMENSIONS } from '../config/index.js';
+import { withPopupBoundsAsync } from './window-utils.js';
 import { normalizeChainId } from '../common/chain/index.js';
 import { compareAddresses } from '../common/chain/address-normalize.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
@@ -992,6 +993,20 @@ const popupHandlers = new Map([
       await persistPopupBounds(data);
     }
     return { success: true };
+  }],
+  [WalletMessageType.OPEN_IMPORT_WINDOW, async () => {
+    const windowOptions = await withPopupBoundsAsync({
+      url: `${chrome.runtime.getURL('html/popup.html')}?window=import`,
+      type: 'popup',
+      width: POPUP_DIMENSIONS.width,
+      height: POPUP_DIMENSIONS.height,
+      focused: true
+    });
+    const openedWindow = await new Promise((resolve) => {
+      chrome.windows.create(windowOptions, resolve);
+    });
+    if (!openedWindow?.id) throw new Error('无法创建导入窗口');
+    return { success: true, windowId: openedWindow.id };
   }],
   [WalletMessageType.GET_CURRENT_ACCOUNT, async () => await handleGetCurrentAccount()],
 
