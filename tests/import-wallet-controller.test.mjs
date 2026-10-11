@@ -17,7 +17,7 @@ let elements;
 
 function setupDom() {
   const doc = createDocument({
-    importPage: { tagName: 'div' },
+    importPage: { tagName: 'div', dataset: { origin: 'welcome' } },
     welcomePage: { tagName: 'div' },
     custodyRecoveryPage: { tagName: 'div' },
     custodyRecoveryCount: { tagName: 'div' },
@@ -30,6 +30,8 @@ function setupDom() {
     importMnemonic: { tagName: 'textarea' },
     importPrivateKey: { tagName: 'input' },
     importWalletPassword: { tagName: 'input' },
+    importAccountsFile: { tagName: 'input' },
+    importAccountsFileName: { tagName: 'span' },
     importWalletNameGroup: { tagName: 'div' },
     fileImportSection: { tagName: 'div', _classes: 'hidden' },
     importPasswordLabel: { tagName: 'label' },
@@ -94,6 +96,39 @@ test('切换到备份文件时隐藏钱包名称', () => {
   elements.fileSourceTab.click();
   assert.ok(elements.importWalletNameGroup.classList.contains('hidden'));
   assert.ok(!elements.fileImportSection.classList.contains('hidden'));
+});
+
+test('Linux popup 选择备份文件时交接到常驻导入窗口', async () => {
+  const previousChrome = globalThis.chrome;
+  const previousWindow = globalThis.window;
+  const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  let savedState;
+  let sentMessage;
+  let closed = false;
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { userAgent: 'Mozilla/5.0 (X11; Linux x86_64)' } });
+  globalThis.window = { close: () => { closed = true; } };
+  globalThis.chrome = {
+    storage: { session: { async set(value) { savedState = value.popupWorkspaceState; } } },
+    runtime: { async sendMessage(message) { sentMessage = message; return { success: true }; } }
+  };
+  try {
+    const controller = new ImportWalletController({ wallet: {} });
+    controller.bindEvents();
+    elements.fileSourceTab.click();
+    await elements.importAccountsFile.listeners.click[0]({ preventDefault() {} });
+    assert.equal(sentMessage.type, 'OPEN_IMPORT_WINDOW');
+    assert.equal(savedState.pageId, 'importPage');
+    assert.equal(savedState.importSource, 'file');
+    assert.equal(savedState.filePickerHandoff, true);
+    assert.equal(closed, true);
+  } finally {
+    if (previousChrome === undefined) delete globalThis.chrome;
+    else globalThis.chrome = previousChrome;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    if (previousNavigator) Object.defineProperty(globalThis, 'navigator', previousNavigator);
+    else delete globalThis.navigator;
+  }
 });
 
 test('clearImportWalletForm：清空助记词/私钥/密码并重置到助记词页签', () => {
