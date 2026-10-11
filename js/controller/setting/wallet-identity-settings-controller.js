@@ -923,12 +923,13 @@ export class WalletIdentitySettingsController {
       : username;
   }
 
-  async ensureIdentityPasskey(endpoint, identityDid, identityDocument, password) {
+  async ensureIdentityPasskey(endpoint, identityDid, identityDocument, password, options = {}) {
     if (!globalThis.PublicKeyCredential || !navigator.credentials) {
       this.setStatus('钱包身份已验证；当前浏览器不支持 Passkey，暂不能用于无钱包登录');
       return null;
     }
-    const deviceName = '夜莺钱包身份';
+    const authenticatorType = options.authenticatorType === 'cross-platform' ? 'cross-platform' : 'platform';
+    const deviceName = (options.deviceName || '').trim() || this.defaultPasskeyDeviceName(authenticatorType);
     const identities = await this.wallet.listIdentities();
     const context = { identityId: identities?.selectedIdentityId, identityDid, identityDocument, password };
     const auth = await this.authorizeIdentityAction(endpoint, context, 'identity.passkey.register', { deviceName });
@@ -936,6 +937,7 @@ export class WalletIdentitySettingsController {
       identity: identityDid,
       identityDocument,
       deviceName,
+      authenticatorAttachment: authenticatorType,
       ...auth
     });
     const passkeyRequest = requested?.passkeyRequest;
@@ -958,7 +960,10 @@ export class WalletIdentitySettingsController {
           type: 'public-key',
           transports: item.transports
         })),
-        authenticatorSelection: passkeyRequest.authenticatorSelection
+        authenticatorSelection: {
+          ...(passkeyRequest.authenticatorSelection || {}),
+          authenticatorAttachment: authenticatorType
+        }
       }
     });
     if (!credential) throw new Error('Passkey 注册已取消');
@@ -967,7 +972,8 @@ export class WalletIdentitySettingsController {
     return await this.confirmIdentityPasskeyRegistration(endpoint, {
       identity: identityDid,
       requestId: passkeyRequest.requestId,
-      deviceName: '夜莺钱包身份',
+      deviceName,
+      authenticatorAttachment: credential.authenticatorAttachment || authenticatorType,
       credential: {
         id: credential.id,
         rawId: arrayBufferToBase64Url(credential.rawId),
@@ -1035,11 +1041,13 @@ export class WalletIdentitySettingsController {
     try {
       const endpoint = this.endpoint();
       if (!endpoint) throw new Error('请输入身份服务地址');
+      const { deviceName, authenticatorType } = this.readPasskeyRegisterForm();
       const { identityDid, identityDocument, password } = await this.selectedIdentityContext({ requireSigned: true });
       showWaiting();
-      await this.ensureIdentityPasskey(endpoint, identityDid, identityDocument, password);
+      await this.ensureIdentityPasskey(endpoint, identityDid, identityDocument, password, { deviceName, authenticatorType });
       hideWaiting();
       showSuccess('通行证已注册');
+      this.resetPasskeyRegisterForm();
       await this.refreshIdentityPasskeys({ quiet: true });
       await this.refreshIdentityPasskeySummary({ quiet: true });
     } catch (error) {
@@ -1048,6 +1056,34 @@ export class WalletIdentitySettingsController {
       showError(message);
       this.setPasskeyStatus(message);
     }
+  }
+
+  readPasskeyRegisterForm() {
+    const nameInput = document.getElementById('walletIdentityPasskeyDeviceNameInput');
+    const typeSelect = document.getElementById('walletIdentityPasskeyTypeSelect');
+    const deviceName = (nameInput?.value || '').trim();
+    const authenticatorType = typeSelect?.value === 'cross-platform' ? 'cross-platform' : 'platform';
+    return { deviceName, authenticatorType };
+  }
+
+  resetPasskeyRegisterForm() {
+    const nameInput = document.getElementById('walletIdentityPasskeyDeviceNameInput');
+    if (nameInput) nameInput.value = '';
+  }
+
+  defaultPasskeyDeviceName(authenticatorType) {
+    return authenticatorType === 'cross-platform' ? '手机通行证' : '本机通行证';
+  }
+
+  passkeyTypeLabel(credential) {
+    const attachment = credential?.authenticatorAttachment;
+    if (attachment === 'platform') return '本机生物识别';
+    if (attachment === 'cross-platform') return '手机扫码 / 安全密钥';
+    const transports = Array.isArray(credential?.transports) ? credential.transports : [];
+    if (transports.includes('internal')) return '本机生物识别';
+    if (transports.includes('hybrid')) return '手机扫码';
+    if (transports.some(t => t === 'usb' || t === 'nfc' || t === 'ble')) return '安全密钥';
+    return '';
   }
 
   async refreshIdentityPasskeys({ quiet = false } = {}) {
@@ -1114,6 +1150,21 @@ export class WalletIdentitySettingsController {
         topLine.appendChild(revoke);
       }
       item.appendChild(topLine);
+
+      const typeLabel = this.passkeyTypeLabel(credential);
+      if (typeLabel) {
+        const typeRow = document.createElement('div');
+        typeRow.className = 'identity-passkey-type-row';
+        const typeKey = document.createElement('span');
+        typeKey.className = 'identity-passkey-type-label';
+        typeKey.textContent = '类型';
+        const typeValue = document.createElement('span');
+        typeValue.className = 'identity-passkey-type-value';
+        typeValue.textContent = typeLabel;
+        typeRow.appendChild(typeKey);
+        typeRow.appendChild(typeValue);
+        item.appendChild(typeRow);
+      }
 
       if (credential.credentialId) {
         const idRow = document.createElement('div');

@@ -1390,6 +1390,20 @@
           </div>
         </div>
         <div class="identity-passkey-footer identity-detail-actions">
+          <div class="identity-passkey-register-form">
+            <label class="identity-passkey-field">
+              <span class="identity-passkey-field-label">设备名称</span>
+              <input id="walletIdentityPasskeyDeviceNameInput" class="identity-passkey-input" type="text" maxlength="40" placeholder="如：我的 MacBook / iPhone" autocomplete="off" />
+            </label>
+            <label class="identity-passkey-field">
+              <span class="identity-passkey-field-label">认证器类型</span>
+              <select id="walletIdentityPasskeyTypeSelect" class="identity-passkey-select">
+                <option value="platform">本机生物识别（指纹 / Face）</option>
+                <option value="cross-platform">手机扫码 / 安全密钥</option>
+              </select>
+            </label>
+            <p class="settings-hint identity-passkey-type-hint">本机生物识别在支持的系统上会自动同步到 iCloud / Google；添加新设备请选对应类型。同一把已同步凭证不能重复注册。</p>
+          </div>
           <button id="registerWalletIdentityPasskeyBtn" class="btn btn-primary">注册通行证</button>
         </div>
       </div>
