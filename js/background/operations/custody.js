@@ -11,7 +11,6 @@ import {
   updateUserSettings,
   getWallet,
   getAccountList,
-  getSelectedAccount,
   getWalletAccounts,
   setSelectedAccountId,
   saveWallet,
@@ -75,12 +74,16 @@ async function ensureCustodyToken(options = {}) {
   const endpoint = normalizeEndpoint(
     options.endpoint || await getUserSetting('custodyEndpoint', DEFAULT_CUSTODY_ENDPOINT)
   );
+  const { account, boundAddress } = await getCustodySigningAccount();
   return await ensureTargetUcanToken({
     endpoint,
     tokenSettingKey: 'custodyUcanToken',
     audienceSettingKey: 'custodyUcanAudience',
     resourceSettingKey: 'custodyUcanResource',
     actionSettingKey: 'custodyUcanAction',
+    issuerSettingKey: 'custodyUcanIssuer',
+    signingAccount: account,
+    expectedIssuerAddress: boundAddress,
     defaultResource: DEFAULT_CUSTODY_UCAN_RESOURCE,
     defaultAction: DEFAULT_CUSTODY_UCAN_ACTION,
     ttlHours: options.ttlHours ?? DEFAULT_CUSTODY_UCAN_TTL_HOURS,
@@ -106,9 +109,9 @@ export async function onCustodyUnlocked(password) {
 }
 
 async function buildCustodyPayload(password) {
-  const account = await getSelectedAccount();
+  const { account } = await getCustodySigningAccount();
   if (!account?.id || !account?.walletId) {
-    throw new Error('未找到当前账户');
+    throw new Error('未找到钱包身份绑定的账户');
   }
   const wallet = await getWallet(account.walletId);
   if (!wallet?.id) {
@@ -361,6 +364,64 @@ function identityHasAccountCredential(record, address, chainKey = 'eip155:1') {
 }
 
 /**
+ * Extract the EVM address bound to a wallet identity from its
+ * WalletAccountCredential VC (chainKey eip155:1). Returns '' when the identity
+ * has not completed account-linking yet. The first matching eip155:1 credential
+ * wins, mirroring the node recovery path which takes the identity's first
+ * eip155 account link.
+ */
+export function resolveIdentityBoundAddress(record, chainKey = 'eip155:1') {
+  for (const item of (record?.credentials || [])) {
+    const token = item?.credential || item?.jwt || (typeof item === 'string' ? item : '');
+    const encoded = String(token).split('.')[1];
+    if (!encoded) continue;
+    try {
+      const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(`${normalized}${'='.repeat((4 - normalized.length % 4) % 4)}`));
+      const types = Array.isArray(payload?.vc?.type) ? payload.vc.type : [payload?.vc?.type];
+      const subject = payload?.vc?.credentialSubject || {};
+      if (types.includes('WalletAccountCredential') && subject.chainKey === chainKey && subject.address) {
+        return String(subject.address);
+      }
+    } catch { /* skip malformed credential */ }
+  }
+  return '';
+}
+
+/**
+ * Resolve the local account that custody must anchor to: the account whose
+ * address matches the selected wallet identity's bound eip155:1 address. This
+ * decouples custody from the currently-selected plugin account so backup and
+ * node-side recovery (which already uses the identity-bound address) land on the
+ * same subject.
+ */
+export async function getCustodySigningAccount() {
+  const selectedIdentityId = await getValue(IdentityStorageKeys.SELECTED_IDENTITY);
+  if (!selectedIdentityId) {
+    throw new Error('请先选择钱包身份后再使用云端托管');
+  }
+  const identities = await getIdentities();
+  const identity = identities?.[selectedIdentityId];
+  if (!identity) {
+    throw new Error('请先选择钱包身份后再使用云端托管');
+  }
+  const boundAddress = resolveIdentityBoundAddress(identity);
+  if (!boundAddress) {
+    throw new Error('当前钱包身份尚未完成账户绑定，请先绑定账户与通行证');
+  }
+  const accounts = await getAccountList();
+  const account = (accounts || []).find(item =>
+    item?.id && item?.address && compareAddresses(item.address, boundAddress, item.namespace || 'eip155'));
+  if (!account) {
+    throw new Error('钱包身份绑定的账户不在本设备，无法在此设备开启云端托管');
+  }
+  return {
+    account,
+    boundAddress: (normalizeAddressForFamily(account.address, account.namespace || 'eip155') || String(boundAddress)).toLowerCase()
+  };
+}
+
+/**
  * Validate and decrypt all Wallet Identity material carried by a custody
  * snapshot. The snapshot map is keyed by walletIdentityId (`wid_*`), while
  * the signed document uses the DID form (`did:yeying:wid_*`) as its `id`.
@@ -570,7 +631,7 @@ export async function handleDisableCustody(options = {}) {
       action: settings.ucanAction,
       audience: settings.ucanAudience
     });
-    const account = await getSelectedAccount();
+    const { account } = await getCustodySigningAccount();
     const walletId = String(options.walletId || account?.walletId || '').trim();
     if (walletId) {
       const client = createClient({ ...settings, endpoint });

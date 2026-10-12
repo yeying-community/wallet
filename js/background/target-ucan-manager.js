@@ -3,7 +3,7 @@ import {
   getUserSetting,
   updateUserSettings
 } from '../storage/index.js';
-import { getUnlockedCoordinatorSigningAccount } from './coordinator-signing-account.js';
+import { getUnlockedCoordinatorSigningAccount, ensureCoordinatorSigningAccountUnlocked } from './coordinator-signing-account.js';
 import { normalizeAddressForFamily, addressDidMethod } from '../common/chain/address-normalize.js';
 import {
   normalizeBearerToken,
@@ -59,10 +59,18 @@ export async function ensureTargetUcanToken(options = {}) {
   const explicitAction = String(options.action || '').trim();
   const forceRefresh = Boolean(options.forceRefresh);
 
+  // Optional issuer pinning: callers that must anchor the token to a specific
+  // signer address (e.g. custody → wallet-identity bound address) pass
+  // expectedIssuerAddress + issuerSettingKey so a cached token signed by a
+  // different account is not silently reused.
+  const issuerSettingKey = String(options.issuerSettingKey || '').trim();
+  const expectedIssuerAddress = String(options.expectedIssuerAddress || '').trim().toLowerCase();
+
   const storedToken = normalizeBearerToken(await getUserSetting(tokenSettingKey, ''));
   const storedAudience = String(await getUserSetting(audienceSettingKey, '') || '').trim();
   const storedResource = String(await getUserSetting(resourceSettingKey, '') || '').trim();
   const storedAction = String(await getUserSetting(actionSettingKey, '') || '').trim();
+  const storedIssuer = issuerSettingKey ? String(await getUserSetting(issuerSettingKey, '') || '').trim().toLowerCase() : '';
 
   const audience = resolveTargetUcanAudience({ endpoint, explicitAudience, storedAudience });
   const resource = explicitResource || storedResource || defaultResource;
@@ -78,11 +86,13 @@ export async function ensureTargetUcanToken(options = {}) {
   const payload = decodeJwtPayload(storedToken);
   const payloadAud = String(payload?.aud || '').trim();
   const payloadCap = Array.isArray(payload?.cap) ? payload.cap[0] : null;
+  const issuerMatchesTarget = !expectedIssuerAddress || storedIssuer === expectedIssuerAddress;
   const tokenMatchesTarget = Boolean(
     storedToken &&
     payloadAud === audience &&
     String(payloadCap?.resource || payloadCap?.with || '').trim() === resource &&
-    String(payloadCap?.action || payloadCap?.can || '').trim() === action
+    String(payloadCap?.action || payloadCap?.can || '').trim() === action &&
+    issuerMatchesTarget
   );
 
   if (!forceRefresh && tokenMatchesTarget && !isUcanExpiringSoon(storedToken)) {
@@ -95,7 +105,9 @@ export async function ensureTargetUcanToken(options = {}) {
     };
   }
 
-  const account = await getUnlockedCoordinatorSigningAccount(options.password);
+  const account = options.signingAccount
+    ? await ensureCoordinatorSigningAccountUnlocked(options.signingAccount, options.password)
+    : await getUnlockedCoordinatorSigningAccount(options.password);
 
   const now = Date.now();
   const expiresAt = now + ttlMs;
@@ -132,11 +144,13 @@ export async function ensureTargetUcanToken(options = {}) {
   });
 
   const normalizedToken = normalizeBearerToken(token);
+  const issuerAddress = (normalizeAddressForFamily(account.address, account.namespace) || String(account.address || '')).toLowerCase();
   await updateUserSettings({
     [audienceSettingKey]: audience,
     [resourceSettingKey]: resource,
     [actionSettingKey]: action,
-    [tokenSettingKey]: normalizedToken
+    [tokenSettingKey]: normalizedToken,
+    ...(issuerSettingKey ? { [issuerSettingKey]: issuerAddress } : {})
   });
 
   return {
