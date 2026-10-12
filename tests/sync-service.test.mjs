@@ -259,6 +259,23 @@ test('_buildPayload 正确产出 accounts/contacts/networkIds', async () => {
   assert.deepEqual(payload.networkIds, ['0x1']);
 });
 
+test('_buildPayload 跳过非 EVM 账户，payload 通过自检', async () => {
+  // 同一 HD 钱包下再塞一个非 EVM（Tron）账户
+  await ops.saveAccount({
+    id: 'w1_tron_0', walletId: 'w1', name: 'Tron 账户', index: 0,
+    address: 'TJRabPrwbZy45sbavfcjinPJC18kjpRTv8', namespace: 'tron',
+    encryptedPrivateKey: 'encT', createdAt: 2, nameUpdatedAt: 2000
+  });
+  await backupSyncService._prepareContexts('TestPassword123');
+  const payload = await backupSyncService._buildPayload('w1', 'manual');
+  // 仅保留 EVM 账户，非 EVM 被过滤
+  assert.equal(payload.accounts.length, 1);
+  assert.equal(payload.accounts[0].address, '0x1111111111111111111111111111111111111111');
+  assert.ok(payload.accounts.every(a => /^0x[0-9a-fA-F]{40}$/.test(a.address)));
+  // 修复前这里会抛 "Invalid backup payload account"
+  assert.doesNotThrow(() => syncModule.validateSyncPayload(payload));
+});
+
 test('拒绝未知版本和损坏的远端 payload', () => {
   const { validateSyncPayload } = syncModule;
   assert.throws(

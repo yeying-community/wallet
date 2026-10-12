@@ -585,7 +585,13 @@ class BackupSyncService {
     if (!wallet || wallet.type !== WALLET_TYPE.HD) return null;
 
     const accounts = await getWalletAccounts(walletId);
-    const accountEntries = accounts.map(account => {
+    // v1 backup/sync schema only carries EVM accounts (validateSyncPayload →
+    // isEthereumAddress). Non-EVM accounts (Tron / Solana / Bitcoin) are skipped
+    // here; their backup belongs to the deferred family-aware v3 channel.
+    // Including them would make the payload fail its own validation
+    // ("Invalid backup payload account").
+    const evmAccounts = accounts.filter(account => isEthereumAddress(account.address));
+    const accountEntries = evmAccounts.map(account => {
       const index = Number.isFinite(account.index) ? account.index : 0;
       const nameUpdatedAt = account.nameUpdatedAt || account.updatedAt || account.createdAt || 0;
       return {
@@ -597,6 +603,9 @@ class BackupSyncService {
         usernameUpdatedAt: account.usernameUpdatedAt || 0
       };
     });
+    // Derive accountCount from the EVM entries actually carried so the payload is
+    // self-consistent (restore re-derives exactly these EVM accounts).
+    const evmAccountCount = accountEntries.reduce((max, entry) => Math.max(max, entry.index + 1), 0);
     const networks = await getNetworks();
     const storedNetworkIds = await getUserSetting(SETTINGS_KEYS.networkIds, []);
     const networkIds = Array.from(new Set([
@@ -620,7 +629,7 @@ class BackupSyncService {
       version: SYNC_PAYLOAD_VERSION,
       updatedAt: getTimestamp(),
       reason,
-      accountCount: wallet.accountCount || accounts.length,
+      accountCount: evmAccountCount || accountEntries.length,
       accounts: accountEntries,
       contacts: contactEntries,
       networkIds,
