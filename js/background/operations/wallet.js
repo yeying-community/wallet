@@ -1058,6 +1058,31 @@ export async function handleGetProfile() {
   return { success: true, profile: { email: '', emailUpdatedAt: 0, emailVerified: false } };
 }
 
+// Re-derive an HD sub-account using the chain that matches its namespace.
+// Used when restoring an account-backup file so non-EVM (Tron/Solana/Bitcoin)
+// sub-accounts are not mis-derived as EVM. reference (BTC testnet / Solana
+// devnet / Tron shasta…) is parsed from chainKey; v1 entries without namespace
+// fall back to EVM. Returns null for unknown namespaces (caller skips).
+function deriveSubAccountByNamespace(wallet, index, meta, password) {
+  const namespace = String(meta?.namespace || 'eip155').toLowerCase();
+  const name = meta?.name;
+  const reference = String(meta?.chainKey || '').split(':')[1] || '';
+  switch (namespace) {
+    case 'tron':
+      return deriveTronSubAccount(wallet, index, name, password, reference ? { tronReference: reference } : {});
+    case 'solana':
+      return deriveSolanaSubAccount(wallet, index, name, password, reference ? { solanaReference: reference } : {});
+    case 'bip122':
+    case 'utxo':
+      return deriveBitcoinSubAccount(wallet, index, name, password, reference ? { bip122Reference: reference } : {});
+    case 'eip155':
+      return deriveSubAccount(wallet, index, name, password);
+    default:
+      console.warn(`[ImportAccounts] unknown account namespace "${namespace}" at index ${index}, skipping`);
+      return null;
+  }
+}
+
 export async function handleExportAccountsFile(password, identityEndpoint = '') {
   if (!password || password.length < MIN_PASSWORD_LENGTH) {
     return { success: false, error: 'password is required' };
@@ -1078,6 +1103,10 @@ export async function handleExportAccountsFile(password, identityEndpoint = '') 
         accounts: accounts.map(account => ({
           index: Number.isInteger(account.index) ? account.index : 0,
           name: account.name || '',
+          namespace: account.namespace || 'eip155',
+          chainKey: account.chainKey || '',
+          coinType: Number.isInteger(account.coinType) ? account.coinType : undefined,
+          address: account.address || '',
           username: account.username || '',
           usernameUpdatedAt: account.usernameUpdatedAt || 0
         }))
@@ -1095,7 +1124,7 @@ export async function handleExportAccountsFile(password, identityEndpoint = '') 
     if (exportedWallets.length === 0) return { success: false, error: '没有可导出的本地账户' };
     const payload = {
       format: 'yeying-wallet-accounts',
-      version: 1,
+      version: 2,
       exportedAt: getTimestamp(),
       wallets: exportedWallets
       , identities: Object.values(identities || {}).map(({ privateJwk, recoveryPrivateJwk, ...record }) => record),
@@ -1121,7 +1150,7 @@ export async function handleExportAccountsFile(password, identityEndpoint = '') 
 }
 
 export async function handleImportAccountsFile(file, password) {
-  if (!file || file.format !== 'yeying-wallet-accounts' || file.version !== 1 || !file.ciphertext) {
+  if (!file || file.format !== 'yeying-wallet-accounts' || ![1, 2].includes(file.version) || !file.ciphertext) {
     return { success: false, error: '不支持的账户备份文件' };
   }
   if (!password || password.length < MIN_PASSWORD_LENGTH) {
@@ -1129,7 +1158,7 @@ export async function handleImportAccountsFile(file, password) {
   }
   try {
     const payload = await decryptObject(file.ciphertext, password);
-    if (payload?.format !== 'yeying-wallet-accounts' || payload?.version !== 1 || !Array.isArray(payload.wallets)) {
+    if (payload?.format !== 'yeying-wallet-accounts' || ![1, 2].includes(payload?.version) || !Array.isArray(payload.wallets)) {
       return { success: false, error: '账户备份内容无效' };
     }
     const existingAddresses = new Set(
@@ -1174,7 +1203,8 @@ export async function handleImportAccountsFile(file, password) {
         existingAddresses.add(normalizeAddressForFamily(preview.mainAccount.address, preview.mainAccount.namespace));
         imported += 1;
         for (const meta of sourceAccounts.filter(account => Number.isInteger(account.index) && account.index > 0).sort((a, b) => a.index - b.index)) {
-          const account = await deriveSubAccount(preview.wallet, meta.index, meta.name, password);
+          const account = await deriveSubAccountByNamespace(preview.wallet, meta.index, meta, password);
+          if (!account) { skipped += 1; continue; }
           if (existingAddresses.has(normalizeAddressForFamily(account.address, account.namespace))) { skipped += 1; continue; }
           account.username = meta.username || '';
           account.usernameUpdatedAt = meta.usernameUpdatedAt || 0;

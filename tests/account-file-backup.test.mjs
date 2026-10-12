@@ -14,7 +14,7 @@ globalThis.chrome = {
 };
 
 const PASSWORD = 'Backup-Pass-123';
-const { createHDWallet, deriveSubAccount } = await import('../js/background/vault.js');
+const { createHDWallet, deriveSubAccount, deriveTronSubAccount } = await import('../js/background/vault.js');
 const { handleExportAccountsFile, handleImportAccountsFile } = await import('../js/background/operations/wallet.js');
 const { saveWallet, saveAccount, getAccountList, clearAllData } = await import('../js/storage/index.js');
 const { createWalletIdentity } = await import('../js/common/identity/identity-document.js');
@@ -50,6 +50,36 @@ test('encrypted account file restores HD accounts and metadata', async () => {
   assert.equal(restored.find(account => account.index === 0)?.username, 'alice');
   assert.equal(restored.find(account => account.index === 0)?.name, 'Primary');
   assert.equal(restored.find(account => account.index === 1)?.name, 'Savings');
+});
+
+test('encrypted account file round-trips a non-EVM (Tron) HD sub-account by namespace', async () => {
+  await clearAllData();
+  const { wallet, mainAccount } = await createHDWallet('Primary', PASSWORD);
+  const tron = await deriveTronSubAccount(wallet, 1, 'My Tron', PASSWORD, { tronReference: 'mainnet' });
+  await saveWallet({ ...wallet, accountCount: 2 });
+  await saveAccount(mainAccount);
+  await saveAccount(tron);
+
+  // Sanity: the derived account is a Tron Base58 (T…) address in the tron namespace.
+  assert.match(String(tron.address), /^T[1-9A-HJ-NP-Za-km-z]+$/);
+  assert.equal(tron.namespace, 'tron');
+
+  const exported = await handleExportAccountsFile(PASSWORD);
+  assert.equal(exported.success, true);
+  assert.equal(exported.file.version, 2);
+
+  await clearAllData();
+  const imported = await handleImportAccountsFile(exported.file, PASSWORD);
+  assert.equal(imported.success, true);
+  assert.equal(imported.imported, 2);
+
+  const restored = await getAccountList();
+  const restoredTron = restored.find(account => account.index === 1);
+  assert.ok(restoredTron, 'Tron 子账户应被恢复');
+  // 关键：按 namespace 重派生为 Tron（修复前会被误派生成 EVM 0x 地址）
+  assert.equal(restoredTron.namespace, 'tron');
+  assert.equal(restoredTron.address, tron.address);
+  assert.match(String(restoredTron.address), /^T/);
 });
 
 test('encrypted account file carries the identity service endpoint and restores it', async () => {
