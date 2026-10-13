@@ -4,7 +4,7 @@
  */
 
 import { encryptObject, decryptObject, hashHex } from '../common/crypto/index.js';
-import { normalizeAddressForFamily } from '../common/chain/address-normalize.js';
+import { normalizeAddressForFamily, isValidAddressForFamily } from '../common/chain/address-normalize.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import {
   getWallets,
@@ -22,11 +22,19 @@ import {
   NetworkStorageKeys,
   ContactsStorageKeys
 } from '../storage/index.js';
-import { WALLET_TYPE, deriveSubAccount, getWalletMnemonic } from './vault.js';
+import {
+  WALLET_TYPE,
+  deriveSubAccount,
+  deriveTronSubAccount,
+  deriveSolanaSubAccount,
+  deriveBitcoinSubAccount,
+  getWalletMnemonic
+} from './vault.js';
 import { ensureTargetUcanToken } from './target-ucan-manager.js';
 import { getCachedPassword } from './password-cache.js';
 import {
   SYNC_PAYLOAD_VERSION,
+  SYNC_SUPPORTED_PAYLOAD_VERSIONS,
   SYNC_FILENAME,
   SYNC_DEBOUNCE_MS,
   DEFAULT_SYNC_ENDPOINT,
@@ -64,19 +72,18 @@ const LEGACY_SYNC_ENDPOINT = 'https://webdav.yeying.pub/dav';
 const MISTYPED_SYNC_ENDPOINT = 'https://warenouse.tidukongjian.com/dav';
 const MIGRATED_SYNC_ENDPOINT = 'https://warehouse.tidukongjian.com/dav';
 
-// v1 backup/sync schema 仅承载 EVM 账户（isEthereumAddress 在
-// validateSyncPayload 中硬约束 `^0x[0-9a-fA-F]{40}$`）。Tron 备份路径
-// 走 schema v3 后的 family-aware 通道，下一阶段落地；当前 sync payload
-// 不需要额外判断 namespace。
-function isEthereumAddress(value) {
-  return typeof value === 'string' && /^0x[0-9a-fA-F]{40}$/.test(value);
+// A backup account entry's namespace. v1 entries carry no namespace and are
+// treated as EVM (eip155). v2 entries carry namespace/chainKey so non-EVM
+// accounts can be validated and re-derived.
+function accountNamespace(account) {
+  return String(account?.namespace || '').trim().toLowerCase() || 'eip155';
 }
 
 export function validateSyncPayload(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('Invalid backup payload');
   }
-  if (payload.version !== SYNC_PAYLOAD_VERSION) {
+  if (!SYNC_SUPPORTED_PAYLOAD_VERSIONS.includes(payload.version)) {
     throw new Error(`Unsupported backup payload version: ${String(payload.version ?? '')}`);
   }
   if (!Number.isFinite(payload.updatedAt) || payload.updatedAt <= 0) {
@@ -90,7 +97,9 @@ export function validateSyncPayload(payload) {
       !account ||
       !Number.isInteger(account.index) ||
       account.index < 0 ||
-      !isEthereumAddress(account.address)
+      // Family-aware: EVM entries (incl. legacy v1 without namespace) validate as
+      // 0x addresses; Tron/Solana/Bitcoin validate via their family rules.
+      !isValidAddressForFamily(account.address, accountNamespace(account))
     ) {
       throw new Error('Invalid backup payload account');
     }
@@ -585,18 +594,29 @@ class BackupSyncService {
     if (!wallet || wallet.type !== WALLET_TYPE.HD) return null;
 
     const accounts = await getWalletAccounts(walletId);
+    // v2 family-aware payload: carry ALL accounts (EVM + Tron/Solana/Bitcoin)
+    // with their namespace/chainKey so a restoring device can re-derive each one
+    // via the correct chain. Within an HD wallet `index` is a single shared
+    // counter across chains, so it stays globally unique per account.
     const accountEntries = accounts.map(account => {
       const index = Number.isFinite(account.index) ? account.index : 0;
       const nameUpdatedAt = account.nameUpdatedAt || account.updatedAt || account.createdAt || 0;
       return {
         index,
         address: account.address,
+        namespace: accountNamespace(account),
+        chainKey: account.chainKey || '',
+        coinType: Number.isInteger(account.coinType) ? account.coinType : undefined,
+        derivationPath: account.derivationPath || '',
         name: account.name,
         nameUpdatedAt,
         username: account.username || '',
         usernameUpdatedAt: account.usernameUpdatedAt || 0
       };
     });
+    // accountCount = max index + 1 across all accounts (shared counter), so the
+    // payload stays self-consistent regardless of chain mix.
+    const accountCount = accountEntries.reduce((max, entry) => Math.max(max, entry.index + 1), 0);
     const networks = await getNetworks();
     const storedNetworkIds = await getUserSetting(SETTINGS_KEYS.networkIds, []);
     const networkIds = Array.from(new Set([
@@ -620,12 +640,35 @@ class BackupSyncService {
       version: SYNC_PAYLOAD_VERSION,
       updatedAt: getTimestamp(),
       reason,
-      accountCount: wallet.accountCount || accounts.length,
+      accountCount: accountCount || accountEntries.length,
       accounts: accountEntries,
       contacts: contactEntries,
       networkIds,
       networksUpdatedAt: getTimestamp()
     };
+  }
+
+  // Re-derive a missing account using the chain that matches its namespace.
+  // The BIP44 address index is the shared per-wallet counter; reference (BTC
+  // testnet / Solana devnet / Tron shasta…) is parsed from chainKey.
+  _deriveAccountForNamespace(wallet, index, remote, password) {
+    const namespace = accountNamespace(remote);
+    const name = remote.name;
+    const reference = String(remote.chainKey || '').split(':')[1] || '';
+    switch (namespace) {
+      case 'tron':
+        return deriveTronSubAccount(wallet, index, name, password, reference ? { tronReference: reference } : {});
+      case 'solana':
+        return deriveSolanaSubAccount(wallet, index, name, password, reference ? { solanaReference: reference } : {});
+      case 'bip122':
+      case 'utxo':
+        return deriveBitcoinSubAccount(wallet, index, name, password, reference ? { bip122Reference: reference } : {});
+      case 'eip155':
+        return deriveSubAccount(wallet, index, name, password);
+      default:
+        console.warn(`[BackupSync] unknown account namespace "${namespace}" at index ${index}, skipping`);
+        return null;
+    }
   }
 
   async _applyRemotePayload(walletId, remotePayload, reason) {
@@ -703,7 +746,10 @@ class BackupSyncService {
           }
 
           try {
-            const derived = await deriveSubAccount(wallet, index, remote.name, password);
+            const derived = await this._deriveAccountForNamespace(wallet, index, remote, password);
+            if (!derived) {
+              continue;
+            }
             if (remoteUpdatedAt) {
               derived.nameUpdatedAt = remoteUpdatedAt;
             }

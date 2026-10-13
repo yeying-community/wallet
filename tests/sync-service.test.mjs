@@ -251,18 +251,41 @@ test('pullRemote 远端空 → 本地不变', async () => {
 test('_buildPayload 正确产出 accounts/contacts/networkIds', async () => {
   await backupSyncService._prepareContexts('TestPassword123');
   const payload = await backupSyncService._buildPayload('w1', 'manual');
-  assert.equal(payload.version, 1);
+  assert.equal(payload.version, 2);
   assert.equal(payload.accountCount, 1);
   assert.equal(payload.accounts.length, 1);
   assert.equal(payload.accounts[0].address, '0x1111111111111111111111111111111111111111');
+  assert.equal(payload.accounts[0].namespace, 'eip155');
   assert.equal(payload.contacts.length, 1);
   assert.deepEqual(payload.networkIds, ['0x1']);
+});
+
+test('_buildPayload v2 收录非 EVM 账户并带 namespace/chainKey', async () => {
+  // 同一 HD 钱包下再塞一个非 EVM（Tron）账户（index 为全局计数，取 1）
+  await ops.saveAccount({
+    id: 'w1_tron_1', walletId: 'w1', name: 'Tron 账户', index: 1,
+    address: 'TJRabPrwbZy45sbavfcjinPJC18kjpRTv8', namespace: 'tron', chainKey: 'tron:mainnet',
+    encryptedPrivateKey: 'encT', createdAt: 2, nameUpdatedAt: 2000
+  });
+  await backupSyncService._prepareContexts('TestPassword123');
+  const payload = await backupSyncService._buildPayload('w1', 'manual');
+  assert.equal(payload.version, 2);
+  // EVM 与 Tron 账户都应收录
+  assert.equal(payload.accounts.length, 2);
+  const tron = payload.accounts.find(a => a.namespace === 'tron');
+  assert.ok(tron, 'Tron 账户应在 payload 中');
+  assert.equal(tron.address, 'TJRabPrwbZy45sbavfcjinPJC18kjpRTv8');
+  assert.equal(tron.chainKey, 'tron:mainnet');
+  // accountCount = max index + 1 = 2
+  assert.equal(payload.accountCount, 2);
+  // payload 通过 v2 family-aware 校验（Tron 地址按 tron family 校验）
+  assert.doesNotThrow(() => syncModule.validateSyncPayload(payload));
 });
 
 test('拒绝未知版本和损坏的远端 payload', () => {
   const { validateSyncPayload } = syncModule;
   assert.throws(
-    () => validateSyncPayload({ version: 2, updatedAt: Date.now(), accounts: [] }),
+    () => validateSyncPayload({ version: 3, updatedAt: Date.now(), accounts: [] }),
     /Unsupported backup payload version/
   );
   assert.throws(
@@ -327,6 +350,34 @@ test('_applyRemotePayload 按 LWW 合并账户（远端 nameUpdatedAt 更新则�
   assert.equal(acc0.name, 'Renamed by remote', 'LWW 应采纳远端名');
   const acc1 = merged.find((a) => a.index === 1);
   assert.equal(acc1.name, 'New from remote');
+});
+
+test('_applyRemotePayload v2 按 namespace 重派生非 EVM（Tron）账户', async () => {
+  await backupSyncService._prepareContexts('TestPassword123');
+  const stateModule = await import('../js/background/state.js');
+  stateModule.state.passwordCache = 'TestPassword123';
+
+  const remotePayload = {
+    version: 2,
+    updatedAt: Date.now(),
+    reason: 'remote',
+    accountCount: 2,
+    accounts: [
+      { index: 0, address: '0x1111111111111111111111111111111111111111', namespace: 'eip155', chainKey: 'eip155:1', name: 'EVM', nameUpdatedAt: 1 },
+      { index: 1, address: 'TJRabPrwbZy45sbavfcjinPJC18kjpRTv8', namespace: 'tron', chainKey: 'tron:mainnet', name: 'Tron from remote', nameUpdatedAt: 9999 }
+    ],
+    contacts: [],
+    networkIds: []
+  };
+
+  await backupSyncService._applyRemotePayload('w1', remotePayload, 'manual');
+  const merged = await ops.getWalletAccounts('w1');
+  const tron = merged.find((a) => a.index === 1);
+  assert.ok(tron, '应按 namespace 派生出 index 1 的账户');
+  // 由助记词重派生的真实 Tron 地址（Base58，T 开头），而非远端携带的地址
+  assert.match(String(tron.address), /^T[1-9A-HJ-NP-Za-km-z]+$/);
+  assert.equal(tron.namespace, 'tron');
+  assert.equal(tron.name, 'Tron from remote');
 });
 
 test('新设备必须先用助记词恢复密钥，再应用远端元数据', async () => {

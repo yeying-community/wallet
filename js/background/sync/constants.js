@@ -2,7 +2,11 @@
  * Backup & Sync 常量
  */
 
-export const SYNC_PAYLOAD_VERSION = 1;
+// v2: family-aware payload — account entries carry namespace/chainKey/coinType
+// so non-EVM (Tron/Solana/Bitcoin) accounts can be backed up and re-derived.
+// Readers still accept legacy v1 (EVM-only) payloads.
+export const SYNC_PAYLOAD_VERSION = 2;
+export const SYNC_SUPPORTED_PAYLOAD_VERSIONS = [1, 2];
 export const SYNC_FILENAME = 'payload.json.enc';
 export const SYNC_DEBOUNCE_MS = 1500;
 export const DEFAULT_SYNC_ENDPOINT = 'https://warehouse.tidukongjian.com/dav';

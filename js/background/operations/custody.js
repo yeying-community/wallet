@@ -5,13 +5,12 @@
 import { encryptObject, decryptObject } from '../../common/crypto/index.js';
 import { getTimestamp } from '../../common/utils/time-utils.js';
 import { ethers } from '../../../lib/ethers-6.16.esm.min.js';
-import { compareAddresses, normalizeAddressForFamily } from '../../common/chain/address-normalize.js';
+import { compareAddresses, normalizeAddressForFamily, isValidAddressForFamily } from '../../common/chain/address-normalize.js';
 import {
   getUserSetting,
   updateUserSettings,
   getWallet,
   getAccountList,
-  getSelectedAccount,
   getWalletAccounts,
   setSelectedAccountId,
   saveWallet,
@@ -21,11 +20,11 @@ import { getIdentities, saveIdentity, decryptIdentityKeyMaterial } from '../../s
 import { IdentityStorageKeys } from '../../storage/storage-keys.js';
 import { getValue, setValue } from '../../storage/storage-base.js';
 import { validateIdentityDocument } from '../../common/identity/identity-document.js';
-import { getWalletMnemonic, getAccountPrivateKey, deriveSubAccount, WALLET_TYPE } from '../vault.js';
+import { getWalletMnemonic, getAccountPrivateKey, WALLET_TYPE } from '../vault.js';
 import { ensureTargetUcanToken } from '../target-ucan-manager.js';
 import { refreshIdentityCredentialsAfterRestore } from '../identity-presentation.js';
 import { CustodyClient } from '../custody-client.js';
-import { handleImportHDWallet, handleImportPrivateKeyWallet, handleSwitchAccount } from './wallet.js';
+import { handleImportHDWallet, handleSwitchAccount, deriveSubAccountByNamespace, handleImportPrivateKeyWalletByNamespace } from './wallet.js';
 
 const DEFAULT_CUSTODY_ENDPOINT = 'https://node.yeying.pub';
 const DEFAULT_CUSTODY_UCAN_RESOURCE = 'custody';
@@ -75,12 +74,16 @@ async function ensureCustodyToken(options = {}) {
   const endpoint = normalizeEndpoint(
     options.endpoint || await getUserSetting('custodyEndpoint', DEFAULT_CUSTODY_ENDPOINT)
   );
+  const { account, boundAddress } = await getCustodySigningAccount();
   return await ensureTargetUcanToken({
     endpoint,
     tokenSettingKey: 'custodyUcanToken',
     audienceSettingKey: 'custodyUcanAudience',
     resourceSettingKey: 'custodyUcanResource',
     actionSettingKey: 'custodyUcanAction',
+    issuerSettingKey: 'custodyUcanIssuer',
+    signingAccount: account,
+    expectedIssuerAddress: boundAddress,
     defaultResource: DEFAULT_CUSTODY_UCAN_RESOURCE,
     defaultAction: DEFAULT_CUSTODY_UCAN_ACTION,
     ttlHours: options.ttlHours ?? DEFAULT_CUSTODY_UCAN_TTL_HOURS,
@@ -106,9 +109,9 @@ export async function onCustodyUnlocked(password) {
 }
 
 async function buildCustodyPayload(password) {
-  const account = await getSelectedAccount();
+  const { account } = await getCustodySigningAccount();
   if (!account?.id || !account?.walletId) {
-    throw new Error('未找到当前账户');
+    throw new Error('未找到钱包身份绑定的账户');
   }
   const wallet = await getWallet(account.walletId);
   if (!wallet?.id) {
@@ -129,6 +132,8 @@ async function buildCustodyPayload(password) {
       username: item.username || '',
       usernameUpdatedAt: item.usernameUpdatedAt || 0,
       address: item.address || '',
+      namespace: item.namespace || 'eip155',
+      chainKey: item.chainKey || '',
       derivationPath: item.derivationPath || '',
       createdAt: item.createdAt || null,
       privateKey: await getAccountPrivateKey(item, password)
@@ -308,17 +313,17 @@ export function validateCustodySecret(secret) {
   if (secret.wallet.type === WALLET_TYPE.HD) {
     if (!secret.mnemonic) throw new Error('托管记录缺少助记词');
     for (const account of accounts) {
-      // Custody v1 仅 EVM（`m/44'/60'/0'/0/…`）；若记录携带 namespace='tron'，
-      // account.address 是 T... 形态，与 EVM derived（0x...）属于不同编码体系，
-      // 应拒绝导入；非 EVM 走 family-aware compare，仅当两侧都是 EVM 时走
-      // `derived !== ...toLowerCase()` 的等价比较。
       const family = account.namespace || 'eip155';
-      const path = account.derivationPath || `m/44'/60'/0'/0/${account.index}`;
-      const derived = ethers.HDNodeWallet.fromPhrase(secret.mnemonic, undefined, path).address.toLowerCase();
-      if (family === 'tron') {
-        throw new Error('托管记录不支持 Tron 账户');
+      if (family === 'eip155') {
+        // EVM：从助记词按路径重算地址并严格比对。
+        const path = account.derivationPath || `m/44'/60'/0'/0/${account.index}`;
+        const derived = ethers.HDNodeWallet.fromPhrase(secret.mnemonic, undefined, path).address.toLowerCase();
+        if (derived !== String(account.address || '').toLowerCase()) throw new Error('托管记录地址校验失败');
+      } else if (!isValidAddressForFamily(account.address, family)) {
+        // 非 EVM：此处仅做 family-aware 格式校验；地址与密钥的密码学一致性由
+        // 恢复侧（importOrReuseCustodyWallet）按 namespace 重派生后 compareAddresses 兜底。
+        throw new Error('托管记录地址格式无效');
       }
-      if (derived !== String(account.address || '').toLowerCase()) throw new Error('托管记录地址校验失败');
     }
     if (first.index !== 0) throw new Error('托管记录缺少 HD 主账户');
     return { type: WALLET_TYPE.HD, key: secret.mnemonic, wallet: secret.wallet, accounts, address: first.address, identities: secret.identities || {}, selectedIdentityId: secret.selectedIdentityId || '' };
@@ -329,14 +334,14 @@ export function validateCustodySecret(secret) {
   }
   for (const account of accounts) {
     if (!account.privateKey) throw new Error('托管记录缺少私钥');
-    // 同上：custody 私钥导入路径仅 EVM（`new ethers.Wallet(pk)` 只产 EVM 形态），
-    // 遇到 Tron 记录直接拒绝。
     const family = account.namespace || 'eip155';
-    if (family === 'tron') {
-      throw new Error('托管记录不支持 Tron 账户');
+    if (family === 'eip155') {
+      const derived = new ethers.Wallet(account.privateKey).address.toLowerCase();
+      if (derived !== String(account.address || '').toLowerCase()) throw new Error('托管记录地址校验失败');
+    } else if (!isValidAddressForFamily(account.address, family)) {
+      // 非 EVM：格式校验；密钥一致性由恢复侧按 namespace 导入后比对。
+      throw new Error('托管记录地址格式无效');
     }
-    const derived = new ethers.Wallet(account.privateKey).address.toLowerCase();
-    if (derived !== String(account.address || '').toLowerCase()) throw new Error('托管记录地址校验失败');
   }
   if (accounts.length !== 1) throw new Error('导入钱包托管记录包含多个账户');
   return { type: WALLET_TYPE.IMPORTED, key: first.privateKey, wallet: secret.wallet, accounts, address: first.address, identities: secret.identities || {}, selectedIdentityId: secret.selectedIdentityId || '' };
@@ -358,6 +363,64 @@ function identityHasAccountCredential(record, address, chainKey = 'eip155:1') {
         && String(subject.address || '').toLowerCase() === expectedAddress;
     } catch { return false; }
   });
+}
+
+/**
+ * Extract the EVM address bound to a wallet identity from its
+ * WalletAccountCredential VC (chainKey eip155:1). Returns '' when the identity
+ * has not completed account-linking yet. The first matching eip155:1 credential
+ * wins, mirroring the node recovery path which takes the identity's first
+ * eip155 account link.
+ */
+export function resolveIdentityBoundAddress(record, chainKey = 'eip155:1') {
+  for (const item of (record?.credentials || [])) {
+    const token = item?.credential || item?.jwt || (typeof item === 'string' ? item : '');
+    const encoded = String(token).split('.')[1];
+    if (!encoded) continue;
+    try {
+      const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(`${normalized}${'='.repeat((4 - normalized.length % 4) % 4)}`));
+      const types = Array.isArray(payload?.vc?.type) ? payload.vc.type : [payload?.vc?.type];
+      const subject = payload?.vc?.credentialSubject || {};
+      if (types.includes('WalletAccountCredential') && subject.chainKey === chainKey && subject.address) {
+        return String(subject.address);
+      }
+    } catch { /* skip malformed credential */ }
+  }
+  return '';
+}
+
+/**
+ * Resolve the local account that custody must anchor to: the account whose
+ * address matches the selected wallet identity's bound eip155:1 address. This
+ * decouples custody from the currently-selected plugin account so backup and
+ * node-side recovery (which already uses the identity-bound address) land on the
+ * same subject.
+ */
+export async function getCustodySigningAccount() {
+  const selectedIdentityId = await getValue(IdentityStorageKeys.SELECTED_IDENTITY);
+  if (!selectedIdentityId) {
+    throw new Error('请先选择钱包身份后再使用云端托管');
+  }
+  const identities = await getIdentities();
+  const identity = identities?.[selectedIdentityId];
+  if (!identity) {
+    throw new Error('请先选择钱包身份后再使用云端托管');
+  }
+  const boundAddress = resolveIdentityBoundAddress(identity);
+  if (!boundAddress) {
+    throw new Error('当前钱包身份尚未完成账户绑定，请先绑定账户与通行证');
+  }
+  const accounts = await getAccountList();
+  const account = (accounts || []).find(item =>
+    item?.id && item?.address && compareAddresses(item.address, boundAddress, item.namespace || 'eip155'));
+  if (!account) {
+    throw new Error('钱包身份绑定的账户不在本设备，无法在此设备开启云端托管');
+  }
+  return {
+    account,
+    boundAddress: (normalizeAddressForFamily(account.address, account.namespace || 'eip155') || String(boundAddress)).toLowerCase()
+  };
 }
 
 /**
@@ -411,7 +474,8 @@ export async function importOrReuseCustodyWallet(material, password) {
           compareAddresses(item?.address, source.address, item?.namespace || 'eip155')
         ));
         if (!account) {
-          account = await deriveSubAccount(wallet, source.index, source.name, password);
+          account = await deriveSubAccountByNamespace(wallet, source.index, source, password);
+          if (!account) throw new Error('托管记录包含不支持的账户类型');
           if (!compareAddresses(account.address, source.address, account.namespace || 'eip155')) {
             throw new Error('托管记录地址校验失败');
           }
@@ -437,13 +501,9 @@ export async function importOrReuseCustodyWallet(material, password) {
     return { success: true, wallet, account: primaryAccount, reused: true };
   }
   const first = material.accounts[0];
-  // Custody HD / imported 调用目前仅支持 EVM；Tron 记录由调用方拒绝，不应到这里。
-  if ((first?.namespace || 'eip155') === 'tron') {
-    throw new Error('托管记录不支持 Tron 账户');
-  }
   const result = material.type === WALLET_TYPE.HD
     ? await handleImportHDWallet(first.name, material.key, password)
-    : await handleImportPrivateKeyWallet(first.name, material.key, password);
+    : await handleImportPrivateKeyWalletByNamespace(first.name, material.key, password, first);
   if (!result?.success) return result;
   result.wallet.name = String(material.wallet?.name || '').trim() || result.wallet.name;
   Object.assign(result.account, {
@@ -455,8 +515,9 @@ export async function importOrReuseCustodyWallet(material, password) {
   await saveAccount(result.account);
   if (material.type === WALLET_TYPE.HD) {
     for (const source of material.accounts.filter(item => item.index > 0)) {
-      const account = await deriveSubAccount(result.wallet, source.index, source.name, password);
-      if (String(account.address || '').toLowerCase() !== String(source.address || '').toLowerCase()) {
+      const account = await deriveSubAccountByNamespace(result.wallet, source.index, source, password);
+      if (!account) throw new Error('托管记录包含不支持的账户类型');
+      if (!compareAddresses(account.address, source.address, account.namespace || 'eip155')) {
         throw new Error('托管记录地址校验失败');
       }
       account.username = source.username || '';
@@ -570,7 +631,7 @@ export async function handleDisableCustody(options = {}) {
       action: settings.ucanAction,
       audience: settings.ucanAudience
     });
-    const account = await getSelectedAccount();
+    const { account } = await getCustodySigningAccount();
     const walletId = String(options.walletId || account?.walletId || '').trim();
     if (walletId) {
       const client = createClient({ ...settings, endpoint });

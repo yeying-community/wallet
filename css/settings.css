@@ -552,6 +552,73 @@
   text-align: right;
 }
 
+.identity-passkey-register-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.identity-passkey-field {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.identity-passkey-field-label {
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.identity-passkey-input,
+.identity-passkey-select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #374151;
+  background: #ffffff;
+}
+
+.identity-passkey-input:focus,
+.identity-passkey-select:focus {
+  outline: none;
+  border-color: #6366f1;
+}
+
+.identity-passkey-type-hint {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.identity-passkey-type-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 7px 8px;
+  border-radius: 6px;
+  background: #ffffff;
+  border: 1px solid #eef2f7;
+}
+
+.identity-passkey-type-label {
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.identity-passkey-type-value {
+  color: #374151;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .identity-passkey-time-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

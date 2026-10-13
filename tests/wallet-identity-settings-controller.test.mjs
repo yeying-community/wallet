@@ -22,6 +22,8 @@ function setup() {
     walletIdentityTotpCodeInput: { tagName: 'input' },
     setupWalletIdentityTotpBtn: { tagName: 'button' },
     revokeWalletIdentityTotpBtn: { tagName: 'button' },
+    walletIdentityPasskeyDeviceNameInput: { tagName: 'input', value: '' },
+    walletIdentityPasskeyTypeSelect: { tagName: 'select', value: 'platform' },
   });
   elements = dom.elements;
   globalThis.document = dom.document;
@@ -589,6 +591,106 @@ test('registerIdentityPasskey registers a new passkey from the verified identity
   assert.equal(fetchCalls.some(call => call.url.endsWith('/api/v1/public/identity/passkeys/register/request')), true);
   assert.equal(fetchCalls.some(call => call.url.endsWith('/api/v1/public/identity/passkeys/register/confirm')), true);
 });
+
+test('registerIdentityPasskey passes the chosen authenticator type and custom device name', async () => {
+  const endpoint = 'http://127.0.0.1:8100';
+  elements.walletIdentityEndpointInput.value = endpoint;
+  elements.walletIdentityPasskeyDeviceNameInput.value = '我的 iPhone';
+  elements.walletIdentityPasskeyTypeSelect.value = 'cross-platform';
+  globalThis.PublicKeyCredential = function PublicKeyCredential() {};
+  let createOptions = null;
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: {
+      credentials: {
+        create: async (opts) => {
+          createOptions = opts;
+          return {
+            id: 'credential-2',
+            rawId: new Uint8Array([1, 2, 3]).buffer,
+            type: 'public-key',
+            authenticatorAttachment: 'cross-platform',
+            response: {
+              attestationObject: new Uint8Array([4, 5, 6]).buffer,
+              clientDataJSON: new Uint8Array([7, 8, 9]).buffer,
+              getTransports: () => ['hybrid']
+            },
+            getClientExtensionResults: () => ({})
+          };
+        }
+      }
+    }
+  });
+  const fetchCalls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    fetchCalls.push({ url: String(url), body: options.body ? JSON.parse(options.body) : null });
+    if (String(url).includes('/identity/actions/challenge')) {
+      return { ok: true, json: async () => ({ code: 0, data: { signingPayload: { challengeId: 'iac_1', identity: 'did:yeying:wid_1' } } }) };
+    }
+    if (String(url).includes('/passkeys/register/request')) {
+      return { ok: true, json: async () => ({ code: 0, data: { passkeyRequest: {
+        requestId: 'pkr_1', challenge: 'AQID', rp: { id: 'localhost', name: 'Node' },
+        user: { id: 'BAUG', name: 'did:yeying:wid_1', displayName: 'YeYing Identity' },
+        pubKeyCredParams: [{ type: 'public-key', alg: -7 }], timeout: 60000, attestation: 'none',
+        excludeCredentials: [], authenticatorSelection: { residentKey: 'preferred', userVerification: 'required' }
+      } } }) };
+    }
+    if (String(url).includes('/passkeys/register/confirm')) {
+      return { ok: true, json: async () => ({ code: 0, data: { credentialId: 'credential-2' } }) };
+    }
+    if (String(url).includes('/passkeys/list')) {
+      return { ok: true, json: async () => ({ code: 0, data: { credentials: [] } }) };
+    }
+    return { ok: false, status: 404, json: async () => ({ code: 404, message: 'not found' }) };
+  };
+  const controller = new WalletIdentitySettingsController({
+    wallet: {
+      listIdentities: async () => ({ selectedIdentityId: 'wid_1', identities: [{ document: { walletIdentityId: 'wid_1' } }] }),
+      exportIdentityDocument: async () => ({ document: { id: 'did:yeying:wid_1', walletIdentityId: 'wid_1' } }),
+      signIdentityDocument: async (document) => ({ ...document, id: document.id || 'did:yeying:wid_1' }),
+      signIdentityAction: async () => ({ challengeId: 'iac_1', signature: 'signature' })
+    },
+    requestPassword: async () => 'wallet-password'
+  });
+
+  await controller.registerIdentityPasskey();
+
+  // The chosen attachment reaches navigator.credentials.create, preserving the server's other options.
+  assert.equal(createOptions.publicKey.authenticatorSelection.authenticatorAttachment, 'cross-platform');
+  assert.equal(createOptions.publicKey.authenticatorSelection.residentKey, 'preferred');
+  // The register request carries the chosen attachment + custom device name for Node to persist.
+  const requestCall = fetchCalls.find(call => call.url.endsWith('/passkeys/register/request'));
+  assert.equal(requestCall.body.authenticatorAttachment, 'cross-platform');
+  assert.equal(requestCall.body.deviceName, '我的 iPhone');
+  // The confirm reports the real attachment from the credential + the same device name.
+  const confirmCall = fetchCalls.find(call => call.url.endsWith('/passkeys/register/confirm'));
+  assert.equal(confirmCall.body.authenticatorAttachment, 'cross-platform');
+  assert.equal(confirmCall.body.deviceName, '我的 iPhone');
+  // The register form name field is cleared after a successful registration.
+  assert.equal(elements.walletIdentityPasskeyDeviceNameInput.value, '');
+});
+
+test('renderIdentityPasskeys labels the authenticator type', () => {
+  const dom = createDocument({
+    walletIdentityPasskeyListPage: { tagName: 'div' }
+  });
+  elements = dom.elements;
+  globalThis.document = dom.document;
+  const controller = new WalletIdentitySettingsController({ wallet: {} });
+
+  controller.renderIdentityPasskeys([
+    { deviceName: '我的 MacBook', authenticatorAttachment: 'platform', credentialId: 'AAAA1111bbbb2222cccc3333dddd4444' },
+    { deviceName: '我的 iPhone', transports: ['hybrid'], credentialId: 'EEEE5555ffff6666gggg7777hhhh8888' }
+  ]);
+
+  const [platformItem, phoneItem] = elements.walletIdentityPasskeyListPage.children;
+  // typeRow is inserted right after the top line (before the ID row).
+  assert.equal(platformItem.children[1].className, 'identity-passkey-type-row');
+  assert.equal(platformItem.children[1].children[0].textContent, '类型');
+  assert.equal(platformItem.children[1].children[1].textContent, '本机生物识别');
+  assert.equal(phoneItem.children[1].children[1].textContent, '手机扫码');
+});
+
 
 test('registerIdentityPasskey explains WebAuthn exclusion of a synced credential', async () => {
   const endpoint = 'http://127.0.0.1:8100';
