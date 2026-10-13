@@ -62,7 +62,7 @@ import { validateAccountName, validateUsername } from '../../config/validation-r
 import { getCachedPassword, cachePassword, refreshPasswordCache, clearPasswordCache } from '../password-cache.js';
 import { resetLockTimer, lockWallet } from '../keyring.js';
 import { normalizeChainId } from '../../common/chain/index.js';
-import { normalizeAddressForFamily } from '../../common/chain/address-normalize.js';
+import { normalizeAddressForFamily, compareAddresses } from '../../common/chain/address-normalize.js';
 import { setCurrentChainKey, chainIdToChainKey } from '../../chain/current-chain.js';
 import { broadcastEvent } from '../connection.js';
 import { TIMEOUTS, NETWORKS, DEFAULT_NETWORK } from '../../config/index.js';
@@ -1283,10 +1283,12 @@ export async function handleImportAccountsFile(file, password) {
     let selectedImportedAccount = null;
     if (payload.selectedAddress) {
       const importedAccounts = await getAccountList();
-      selectedImportedAccount = importedAccounts.find(item => String(item.address || '').toLowerCase() === String(payload.selectedAddress).toLowerCase()) || null;
+      selectedImportedAccount = importedAccounts.find(item =>
+        compareAddresses(item?.address, payload.selectedAddress, item?.namespace || 'eip155')) || null;
       if (selectedImportedAccount?.id) await setSelectedAccountId(selectedImportedAccount.id);
     }
-    const selectedAddress = String(selectedImportedAccount?.address || payload.selectedAddress || '').toLowerCase();
+    const selectedNamespace = selectedImportedAccount?.namespace || 'eip155';
+    const selectedRawAddress = String(selectedImportedAccount?.address || payload.selectedAddress || '');
     const selectedChainKey = selectedImportedAccount?.chainKey || `eip155:${selectedImportedAccount?.chainId || 1}`;
     const linkedIdentity = identitiesToImport.find(identity => (identity.credentials || []).some(item => {
       const token = item?.credential || item?.jwt || (typeof item === 'string' ? item : '');
@@ -1301,7 +1303,7 @@ export async function handleImportAccountsFile(file, password) {
         const subject = credentialPayload?.vc?.credentialSubject || {};
         return types.includes('WalletAccountCredential')
           && subject.chainKey === selectedChainKey
-          && String(subject.address || '').toLowerCase() === selectedAddress;
+          && compareAddresses(subject.address, selectedRawAddress, selectedNamespace);
       } catch { return false; }
     }));
     const preferredIdentityId = linkedIdentity?.document?.walletIdentityId
