@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>夜莺钱包</title>
+    <title data-i18n="app.name">夜莺钱包</title>
     <base href="../" />
     <link rel="stylesheet" href="css/common.css" />
     <link rel="stylesheet" href="css/mnemonic.css" />
@@ -21,20 +21,20 @@
       <div id="loadingPage" class="page">
         <div class="loading-container">
           <div class="loading-spinner"></div>
-          <p>加载中...</p>
+          <p data-i18n="common.loading">加载中...</p>
         </div>
       </div>
 
       <!-- 欢迎页面 -->
       <div id="welcomePage" class="page hidden">
-        <h2>夜莺钱包</h2>
-        <button id="welcomeCreateWalletBtn" class="btn btn-primary">
+        <h2 data-i18n="app.name">夜莺钱包</h2>
+        <button id="welcomeCreateWalletBtn" class="btn btn-primary" data-i18n="welcome.create">
           新建钱包
         </button>
-        <button id="welcomeImportWalletBtn" class="btn btn-secondary">
+        <button id="welcomeImportWalletBtn" class="btn btn-secondary" data-i18n="welcome.import">
           导入钱包
         </button>
-        <button id="welcomeRecoverWalletBtn" class="btn btn-secondary">
+        <button id="welcomeRecoverWalletBtn" class="btn btn-secondary" data-i18n="welcome.recover">
           云端恢复钱包
         </button>
       </div>
@@ -108,7 +108,7 @@
             </div>
 
             <div class="header-actions">
-              <button class="header-primary-btn" id="transferBtn" title="转账">
+              <button class="header-primary-btn" id="transferBtn" title="转账" data-i18n-title="wallet.transfer">
                 <svg
                   width="16"
                   height="16"
@@ -120,7 +120,7 @@
                   <path d="M22 2L11 13"></path>
                   <path d="M22 2L15 22l-4-9-9-4 20-7z"></path>
                 </svg>
-                <span>转账</span>
+                <span data-i18n="wallet.transfer">转账</span>
               </button>
               <div class="header-menu">
                 <button
@@ -146,9 +146,9 @@
                 <div id="walletHeaderMenu" class="header-dropdown-menu hidden" role="menu">
                   <button type="button" class="header-menu-item" id="contactsBtn">好友管理</button>
                   <button type="button" class="header-menu-item" id="sitesManageBtn">网站管理</button>
-                  <button type="button" class="header-menu-item" id="settingsBtn">设置</button>
-                  <button type="button" class="header-menu-item" id="lockWalletBtn">锁定钱包</button>
-                  <button type="button" class="header-menu-item" id="helpDocBtn">帮助文档</button>
+                  <button type="button" class="header-menu-item" id="settingsBtn" data-i18n="wallet.settings">设置</button>
+                  <button type="button" class="header-menu-item" id="lockWalletBtn" data-i18n="wallet.lock">锁定钱包</button>
+                  <button type="button" class="header-menu-item" id="helpDocBtn" data-i18n="wallet.help">帮助文档</button>
                 </div>
               </div>
             </div>
@@ -182,9 +182,9 @@
 
         <!-- 标签页 -->
         <div class="tabs">
-          <button class="tab active" id="tokensTab">通证</button>
-          <button class="tab" id="collectiblesTab">藏品</button>
-          <button class="tab" id="activityTab">活动</button>
+          <button class="tab active" id="tokensTab" data-i18n="wallet.tokens">通证</button>
+          <button class="tab" id="collectiblesTab" data-i18n="wallet.collectibles">藏品</button>
+          <button class="tab" id="activityTab" data-i18n="wallet.activity">活动</button>
         </div>
 
         <!-- 通证内容 -->
@@ -217,7 +217,7 @@
           <div id="tokenList" class="token-list">
             <div class="empty-state">
               <p>🪙</p>
-              <p>暂无通证</p>
+              <p data-i18n="wallet.emptyTokens">暂无通证</p>
             </div>
           </div>
         </div>
@@ -238,7 +238,7 @@
           <div id="collectiblesList" class="collectibles-list">
             <div class="empty-state">
               <p>🎁</p>
-              <p>暂无藏品</p>
+              <p data-i18n="wallet.emptyCollectibles">暂无藏品</p>
             </div>
           </div>
         </div>
@@ -1106,10 +1106,21 @@
       <div id="settingsPage" class="page hidden">
         <div class="page-header">
           <button id="settingsBackBtn" class="back-btn">←</button>
-          <h2>设置</h2>
+          <h2 data-i18n="settings.title">设置</h2>
         </div>
 
         <div class="settings-body">
+          <div class="settings-section settings-language-section">
+            <h3 data-i18n="settings.language.title">语言</h3>
+            <p class="settings-hint" data-i18n="settings.language.description">选择钱包界面语言。</p>
+            <label class="settings-row" for="languageSelect">
+              <span data-i18n="language.label">语言</span>
+              <select id="languageSelect" class="input">
+                <option value="zh-CN" data-i18n="language.zh-CN">中文</option>
+                <option value="en-US" data-i18n="language.en-US">English</option>
+              </select>
+            </label>
+          </div>
           <div class="settings-section" id="walletIdentitySettingsSection">
             <div class="wallet-identity-heading">
               <h3>🪪 钱包身份</h3>

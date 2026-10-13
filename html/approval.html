@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>授权请求</title>
+    <title data-i18n="approval.title">授权请求</title>
     <base href="../" />
     <link rel="stylesheet" href="css/common.css" />
     <link rel="stylesheet" href="css/approval.css" />
@@ -13,7 +13,7 @@
     <div class="approval-container">
       <div id="unlockRequest" class="request-view hidden">
         <div class="request-header">
-          <h2>解锁钱包</h2>
+          <h2 data-i18n="approval.unlock">解锁钱包</h2>
           <div class="site-info">
             <div class="site-icon">🔐</div>
             <div class="site-url" id="unlockOrigin">会话已过期，请输入密码继续</div>
@@ -51,8 +51,8 @@
 
         <div class="request-footer">
           <div class="button-group">
-            <button id="cancelUnlock" class="btn btn-secondary">取消</button>
-            <button id="approveUnlock" class="btn btn-primary">解锁并继续</button>
+            <button id="cancelUnlock" class="btn btn-secondary" data-i18n="common.cancel">取消</button>
+            <button id="approveUnlock" class="btn btn-primary" data-i18n="approval.unlock.continue">解锁并继续</button>
           </div>
         </div>
       </div>
@@ -82,7 +82,7 @@
       <!-- 连接请求 -->
       <div id="connectRequest" class="request-view hidden">
         <div class="request-header">
-          <h2 id="connectTitle">连接请求</h2>
+          <h2 id="connectTitle" data-i18n="approval.connect.title">连接请求</h2>
           <div class="site-info">
             <div class="site-icon">🌐</div>
             <div class="site-url" id="connectOrigin"></div>
@@ -101,8 +101,8 @@
 
         <div class="request-footer">
           <div class="button-group">
-            <button id="rejectConnect" class="btn btn-secondary">拒绝</button>
-            <button id="approveConnect" class="btn btn-primary">连接</button>
+            <button id="rejectConnect" class="btn btn-secondary" data-i18n="approval.connect.reject">拒绝</button>
+            <button id="approveConnect" class="btn btn-primary" data-i18n="approval.connect.approve">连接</button>
           </div>
         </div>
       </div>
@@ -132,7 +132,7 @@
       <!-- 交易确认 -->
       <div id="transactionRequest" class="request-view hidden">
         <div class="request-header">
-          <h2>确认交易</h2>
+          <h2 data-i18n="approval.transaction.title">确认交易</h2>
           <div class="site-info">
             <div class="site-icon">🌐</div>
             <div class="site-url" id="txOrigin"></div>
@@ -168,8 +168,8 @@
 
         <div class="request-footer">
           <div class="button-group">
-            <button id="rejectTx" class="btn btn-secondary">拒绝</button>
-            <button id="approveTx" class="btn btn-primary">确认</button>
+            <button id="rejectTx" class="btn btn-secondary" data-i18n="approval.connect.reject">拒绝</button>
+            <button id="approveTx" class="btn btn-primary" data-i18n="approval.transaction.approve">确认</button>
           </div>
         </div>
       </div>
@@ -177,7 +177,7 @@
       <!-- 签名请求 -->
       <div id="signRequest" class="request-view hidden">
         <div class="request-header">
-          <h2>签名请求</h2>
+          <h2 data-i18n="approval.sign.title">签名请求</h2>
           <div class="site-info">
             <div class="site-icon">🌐</div>
             <div class="site-url" id="signOrigin"></div>
@@ -281,8 +281,8 @@
 
         <div class="request-footer">
           <div class="button-group">
-            <button id="rejectSign" class="btn btn-secondary">拒绝</button>
-            <button id="approveSign" class="btn btn-primary">签名</button>
+            <button id="rejectSign" class="btn btn-secondary" data-i18n="approval.connect.reject">拒绝</button>
+            <button id="approveSign" class="btn btn-primary" data-i18n="approval.sign.approve">签名</button>
           </div>
         </div>
       </div>

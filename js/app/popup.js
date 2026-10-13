@@ -9,6 +9,7 @@ import { NetworkDomain } from '../domain/network-domain.js';
 import { TokenDomain } from '../domain/token-domain.js';
 import { showToast } from '../common/ui/index.js';
 import { WalletMessageType } from '../protocol/extension-protocol.js';
+import { initI18n } from '../common/i18n/index.js';
 
 class PopupApp {
   constructor() {
@@ -23,6 +24,7 @@ class PopupApp {
     this.startPopupBoundsReporting();
 
     try {
+      await initI18n();
       this.controller = new PopupController({
         wallet: this.wallet,
         transaction: this.transaction,
