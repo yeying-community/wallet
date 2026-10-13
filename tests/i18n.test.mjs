@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  applyTranslations,
   getDefaultLocale,
   getLocale,
   resetI18nForTests,
@@ -38,4 +39,39 @@ test('translations interpolate parameters and fall back to keys', async () => {
   await setLocale('zh-CN');
   assert.equal(t('welcome.create'), '新建钱包');
   assert.equal(store.get('language'), 'zh-CN');
+});
+
+test('legacy static labels translate despite HTML indentation whitespace', async () => {
+  resetI18nForTests();
+  await setLocale('en-US');
+  const label = {
+    nodeType: 1,
+    children: [],
+    dataset: {},
+    textContent: '\n  新建钱包\n',
+    attrs: {},
+    hasAttribute: () => false,
+    matches: () => false,
+    getAttribute(name) { return this.attrs[name] ?? null; },
+    setAttribute(name, value) { this.attrs[name] = value; },
+    querySelectorAll: () => []
+  };
+  const body = {
+    querySelectorAll(selector) { return selector.startsWith('body ') ? [label] : []; },
+    querySelector: () => null
+  };
+  const root = {
+    body,
+    documentElement: { lang: 'zh-CN' },
+    querySelectorAll(selector) {
+      if (selector === 'body *:not(script):not(style)') return [label];
+      return [];
+    },
+    querySelector: () => body
+  };
+  applyTranslations(root);
+  assert.equal(label.textContent, 'Create wallet');
+  await setLocale('zh-CN');
+  applyTranslations(root);
+  assert.equal(label.textContent, '\n  新建钱包\n');
 });

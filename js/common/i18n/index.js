@@ -75,7 +75,7 @@ export function applyTranslations(root = globalThis.document) {
         source = currentText;
         element.dataset.i18nLegacySource = source;
       }
-      const translated = source ? legacyEnglishText[source] : null;
+      const translated = source.trim() ? legacyEnglishText[source.trim()] : null;
       if (activeLocale === 'en-US' && translated) {
         if (element.textContent !== translated) element.textContent = translated;
         element.dataset.i18nLegacyLastText = translated;

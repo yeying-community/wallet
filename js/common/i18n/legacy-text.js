@@ -38,6 +38,7 @@ export const legacyEnglishText = Object.freeze({
   '协调器地址': 'Coordinator URL',
   '曲线': 'Curve',
   '创建钱包': 'Create wallet',
+  '新建钱包': 'Create wallet',
   '会话已过期，请输入密码解锁': 'Session expired. Enter your password to unlock.',
   '触发来源': 'Request source',
   '网站': 'Website',
