@@ -14,7 +14,7 @@ globalThis.chrome = {
 };
 
 const PASSWORD = 'Backup-Pass-123';
-const { createHDWallet, deriveSubAccount, deriveTronSubAccount } = await import('../js/background/vault.js');
+const { createHDWallet, deriveSubAccount, deriveTronSubAccount, importTronPrivateKeyWallet } = await import('../js/background/vault.js');
 const { handleExportAccountsFile, handleImportAccountsFile } = await import('../js/background/operations/wallet.js');
 const { saveWallet, saveAccount, getAccountList, clearAllData } = await import('../js/storage/index.js');
 const { createWalletIdentity } = await import('../js/common/identity/identity-document.js');
@@ -80,6 +80,32 @@ test('encrypted account file round-trips a non-EVM (Tron) HD sub-account by name
   assert.equal(restoredTron.namespace, 'tron');
   assert.equal(restoredTron.address, tron.address);
   assert.match(String(restoredTron.address), /^T/);
+});
+
+test('encrypted account file round-trips a non-EVM (Tron) IMPORTED private-key wallet', async () => {
+  await clearAllData();
+  const TRON_PK = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+  const { wallet, mainAccount } = await importTronPrivateKeyWallet('My Tron Key', TRON_PK, PASSWORD, { tronReference: 'mainnet' });
+  await saveWallet(wallet);
+  await saveAccount(mainAccount);
+  assert.match(String(mainAccount.address), /^T[1-9A-HJ-NP-Za-km-z]+$/);
+  assert.equal(mainAccount.namespace, 'tron');
+
+  const exported = await handleExportAccountsFile(PASSWORD);
+  assert.equal(exported.success, true);
+  assert.equal(exported.file.version, 2);
+
+  await clearAllData();
+  const imported = await handleImportAccountsFile(exported.file, PASSWORD);
+  assert.equal(imported.success, true);
+  assert.equal(imported.imported, 1);
+
+  const restored = await getAccountList();
+  assert.equal(restored.length, 1);
+  // 关键：IMPORTED 私钥钱包按 namespace 还原为 Tron（修复前会被当 EVM 还原成 0x 地址）
+  assert.equal(restored[0].namespace, 'tron');
+  assert.equal(restored[0].address, mainAccount.address);
+  assert.match(String(restored[0].address), /^T/);
 });
 
 test('encrypted account file carries the identity service endpoint and restores it', async () => {

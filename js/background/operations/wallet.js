@@ -1083,6 +1083,29 @@ function deriveSubAccountByNamespace(wallet, index, meta, password) {
   }
 }
 
+// Restore a single-key (IMPORTED) wallet using the chain that matches its
+// namespace, so a non-EVM private-key wallet (Tron/Solana/Bitcoin) isn't
+// re-imported as EVM. reference is parsed from chainKey; v1 entries without
+// namespace fall back to EVM. Returns null for unknown namespaces (caller skips).
+function importPrivateKeyWalletByNamespace(name, privateKey, password, meta) {
+  const namespace = String(meta?.namespace || 'eip155').toLowerCase();
+  const reference = String(meta?.chainKey || '').split(':')[1] || '';
+  switch (namespace) {
+    case 'tron':
+      return importTronPrivateKeyWallet(name, privateKey, password, reference ? { tronReference: reference } : {});
+    case 'solana':
+      return importSolanaPrivateKeyWallet(name, privateKey, password, reference ? { solanaReference: reference } : {});
+    case 'bip122':
+    case 'utxo':
+      return importBitcoinPrivateKeyWallet(name, privateKey, password, reference ? { bip122Reference: reference } : {});
+    case 'eip155':
+      return importPrivateKeyWallet(name, privateKey, password);
+    default:
+      console.warn(`[ImportAccounts] unknown wallet namespace "${namespace}", skipping private-key import`);
+      return null;
+  }
+}
+
 export async function handleExportAccountsFile(password, identityEndpoint = '') {
   if (!password || password.length < MIN_PASSWORD_LENGTH) {
     return { success: false, error: 'password is required' };
@@ -1217,7 +1240,8 @@ export async function handleImportAccountsFile(file, password) {
       } else if (source.type === WALLET_TYPE.IMPORTED && Array.isArray(source.privateKeys)) {
         for (let index = 0; index < source.privateKeys.length; index += 1) {
           const meta = sourceAccounts[index] || {};
-          const preview = await importPrivateKeyWallet(meta.name || '导入账户', source.privateKeys[index], password);
+          const preview = await importPrivateKeyWalletByNamespace(meta.name || '导入账户', source.privateKeys[index], password, meta);
+          if (!preview) { skipped += 1; continue; }
           if (existingAddresses.has(normalizeAddressForFamily(preview.mainAccount.address, preview.mainAccount.namespace))) { skipped += 1; continue; }
           preview.wallet.name = source.name || preview.wallet.name;
           preview.mainAccount.username = meta.username || '';
