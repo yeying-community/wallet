@@ -32,6 +32,7 @@ const {
   validateCustodySecret
 } = await import('../js/background/operations/custody.js');
 const { clearAllData, getAccountList, getWallets } = await import('../js/storage/index.js');
+const { importHDWallet, deriveTronSubAccount } = await import('../js/background/vault.js');
 
 const PASSWORD = 'Custody-Test-Password';
 
@@ -145,5 +146,40 @@ test('云端密钥恢复重建完整 HD 账户清单并在重试时复用同一�
   assert.equal(second.reused, true);
   assert.equal(Object.keys(await getWallets()).length, 1);
   assert.equal((await getAccountList()).length, 2);
+  await clearAllData();
+});
+
+test('云端密钥恢复支持含非 EVM（Tron）子账户的 HD 钱包', async () => {
+  await clearAllData();
+  const mnemonic = 'test test test test test test test test test test test junk';
+  // 用同一助记词建钱包并派生出真实的 EVM 主账户(0) 与 Tron 子账户(1)。
+  const { wallet, mainAccount } = await importHDWallet('多链钱包', mnemonic, PASSWORD);
+  const tron = await deriveTronSubAccount(wallet, 1, 'Tron 账户', PASSWORD, { tronReference: 'mainnet' });
+  assert.match(String(tron.address), /^T[1-9A-HJ-NP-Za-km-z]+$/);
+
+  const secret = {
+    version: 2,
+    wallet: { name: '多链钱包', type: 'hd' },
+    mnemonic,
+    accounts: [
+      { index: 0, name: '日常账户', address: mainAccount.address, derivationPath: mainAccount.derivationPath, namespace: 'eip155', chainKey: 'eip155:1' },
+      { index: 1, name: 'Tron 账户', address: tron.address, namespace: 'tron', chainKey: 'tron:mainnet', privateKey: '' }
+    ],
+    identities: {}
+  };
+
+  // 修复前：validateCustodySecret 遇 namespace='tron' 直接抛「不支持 Tron 账户」。
+  const material = validateCustodySecret(secret);
+  assert.equal(material.accounts.length, 2);
+
+  await clearAllData();
+  const restored = await importOrReuseCustodyWallet(material, PASSWORD);
+  assert.equal(restored.success, true);
+
+  const list = await getAccountList();
+  const restoredTron = list.find(account => account.namespace === 'tron');
+  assert.ok(restoredTron, 'Tron 子账户应被按 namespace 恢复');
+  assert.equal(restoredTron.address, tron.address);
+  assert.match(String(restoredTron.address), /^T/);
   await clearAllData();
 });

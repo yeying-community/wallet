@@ -1082,6 +1082,7 @@ function deriveSubAccountByNamespace(wallet, index, meta, password) {
       return null;
   }
 }
+export { deriveSubAccountByNamespace };
 
 // Restore a single-key (IMPORTED) wallet using the chain that matches its
 // namespace, so a non-EVM private-key wallet (Tron/Solana/Bitcoin) isn't
@@ -1103,6 +1104,27 @@ function importPrivateKeyWalletByNamespace(name, privateKey, password, meta) {
     default:
       console.warn(`[ImportAccounts] unknown wallet namespace "${namespace}", skipping private-key import`);
       return null;
+  }
+}
+
+// Family-aware single-key wallet import that returns the handler envelope
+// ({ success, wallet, account }). Used by custody restore so a non-EVM
+// private-key wallet is re-imported on the correct chain.
+export function handleImportPrivateKeyWalletByNamespace(name, privateKey, password, meta) {
+  const namespace = String(meta?.namespace || 'eip155').toLowerCase();
+  const reference = String(meta?.chainKey || '').split(':')[1] || '';
+  switch (namespace) {
+    case 'tron':
+      return handleImportTronPrivateKeyWallet(name, privateKey, password, reference ? { tronReference: reference } : {});
+    case 'solana':
+      return handleImportSolanaPrivateKeyWallet(name, privateKey, password, reference ? { solanaReference: reference } : {});
+    case 'bip122':
+    case 'utxo':
+      return handleImportBitcoinPrivateKeyWallet(name, privateKey, password, reference ? { bip122Reference: reference } : {});
+    case 'eip155':
+      return handleImportPrivateKeyWallet(name, privateKey, password);
+    default:
+      return Promise.resolve({ success: false, error: `不支持的账户类型: ${namespace}` });
   }
 }
 
