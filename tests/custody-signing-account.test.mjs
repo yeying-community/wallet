@@ -20,7 +20,7 @@ globalThis.chrome = {
 const { getCustodySigningAccount, resolveIdentityBoundAddress } = await import('../js/background/operations/custody.js');
 const { saveIdentity } = await import('../js/storage/identity-storage.js');
 const { setValue } = await import('../js/storage/storage-base.js');
-const { saveAccount, clearAllData } = await import('../js/storage/index.js');
+const { saveAccount, clearAllData, setSelectedAccountId } = await import('../js/storage/index.js');
 const { IdentityStorageKeys } = await import('../js/storage/storage-keys.js');
 
 function base64url(obj) {
@@ -59,17 +59,20 @@ test('getCustodySigningAccount anchors to the identity-bound account, not the se
   assert.equal(boundAddress, boundAddr.toLowerCase());
 });
 
-test('getCustodySigningAccount rejects when identity / binding / local account is missing', async () => {
-  // No selected identity.
-  await assert.rejects(getCustodySigningAccount(), /请先选择钱包身份/);
+test('getCustodySigningAccount falls back to the selected account when no identity is set up', async () => {
+  const addr = '0x9999999999999999999999999999999999999999';
+  await saveAccount({ id: 'acc_sel', address: addr, namespace: 'eip155', walletId: 'w1' });
+  await setSelectedAccountId('acc_sel');
+  // No selected identity → legacy fallback to the selected account (no throw).
+  const { account, boundAddress } = await getCustodySigningAccount();
+  assert.equal(account.id, 'acc_sel');
+  assert.equal(boundAddress, addr.toLowerCase());
+});
 
-  // Selected identity without an account-link credential.
-  await saveIdentity('wid_2', { document: { walletIdentityId: 'wid_2' }, credentials: [] });
-  await setValue(IdentityStorageKeys.SELECTED_IDENTITY, 'wid_2');
-  await assert.rejects(getCustodySigningAccount(), /尚未完成账户绑定/);
-
-  // Bound address whose account is not present on this device.
-  await saveIdentity('wid_3', { document: { walletIdentityId: 'wid_3' }, credentials: [walletAccountCredential('0x3333333333333333333333333333333333333333')] });
-  await setValue(IdentityStorageKeys.SELECTED_IDENTITY, 'wid_3');
-  await assert.rejects(getCustodySigningAccount(), /不在本设备/);
+test('getCustodySigningAccount throws only when no account is available at all', async () => {
+  // Selected identity without a bound address AND no accounts/selection → the
+  // final guard throws. (Unreachable in practice: a wallet always has an account.)
+  await saveIdentity('wid_x', { document: { walletIdentityId: 'wid_x' }, credentials: [] });
+  await setValue(IdentityStorageKeys.SELECTED_IDENTITY, 'wid_x');
+  await assert.rejects(getCustodySigningAccount(), /未找到当前账户/);
 });

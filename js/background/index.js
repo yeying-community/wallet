@@ -17,6 +17,7 @@ import { mpcService } from './mpc-service.js';
 import { ensureCggmp24RuntimeInstalled } from './mpc-cggmp24-runtime.js';
 import { ensureApprovalStateHydrated } from './approval-flow.js';
 import { diagnostics } from './diagnostics.js';
+import { initI18n } from '../common/i18n/index.js';
 
 const INJECTABLE_TAB_URLS = [
   'http://*/*',
@@ -33,6 +34,7 @@ async function init() {
   console.log('🚀 YeYing Wallet Background Script Starting...');
 
   try {
+    await initI18n();
     await diagnostics.init();
     await ensureApprovalStateHydrated();
     await updateKeepAlive();

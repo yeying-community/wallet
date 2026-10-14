@@ -14,6 +14,7 @@ import {
   ApprovalMessageType,
   ApprovalPortMessageType
 } from '../protocol/extension-protocol.js';
+import { initI18n, t } from '../common/i18n/index.js';
 class ApprovalApp {
   constructor() {
     this.wallet = new WalletDomain();
@@ -32,6 +33,7 @@ class ApprovalApp {
 
   async init() {
     try {
+      await initI18n();
       // 解析URL参数
       const urlParams = new URLSearchParams(window.location.search);
       this.requestId = urlParams.get('requestId');
@@ -45,7 +47,7 @@ class ApprovalApp {
       
     } catch (error) {
       console.error('初始化失败:', error);
-      showToast('初始化失败: ' + error.message, 'error');
+      showToast(t('error.initialization', { message: error.message }), 'error');
       setTimeout(() => window.close(), 2000);
     }
   }
@@ -117,7 +119,7 @@ class ApprovalApp {
 
   async loadAndRenderRequest({ requestId, requestType }) {
     if (!requestType || (requestType !== 'unlock' && !requestId)) {
-      throw new Error('无效的请求参数');
+      throw new Error(t('error.invalidRequest'));
     }
 
     let requestData;
@@ -134,7 +136,7 @@ class ApprovalApp {
       });
 
       if (!response || !response.request) {
-        throw new Error('无法获取请求详情');
+        throw new Error(t('error.requestUnavailable'));
       }
 
       requestData = response.request?.data || response.request;
@@ -198,7 +200,7 @@ class ApprovalApp {
 
     const signTitle = document.querySelector('#signRequest h2');
     if (signTitle) {
-      signTitle.textContent = '签名请求';
+      signTitle.textContent = t('approval.sign.title');
     }
 
     const signMessage = document.getElementById('signMessage');
@@ -366,7 +368,7 @@ class ApprovalApp {
     document.getElementById('unlockRequest').classList.remove('hidden');
     const originEl = document.getElementById('unlockOrigin');
     if (originEl) {
-      originEl.textContent = this.requestData.origin || '会话已过期，请输入密码继续';
+      originEl.textContent = this.requestData.origin || t('approval.unlock.sessionExpired');
     }
   }
 

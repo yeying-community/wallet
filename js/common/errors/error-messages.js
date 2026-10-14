@@ -4,6 +4,7 @@
  */
 
 import { ErrorCode } from './error-codes.js';
+import { getLocale } from '../i18n/index.js';
 
 // ==================== 英文错误消息 ====================
 export const ErrorMessageEN = {
@@ -139,8 +140,8 @@ export const ErrorMessageZH = {
 export const ErrorMessage = ErrorMessageEN;
 
 // ==================== 获取错误消息 ====================
-export function getErrorMessage(code, locale = 'en') {
-  const messages = locale === 'zh' ? ErrorMessageZH : ErrorMessageEN;
+export function getErrorMessage(code, locale = getLocale()) {
+  const messages = locale === 'zh' || locale === 'zh-CN' ? ErrorMessageZH : ErrorMessageEN;
   return messages[code] || ErrorMessageEN[ErrorCode.UNKNOWN_ERROR];
 }
 

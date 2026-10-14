@@ -11,6 +11,7 @@ import {
   updateUserSettings,
   getWallet,
   getAccountList,
+  getSelectedAccount,
   getWalletAccounts,
   setSelectedAccountId,
   saveWallet,
@@ -398,28 +399,37 @@ export function resolveIdentityBoundAddress(record, chainKey = 'eip155:1') {
  * same subject.
  */
 export async function getCustodySigningAccount() {
+  // Prefer anchoring to the selected wallet identity's bound address (the
+  // decoupling fix), but gracefully fall back to the currently-selected
+  // account when no identity / account-link is in place — users without a
+  // wallet identity still get the legacy behaviour, and custody safety
+  // continues to be gated by the node's `passkeyBound` flag.
   const selectedIdentityId = await getValue(IdentityStorageKeys.SELECTED_IDENTITY);
-  if (!selectedIdentityId) {
-    throw new Error('请先选择钱包身份后再使用云端托管');
+  if (selectedIdentityId) {
+    const identities = await getIdentities();
+    const identity = identities?.[selectedIdentityId];
+    if (identity) {
+      const boundAddress = resolveIdentityBoundAddress(identity);
+      if (boundAddress) {
+        const accounts = await getAccountList();
+        const account = (accounts || []).find(item =>
+          item?.id && item?.address && compareAddresses(item.address, boundAddress, item.namespace || 'eip155'));
+        if (account) {
+          return {
+            account,
+            boundAddress: (normalizeAddressForFamily(account.address, account.namespace || 'eip155') || String(boundAddress)).toLowerCase()
+          };
+        }
+      }
+    }
   }
-  const identities = await getIdentities();
-  const identity = identities?.[selectedIdentityId];
-  if (!identity) {
-    throw new Error('请先选择钱包身份后再使用云端托管');
-  }
-  const boundAddress = resolveIdentityBoundAddress(identity);
-  if (!boundAddress) {
-    throw new Error('当前钱包身份尚未完成账户绑定，请先绑定账户与通行证');
-  }
-  const accounts = await getAccountList();
-  const account = (accounts || []).find(item =>
-    item?.id && item?.address && compareAddresses(item.address, boundAddress, item.namespace || 'eip155'));
-  if (!account) {
-    throw new Error('钱包身份绑定的账户不在本设备，无法在此设备开启云端托管');
+  const fallback = await getSelectedAccount();
+  if (!fallback?.id || !fallback?.address) {
+    throw new Error('未找到当前账户');
   }
   return {
-    account,
-    boundAddress: (normalizeAddressForFamily(account.address, account.namespace || 'eip155') || String(boundAddress)).toLowerCase()
+    account: fallback,
+    boundAddress: (normalizeAddressForFamily(fallback.address, fallback.namespace || 'eip155') || String(fallback.address)).toLowerCase()
   };
 }
 
