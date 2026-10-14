@@ -75,3 +75,37 @@ test('legacy static labels translate despite HTML indentation whitespace', async
   applyTranslations(root);
   assert.equal(label.textContent, '\n  新建钱包\n');
 });
+
+test('legacy aria-label metadata uses a valid DOMStringMap key', async () => {
+  resetI18nForTests();
+  await setLocale('en-US');
+  const label = {
+    nodeType: 1,
+    children: [],
+    dataset: {},
+    textContent: '',
+    attrs: { 'aria-label': '新建钱包' },
+    hasAttribute: () => false,
+    matches: () => false,
+    getAttribute(name) { return this.attrs[name] ?? null; },
+    setAttribute(name, value) { this.attrs[name] = value; },
+    querySelectorAll: () => [],
+    querySelector: () => null
+  };
+  const root = {
+    nodeType: 1,
+    children: [],
+    dataset: {},
+    querySelectorAll: () => [],
+    querySelector: () => null,
+    matches: () => false
+  };
+  root.querySelectorAll = () => [];
+  label.parentNode = root;
+  root.children = [label];
+  applyTranslations(label);
+  assert.equal(label.attrs['aria-label'], 'Create wallet');
+  assert.equal(label.dataset.i18nLegacyAriaLabel, '新建钱包');
+  assert.equal(label.dataset.i18nLegacyAriaLabelLast, 'Create wallet');
+  assert.equal(Object.keys(label.dataset).some((key) => key.includes('-')), false);
+});

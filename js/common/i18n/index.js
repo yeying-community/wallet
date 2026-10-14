@@ -37,6 +37,11 @@ export function t(key, params = {}) {
   });
 }
 
+function legacyAttributeDatasetKey(attribute) {
+  const camelAttribute = attribute.replace(/-([a-z])/g, (_match, character) => character.toUpperCase());
+  return `i18nLegacy${camelAttribute[0].toUpperCase()}${camelAttribute.slice(1)}`;
+}
+
 export function applyTranslations(root = globalThis.document) {
   if (!root?.querySelectorAll) return;
   const select = (selector) => {
@@ -87,7 +92,7 @@ export function applyTranslations(root = globalThis.document) {
       }
       for (const attribute of ['title', 'aria-label', 'placeholder', 'alt']) {
         const value = element.getAttribute?.(attribute);
-        const sourceDataKey = `i18nLegacy${attribute[0].toUpperCase()}${attribute.slice(1)}`;
+        const sourceDataKey = legacyAttributeDatasetKey(attribute);
         const lastDataKey = `${sourceDataKey}Last`;
         let sourceValue = element.dataset[sourceDataKey];
         const previousValue = element.dataset[lastDataKey];

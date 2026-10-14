@@ -368,7 +368,7 @@ class ApprovalApp {
     document.getElementById('unlockRequest').classList.remove('hidden');
     const originEl = document.getElementById('unlockOrigin');
     if (originEl) {
-      originEl.textContent = this.requestData.origin || '会话已过期，请输入密码继续';
+      originEl.textContent = this.requestData.origin || t('approval.unlock.sessionExpired');
     }
   }
 
