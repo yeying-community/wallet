@@ -148,10 +148,10 @@ async function getAvailableAccountAddresses(selectedAccount = null) {
 }
 
 function filterAvailableAuthorizedAccounts(authorizedAccounts = [], availableAccounts = [], family = 'eip155') {
-  const available = new Map(availableAccounts.map((address) => [normalizeAddress(address, family), address]));
-  return dedupeAddresses(authorizedAccounts, family)
-    .map((address) => available.get(normalizeAddress(address, family)))
-    .filter(Boolean);
+  const authorized = new Set(dedupeAddresses(authorizedAccounts, family)
+    .map((address) => normalizeAddress(address, family)));
+  return dedupeAddresses(availableAccounts, family)
+    .filter((address) => authorized.has(normalizeAddress(address, family)));
 }
 
 /**
