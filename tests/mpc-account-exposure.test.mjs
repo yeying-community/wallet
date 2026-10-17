@@ -85,3 +85,41 @@ test('eth_accounts 会返回授权且已生成地址的 keygen completed MPC 钱
     '0x2222222222222222222222222222222222222222',
   ]);
 });
+
+test('切换账户后 eth_accounts 将当前选中且已授权地址放在首位', async () => {
+  const oldAddress = '0x1111111111111111111111111111111111111111';
+  const selectedAddress = '0x2222222222222222222222222222222222222222';
+  const unauthorizedAddress = '0x3333333333333333333333333333333333333333';
+  await saveMpcWallet({
+    id: 'mpc-wallet-1',
+    name: 'previous mpc wallet',
+    type: 'mpc',
+    status: 'keygen_completed',
+    address: oldAddress,
+    publicKey: '03abcdef',
+  });
+  await saveMpcWallet({
+    id: 'mpc-wallet-2',
+    name: 'selected mpc wallet',
+    type: 'mpc',
+    status: 'keygen_completed',
+    address: selectedAddress,
+    publicKey: '03abcdee',
+  });
+  await saveMpcWallet({
+    id: 'mpc-wallet-3',
+    name: 'unauthorized mpc wallet',
+    type: 'mpc',
+    status: 'keygen_completed',
+    address: unauthorizedAddress,
+    publicKey: '03fedcba',
+  });
+  await setSelectedAccountId('mpc:mpc-wallet-2');
+  state.keyring.set('mpc:mpc-wallet-2', {});
+  await saveAuthorization('https://dapp.example', oldAddress, undefined, [oldAddress, selectedAddress]);
+
+  const accounts = await handleEthAccounts('https://dapp.example');
+
+  assert.deepEqual(accounts, [selectedAddress, oldAddress]);
+  assert.equal(accounts.includes(unauthorizedAddress), false);
+});
