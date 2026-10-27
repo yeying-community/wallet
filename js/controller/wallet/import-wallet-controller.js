@@ -1,4 +1,4 @@
-import { showPage, showError, showSuccess, showWaiting, getPageOrigin } from '../../common/ui/index.js';
+import { showPage, showError, showSuccess, showWarning, showWaiting, hideWaiting, getPageOrigin } from '../../common/ui/index.js';
 import { savePopupSessionState } from '../../common/ui/popup-session-state.js';
 import { IDENTITY_NODE_ENDPOINT_STORAGE_KEY, normalizeIdentityNodeEndpoint } from '../../config/identity-config.js';
 import { WalletMessageType } from '../../protocol/extension-protocol.js';
@@ -169,8 +169,9 @@ function setActiveNetwork(network) {
 }
 
 export class ImportWalletController {
-  constructor({ wallet, onImportSuccess, onStartCustodyRecovery, onRestoreCustodyRecovery, onRecoveryReady, onCancelCustodyRecovery }) {
+  constructor({ wallet, promptPassword, onImportSuccess, onStartCustodyRecovery, onRestoreCustodyRecovery, onRecoveryReady, onCancelCustodyRecovery }) {
     this.wallet = wallet;
+    this.promptPassword = promptPassword;
     this.onImportSuccess = onImportSuccess;
     this.onStartCustodyRecovery = onStartCustodyRecovery;
     this.onRestoreCustodyRecovery = onRestoreCustodyRecovery;
@@ -508,14 +509,41 @@ export class ImportWalletController {
         } catch {
           throw new Error('备份文件不是有效的 JSON');
         }
-        const result = await this.wallet.importAccountsFile(parsed, password);
+        let result;
+        try {
+          result = await this.wallet.importAccountsFile(parsed, password);
+        } catch (error) {
+          if (!error?.requirePassword || !this.promptPassword) throw error;
+          hideWaiting();
+          let recoveredResult = null;
+          const legacyPassword = await this.promptPassword({
+            title: '恢复 Wallet Identity',
+            confirmText: '恢复身份',
+            cancelText: '仅恢复钱包账户',
+            placeholder: '输入修改前的钱包密码',
+            onConfirm: async (value) => {
+              if (!value || value.length < 8) throw new Error('旧钱包密码至少需要8位字符');
+              recoveredResult = await this.wallet.importAccountsFile(parsed, password, { identityPassword: value });
+            }
+          });
+          if (legacyPassword && recoveredResult) {
+            result = recoveredResult;
+          } else {
+            showWaiting();
+            result = await this.wallet.importAccountsFile(parsed, password, { skipInvalidIdentities: true });
+          }
+        }
         const identityEndpoint = normalizeIdentityNodeEndpoint(result?.identityEndpoint);
         if (identityEndpoint) {
           try { globalThis.localStorage?.setItem(IDENTITY_NODE_ENDPOINT_STORAGE_KEY, identityEndpoint); } catch { /* storage may be unavailable */ }
           const endpointInput = document.getElementById('walletIdentityEndpointInput');
           if (endpointInput) endpointInput.value = identityEndpoint;
         }
-        showSuccess(`导入 ${result.imported} 个账户，跳过 ${result.skipped} 个重复账户`);
+        if (result.warnings?.length) {
+          showWarning(`导入 ${result.imported} 个账户，跳过 ${result.skipped} 个重复账户。${result.warnings.join('；')}`, 8000);
+        } else {
+          showSuccess(`导入 ${result.imported} 个账户，恢复 ${result.importedIdentities || 0} 个 Wallet Identity，跳过 ${result.skipped} 个重复账户`);
+        }
       }
 
       if (importType !== 'file') showSuccess('导入成功！');

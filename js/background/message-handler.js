@@ -1065,8 +1065,13 @@ const popupHandlers = new Map([
   [WalletMessageType.UPDATE_ACCOUNT_NAME, async (data) => await handleUpdateAccountName(data?.accountId, data?.newName)],
   [WalletMessageType.UPDATE_ACCOUNT_USERNAME, async (data) => await handleUpdateAccountUsername(data?.accountId, data?.username)],
   [WalletMessageType.GET_PROFILE, async () => await handleGetProfile()],
-  [WalletMessageType.EXPORT_ACCOUNTS_FILE, async (data) => await handleExportAccountsFile(data?.password, data?.identityEndpoint)],
-  [WalletMessageType.IMPORT_ACCOUNTS_FILE, async (data) => await handleImportAccountsFile(data?.file, data?.password)],
+  [WalletMessageType.EXPORT_ACCOUNTS_FILE, async (data) => await handleExportAccountsFile(data?.password, data?.identityEndpoint, {
+    identityPassword: data?.identityPassword
+  })],
+  [WalletMessageType.IMPORT_ACCOUNTS_FILE, async (data) => await handleImportAccountsFile(data?.file, data?.password, {
+    identityPassword: data?.identityPassword,
+    skipInvalidIdentities: data?.skipInvalidIdentities
+  })],
   [WalletMessageType.DELETE_ACCOUNT, async (data) => await handleDeleteAccount(data?.accountId, data?.password)],
   [WalletMessageType.GET_BALANCE, async (data) => await handleGetBalance(data?.address)],
   [WalletMessageType.GET_TOKEN_BALANCES, async (data) => await handleGetTokenBalances(data?.address)],

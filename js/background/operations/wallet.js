@@ -97,6 +97,67 @@ const MPC_SESSION_WALLET_STATUS = {
   error: 'failed',
 };
 
+function validateIdentityKeyMaterial(identity, keyMaterial) {
+  const identityId = identity?.document?.walletIdentityId || 'unknown';
+  const privateJwk = keyMaterial?.privateJwk;
+  const recoveryPrivateJwk = keyMaterial?.recoveryPrivateJwk;
+  if (!privateJwk?.d || !privateJwk?.x || !recoveryPrivateJwk?.d || !recoveryPrivateJwk?.x) {
+    throw new Error(`钱包身份 ${identityId} 的密钥材料不完整`);
+  }
+  if (privateJwk.kty !== 'OKP' || privateJwk.crv !== 'Ed25519'
+    || recoveryPrivateJwk.kty !== 'OKP' || recoveryPrivateJwk.crv !== 'Ed25519') {
+    throw new Error(`钱包身份 ${identityId} 的密钥算法无效`);
+  }
+  const controller = identity.document.controllers?.find(item => item.controllerId === identity.controllerId)
+    || identity.document.controllers?.find(item => item.status === 'active' && item.purposes?.includes('manage'));
+  if (!identity.publicJwk?.x || identity.publicJwk.x !== privateJwk.x || controller?.publicKey !== privateJwk.x) {
+    throw new Error(`钱包身份 ${identityId} 的控制密钥与公钥不匹配`);
+  }
+  if (!identity.recoveryPublicJwk?.x
+    || identity.recoveryPublicJwk.x !== recoveryPrivateJwk.x
+    || identity.document.recovery?.publicKey !== recoveryPrivateJwk.x) {
+    throw new Error(`钱包身份 ${identityId} 的恢复密钥与公钥不匹配`);
+  }
+  return { privateJwk, recoveryPrivateJwk };
+}
+
+async function decryptIdentityForBackup(identity, primaryPassword, legacyPassword = '') {
+  let primaryKeyMaterial;
+  try {
+    primaryKeyMaterial = await decryptIdentityKeyMaterial(identity, primaryPassword);
+  } catch (primaryError) {
+    if (!legacyPassword || legacyPassword === primaryPassword) {
+      return { error: primaryError, passwordRequired: true };
+    }
+    let legacyKeyMaterial;
+    try {
+      legacyKeyMaterial = await decryptIdentityKeyMaterial(identity, legacyPassword);
+    } catch (legacyError) {
+      return { error: legacyError, passwordRequired: true };
+    }
+    try {
+      return {
+        keyMaterial: validateIdentityKeyMaterial(identity, legacyKeyMaterial),
+        usedLegacyPassword: true
+      };
+    } catch (error) {
+      return { error, passwordRequired: false };
+    }
+  }
+  try {
+    return {
+      keyMaterial: validateIdentityKeyMaterial(identity, primaryKeyMaterial),
+      usedLegacyPassword: false
+    };
+  } catch (error) {
+    return { error, passwordRequired: false };
+  }
+}
+
+function identityWarning(count) {
+  return `已恢复钱包账户，但有 ${count} 个 Wallet Identity 未恢复；其签名能力不可用，可使用修改前的钱包密码重新导入`;
+}
+
 function getMpcAccountId(walletId) {
   const id = String(walletId || '').trim();
   return id ? `${MPC_ACCOUNT_ID_PREFIX}${id}` : '';
@@ -1128,7 +1189,7 @@ export function handleImportPrivateKeyWalletByNamespace(name, privateKey, passwo
   }
 }
 
-export async function handleExportAccountsFile(password, identityEndpoint = '') {
+export async function handleExportAccountsFile(password, identityEndpoint = '', options = {}) {
   if (!password || password.length < MIN_PASSWORD_LENGTH) {
     return { success: false, error: 'password is required' };
   }
@@ -1138,6 +1199,7 @@ export async function handleExportAccountsFile(password, identityEndpoint = '') 
     const selectedIdentityId = await getValue(IdentityStorageKeys.SELECTED_IDENTITY, null);
     const selectedAccount = await getSelectedAccount();
     const exportedWallets = [];
+    const exportedIdentities = [];
     for (const wallet of Object.values(wallets || {})) {
       if (wallet.type !== WALLET_TYPE.HD && wallet.type !== WALLET_TYPE.IMPORTED) continue;
       const accounts = (await getWalletAccounts(wallet.id)).sort((a, b) => (a.index || 0) - (b.index || 0));
@@ -1167,12 +1229,45 @@ export async function handleExportAccountsFile(password, identityEndpoint = '') 
       exportedWallets.push(entry);
     }
     if (exportedWallets.length === 0) return { success: false, error: '没有可导出的本地账户' };
+    const legacyIdentityPassword = String(options?.identityPassword || '');
+    let repairedIdentities = 0;
+    for (const identity of Object.values(identities || {})) {
+      if (!identity?.document?.walletIdentityId) continue;
+      if (!identity.encryptedKeyMaterial) {
+        return { success: false, error: `钱包身份 ${identity.document.walletIdentityId} 缺少加密密钥材料` };
+      }
+      validateIdentityDocument(identity.document);
+      const decrypted = await decryptIdentityForBackup(identity, password, legacyIdentityPassword);
+      if (!decrypted.keyMaterial) {
+        const needsLegacyPassword = Boolean(decrypted.passwordRequired);
+        return {
+          success: false,
+          error: needsLegacyPassword
+            ? (legacyIdentityPassword ? '修改前的钱包密码不正确，无法恢复 Wallet Identity' : 'Wallet Identity 仍由修改前的钱包密码保护，请输入旧钱包密码后重试')
+            : (decrypted.error?.message || 'Wallet Identity 密钥材料无效'),
+          requirePassword: needsLegacyPassword,
+          identityPasswordRequired: needsLegacyPassword
+        };
+      }
+      const { privateJwk, recoveryPrivateJwk } = decrypted.keyMaterial;
+      const {
+        encryptedKeyMaterial: _encryptedKeyMaterial,
+        privateJwk: _privateJwk,
+        recoveryPrivateJwk: _recoveryPrivateJwk,
+        ...publicRecord
+      } = identity;
+      exportedIdentities.push({
+        ...publicRecord,
+        encryptedKeyMaterial: await encryptObject({ privateJwk, recoveryPrivateJwk }, password)
+      });
+      if (decrypted.usedLegacyPassword) repairedIdentities += 1;
+    }
     const payload = {
       format: 'yeying-wallet-accounts',
       version: 2,
       exportedAt: getTimestamp(),
-      wallets: exportedWallets
-      , identities: Object.values(identities || {}).map(({ privateJwk, recoveryPrivateJwk, ...record }) => record),
+      wallets: exportedWallets,
+      identities: exportedIdentities,
       selectedIdentityId,
       selectedAddress: selectedAccount?.address || ''
     };
@@ -1187,14 +1282,16 @@ export async function handleExportAccountsFile(password, identityEndpoint = '') 
         ciphertext: await encryptObject(payload, password)
       },
       walletCount: exportedWallets.length,
-      accountCount: exportedWallets.reduce((sum, wallet) => sum + wallet.accounts.length, 0)
+      accountCount: exportedWallets.reduce((sum, wallet) => sum + wallet.accounts.length, 0),
+      identityCount: exportedIdentities.length,
+      repairedIdentities
     };
   } catch (error) {
     return { success: false, error: error.message || '导出账户失败' };
   }
 }
 
-export async function handleImportAccountsFile(file, password) {
+export async function handleImportAccountsFile(file, password, options = {}) {
   if (!file || file.format !== 'yeying-wallet-accounts' || ![1, 2].includes(file.version) || !file.ciphertext) {
     return { success: false, error: '不支持的账户备份文件' };
   }
@@ -1215,17 +1312,45 @@ export async function handleImportAccountsFile(file, password) {
     let skipped = 0;
     let firstImportedAccountId = '';
     const identitiesToImport = [];
+    const identityFailures = [];
+    const legacyIdentityPassword = String(options?.identityPassword || '');
+    const skipInvalidIdentities = Boolean(options?.skipInvalidIdentities);
     for (const identity of Array.isArray(payload.identities) ? payload.identities : []) {
       if (!identity?.document?.walletIdentityId) continue;
-      if (!identity.encryptedKeyMaterial) {
-        throw new Error(`钱包身份 ${identity.document.walletIdentityId} 缺少加密密钥材料`);
+      const identityId = identity.document.walletIdentityId;
+      try {
+        if (!identity.encryptedKeyMaterial) {
+          throw new Error(`钱包身份 ${identityId} 缺少加密密钥材料`);
+        }
+        validateIdentityDocument(identity.document);
+        const decrypted = await decryptIdentityForBackup(identity, password, legacyIdentityPassword);
+        if (!decrypted.keyMaterial) {
+          if (decrypted.passwordRequired && !skipInvalidIdentities) {
+            return {
+              success: false,
+              error: legacyIdentityPassword
+                ? '修改前的钱包密码不正确，无法恢复 Wallet Identity'
+                : '备份中的 Wallet Identity 仍由修改前的钱包密码保护',
+              requirePassword: true,
+              identityPasswordRequired: true
+            };
+          }
+          throw decrypted.error || new Error(`钱包身份 ${identityId} 无法解密`);
+        }
+        const { privateJwk, recoveryPrivateJwk } = decrypted.keyMaterial;
+        const {
+          encryptedKeyMaterial: _encryptedKeyMaterial,
+          privateJwk: _privateJwk,
+          recoveryPrivateJwk: _recoveryPrivateJwk,
+          ...publicRecord
+        } = identity;
+        identitiesToImport.push({
+          ...publicRecord,
+          encryptedKeyMaterial: await encryptObject({ privateJwk, recoveryPrivateJwk }, password)
+        });
+      } catch (error) {
+        identityFailures.push({ identityId, error: error?.message || '身份材料无效' });
       }
-      validateIdentityDocument(identity.document);
-      const keyMaterial = await decryptIdentityKeyMaterial(identity, password);
-      if (!keyMaterial?.privateJwk || !keyMaterial?.recoveryPrivateJwk) {
-        throw new Error(`钱包身份 ${identity.document.walletIdentityId} 的密钥材料不完整`);
-      }
-      identitiesToImport.push(identity);
     }
     for (const source of payload.wallets) {
       const sourceAccounts = Array.isArray(source.accounts) ? source.accounts : [];
@@ -1313,7 +1438,14 @@ export async function handleImportAccountsFile(file, password) {
     if (preferredIdentityId) {
       await setValue(IdentityStorageKeys.SELECTED_IDENTITY, preferredIdentityId);
     }
-    const result = { success: true, imported, skipped };
+    const result = {
+      success: true,
+      imported,
+      skipped,
+      importedIdentities: identitiesToImport.length,
+      skippedIdentities: identityFailures.length,
+      warnings: identityFailures.length > 0 ? [identityWarning(identityFailures.length)] : []
+    };
     const importedIdentityEndpoint = normalizeIdentityNodeEndpoint(payload.identityEndpoint);
     if (importedIdentityEndpoint) result.identityEndpoint = importedIdentityEndpoint;
     return result;
