@@ -646,14 +646,23 @@ export class WalletDomain extends BaseDomain {
     return result.mnemonic;
   }
 
-  async exportAccountsFile(password, identityEndpoint = '') {
+  async exportAccountsFile(password, identityEndpoint = '', options = {}) {
     if (!password || password.length < 8) throw new Error('密码至少需要8位字符');
-    return this._sendMessage(WalletMessageType.EXPORT_ACCOUNTS_FILE, { password, identityEndpoint });
+    return this._sendMessage(WalletMessageType.EXPORT_ACCOUNTS_FILE, {
+      password,
+      identityEndpoint,
+      identityPassword: options?.identityPassword || ''
+    });
   }
 
-  async importAccountsFile(file, password) {
+  async importAccountsFile(file, password, options = {}) {
     if (!password || password.length < 8) throw new Error('密码至少需要8位字符');
-    return this._sendMessage(WalletMessageType.IMPORT_ACCOUNTS_FILE, { file, password });
+    return this._sendMessage(WalletMessageType.IMPORT_ACCOUNTS_FILE, {
+      file,
+      password,
+      identityPassword: options?.identityPassword || '',
+      skipInvalidIdentities: Boolean(options?.skipInvalidIdentities)
+    });
   }
 
   // ==================== 密码管理 ====================

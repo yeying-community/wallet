@@ -124,7 +124,23 @@ export class AccountListController {
         document.getElementById('walletIdentityEndpointInput')?.value
           || storedIdentityEndpoint
       );
-      const result = await this.wallet.exportAccountsFile(password, identityEndpoint);
+      let result;
+      try {
+        result = await this.wallet.exportAccountsFile(password, identityEndpoint);
+      } catch (error) {
+        if (!error?.requirePassword) throw error;
+        hideWaiting();
+        const legacyPassword = await this.promptPassword({
+          title: '恢复 Wallet Identity',
+          confirmText: '修复并导出',
+          placeholder: '输入修改前的钱包密码',
+          onConfirm: async (value) => {
+            if (!value || value.length < 8) throw new Error('旧钱包密码至少需要8位字符');
+            result = await this.wallet.exportAccountsFile(password, identityEndpoint, { identityPassword: value });
+          }
+        });
+        if (!legacyPassword || !result) return;
+      }
       const blob = new Blob([JSON.stringify(result.file, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -134,7 +150,9 @@ export class AccountListController {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-      showSuccess(`已加密导出 ${result.accountCount} 个账户`);
+      showSuccess(result.repairedIdentities > 0
+        ? `已修复 ${result.repairedIdentities} 个 Wallet Identity，并加密导出 ${result.accountCount} 个账户`
+        : `已加密导出 ${result.accountCount} 个账户`);
     } catch (error) {
       showError('导出失败: ' + (error?.message || '未知错误'));
     } finally {

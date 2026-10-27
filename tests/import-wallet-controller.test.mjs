@@ -312,3 +312,126 @@ test('取消导入：离开导入页时清空敏感输入', () => {
   c.handleCancel();
   assertImportFormCleared();
 });
+
+function prepareEncryptedFileImport() {
+  setPageOrigin('importPage', 'welcome');
+  elements.walletSourceTab.classList.remove('active');
+  elements.fileSourceTab.classList.add('active');
+  const querySelector = document.querySelector.bind(document);
+  document.querySelector = (selector) => {
+    if (selector === '.import-source-tab.active') return elements.fileSourceTab;
+    return querySelector(selector);
+  };
+  elements.importWalletPassword.value = 'Backup-Pass-123';
+  elements.importAccountsFile.files = [{
+    async text() { return JSON.stringify({ format: 'yeying-wallet-accounts', version: 2, ciphertext: {} }); }
+  }];
+}
+
+async function withImmediateTimeout(callback) {
+  const originalSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (handler) => {
+    handler();
+    return 0;
+  };
+  try {
+    return await callback();
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
+  }
+}
+
+test('备份中的历史 Identity 密码可输入旧钱包密码完成恢复', async () => {
+  prepareEncryptedFileImport();
+  const calls = [];
+  const wallet = {
+    async importAccountsFile(_file, _password, options = {}) {
+      calls.push(options);
+      if (calls.length === 1) {
+        const error = new Error('备份中的 Wallet Identity 仍由修改前的钱包密码保护');
+        error.requirePassword = true;
+        throw error;
+      }
+      return {
+        success: true,
+        imported: 1,
+        skipped: 0,
+        importedIdentities: 1,
+        skippedIdentities: 0,
+        warnings: []
+      };
+    }
+  };
+  const controller = new ImportWalletController({
+    wallet,
+    promptPassword: async (options) => {
+      await options.onConfirm('Previous-Pass-456');
+      return 'Previous-Pass-456';
+    }
+  });
+
+  await withImmediateTimeout(() => controller.handleImportWallet());
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].identityPassword, 'Previous-Pass-456');
+  assert.match(elements.globalToast.textContent, /恢复 1 个 Wallet Identity/);
+});
+
+test('取消输入旧钱包密码后降级恢复账户并显示 Identity 警告', async () => {
+  prepareEncryptedFileImport();
+  const calls = [];
+  const wallet = {
+    async importAccountsFile(_file, _password, options = {}) {
+      calls.push(options);
+      if (calls.length === 1) {
+        const error = new Error('备份中的 Wallet Identity 仍由修改前的钱包密码保护');
+        error.requirePassword = true;
+        throw error;
+      }
+      return {
+        success: true,
+        imported: 1,
+        skipped: 0,
+        importedIdentities: 0,
+        skippedIdentities: 1,
+        warnings: ['已恢复钱包账户，但有 1 个 Wallet Identity 未恢复']
+      };
+    }
+  };
+  const controller = new ImportWalletController({
+    wallet,
+    promptPassword: async () => null
+  });
+
+  await withImmediateTimeout(() => controller.handleImportWallet());
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].skipInvalidIdentities, true);
+  assert.match(elements.globalToast.textContent, /Wallet Identity 未恢复/);
+});
+
+test('导出检测到历史 Identity 密码时提示输入修改前的钱包密码', async () => {
+  const prompts = [];
+  let exportCalls = 0;
+  const controller = new AccountListController({
+    wallet: {
+      async exportAccountsFile() {
+        exportCalls += 1;
+        const error = new Error('Wallet Identity 仍由修改前的钱包密码保护');
+        error.requirePassword = true;
+        throw error;
+      }
+    },
+    promptPassword: async (options) => {
+      prompts.push(options);
+      return prompts.length === 1 ? 'Backup-Pass-123' : null;
+    }
+  });
+
+  await controller.handleExportAccounts();
+
+  assert.equal(exportCalls, 1);
+  assert.equal(prompts.length, 2);
+  assert.equal(prompts[1].title, '恢复 Wallet Identity');
+  assert.equal(prompts[1].placeholder, '输入修改前的钱包密码');
+});
