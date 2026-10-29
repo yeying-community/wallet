@@ -66,6 +66,35 @@ test('custody identity validation accepts wid map key and DID document id', asyn
   assert.equal(await validateCustodyIdentityMaterials({ [identityId]: stored }, PASSWORD), true);
 });
 
+test('Node Web bootstrap compatible custody v2 preserves and validates the same Wallet Identity', async () => {
+  const identity = await createWalletIdentity();
+  const identityId = identity.document.walletIdentityId;
+  await saveEncryptedIdentity(identityId, identity, PASSWORD);
+  const stored = await getIdentity(identityId);
+  const wallet = ethers.Wallet.createRandom();
+  const material = validateCustodySecret({
+    version: 2,
+    wallet: { id: 'node-web-wallet', name: 'Node Web Bootstrap', type: 'imported', accountCount: 1 },
+    accounts: [{
+      accountId: 'node-web-wallet_0',
+      index: 0,
+      name: '主账户',
+      address: wallet.address,
+      namespace: 'eip155',
+      chainKey: 'eip155:1',
+      privateKey: wallet.privateKey
+    }],
+    identities: { [identityId]: stored },
+    selectedIdentityId: identityId,
+    exportedAt: new Date().toISOString()
+  });
+
+  assert.equal(material.selectedIdentityId, identityId);
+  assert.equal(material.identities[identityId].document.id, identity.document.id);
+  assert.equal(material.address, wallet.address);
+  assert.equal(await validateCustodyIdentityMaterials(material.identities, PASSWORD), true);
+});
+
 test('custody identity validation rejects a map key that is not walletIdentityId', async () => {
   const identity = await createWalletIdentity();
   const identityId = identity.document.walletIdentityId;

@@ -11,7 +11,8 @@
 1. 只需要钱包地址：使用 EIP-1193 连接和 SIWE 登录。
 2. 需要已验证邮箱、用户名或可与无钱包登录收敛的身份：使用钱包身份 presentation。
 3. 需要访问 Router、Warehouse、WebDAV 等资源服务：在登录后申请 UCAN 或服务端 scoped credential。
-4. 没有钱包插件的浏览器：使用 Node 钱包身份授权码流程，由 Passkey 作为认证器确认同一个钱包身份。
+4. 没有钱包插件但已有钱包身份：使用 Node 钱包身份授权码流程，由 Passkey 作为认证器确认同一个钱包身份。
+5. 没有钱包插件且尚无钱包身份：用户可在 Node Web 邮箱入口完成钱包身份 Bootstrap；业务应用仍只消费最终 DID 授权结果，不自行实现邮箱账号或私钥托管。
 
 推荐前端 SDK 是 `@yeying-community/web3-bs`。业务应用应优先使用 SDK 封装，而不是直接拼接 Wallet RPC。
 
@@ -111,6 +112,10 @@ exchange 返回：
 
 这个结果与 Wallet presentation 收敛到同一 DID 和同一组凭证。Passkey 只证明用户控制该钱包身份，不产生新的外部身份。
 
+若用户尚无钱包身份，Node Web 可以作为临时 Wallet Bootstrap 客户端在浏览器本地生成与 Wallet 插件兼容的 DID、controller/recovery、Ethereum 账户、账户关联证明和 custody v2 密文。邮箱 OTP 只验证邮箱；最终激活仍必须完成 discoverable Passkey、账户关联和密文上传。完全不支持 WebAuthn 的设备不能使用 OTP-only 创建钱包身份。未来安装 Wallet 后，用户通过 Passkey 恢复授权下载密文，并用原密码在本地恢复同一个 DID 与钱包地址。
+
+DApp 不应区分该 DID 最初由 Wallet 插件还是 Node Web Bootstrap 创建，也不应把邮箱作为第二身份主键。登录、scope 校验和本地用户映射继续只使用同一个 `did:yeying:wid_*`。
+
 ## 5. Wallet 设置页要求
 
 用户需要在 Wallet 中完成：
@@ -123,6 +128,8 @@ exchange 返回：
 6. 支持 WebAuthn 的环境中注册身份级 Passkey。
 
 完成后，钱包插件登录和无钱包插件登录都可以按相同 scope 获取同一钱包身份资料。
+
+通过 Node Web Bootstrap 创建的身份恢复到 Wallet 后，也必须满足同一设置页契约：身份详情中的 DID、账户地址、controller/recovery 公钥和已验证凭证应与 Bootstrap 时一致，不得静默创建第二个 DID。
 
 ## 6. 与 UCAN 的关系
 
