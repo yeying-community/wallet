@@ -433,7 +433,18 @@ export async function requestIdentityPresentation({ account, params, origin, pas
     }
   }
   const walletBinding = walletCredential ? credentialAccount(walletCredential) : null;
-  const unsigned = { version: 1, holder: record.document.id, audience: request.audience, nonce: request.nonce, issuedAt, expiresAt, scopes: request.scopes, identityDocument: request.scopes.includes('identity.basic') ? signedIdentityDocument : undefined, walletProof: request.scopes.includes('identity.wallet') ? walletBinding : undefined, credentials: selectedCredentials.map(credentialToken) };
+  const unsigned = {
+    version: 1,
+    holder: record.document.id,
+    audience: request.audience,
+    nonce: request.nonce,
+    issuedAt,
+    expiresAt,
+    scopes: request.scopes,
+    ...(request.scopes.includes('identity.basic') ? { identityDocument: signedIdentityDocument } : {}),
+    ...(request.scopes.includes('identity.wallet') ? { walletProof: walletBinding } : {}),
+    credentials: selectedCredentials.map(credentialToken)
+  };
   const signature = await crypto.subtle.sign('Ed25519', privateKey, new TextEncoder().encode(canonicalize(unsigned)));
   return { ...unsigned, proof: { type: 'YeyingIdentityPresentationProofV1', verificationMethod: `${record.document.id}#${record.controllerId}`, purpose: 'authentication', proofValue: toBase64Url(new Uint8Array(signature)) } };
 }
