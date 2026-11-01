@@ -9,11 +9,13 @@
 
 ## 文档
 
+- [夜莺钱包官方网站](https://wallet.yeying.pub/)
+- [官方在线用户手册（中文 / English）](https://wallet.yeying.pub/docs/)
 - [文档中心与阅读导航](./docs/README.md)
 - [钱包架构 V1（当前实现）](./docs/钱包架构V1.md)
 - [钱包架构 V2（目标架构）](./docs/钱包架构V2.md)
-- [用户使用手册](./docs/用户使用手册.md)
-- [Web3 应用集成手册](./docs/web3应用集成手册.md)
+- [用户使用手册（Markdown 源文档）](./docs/用户交互/用户使用手册.md)
+- [Web3 应用集成手册（Markdown 源文档）](./docs/用户交互/Web3应用集成手册.md)
 - [SIWE 协议说明与使用指南](./docs/SIWE协议说明.md)
 - [UCAN 协议说明与使用指南（Chat / Router / WebDAV 模板）](./docs/UCAN协议说明.md)
 - [钱包身份方案（DID / Passkey / WebAuthn / Node）](./docs/钱包身份方案.md)

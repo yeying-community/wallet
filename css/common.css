@@ -134,6 +134,25 @@ h3 {
   overflow: hidden;
 }
 
+#welcomePage .welcome-official-site-link {
+  display: block;
+  width: fit-content;
+  margin: 16px auto 0;
+  color: #037dd6;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+#welcomePage .welcome-official-site-link:hover {
+  color: #0260a4;
+}
+
+#welcomePage .welcome-official-site-link:focus-visible {
+  outline: 2px solid #037dd6;
+  outline-offset: 4px;
+}
+
 /* 主要按钮 - 简洁蓝色风格 */
 .btn-primary {
   background: #037dd6;

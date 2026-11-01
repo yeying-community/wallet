@@ -32,7 +32,8 @@ import {
   savePopupSessionState,
 } from '../common/ui/popup-session-state.js';
 
-const USER_GUIDE_URL = 'https://github.com/yeying-community/wallet/blob/main/docs/%E9%92%B1%E5%8C%85%E7%94%A8%E6%88%B7%E4%BD%BF%E7%94%A8%E6%89%8B%E5%86%8C.md';
+const OFFICIAL_SITE_URL = 'https://wallet.yeying.pub/';
+const USER_GUIDE_URL = `${OFFICIAL_SITE_URL}docs/`;
 
 export class PopupController {
   constructor({ wallet, transaction, network, token }) {
@@ -692,6 +693,19 @@ export class PopupController {
     }
   }
 
+  async openOfficialSite() {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+        await chrome.tabs.create({ url: OFFICIAL_SITE_URL });
+        return;
+      }
+      window.open(OFFICIAL_SITE_URL, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      console.error('[PopupController] 打开钱包官网失败:', error);
+      showError('打开钱包官网失败');
+    }
+  }
+
   bindBackEvents() {
     document.querySelectorAll('.back-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -1061,6 +1075,14 @@ export class PopupController {
       helpDocBtn.addEventListener('click', async () => {
         this.closeWalletHeaderMenu();
         await this.openUserGuide();
+      });
+    }
+
+    const officialSiteBtn = document.getElementById('officialSiteBtn');
+    if (officialSiteBtn) {
+      officialSiteBtn.addEventListener('click', async () => {
+        this.closeWalletHeaderMenu();
+        await this.openOfficialSite();
       });
     }
 
