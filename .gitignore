@@ -7,6 +7,11 @@ docs/plan.md
 output/
 test-results/
 
-# Project (社区产品) 任务绑定与生命周期状态，含本地环境信息，不入库
-.project-task.json
-.project-lifecycle.json
+# YeYing Project local task state
+/.project/
+
+# Legacy root-level state; migrate into .project/ when the task is closed.
+/.project-task
+/.project-*.json
+/.project-execution/
+/.project-execution-*/
