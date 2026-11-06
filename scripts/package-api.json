@@ -1,0 +1,8 @@
+{
+  "api_version": 1,
+  "supports": ["--ref", "--version", "--output-dir"],
+  "creates_git_tags": false,
+  "pushes_git_refs": false,
+  "builds_in_isolated_checkout": true,
+  "manifest": "release-manifest.json"
+}
