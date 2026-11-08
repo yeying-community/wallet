@@ -19,9 +19,9 @@
 - [门限钱包架构](./docs/architecture/门限钱包.md)
 - [用户使用手册（Markdown 源文档）](./docs/用户交互/用户使用手册.md)
 - [Web3 应用集成手册（Markdown 源文档）](./docs/用户交互/Web3应用集成手册.md)
-- [钱包身份模型](./docs/身份系统/钱包身份模型.md)
+- [钱包身份模型](./docs/identity/钱包身份模型.md)
 - [数据安全与备份](./docs/钱包安全/数据安全.md)
-- [门限协议](./docs/协议规范/门限协议.md)
+- [门限协议](./docs/protocols/门限协议.md)
 
 
 ## 标准 / EIP 支持矩阵
