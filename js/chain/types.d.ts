@@ -1,9 +1,8 @@
 /**
  * 链适配层类型定义
  *
- * 对齐 docs/钱包架构/链适配层设计.md §5。阶段 0 仅落地 EVM 适配器与
- * local-keyring / mpc-cggmp24 两个 signer；未实现的能力在 evm 适配器中挂
- * NOT_IMPLEMENTED，留待阶段 2+。
+ * 对齐 docs/architecture/多链架构.md。类型描述当前适配器与 signer 间的基本
+ * 交易签名契约；各链能力和未实现项见架构文档及对应适配器实现。
  *
  * 以 TS 声明书写（供 // @ts-check 的 JS 经 import('./types.d.ts').X 引用）。
  */
