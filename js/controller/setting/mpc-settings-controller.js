@@ -565,7 +565,7 @@ export class MpcSettingsController {
         this.custodySettings = result.settings;
         this.renderCustodySettings(result.settings);
       }
-      showSuccess(result.status?.passkeyBound ? '通行证已绑定' : '尚未绑定通行证');
+      showSuccess(result.status?.passkeyBound ? '通行密钥已绑定' : '尚未绑定通行密钥');
     } catch (error) {
       console.error('[MpcSettings] 检查托管状态失败:', error);
       showError('检查失败: ' + error.message);

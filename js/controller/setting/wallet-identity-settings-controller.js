@@ -36,9 +36,9 @@ function arrayBufferToBase64Url(value) {
 function passkeyRegistrationErrorMessage(error) {
   const message = String(error?.message || '').trim();
   if (error?.name === 'InvalidStateError' && /already registered with the relying party/i.test(message)) {
-    return '当前手机选中了已同步的现有通行证，不能重复注册。请在手机的通行证管理器中新建一个通行证后再扫码，或保留当前通行证。';
+    return '当前手机选中了已同步的现有通行密钥，不能重复登记。请在手机的通行密钥管理器中新建一个通行密钥后再扫码，或保留当前通行密钥。';
   }
-  return message || '注册通行证失败';
+  return message || '添加通行密钥失败';
 }
 
 export class WalletIdentitySettingsController {
@@ -925,7 +925,7 @@ export class WalletIdentitySettingsController {
 
   async ensureIdentityPasskey(endpoint, identityDid, identityDocument, password, options = {}) {
     if (!globalThis.PublicKeyCredential || !navigator.credentials) {
-      this.setStatus('钱包身份已验证；当前浏览器不支持 Passkey，暂不能用于无钱包登录');
+      this.setStatus('钱包身份已验证；当前浏览器不支持通行密钥，暂不能用于无钱包应用登录');
       return null;
     }
     const authenticatorType = options.authenticatorType === 'cross-platform' ? 'cross-platform' : 'platform';
@@ -966,7 +966,7 @@ export class WalletIdentitySettingsController {
         }
       }
     });
-    if (!credential) throw new Error('Passkey 注册已取消');
+    if (!credential) throw new Error('通行密钥添加已取消');
     const response = credential.response;
     showWaiting();
     return await this.confirmIdentityPasskeyRegistration(endpoint, {
@@ -1044,9 +1044,10 @@ export class WalletIdentitySettingsController {
       const { deviceName, authenticatorType } = this.readPasskeyRegisterForm();
       const { identityDid, identityDocument, password } = await this.selectedIdentityContext({ requireSigned: true });
       showWaiting();
-      await this.ensureIdentityPasskey(endpoint, identityDid, identityDocument, password, { deviceName, authenticatorType });
+      const registered = await this.ensureIdentityPasskey(endpoint, identityDid, identityDocument, password, { deviceName, authenticatorType });
+      if (!registered) throw new Error('当前浏览器不支持通行密钥，暂不能用于无钱包应用登录');
       hideWaiting();
-      showSuccess('通行证已注册');
+      showSuccess('通行密钥已添加');
       this.resetPasskeyRegisterForm();
       await this.refreshIdentityPasskeys({ quiet: true });
       await this.refreshIdentityPasskeySummary({ quiet: true });
@@ -1072,15 +1073,15 @@ export class WalletIdentitySettingsController {
   }
 
   defaultPasskeyDeviceName(authenticatorType) {
-    return authenticatorType === 'cross-platform' ? '手机通行证' : '本机通行证';
+    return authenticatorType === 'cross-platform' ? '其他设备通行密钥' : '本机通行密钥';
   }
 
   passkeyTypeLabel(credential) {
     const attachment = credential?.authenticatorAttachment;
-    if (attachment === 'platform') return '本机生物识别';
+    if (attachment === 'platform') return '本机设备认证器';
     if (attachment === 'cross-platform') return '手机扫码 / 安全密钥';
     const transports = Array.isArray(credential?.transports) ? credential.transports : [];
-    if (transports.includes('internal')) return '本机生物识别';
+    if (transports.includes('internal')) return '本机设备认证器';
     if (transports.includes('hybrid')) return '手机扫码';
     if (transports.some(t => t === 'usb' || t === 'nfc' || t === 'ble')) return '安全密钥';
     return '';
@@ -1088,7 +1089,7 @@ export class WalletIdentitySettingsController {
 
   async refreshIdentityPasskeys({ quiet = false } = {}) {
     const list = document.getElementById('walletIdentityPasskeyListPage');
-    if (list) list.textContent = '正在加载通行证...';
+    if (list) list.textContent = '正在加载通行密钥...';
     try {
       const endpoint = this.endpoint();
       const { identityDid } = await this.selectedIdentityContext();
@@ -1096,10 +1097,10 @@ export class WalletIdentitySettingsController {
       const credentials = Array.isArray(result?.credentials) ? result.credentials : [];
       this.renderIdentityPasskeys(credentials);
       const activeCount = credentials.filter(item => !item?.revokedAt).length;
-      this.setPasskeyStatus(activeCount ? `已启用 ${activeCount} 个通行证` : '未启用通行证；可点击“注册通行证”启用无钱包插件登录。');
-      this.setPasskeySummary(activeCount ? `已启用 ${activeCount} 个通行证` : '未启用通行证');
+      this.setPasskeyStatus(activeCount ? `已登记 ${activeCount} 个通行密钥` : '尚未登记通行密钥；添加后可用于无钱包应用登录。');
+      this.setPasskeySummary(activeCount ? `已登记 ${activeCount} 个通行密钥` : '尚未登记通行密钥');
     } catch (error) {
-      const message = error?.message || '加载通行证失败';
+      const message = error?.message || '加载通行密钥失败';
       this.renderIdentityPasskeys([]);
       this.setPasskeyStatus(message);
       if (!quiet) showError(message);
@@ -1113,9 +1114,9 @@ export class WalletIdentitySettingsController {
       const result = await this.listIdentityPasskeys(endpoint, { identity: identityDid });
       const credentials = Array.isArray(result?.credentials) ? result.credentials : [];
       const activeCount = credentials.filter(item => !item?.revokedAt).length;
-      this.setPasskeySummary(activeCount ? `已启用 ${activeCount} 个通行证` : '未启用通行证');
+      this.setPasskeySummary(activeCount ? `已登记 ${activeCount} 个通行密钥` : '尚未登记通行密钥');
     } catch (error) {
-      const message = error?.message || '加载通行证状态失败';
+      const message = error?.message || '加载通行密钥状态失败';
       this.setPasskeySummary(message);
       if (!quiet) showError(message);
     }
@@ -1128,7 +1129,7 @@ export class WalletIdentitySettingsController {
     if (!credentials.length) {
       const empty = document.createElement('p');
       empty.className = 'settings-hint';
-      empty.textContent = '当前没有已注册通行证。';
+      empty.textContent = '当前没有已登记的通行密钥。';
       list.appendChild(empty);
       return;
     }
@@ -1139,14 +1140,14 @@ export class WalletIdentitySettingsController {
       topLine.className = 'identity-passkey-topline';
       const name = document.createElement('div');
       name.className = 'identity-passkey-name';
-      name.textContent = credential.deviceName || credential.name || '未命名通行证';
+      name.textContent = credential.deviceName || credential.name || '未命名通行密钥';
       topLine.appendChild(name);
       if (!credential.revokedAt && credential.credentialId) {
         const revoke = document.createElement('button');
         revoke.className = 'identity-passkey-revoke-link';
         revoke.type = 'button';
         revoke.dataset.passkeyRevoke = credential.credentialId;
-        revoke.textContent = '撤销通行证';
+        revoke.textContent = '撤销通行密钥';
         topLine.appendChild(revoke);
       }
       item.appendChild(topLine);
@@ -1260,8 +1261,8 @@ export class WalletIdentitySettingsController {
   async revokeIdentityPasskey(credentialId) {
     try {
       const id = String(credentialId || '').trim();
-      if (!id) throw new Error('缺少通行证凭证标识');
-      if (typeof globalThis.confirm === 'function' && !globalThis.confirm('确认撤销这个通行证？撤销后该设备不能再用于无钱包插件登录。')) return;
+      if (!id) throw new Error('缺少通行密钥凭证标识');
+      if (typeof globalThis.confirm === 'function' && !globalThis.confirm('确认撤销这个通行密钥？撤销后该凭证不能再用于无钱包应用登录。')) return;
       const endpoint = this.endpoint();
       const context = await this.selectedIdentityContext({ requireSigned: true });
       const { identityDid, identityDocument } = context;
@@ -1269,12 +1270,12 @@ export class WalletIdentitySettingsController {
       showWaiting();
       await this.revokeIdentityPasskeyCredential(endpoint, { identity: identityDid, identityDocument, credentialId: id, ...auth });
       hideWaiting();
-      showSuccess('通行证已撤销');
+      showSuccess('通行密钥已撤销');
       await this.refreshIdentityPasskeys({ quiet: true });
       await this.refreshIdentityPasskeySummary({ quiet: true });
     } catch (error) {
       hideWaiting();
-      showError(error?.message || '撤销通行证失败');
+      showError(error?.message || '撤销通行密钥失败');
     }
   }
 
@@ -1388,8 +1389,8 @@ export class WalletIdentitySettingsController {
       method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
     });
     const json = await response.json().catch(() => ({}));
-    if (response.status === 404) throw new Error('当前身份服务尚未提供通行证列表接口');
-    if (!response.ok || json.code !== 0) throw new Error(json.message || '加载通行证列表失败');
+    if (response.status === 404) throw new Error('当前身份服务尚未提供通行密钥列表接口');
+    if (!response.ok || json.code !== 0) throw new Error(json.message || '加载通行密钥列表失败');
     return json.data;
   }
 
@@ -1398,8 +1399,8 @@ export class WalletIdentitySettingsController {
       method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
     });
     const json = await response.json().catch(() => ({}));
-    if (response.status === 404) throw new Error('当前身份服务尚未提供通行证撤销接口');
-    if (!response.ok || json.code !== 0) throw new Error(json.message || '撤销通行证失败');
+    if (response.status === 404) throw new Error('当前身份服务尚未提供通行密钥撤销接口');
+    if (!response.ok || json.code !== 0) throw new Error(json.message || '撤销通行密钥失败');
     return json.data;
   }
 

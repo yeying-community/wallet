@@ -822,7 +822,7 @@
         </div>
 
         <div id="custodyImportSection" class="hidden">
-          <p class="settings-card-description">通过通行证授权读取云端托管记录，再使用创建托管记录时的钱包密码在本地解密恢复。</p>
+          <p class="settings-card-description">通过通行密钥授权读取云端托管记录，再使用创建托管记录时的钱包密码在本地解密恢复。</p>
           <div id="custodyRecoveryCount" class="custody-recovery-count"></div>
           <div id="custodyRecoveryList" class="custody-summary"></div>
           <div class="form-group">
@@ -1366,9 +1366,9 @@
           <div class="detail-row"><span class="detail-label">钱包地址</span><span class="detail-value copyable-detail-value compact-identity-value" id="walletIdentityDetailAddressPage">-</span></div>
           <div class="detail-row"><span class="detail-label">身份 DID</span><span class="detail-value copyable-detail-value compact-identity-value" id="walletIdentityDetailDidPage">-</span></div>
           <div class="detail-row identity-management-row">
-            <span class="detail-label">通行证</span>
+            <span class="detail-label">通行密钥</span>
             <button class="detail-value identity-management-link" id="manageWalletIdentityPasskeysBtn" type="button">
-              <span id="walletIdentityPasskeySummaryPage">正在加载通行证状态...</span>
+              <span id="walletIdentityPasskeySummaryPage">正在加载通行密钥状态...</span>
             </button>
           </div>
           <div class="detail-row identity-management-row">
@@ -1385,16 +1385,16 @@
       </div>
 
       <div id="walletIdentityPasskeyPage" class="page hidden">
-        <div class="page-header"><button id="walletIdentityPasskeyBackBtn" class="back-btn" type="button">←</button><h2>通行证</h2></div>
+        <div class="page-header"><button id="walletIdentityPasskeyBackBtn" class="back-btn" type="button">←</button><h2>通行密钥（Passkey）</h2></div>
         <div class="settings-body wallet-identity-details">
-          <p class="settings-card-description">通行证用于无钱包插件登录和高风险确认，绑定到钱包身份 DID，不绑定单个钱包地址。</p>
+          <p class="settings-card-description">通行密钥绑定到钱包身份 DID，可用于无钱包插件应用登录和部分托管授权。它不绑定单个钱包地址，也不能代替钱包身份控制密钥对敏感操作签名。</p>
           <div class="identity-passkey-section">
             <div class="identity-passkey-header">
               <div>
-                <h3>已注册通行证</h3>
-                <p id="walletIdentityPasskeyStatusPage" class="settings-hint">正在加载通行证...</p>
+                <h3>已登记的通行密钥</h3>
+                <p id="walletIdentityPasskeyStatusPage" class="settings-hint">正在加载通行密钥...</p>
               </div>
-              <button id="refreshWalletIdentityPasskeysBtn" class="settings-heading-icon-btn" type="button" aria-label="刷新通行证" title="刷新通行证">
+              <button id="refreshWalletIdentityPasskeysBtn" class="settings-heading-icon-btn" type="button" aria-label="刷新通行密钥" title="刷新通行密钥">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
                   <path d="M21 3v6h-6"></path>
@@ -1407,26 +1407,26 @@
         <div class="identity-passkey-footer identity-detail-actions">
           <div class="identity-passkey-register-form">
             <label class="identity-passkey-field">
-              <span class="identity-passkey-field-label">设备名称</span>
-              <input id="walletIdentityPasskeyDeviceNameInput" class="identity-passkey-input" type="text" maxlength="40" placeholder="如：我的 MacBook / iPhone" autocomplete="off" />
+              <span class="identity-passkey-field-label">通行密钥名称</span>
+              <input id="walletIdentityPasskeyDeviceNameInput" class="identity-passkey-input" type="text" maxlength="40" placeholder="如：我的 MacBook 通行密钥" autocomplete="off" />
             </label>
             <label class="identity-passkey-field">
-              <span class="identity-passkey-field-label">认证器类型</span>
+              <span class="identity-passkey-field-label">使用方式</span>
               <select id="walletIdentityPasskeyTypeSelect" class="identity-passkey-select">
-                <option value="platform">本机生物识别（指纹 / Face）</option>
-                <option value="cross-platform">手机扫码 / 安全密钥</option>
+                <option value="platform">本机设备认证器（Windows Hello、Touch ID 等）</option>
+                <option value="cross-platform">其他设备或安全密钥（如手机）</option>
               </select>
             </label>
-            <p class="settings-hint identity-passkey-type-hint">本机生物识别在支持的系统上会自动同步到 iCloud / Google；添加新设备请选对应类型。同一把已同步凭证不能重复注册。</p>
+            <p class="settings-hint identity-passkey-type-hint">设备验证方式由浏览器和操作系统决定；部分凭证提供方支持同步，但是否同步由其决定。请为不同凭证选择对应方式；同一个通行密钥不能重复登记。</p>
           </div>
-          <button id="registerWalletIdentityPasskeyBtn" class="btn btn-primary">注册通行证</button>
+          <button id="registerWalletIdentityPasskeyBtn" class="btn btn-primary">添加通行密钥</button>
         </div>
       </div>
 
       <div id="walletIdentityAuthenticatorPage" class="page hidden">
-        <div class="page-header"><button id="walletIdentityAuthenticatorBackBtn" class="back-btn" type="button">←</button><h2>验证器</h2></div>
+        <div class="page-header"><button id="walletIdentityAuthenticatorBackBtn" class="back-btn" type="button">←</button><h2>TOTP 验证器</h2></div>
         <div class="settings-body wallet-identity-details">
-          <p class="settings-card-description">验证器用于钱包身份安全确认。当前支持 TOTP 一次性验证码，后续可扩展更多认证器。</p>
+          <p class="settings-card-description">TOTP 验证器应用可生成一次性验证码，用于钱包身份的额外确认。它与通行密钥（Passkey）是不同的认证方式。</p>
           <div class="identity-passkey-section">
             <div class="identity-passkey-header">
               <div>
@@ -1479,7 +1479,7 @@
         <div class="modal-overlay"></div>
         <div class="modal-content">
           <div class="modal-header"><h3>清除本地验证状态</h3><button class="btn-close" id="closeWalletIdentityClearVerificationModal" type="button">✕</button></div>
-          <div class="modal-body"><p>此操作只清除当前设备的本地验证状态和未完成的验证码会话。</p><p>不会删除钱包身份、撤销身份凭证、解除钱包账户关联，也不会影响通行证和 TOTP。</p></div>
+          <div class="modal-body"><p>此操作只清除当前设备的本地验证状态和未完成的验证码会话。</p><p>不会删除钱包身份、撤销身份凭证、解除钱包账户关联，也不会影响通行密钥和 TOTP。</p></div>
           <div class="modal-footer"><button id="confirmWalletIdentityClearVerificationBtn" class="btn btn-secondary">确认清除</button><button id="cancelWalletIdentityClearVerificationBtn" class="btn btn-secondary">取消</button></div>
         </div>
       </div>
@@ -1690,7 +1690,7 @@
             <div class="custody-summary" aria-live="polite">
               <div class="custody-summary-row"><span>托管服务</span><span class="custody-summary-value" id="custodyServiceName">夜莺密钥托管服务</span></div>
               <div class="custody-summary-row"><span>当前状态</span><span class="custody-summary-value" id="custodyStatusText">尚未配置</span></div>
-              <div class="custody-summary-row"><span>通行证</span><span class="custody-summary-value" id="custodyPasskeyStatus">未检查</span></div>
+              <div class="custody-summary-row"><span>通行密钥</span><span class="custody-summary-value" id="custodyPasskeyStatus">未检查</span></div>
               <div class="custody-summary-row"><span>托管记录</span><span class="custody-summary-value" id="custodyRecordSummary">暂无记录</span></div>
               <div class="custody-summary-row"><span>最近同步</span><span class="custody-summary-value" id="custodyLastSyncSummary">从未同步</span></div>
             </div>
