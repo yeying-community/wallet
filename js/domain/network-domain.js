@@ -37,6 +37,7 @@ export class NetworkDomain extends BaseDomain {
       if (result.chainId) {
         this._currentChainId = result.chainId;
       }
+      this._currentChainKey = result.chainKey || '';
 
       return result;
     }
@@ -46,7 +47,9 @@ export class NetworkDomain extends BaseDomain {
         networkKey
       });
 
-      this._currentChainId = result.chainId || this._currentChainId;
+      // 非 EVM 网络(知行图 / Tron …)的 chainId 是 null:要清掉,不能沿用上一个 EVM 网络的
+      this._currentChainId = result.chainId ?? null;
+      this._currentChainKey = result.chainKey || '';
       this._currentRpcUrl = result.rpcUrl || this._currentRpcUrl;
       return result;
     }
@@ -72,6 +75,7 @@ export class NetworkDomain extends BaseDomain {
     if (result.chainId) {
       this._currentChainId = result.chainId;
     }
+    this._currentChainKey = result.chainKey || '';
 
     return result;
   }
@@ -206,10 +210,19 @@ export class NetworkDomain extends BaseDomain {
    */
   async getChainKey() {
     try {
+      if (!this._currentChainKey) {
+        const r = await this._sendMessage(NetworkMessageType.GET_CURRENT_CHAIN_KEY);
+        this._currentChainKey = r?.chainKey || '';
+      }
       return String(this._currentChainKey || '').toLowerCase();
     } catch {
       return '';
     }
+  }
+
+  /** 当前是否是知行图网络(非资产链,首页显示成员状态而不是余额)。 */
+  async isZhixing() {
+    return (await this.getChainKey()).startsWith('zhixing:');
   }
 
   /**

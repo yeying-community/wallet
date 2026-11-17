@@ -3,27 +3,40 @@
  */
 
 // ==================== 默认网络 ====================
-export const DEFAULT_NETWORK = 'yeying';
+// 默认网络是知行图测试网(非资产链:没有余额与转账,只有成员身份与知识操作)。
+// 原先的默认网络 YeYing Mainnet(EVM chainId 5432,RPC https://blockchain.yeying.pub)已停用,
+// 该域名现在是知行图;已安装的钱包由 network-storage.js 的 migrateLegacyNetworks 一次性迁移。
+export const DEFAULT_NETWORK = 'zhixingTestnet';
+
+// 需要"某个 EVM 网络"兜底的地方(当前 RPC 未知时的 EVM 请求)用它,而不是 DEFAULT_NETWORK。
+export const DEFAULT_EVM_NETWORK = 'ethereum';
+
+// 已停用的旧默认网络:迁移时据此识别并移除。
+export const LEGACY_YEYING_NETWORK = Object.freeze({
+  key: 'yeying',
+  chainIdHex: '0x1538',
+  rpcHost: 'blockchain.yeying.pub'
+});
 
 // ==================== 网络配置 ====================
 export const NETWORKS = {
-  yeying: {
-    id: 'yeying',
-    name: 'YeYing Mainnet',
-    rpc: 'https://blockchain.yeying.pub',
-    rpcUrl: 'https://blockchain.yeying.pub',
-    chainId: 5432,
-    chainIdHex: '0x1538',
-    symbol: 'YYT',
-    decimals: 18,
-    explorer: 'https://blockscout.yeying.pub',
-    type: 'mainnet',
-    isTestnet: false,
-    nativeCurrency: {
-      name: 'YeYing',
-      symbol: 'YYT',
-      decimals: 18
-    }
+  // ===== 知行图(ZhixingGraph)=====
+  // 记录知识单元、版本、引用与核验的公开图谱。RPC 是 REST + JSON(GET /info、/members…),
+  // 不是以太坊 JSON-RPC;钱包只用它显示成员状态。签名见 js/background/operations/zhixing.js。
+  zhixingTestnet: {
+    id: 'zhixingTestnet',
+    name: '知行图测试网',
+    rpc: 'https://blockchain.yeying.pub/rpc',
+    rpcUrl: 'https://blockchain.yeying.pub/rpc',
+    symbol: '',
+    decimals: 0,
+    explorer: 'https://blockchain.yeying.pub',
+    type: 'testnet',
+    isTestnet: true,
+    namespace: 'zhixing',
+    reference: 'testnet',
+    chainKey: 'zhixing:testnet',
+    hasAssets: false
   },
   ethereum: {
     id: 'ethereum',
@@ -548,6 +561,26 @@ export function formatNetworkConfig(config) {
         symbol: raw.symbol || 'BTC',
         decimals: raw.decimals || 8
       }
+    };
+  }
+
+  // 知行图:非资产链,无 chainId、无原生币
+  if (ns === 'zhixing') {
+    const reference = String(raw.reference || 'testnet').toLowerCase();
+    return {
+      id: raw.id || `zhixing-${reference}`,
+      name: raw.name || '知行图',
+      rpc: raw.rpc || raw.rpcUrl || '',
+      rpcUrl: raw.rpcUrl || raw.rpc || '',
+      symbol: '',
+      decimals: 0,
+      explorer: raw.explorer || '',
+      type: raw.type || NETWORK_TYPES.CUSTOM,
+      isTestnet: raw.isTestnet || false,
+      namespace: 'zhixing',
+      reference,
+      chainKey: raw.chainKey || `zhixing:${reference}`,
+      hasAssets: false
     };
   }
 

@@ -182,7 +182,12 @@ export class NetworkController {
     }
   }
 
-  async handleNetworkChange(rpcUrl) {
+  /** popup 里其他控制器判断当前链族用(token-controller.resolveChainFamily) */
+  async getChainKey() {
+    return this.network.getChainKey();
+  }
+
+  async handleNetworkChange(rpcUrl, networkKey = '') {
     try {
       if (!rpcUrl) return;
 
@@ -190,7 +195,13 @@ export class NetworkController {
       showWaiting();
       await waitForNextFrame();
 
-      await this.network.setRpcUrl(rpcUrl);
+      // 有网络 key 就按 key 切换:非 EVM 网络(知行图 / Tron / Solana / Bitcoin)没法靠
+      // 对 RPC 发 eth_chainId 来识别,按 rpcUrl 切会失败
+      if (networkKey) {
+        await this.network.switchNetwork(networkKey);
+      } else {
+        await this.network.setRpcUrl(rpcUrl);
+      }
 
       const chainId = await this.network.getChainId();
       updateNetworkIndicator(chainId);
@@ -239,7 +250,7 @@ export class NetworkController {
       if (!rpc) return;
       if (values.has(rpc)) return;
       const label = this.getNetworkLabel(network, `Chain ${network.chainId || ''}`.trim());
-      options.push({ value: rpc, label });
+      options.push({ value: rpc, label, key: network.key || network.id || '' });
       values.add(rpc);
     });
 
@@ -272,7 +283,7 @@ export class NetworkController {
         option.dataset.value = optionData.value;
         option.addEventListener('click', async (event) => {
           event.stopPropagation();
-          await this.handleNetworkChange(optionData.value);
+          await this.handleNetworkChange(optionData.value, optionData.key);
         });
         menu.appendChild(option);
       });
@@ -612,12 +623,21 @@ export class NetworkController {
 
       const meta = document.createElement('div');
       meta.className = 'network-item-meta';
-      meta.textContent = `Chain ID: ${network.chainIdHex || network.chainId} | 符号: ${network.symbol || network.nativeCurrency?.symbol || 'ETH'}`;
+      const evmId = network.chainIdHex || network.chainId;
+      if (evmId) {
+        meta.textContent = `Chain ID: ${evmId} | 符号: ${network.symbol || network.nativeCurrency?.symbol || 'ETH'}`;
+      } else if (network.namespace === 'zhixing') {
+        meta.textContent = `${network.chainKey || 'zhixing'} | 知识图谱,没有资产`;
+      } else {
+        meta.textContent = `${network.chainKey || network.namespace || ''} | 符号: ${network.symbol || network.nativeCurrency?.symbol || ''}`;
+      }
 
       item.appendChild(header);
       item.appendChild(meta);
 
       item.addEventListener('click', () => {
+        // 编辑表单只支持 EVM 网络(要填 Chain ID);内置的非 EVM 网络不可编辑
+        if (!evmId) return;
         this.handleEditNetwork(network);
       });
 
@@ -671,7 +691,12 @@ export class NetworkController {
         const fallback = remaining.find(item => item?.key === DEFAULT_NETWORK || item?.id === DEFAULT_NETWORK) || remaining[0];
         const fallbackRpc = fallback?.rpcUrl || fallback?.rpc || '';
         if (fallbackRpc) {
-          await this.network.setRpcUrl(fallbackRpc);
+          // 默认网络是知行图(非 EVM):按 key 切换,按 rpcUrl 会去探测 eth_chainId 而失败
+          if (fallback?.key) {
+            await this.network.switchNetwork(fallback.key);
+          } else {
+            await this.network.setRpcUrl(fallbackRpc);
+          }
           const chainId = await this.network.getChainId();
           updateNetworkIndicator(chainId);
           if (this.onNetworkChanged) {

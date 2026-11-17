@@ -112,7 +112,8 @@ import {
   handleImportZhixingKey,
   handleRemoveZhixingKey,
   listZhixingSites,
-  revokeZhixingSite
+  revokeZhixingSite,
+  getZhixingStatus
 } from './operations/zhixing.js';
 import {
   handleCreateIdentity,
@@ -145,7 +146,8 @@ import {
   setCurrentChainKey,
   chainIdToChainKey
 } from '../chain/current-chain.js';
-import { DEFAULT_NETWORK, POPUP_DIMENSIONS } from '../config/index.js';
+import { namespaceOf, ZHIXING_NAMESPACE } from '../chain/chain-key.js';
+import { DEFAULT_NETWORK, DEFAULT_EVM_NETWORK, POPUP_DIMENSIONS } from '../config/index.js';
 import { withPopupBoundsAsync } from './window-utils.js';
 import { normalizeChainId } from '../common/chain/index.js';
 import { compareAddresses } from '../common/chain/address-normalize.js';
@@ -297,6 +299,7 @@ async function handleSwitchNetworkMessage(data) {
   return {
     success: true,
     chainId: getCurrentEvmChainIdHex(),
+    chainKey: state.currentChainKey || '',
     rpcUrl: state.currentRpcUrl,
   };
 }
@@ -742,7 +745,8 @@ async function resolveRpcUrl(chainIdOverride = null) {
     rpcUrl = rpcUrl || network?.rpcUrl || network?.rpc;
   }
   if (!rpcUrl) {
-    const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+    // 这里服务的是 EVM 请求(估 gas、查 gas 价、发交易):兜底必须是 EVM 网络,不能是默认的知行图
+    const fallbackConfig = await getNetworkConfigByKey(DEFAULT_EVM_NETWORK);
     rpcUrl = fallbackConfig?.rpcUrl || fallbackConfig?.rpc || '';
   }
   return rpcUrl;
@@ -786,6 +790,10 @@ async function refreshTransactionStatuses(transactions, chainId = null) {
 
 async function handleGetTransactionsMessage(data) {
   const { address, chainId } = data || {};
+  // 知行图没有交易记录;也不能去刷新挂起交易的状态(那会对它的 REST 接口发 JSON-RPC)
+  if (!chainId && namespaceOf(state.currentChainKey || '') === ZHIXING_NAMESPACE) {
+    return { success: true, transactions: [] };
+  }
   let normalizedChainId = null;
   if (chainId) {
     try {
@@ -962,6 +970,10 @@ const popupHandlers = new Map([
   [WalletMessageType.ZHIXING_IMPORT_KEY, async (data) => ({ success: true, ...(await handleImportZhixingKey(data)) })],
   [WalletMessageType.ZHIXING_REMOVE_KEY, async (data) => ({ success: true, ...(await handleRemoveZhixingKey(data)) })],
   [WalletMessageType.ZHIXING_LIST_SITES, async () => ({ success: true, sites: await listZhixingSites() })],
+  [WalletMessageType.ZHIXING_GET_STATUS, async (data) => ({
+    success: true,
+    status: await getZhixingStatus({ rpcUrl: state.currentRpcUrl || undefined, force: !!data?.force })
+  })],
   [WalletMessageType.ZHIXING_REVOKE_SITE, async (data) => ({ success: true, ...(await revokeZhixingSite(data)) })],
   // ==================== 钱包管理 ====================
   ['IS_WALLET_INITIALIZED', async () => await isWalletInitialized()],
@@ -1029,6 +1041,7 @@ const popupHandlers = new Map([
       chainId: state.currentChainKey ? getCurrentEvmChainIdHex() : null,
     };
   }],
+  [NetworkMessageType.GET_CURRENT_CHAIN_KEY, async () => ({ success: true, chainKey: state.currentChainKey || '' })],
   [NetworkMessageType.GET_CURRENT_RPC_URL, async () => {
     let rpcUrl = state.currentRpcUrl;
     if (!rpcUrl) {

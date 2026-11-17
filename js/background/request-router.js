@@ -19,6 +19,7 @@ import { grantIdentityScopes, handleEthAccounts, handleEthRequestAccounts, handl
 import { handleEthChainId, handleNetVersion, handleSwitchChain, handleAddEthereumChain } from './chain-handler.js';
 import { handleRpcMethod } from './rpc-handler.js';
 import { getCurrentChainKey } from '../chain/current-chain.js';
+import { namespaceOf, ZHIXING_NAMESPACE } from '../chain/chain-key.js';
 import {
   buildMpcSignedTransactionFromSignRequest,
   resolveMpcAccountIdByAddress,
@@ -772,6 +773,11 @@ async function handleWatchAsset(origin, params, tabId) {
 async function handleSendTransaction(account, params, origin, tabId, clientRequestId) {
   const [transaction] = params;
 
+  // 知行图不是 EVM 链:不弹审批让用户确认一笔注定失败的交易
+  if (namespaceOf(getCurrentChainKey()) === ZHIXING_NAMESPACE) {
+    throw createError(4901, '当前网络是知行图,不能发送以太坊交易;请先切换到 EVM 网络');
+  }
+
   if (!transaction || typeof transaction !== 'object') {
     throw createInvalidParams('Invalid transaction object');
   }
@@ -834,6 +840,11 @@ async function handleSendTransaction(account, params, origin, tabId, clientReque
 async function handleSignTransaction(account, params, origin, tabId, clientRequestId) {
   // 与 handleSendTransaction 类似，但只返回签名后的交易，不发送
   const [transaction] = params;
+
+  // 知行图不是 EVM 链:不弹审批让用户确认一笔注定失败的交易
+  if (namespaceOf(getCurrentChainKey()) === ZHIXING_NAMESPACE) {
+    throw createError(4901, '当前网络是知行图,不能发送以太坊交易;请先切换到 EVM 网络');
+  }
 
   if (!transaction || typeof transaction !== 'object') {
     throw createInvalidParams('Invalid transaction object');

@@ -45,6 +45,7 @@ function chainIdToFamily(chainIdOrKey) {
   if (s.startsWith('tron:')) return 'tron';
   if (s.startsWith('solana:')) return 'solana';
   if (s.startsWith('bip122:')) return 'utxo';
+  if (s.startsWith('zhixing:')) return 'zhixing';
   return 'eip155';
 }
 
@@ -167,6 +168,11 @@ export async function handleGetBalance(address) {
   const chainKey = currentChainKey();
   const family = chainIdToFamily(chainKey);
 
+  // 知行图没有资产:没有余额可言,更不要把 JSON-RPC 发到它的 REST 接口上
+  if (family === 'zhixing') {
+    return { success: false, error: '知行图没有余额(它记录知识,不是资产链)' };
+  }
+
   try {
     if (family === 'eip155') {
       const addressValidation = validateEthereumAddress(address);
@@ -285,8 +291,8 @@ export async function handleGetTokenBalances(address) {
   }
 
   try {
-    if (family === 'utxo') {
-      // Bitcoin 不上稳定币，token 列表恒空。
+    if (family === 'utxo' || family === 'zhixing') {
+      // Bitcoin 不上稳定币;知行图没有资产 —— token 列表恒空。
       return { success: true, tokens: [] };
     }
 

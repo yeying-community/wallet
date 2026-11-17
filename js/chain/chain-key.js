@@ -37,6 +37,14 @@ import {
 } from './adapters/bip122/chain-key-bridge.js';
 
 export const DEFAULT_NAMESPACE = 'eip155';
+
+/** 知行图(非资产链):chainKey = zhixing:<reference>,没有 EVM chainId。 */
+export const ZHIXING_NAMESPACE = 'zhixing';
+
+/** 当前链是否是 EVM(只有 EVM 链能处理 eth_* / JSON-RPC)。 */
+export function isEvmChainKey(chainKey) {
+  return namespaceOf(chainKey) === DEFAULT_NAMESPACE;
+}
 export const DEFAULT_COIN_TYPE = 60;
 
 /**
@@ -60,6 +68,9 @@ export function chainKeyFromNetwork(net) {
   }
   if (ns === BIP122_NAMESPACE) {
     return chainKeyFromBip122Network(net);
+  }
+  if (ns === ZHIXING_NAMESPACE) {
+    return `${ZHIXING_NAMESPACE}:${String(net?.reference || 'testnet').toLowerCase()}`;
   }
   const decimal = toDecimalChainId(net?.chainId);
   return `${DEFAULT_NAMESPACE}:${decimal}`;

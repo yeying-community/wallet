@@ -29,6 +29,7 @@ import {
   bytesToHex
 } from '../../chain/adapters/zhixing/op.js';
 import { ethers } from '../../../lib/ethers-6.16.esm.min.js';
+import { ZHIXING_DEFAULT_RPC, getZhixingChainInfo, findZhixingMember } from '../../chain/adapters/zhixing/rpc.js';
 
 function requirePassword(password) {
   if (typeof password !== 'string' || password.length === 0) {
@@ -171,4 +172,42 @@ export async function signZhixingRequest(prepared) {
   refreshPasswordCache();
   const signed = signKnowledgeOp(kp, prepared.actor, prepared.action, prepared.nonce);
   return { signed: bytesToHex(signed), address: bytesToHex(kp.publicKey) };
+}
+
+// ---- 首页状态(选中知行图网络时显示)----------------------------------------------
+
+const STATUS_TTL_MS = 30000;
+let statusCache = { key: '', at: 0, value: null };
+
+/**
+ * 知行图成员状态:公钥 → 是否是成员、账户编号、是否已过见习期;以及链高度。
+ * 成员查询要逐个比对账户,缓存 30 秒,避免首页每次刷新都扫一遍。
+ * @param {{ rpcUrl?: string, force?: boolean }} [args]
+ */
+export async function getZhixingStatus({ rpcUrl, force = false } = {}) {
+  const info = await getZhixingKeyInfo();
+  const rpc = rpcUrl || ZHIXING_DEFAULT_RPC;
+  const cacheKey = `${rpc}|${info ? info.address : ''}`;
+  if (!force && statusCache.key === cacheKey && Date.now() - statusCache.at < STATUS_TTL_MS) {
+    return statusCache.value;
+  }
+  let chain = null;
+  let member = { member: false };
+  let error = '';
+  try {
+    chain = await getZhixingChainInfo(rpc);
+    if (info) member = await findZhixingMember(rpc, info.address);
+  } catch (e) {
+    error = String(e?.message || e);
+  }
+  const value = {
+    hasKey: !!info,
+    address: info ? info.address : '',
+    height: chain ? chain.height : '',
+    explorer: rpc.replace(/\/rpc\/?$/, ''),
+    ...member,
+    error
+  };
+  if (!error) statusCache = { key: cacheKey, at: Date.now(), value };
+  return value;
 }

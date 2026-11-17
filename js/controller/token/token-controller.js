@@ -1,6 +1,7 @@
 import { shortenAddress } from '../../common/chain/index.js';
 import { escapeHtml } from '../../common/ui/html-ui.js';
 import { TransferTokenController } from './transfer-token-controller.js';
+import { renderZhixingHome, setZhixingHomeMode } from './zhixing-home.js';
 
 function resolveTokenImage(image) {
   const value = String(image || '').trim();
@@ -53,6 +54,14 @@ export class TokenController {
         this.renderTokenBalances([]);
         return [];
       }
+      // 知行图:非资产链,显示成员状态;不查余额、不列通证
+      const zhixing = (await this.resolveChainFamily()) === 'zhixing';
+      setZhixingHomeMode(zhixing);
+      if (zhixing) {
+        this.lastTokenList = [];
+        await renderZhixingHome(this.wallet);
+        return [];
+      }
       const account = await this.wallet.getCurrentAccount();
       if (!account) {
         this.renderTokenBalances([]);
@@ -88,7 +97,7 @@ export class TokenController {
 
   /**
    * 探测当前链族（优先 chainKey；缺时回退 account.namespace）。
-   * @returns {Promise<string>} 'eip155' | 'tron' | 'solana' | 'utxo'
+   * @returns {Promise<string>} 'eip155' | 'tron' | 'solana' | 'utxo' | 'zhixing'
    */
   async resolveChainFamily() {
     try {
@@ -97,7 +106,8 @@ export class TokenController {
         if (key.startsWith('tron:')) return 'tron';
         if (key.startsWith('solana:')) return 'solana';
         if (key.startsWith('bip122:')) return 'utxo';
-        return 'eip155';
+        if (key.startsWith('zhixing:')) return 'zhixing';
+        // EVM 或未知:沿用下面按账户判断的既有行为
       }
     } catch { /* */ }
     try {

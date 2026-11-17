@@ -61,6 +61,10 @@ export class WalletDomain extends BaseDomain {
     return (await this._sendMessage(WalletMessageType.ZHIXING_LIST_SITES)).sites || [];
   }
 
+  async getZhixingStatus(force = false) {
+    return (await this._sendMessage(WalletMessageType.ZHIXING_GET_STATUS, { force })).status || null;
+  }
+
   async revokeZhixingSite(origin) {
     return this._sendMessage(WalletMessageType.ZHIXING_REVOKE_SITE, { origin });
   }

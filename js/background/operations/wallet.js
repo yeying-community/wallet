@@ -1702,8 +1702,13 @@ export async function handleResetWallet() {
 
     const defaultConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
     if (defaultConfig) {
-      const chainIdHex = defaultConfig.chainIdHex || normalizeChainId(defaultConfig.chainId);
-      setCurrentChainKey(chainIdToChainKey(chainIdHex));
+      // 默认网络可能是非 EVM(知行图):有 chainKey 就直接用,不要去推导数字 chainId
+      if (defaultConfig.chainKey) {
+        setCurrentChainKey(defaultConfig.chainKey);
+      } else {
+        const chainIdHex = defaultConfig.chainIdHex || normalizeChainId(defaultConfig.chainId);
+        setCurrentChainKey(chainIdToChainKey(chainIdHex));
+      }
       state.currentRpcUrl = defaultConfig.rpcUrl || defaultConfig.rpc || null;
     } else {
       state.currentChainKey = null;
