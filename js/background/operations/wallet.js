@@ -72,6 +72,7 @@ import { getTimestamp } from '../../common/utils/time-utils.js';
 import { mpcService } from '../mpc-service.js';
 import { decryptIdentityKeyMaterial, getIdentities, saveIdentity } from '../../storage/identity-storage.js';
 import { IdentityStorageKeys } from '../../storage/storage-keys.js';
+import { reencryptZhixingKey } from './zhixing.js';
 import { getValue, setValue } from '../../storage/storage-base.js';
 import { validateIdentityDocument } from '../../common/identity/identity-document.js';
 import { normalizeIdentityNodeEndpoint } from '../../config/identity-config.js';
@@ -1649,10 +1650,13 @@ export async function changePassword(oldPassword, newPassword) {
 
   // 2) 一次性原子写入钱包与账户，避免逐账户写入被 Service Worker 回收打断、
   //    造成新旧密码混杂导致导出/解锁失败。chrome.storage.local.set 单次写多个 key 即为原子。
+  // 知行图成员密钥同样由钱包密码保护:一起重加密、一起写入,不能留下只认旧密码的密钥。
+  const nextZhixing = await reencryptZhixingKey(oldPassword, newPassword);
   await setStorage({
     [WalletStorageKeys.WALLETS]: nextWalletsMap,
     [WalletStorageKeys.ACCOUNTS]: nextAccountsMap,
-    [IdentityStorageKeys.IDENTITIES]: nextIdentitiesMap
+    [IdentityStorageKeys.IDENTITIES]: nextIdentitiesMap,
+    ...nextZhixing
   });
 
   // 3) 钱包密钥一致后再迁移 MPC 设备密钥。MPC 为独立存储，失败不应回退已成功的钱包改密，

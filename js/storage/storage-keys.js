@@ -116,6 +116,13 @@ export const IdentityStorageKeys = {
   SELECTED_IDENTITY: 'selected_wallet_identity_id'
 };
 
+// 知行图(ZhixingGraph)成员密钥:不是链账户(没有余额、不进 accounts/备份同步),
+// 由钱包密码加密保存,与钱包身份控制密钥同一种处理方式。
+export const ZhixingStorageKeys = {
+  KEY: 'zhixing_member_key',
+  SITES: 'zhixing_authorized_sites'
+};
+
 // ==================== 统一导出 ====================
 export const StorageKeys = {
   ...WalletStorageKeys,
@@ -126,5 +133,6 @@ export const StorageKeys = {
   ...ContactsStorageKeys,
   ...UcanStorageKeys,
   ...MpcStorageKeys,
-  ...IdentityStorageKeys
+  ...IdentityStorageKeys,
+  ...ZhixingStorageKeys
 };

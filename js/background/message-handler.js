@@ -107,6 +107,14 @@ import {
   handleMpcFlushAuditExportQueue
 } from './operations/mpc.js';
 import {
+  getZhixingKeyInfo,
+  handleCreateZhixingKey,
+  handleImportZhixingKey,
+  handleRemoveZhixingKey,
+  listZhixingSites,
+  revokeZhixingSite
+} from './operations/zhixing.js';
+import {
   handleCreateIdentity,
   handleListIdentities,
   handleGetIdentity,
@@ -948,6 +956,13 @@ const popupHandlers = new Map([
   [WalletMessageType.IDENTITY_LIST_CREDENTIALS, async (data) => await handleListIdentityCredentials(data)],
   [WalletMessageType.IDENTITY_VERIFICATION_REQUEST, async (data) => await handleRequestIdentityVerification(data)],
   [WalletMessageType.IDENTITY_VERIFICATION_CONFIRM, async (data) => await handleConfirmIdentityVerification(data)],
+  // ==================== 知行图(ZhixingGraph)成员密钥 ====================
+  [WalletMessageType.ZHIXING_GET_KEY, async () => ({ success: true, key: await getZhixingKeyInfo() })],
+  [WalletMessageType.ZHIXING_CREATE_KEY, async (data) => ({ success: true, ...(await handleCreateZhixingKey(data)) })],
+  [WalletMessageType.ZHIXING_IMPORT_KEY, async (data) => ({ success: true, ...(await handleImportZhixingKey(data)) })],
+  [WalletMessageType.ZHIXING_REMOVE_KEY, async (data) => ({ success: true, ...(await handleRemoveZhixingKey(data)) })],
+  [WalletMessageType.ZHIXING_LIST_SITES, async () => ({ success: true, sites: await listZhixingSites() })],
+  [WalletMessageType.ZHIXING_REVOKE_SITE, async (data) => ({ success: true, ...(await revokeZhixingSite(data)) })],
   // ==================== 钱包管理 ====================
   ['IS_WALLET_INITIALIZED', async () => await isWalletInitialized()],
   ['GET_ALL_WALLETS', async () => await HandleGetWalletList()],

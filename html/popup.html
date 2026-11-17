@@ -1138,6 +1138,39 @@
             </div>
             <p id="walletIdentityEmailStatusText" class="settings-hint"></p>
           </div>
+          <!-- 知行图(ZhixingGraph)成员密钥 -->
+          <div class="settings-section" id="zhixingSettingsSection">
+            <h3>📚 知行图</h3>
+            <p class="settings-hint">知行图是记录知识、引用与核验的公开图谱。这把密钥用来在知行图上写作、修订、核验和邀请;它不是资产账户,没有余额。</p>
+            <div id="zhixingKeyNone">
+              <p class="settings-hint">还没有知行图密钥。已经是知行图成员?用你的助记词导入,得到的就是原来那个账户。</p>
+              <div class="settings-row">
+                <button id="zhixingImportBtn" class="btn btn-primary btn-small btn-block" type="button">用助记词导入</button>
+                <button id="zhixingCreateBtn" class="btn btn-secondary btn-small btn-block" type="button">生成新密钥</button>
+              </div>
+              <div id="zhixingImportForm" class="hidden">
+                <textarea id="zhixingMnemonic" class="input" rows="3" placeholder="12 或 24 个词,用空格隔开" autocomplete="off" spellcheck="false"></textarea>
+                <input id="zhixingPassphrase" class="input" type="password" placeholder="BIP-39 附加口令(没有就留空)" autocomplete="off" />
+                <button id="zhixingImportConfirmBtn" class="btn btn-primary btn-small btn-block" type="button">导入</button>
+              </div>
+              <div id="zhixingNewMnemonic" class="hidden">
+                <p class="settings-hint" style="color: var(--danger-color, #d33)">下面 24 个词就是这把密钥。按顺序抄在纸上妥善保管;钱包不会再显示它们。重置钱包后只能用它们恢复。</p>
+                <div id="zhixingNewMnemonicWords" class="message-content" style="word-spacing: 6px"></div>
+                <button id="zhixingNewMnemonicDoneBtn" class="btn btn-primary btn-small btn-block" type="button">我已抄好</button>
+              </div>
+            </div>
+            <div id="zhixingKeyPresent" class="hidden">
+              <p class="settings-hint">知行图公钥(把它发给邀请你的成员):</p>
+              <div id="zhixingAddress" class="message-content" style="word-break: break-all"></div>
+              <div class="settings-row">
+                <button id="zhixingCopyBtn" class="btn btn-secondary btn-small btn-block" type="button">复制公钥</button>
+                <button id="zhixingRemoveBtn" class="btn btn-danger btn-small btn-block" type="button">从钱包移除</button>
+              </div>
+              <p class="settings-hint">已授权的网站:</p>
+              <div id="zhixingSites" class="settings-hint"></div>
+            </div>
+          </div>
+
           <!-- 账户安全 -->
           <div class="settings-section">
             <h3>🔐 账户安全</h3>

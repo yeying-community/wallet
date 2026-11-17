@@ -287,6 +287,38 @@
         </div>
       </div>
 
+      <!-- 知行图(ZhixingGraph):连接与签署知识操作 -->
+      <div id="zhixingRequest" class="request-view hidden">
+        <div class="request-header">
+          <h2 id="zhixingTitle">知行图</h2>
+          <div class="site-info">
+            <div class="site-icon">📚</div>
+            <div class="site-url" id="zhixingOrigin"></div>
+          </div>
+        </div>
+
+        <div class="request-body">
+          <div class="detail-row">
+            <span class="detail-label">知行图公钥</span>
+            <span class="detail-value" id="zhixingAddress" style="word-break: break-all"></span>
+          </div>
+          <h3 id="zhixingSummaryTitle"></h3>
+          <ul class="message-content" id="zhixingLines" style="padding-left: 18px"></ul>
+          <div class="warning-box hidden" id="zhixingRisk"></div>
+          <details id="zhixingRawWrap" class="recap-raw hidden">
+            <summary>查看操作原文</summary>
+            <div class="message-content" id="zhixingRaw" style="white-space: pre-wrap"></div>
+          </details>
+        </div>
+
+        <div class="request-footer">
+          <div class="button-group">
+            <button id="rejectZhixing" class="btn btn-secondary">拒绝</button>
+            <button id="approveZhixing" class="btn btn-primary">确认</button>
+          </div>
+        </div>
+      </div>
+
       <!-- 添加自定义链 -->
       <div id="addChainRequest" class="request-view hidden">
         <div class="request-header">

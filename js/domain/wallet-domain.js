@@ -39,6 +39,32 @@ export class WalletDomain extends BaseDomain {
     }
   }
 
+  // ==================== 知行图(ZhixingGraph)成员密钥 ====================
+
+  async getZhixingKey() {
+    return (await this._sendMessage(WalletMessageType.ZHIXING_GET_KEY)).key || null;
+  }
+
+  async createZhixingKey(password) {
+    return this._sendMessage(WalletMessageType.ZHIXING_CREATE_KEY, { password });
+  }
+
+  async importZhixingKey(mnemonic, passphrase, password) {
+    return this._sendMessage(WalletMessageType.ZHIXING_IMPORT_KEY, { mnemonic, passphrase, password });
+  }
+
+  async removeZhixingKey(password) {
+    return this._sendMessage(WalletMessageType.ZHIXING_REMOVE_KEY, { password });
+  }
+
+  async listZhixingSites() {
+    return (await this._sendMessage(WalletMessageType.ZHIXING_LIST_SITES)).sites || [];
+  }
+
+  async revokeZhixingSite(origin) {
+    return this._sendMessage(WalletMessageType.ZHIXING_REVOKE_SITE, { origin });
+  }
+
   async createIdentity(password) {
     return this._sendMessage(WalletMessageType.IDENTITY_CREATE, { password });
   }

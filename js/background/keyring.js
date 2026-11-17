@@ -178,6 +178,10 @@ export async function lockWallet() {
       state.ed25519Keyring.clear();
       state.ed25519Keyring = null;
     }
+    if (state.zhixingKeypair) {
+      state.zhixingKeypair.secretKey.fill(0);
+      state.zhixingKeypair = null;
+    }
 
     // 清除密码缓存
     clearPasswordCache();
