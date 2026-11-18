@@ -1,157 +1,75 @@
 // @ts-check
 /**
- * 知行图(ZhixingGraph)成员密钥:保存、解锁、站点授权、签署知识操作。
+ * 知行图(ZhixingGraph):账户查找、站点授权、签署知识操作、链上状态。
  *
- * 为什么不是一个"链账户"(像 Solana 那样):
- *   知行图没有余额、没有转账,地址是 64 位十六进制 ed25519 公钥。放进 accounts 会被备份同步按 EVM
- *   地址校验整包拒收、被 eth_accounts 当成 0x 地址交给 EVM 网站。所以它像"钱包身份控制密钥"一样,
- *   单独保存、用钱包密码加密、不进 accounts 与备份同步。
+ * 知行图账户是**普通的钱包账户**(namespace=zhixing),在「账户管理 → 导入钱包」里按链导入:
+ * 助记词、64 位十六进制种子、或 `node keygen --encrypt` 的加密密钥文件。派生与知行图
+ * `node keygen` 完全相同,所以导入同一把密钥就是同一个链上账户。
  *
- * 一个钱包只保存一把知行图密钥(与 `node keygen` 一致:一组助记词对应一个知行图账户)。
- *
- * 内存:解锁后把 nacl KeyPair 缓存在 state.zhixingKeypair,钱包锁定时清除(lockWallet)。
+ * 与其它链的差别只有两处:
+ *   - 没有余额、没有转账、没有通证:账户只用于签署知识操作;
+ *   - 一把种子对应一个账户(没有 BIP-32 路径),所以不能派生子账户,也不参与按助记词
+ *     重新派生的 HD 备份同步(钱包类型是 IMPORTED)。
  */
 
-import { encryptString, decryptString } from '../../common/crypto/encryption.js';
-import { getValue, setValue, removeStorage, getMap, getMapItem, setMapItem, deleteMapItem } from '../../storage/storage-base.js';
+import { getMap, getMapItem, setMapItem, deleteMapItem } from '../../storage/storage-base.js';
 import { ZhixingStorageKeys } from '../../storage/storage-keys.js';
 import { state } from '../state.js';
 import { getCachedPassword, refreshPasswordCache } from '../password-cache.js';
-import {
-  zhixingSeedFromMnemonic,
-  zhixingKeypairFromSeed,
-  zhixingAddressFromSeed
-} from '../../chain/adapters/zhixing/keys.js';
+import { decryptString } from '../../common/crypto/encryption.js';
+import { zhixingKeypairFromSeed } from '../../chain/adapters/zhixing/keys.js';
+import { getAccountList, getSelectedAccount } from '../../storage/account-storage.js';
 import {
   signKnowledgeOp,
   describeKnowledgeOp,
   encodeKnowledgeOp,
   bytesToHex
 } from '../../chain/adapters/zhixing/op.js';
-import { ethers } from '../../../lib/ethers-6.16.esm.min.js';
 import { ZHIXING_DEFAULT_RPC, getZhixingChainInfo, findZhixingMember } from '../../chain/adapters/zhixing/rpc.js';
-import { decryptZhixingKeystore, parseZhixingSeedFile } from '../../chain/adapters/zhixing/keystore.js';
 
-function requirePassword(password) {
-  if (typeof password !== 'string' || password.length === 0) {
-    throw new Error('ZHIXING_PASSWORD_REQUIRED');
-  }
+// ---- 账户 ---------------------------------------------------------------------
+
+/**
+ * 用于知行图的账户:当前选中的若是知行图账户就用它,否则用钱包里第一个知行图账户。
+ * (组织者可能把几位成员的密钥都导进同一个钱包:切换选中账户即切换身份。)
+ */
+export async function getZhixingAccount() {
+  const selected = await getSelectedAccount();
+  if (selected && selected.namespace === 'zhixing') return selected;
+  const accounts = await getAccountList();
+  return (accounts || []).find((a) => a?.namespace === 'zhixing') || null;
 }
 
-// ---- 存储 ---------------------------------------------------------------------
-
-/** 公开信息(不含加密种子)。 */
+/** 公开信息(不含私钥)。 */
 export async function getZhixingKeyInfo() {
-  const record = await getValue(ZhixingStorageKeys.KEY, null);
-  if (!record || !record.address) return null;
-  return { address: record.address, source: record.source || 'mnemonic', createdAt: record.createdAt || 0 };
+  const account = await getZhixingAccount();
+  if (!account) return null;
+  return { address: String(account.address || '').toLowerCase(), accountId: account.id, name: account.name || '' };
 }
 
-async function saveSeed(seedHex, password, source) {
-  const address = zhixingAddressFromSeed(seedHex);
-  const encryptedSeed = await encryptString(seedHex, password);
-  await setValue(ZhixingStorageKeys.KEY, { address, encryptedSeed, source, createdAt: Date.now() });
-  state.zhixingKeypair = zhixingKeypairFromSeed(seedHex);
-  return { address, source };
+/** 是否需要先解锁钱包(内存里没有该账户的密钥,也没有缓存的钱包密码)。 */
+export async function needsZhixingUnlock() {
+  const account = await getZhixingAccount();
+  if (!account) return false;
+  return !(state.ed25519Keyring && state.ed25519Keyring.has(account.id)) && !getCachedPassword();
 }
 
-/**
- * 生成新密钥:返回 24 个词(只在这一次给用户看)。
- * 与知行图浏览器「生成新身份」、`node keygen --new-mnemonic` 相同:32 字节熵 → 24 词。
- */
-/** @param {{ password?: string }} [args] */
-export async function handleCreateZhixingKey({ password } = {}) {
-  requirePassword(password);
-  if (await getZhixingKeyInfo()) throw new Error('ZHIXING_KEY_EXISTS');
-  const entropy = new Uint8Array(32);
-  globalThis.crypto.getRandomValues(entropy);
-  const mnemonic = ethers.Mnemonic.fromEntropy(entropy).phrase;
-  entropy.fill(0);
-  const info = await saveSeed(zhixingSeedFromMnemonic(mnemonic), password, 'generated');
-  return { ...info, mnemonic };
-}
-
-/** 用助记词导入(与知行图既有成员身份完全相同的派生)。 */
-/** @param {{ mnemonic?: string, passphrase?: string, password?: string }} [args] */
-export async function handleImportZhixingKey({ mnemonic, passphrase = '', password } = {}) {
-  requirePassword(password);
-  if (await getZhixingKeyInfo()) throw new Error('ZHIXING_KEY_EXISTS');
-  let seedHex;
-  try {
-    seedHex = zhixingSeedFromMnemonic(String(mnemonic || ''), String(passphrase || ''));
-  } catch (_) {
-    throw new Error('ZHIXING_BAD_MNEMONIC');
+/** 取该知行图账户的 ed25519 KeyPair:已解锁就用缓存,否则用缓存的钱包密码解密私钥字段(即种子)。 */
+export async function loadZhixingKeypair() {
+  const account = await getZhixingAccount();
+  if (!account) throw new Error('ZHIXING_NO_KEY: 钱包里还没有知行图账户');
+  const cached = state.ed25519Keyring && state.ed25519Keyring.get(account.id);
+  if (cached) return { account, keypair: cached };
+  const password = getCachedPassword();
+  if (!password) throw new Error('ZHIXING_LOCKED: 钱包已锁定,请先解锁');
+  const seedHex = await decryptString(account.encryptedPrivateKey, password);
+  const keypair = zhixingKeypairFromSeed(seedHex);
+  if (bytesToHex(keypair.publicKey) !== String(account.address).toLowerCase()) {
+    throw new Error('ZHIXING_KEY_CORRUPT: 私钥与账户地址不一致');
   }
-  return saveSeed(seedHex, password, 'mnemonic');
-}
-
-/**
- * 用知行图的密钥文件导入:`node keygen --encrypt` / `node encrypt-key` 写的加密 .json,
- * 或 `node keygen` 写的明文种子文件(64 位十六进制,可带 # 注释)。
- * 和助记词导入得到的是同一把密钥(同一个链上账户)。
- * @param {{ fileText?: string, filePassword?: string, password?: string }} [args]
- */
-export async function handleImportZhixingKeyFile({ fileText, filePassword = '', password } = {}) {
-  requirePassword(password);
-  if (await getZhixingKeyInfo()) throw new Error('ZHIXING_KEY_EXISTS');
-  const text = String(fileText || '');
-  if (text.length === 0 || text.length > 64 * 1024) throw new Error('ZHIXING_BAD_KEY_FILE: 文件为空或过大');
-  let seedHex;
-  const trimmed = text.trim();
-  if (trimmed.startsWith('{')) {
-    if (!filePassword) throw new Error('ZHIXING_KEY_FILE_PASSWORD_REQUIRED');
-    const seed = await decryptZhixingKeystore(trimmed, String(filePassword));
-    seedHex = '0x' + bytesToHex(seed);
-    seed.fill(0);
-  } else {
-    const parsed = parseZhixingSeedFile(trimmed);
-    seedHex = '0x' + parsed.seedHex;
-    // 文件里记了公钥就核对一下:不一致说明文件被改过或拼错了
-    if (parsed.pubkey && zhixingAddressFromSeed(seedHex) !== parsed.pubkey.toLowerCase()) {
-      throw new Error('ZHIXING_BAD_KEY_FILE: 种子与文件里记录的公钥不一致');
-    }
-  }
-  return saveSeed(seedHex, password, 'key-file');
-}
-
-/** 移除:需要密码确认(防止误删;没有助记词就永久找不回)。 */
-/** @param {{ password?: string }} [args] */
-export async function handleRemoveZhixingKey({ password } = {}) {
-  requirePassword(password);
-  const record = await getValue(ZhixingStorageKeys.KEY, null);
-  if (!record) return { removed: false };
-  await decryptString(record.encryptedSeed, password); // 密码不对会抛错
-  await removeStorage([ZhixingStorageKeys.KEY, ZhixingStorageKeys.SITES]);
-  state.zhixingKeypair = null;
-  return { removed: true };
-}
-
-/**
- * 修改钱包密码时一并重加密(由 changePassword 在同一次原子写入里带上)。
- * @returns {Promise<Record<string, any>>} 要写入的存储项;没有密钥时为空对象
- */
-export async function reencryptZhixingKey(oldPassword, newPassword) {
-  const record = await getValue(ZhixingStorageKeys.KEY, null);
-  if (!record || !record.encryptedSeed) return {};
-  const seedHex = await decryptString(record.encryptedSeed, oldPassword);
-  return { [ZhixingStorageKeys.KEY]: { ...record, encryptedSeed: await encryptString(seedHex, newPassword) } };
-}
-
-/** 解锁(用缓存的钱包密码);已在内存则直接返回。 */
-export async function loadZhixingKeypair(password = getCachedPassword()) {
-  if (state.zhixingKeypair) return state.zhixingKeypair;
-  const record = await getValue(ZhixingStorageKeys.KEY, null);
-  if (!record) throw new Error('ZHIXING_NO_KEY');
-  if (!password) throw new Error('ZHIXING_LOCKED');
-  const seedHex = await decryptString(record.encryptedSeed, password);
-  const kp = zhixingKeypairFromSeed(seedHex);
-  if (bytesToHex(kp.publicKey) !== record.address) throw new Error('ZHIXING_KEY_CORRUPT');
-  state.zhixingKeypair = kp;
-  return kp;
-}
-
-export function needsZhixingUnlock() {
-  return !state.zhixingKeypair && !getCachedPassword();
+  if (!state.ed25519Keyring) state.ed25519Keyring = new Map();
+  state.ed25519Keyring.set(account.id, keypair);
+  return { account, keypair };
 }
 
 // ---- 站点授权 -------------------------------------------------------------------
@@ -165,7 +83,7 @@ export async function isZhixingSiteAuthorized(origin) {
 
 export async function grantZhixingSite(origin) {
   const info = await getZhixingKeyInfo();
-  if (!info) throw new Error('ZHIXING_NO_KEY');
+  if (!info) throw new Error('ZHIXING_NO_KEY: 钱包里还没有知行图账户');
   await setMapItem(ZhixingStorageKeys.SITES, origin, { address: info.address, grantedAt: Date.now() });
   return info;
 }
@@ -198,10 +116,10 @@ export function prepareZhixingSignRequest(params) {
 
 /** 用户批准后签名;返回可直接 POST 到节点 /knowledge 的十六进制(op ‖ 签名)。 */
 export async function signZhixingRequest(prepared) {
-  const kp = await loadZhixingKeypair();
+  const { keypair } = await loadZhixingKeypair();
   refreshPasswordCache();
-  const signed = signKnowledgeOp(kp, prepared.actor, prepared.action, prepared.nonce);
-  return { signed: bytesToHex(signed), address: bytesToHex(kp.publicKey) };
+  const signed = signKnowledgeOp(keypair, prepared.actor, prepared.action, prepared.nonce);
+  return { signed: bytesToHex(signed), address: bytesToHex(keypair.publicKey) };
 }
 
 // ---- 首页状态(选中知行图网络时显示)----------------------------------------------

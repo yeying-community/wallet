@@ -1,10 +1,12 @@
 /**
- * 知行图成员密钥:保存、解锁、改密、站点授权、签名请求。
+ * 知行图账户:在「账户管理 → 导入钱包」里按链导入,是普通的钱包账户(namespace=zhixing)。
  *
  * 守门点:
- *   - 密钥用钱包密码加密保存,明文种子不落盘;导入的助记词得到既有成员的同一个公钥;
- *   - 修改钱包密码后,知行图密钥只认新密码(与钱包、钱包身份在同一次原子写入里重加密);
- *   - 锁定钱包清除内存里的密钥;
+ *   - 助记词 / 64 位十六进制种子 / node keygen 的明文种子文件 / 加密密钥文件四种方式,
+ *     得到的都是既有成员的同一个公钥;私钥字段加密保存,明文种子不落盘;
+ *   - 同一个知行图账户不能重复导入;
+ *   - 解锁 / 锁定 / 改密都走普通账户的路径(锁定清掉内存里的 ed25519 密钥,改密后只认新密码);
+ *   - 选中哪个知行图账户就用哪个签名;站点授权按网站记录,换了账户不再算授权;
  *   - 网页给的签名请求在弹窗前就被校验;签出的字节与知行图节点一致。
  *
  * 助记词是 BIP-39 官方测试向量(全零熵),不是任何真实成员的密钥。
@@ -53,104 +55,110 @@ const Q = 'Pass-2222';
 
 function reset() {
   for (const k of Object.keys(store)) delete store[k];
-  state.zhixingKeypair = null;
+  state.keyring = null;
+  state.ed25519Keyring = null;
   clearPasswordCache?.();
 }
 
-test('导入助记词:得到既有成员的同一个公钥;种子加密保存,不落明文', async () => {
-  reset();
-  const r = await Z.handleImportZhixingKey({ mnemonic: ZERO24, password: P });
-  assert.equal(r.address, ZERO24_PUBKEY);
-  const saved = store[ZhixingStorageKeys.KEY];
-  assert.equal(saved.address, ZERO24_PUBKEY);
-  assert.ok(saved.encryptedSeed);
-  const raw = JSON.stringify(store);
-  assert.ok(!raw.includes('5eb00bbddcf069084889a8ab9155568165f5c453'), '存储里不能出现明文 BIP-39 种子');
-  assert.deepEqual(await Z.getZhixingKeyInfo(), { address: ZERO24_PUBKEY, source: 'mnemonic', createdAt: saved.createdAt });
+const fs = await import('node:fs');
+const RUST_KEYSTORE = fs.readFileSync(new URL('./fixtures/zhixing-keystore.json', import.meta.url), 'utf8');
+const RUST_SEED_FILE = fs.readFileSync(new URL('./fixtures/zhixing-seed.txt', import.meta.url), 'utf8');
+const RUST_SEED_HEX = RUST_SEED_FILE.split('\n').find((l) => /^[0-9a-f]{64}$/.test(l.trim())).trim();
+const imp = (source, name = '成员') => ops.handleImportZhixingWallet(name, source, P);
+
+
+
+test('四种导入方式都得到既有成员的同一个公钥,账户是 namespace=zhixing 的普通钱包账户', async () => {
+  const cases = [
+    ['助记词', { mnemonic: ZERO24 }],
+    ['64 位种子', { privateKey: RUST_SEED_HEX }],
+    ['0x 种子', { privateKey: '0x' + RUST_SEED_HEX }],
+    ['明文种子文件', { privateKey: RUST_SEED_FILE }],
+    ['加密密钥文件', { privateKey: RUST_KEYSTORE, filePassword: 'ks-password-123' }]
+  ];
+  for (const [label, source] of cases) {
+    reset();
+    const r = await imp(source);
+    assert.equal(r.success, true, label + ': ' + r.error);
+    assert.equal(r.account.address, ZERO24_PUBKEY, label);
+    assert.equal(r.account.namespace, 'zhixing', label);
+    assert.equal(r.account.chainKey, 'zhixing:testnet', label);
+    assert.equal(r.wallet.type, 'imported', label + ':一把种子一个账户,不能派生子账户');
+    assert.equal(await Z.getZhixingKeyInfo().then((x) => x.address), ZERO24_PUBKEY, label);
+    const raw = JSON.stringify(store);
+    assert.ok(!raw.includes(RUST_SEED_HEX), label + ':存储里不能出现明文种子');
+  }
 });
 
-test('一个钱包只保存一把知行图密钥;助记词无效时报错', async () => {
+test('导入失败的情形:助记词无效、加密文件缺口令/口令错、公钥注释对不上、重复导入', async () => {
   reset();
-  await assert.rejects(() => Z.handleImportZhixingKey({ mnemonic: 'abandon abandon', password: P }), /ZHIXING_BAD_MNEMONIC/);
-  await Z.handleImportZhixingKey({ mnemonic: ZERO24, password: P });
-  await assert.rejects(() => Z.handleCreateZhixingKey({ password: P }), /ZHIXING_KEY_EXISTS/);
+  assert.equal((await imp({ mnemonic: 'abandon abandon' })).success, false);
+  const noPw = await imp({ privateKey: RUST_KEYSTORE });
+  assert.match(noPw.error, /口令/);
+  const wrongPw = await imp({ privateKey: RUST_KEYSTORE, filePassword: 'wrong' });
+  assert.match(wrongPw.error, /口令不对/);
+  const tampered = RUST_SEED_FILE.replace(/# pubkey: [0-9a-f]+/, '# pubkey: ' + 'ff'.repeat(32));
+  assert.match((await imp({ privateKey: tampered })).error, /公钥不一致/);
+  assert.equal((await imp({ mnemonic: ZERO24 })).success, true);
+  const dup = await imp({ privateKey: RUST_SEED_HEX });
+  assert.equal(dup.success, false);
+  assert.match(dup.error, /已经在钱包里/);
 });
 
-test('生成新密钥:返回 24 词,再导入同一组词得到同一公钥', async () => {
+test('解锁 / 锁定 / 改密走普通账户的路径', async () => {
   reset();
-  const created = await Z.handleCreateZhixingKey({ password: P });
-  assert.equal(created.mnemonic.split(' ').length, 24);
-  assert.match(created.address, /^[0-9a-f]{64}$/);
-  const firstAddress = created.address;
-  await Z.handleRemoveZhixingKey({ password: P });
-  const again = await Z.handleImportZhixingKey({ mnemonic: created.mnemonic, password: P });
-  assert.equal(again.address, firstAddress);
-});
-
-test('解锁靠缓存的钱包密码;锁定钱包后内存里的密钥被清除', async () => {
-  reset();
-  await Z.handleImportZhixingKey({ mnemonic: ZERO24, password: P });
-  state.zhixingKeypair = null;
-  clearPasswordCache?.();
-  assert.equal(Z.needsZhixingUnlock(), true);
-  await assert.rejects(() => Z.loadZhixingKeypair(), /ZHIXING_LOCKED/);
-  cachePassword(P);
-  const kp = await Z.loadZhixingKeypair();
-  assert.equal(Buffer.from(kp.publicKey).toString('hex'), ZERO24_PUBKEY);
+  const r = await imp({ mnemonic: ZERO24 });
+  // 导入后已解锁:ed25519 密钥在内存里
+  assert.ok(state.ed25519Keyring?.has(r.account.id));
   await keyring.lockWallet();
-  assert.equal(state.zhixingKeypair, null);
-});
+  assert.equal(state.ed25519Keyring, null, '锁定后清掉内存里的密钥');
+  clearPasswordCache?.();
+  assert.equal(await Z.needsZhixingUnlock(), true);
+  await assert.rejects(() => Z.loadZhixingKeypair(), /ZHIXING_LOCKED/);
+  await keyring.unlockWallet(P, r.account.id, 'popup');
+  const { keypair } = await Z.loadZhixingKeypair();
+  assert.equal(Buffer.from(keypair.publicKey).toString('hex'), ZERO24_PUBKEY);
 
-test('移除需要正确的钱包密码,并一并清掉站点授权', async () => {
-  reset();
-  await Z.handleImportZhixingKey({ mnemonic: ZERO24, password: P });
-  await Z.grantZhixingSite('https://blockchain.yeying.pub');
-  await assert.rejects(() => Z.handleRemoveZhixingKey({ password: 'wrong' }));
-  assert.ok(await Z.getZhixingKeyInfo());
-  await Z.handleRemoveZhixingKey({ password: P });
-  assert.equal(await Z.getZhixingKeyInfo(), null);
-  assert.deepEqual(await Z.listZhixingSites(), []);
-});
-
-test('修改钱包密码后,知行图密钥只认新密码', async () => {
-  reset();
-  const created = await ops.handleCreateHDWallet('Acc1', P);
-  assert.equal(created.success, true);
-  await Z.handleImportZhixingKey({ mnemonic: ZERO24, password: P });
+  // 改密(钱包里还有一个 EVM 钱包,改密要一起重加密)
+  await ops.handleCreateHDWallet('EVM', P);
   const cp = await ops.changePassword(P, Q);
   assert.equal(cp.success, true);
-  state.zhixingKeypair = null;
-  await assert.rejects(() => Z.loadZhixingKeypair(P));
-  const kp = await Z.loadZhixingKeypair(Q);
-  assert.equal(Buffer.from(kp.publicKey).toString('hex'), ZERO24_PUBKEY);
+  const exportedOld = await ops.handleExportPrivateKey(r.account.id, P);
+  assert.equal(exportedOld.success, false, '旧密码不再能解开知行图账户');
+  const exportedNew = await ops.handleExportPrivateKey(r.account.id, Q);
+  assert.equal(exportedNew.success, true);
 });
 
-test('站点授权:按网站记录,换了密钥就不再算授权', async () => {
+test('选中哪个知行图账户就用哪个签名;站点授权按网站记录,换了账户不再算授权', async () => {
   reset();
-  assert.equal(await Z.isZhixingSiteAuthorized('https://a.example'), false);
-  await Z.handleImportZhixingKey({ mnemonic: ZERO24, password: P });
+  const a = await imp({ mnemonic: ZERO24 }, 'alice');
+  const otherMnemonic = Array(11).fill('abandon').join(' ') + ' about';
+  const b = await imp({ mnemonic: otherMnemonic }, 'bob');
+  assert.notEqual(a.account.address, b.account.address);
+  assert.equal((await Z.getZhixingKeyInfo()).address, b.account.address, '刚导入的 bob 被选中');
+
   await Z.grantZhixingSite('https://a.example');
   assert.equal(await Z.isZhixingSiteAuthorized('https://a.example'), true);
   assert.equal(await Z.isZhixingSiteAuthorized('https://b.example'), false);
-  // 记录的公钥与当前密钥不一致(例如换过密钥)⇒ 不算授权
-  store[ZhixingStorageKeys.SITES]['https://a.example'].address = 'ff'.repeat(32);
-  assert.equal(await Z.isZhixingSiteAuthorized('https://a.example'), false);
+
+  await ops.handleSwitchAccount(a.account.id, P);
+  assert.equal((await Z.getZhixingKeyInfo()).address, ZERO24_PUBKEY, '切到 alice');
+  assert.equal(await Z.isZhixingSiteAuthorized('https://a.example'), false, '授权记在 bob 名下,alice 需要重新连接');
+
   await Z.revokeZhixingSite({ origin: 'https://a.example' });
   assert.deepEqual(await Z.listZhixingSites(), []);
 });
 
 test('签名请求:弹窗前校验,摘要可读,签出的字节与节点一致', async () => {
   reset();
-  await Z.handleImportZhixingKey({ mnemonic: ZERO24, password: P });
+  await imp({ mnemonic: ZERO24 });
   assert.throws(() => Z.prepareZhixingSignRequest([{ actor: 3, nonce: 7, action: { type: 'transfer' } }]), /ZHIXING_BAD_ACTION/);
   assert.throws(() => Z.prepareZhixingSignRequest([]), /ZHIXING_BAD_REQUEST/);
-
   const prepared = Z.prepareZhixingSignRequest([{ actor: 3, nonce: 7, action: { type: 'verify', unit: 8, version: 2, verdict: 'pass' } }]);
   assert.equal(prepared.summary.title, '核验单元 #8 的 v2:通过');
-  cachePassword(P);
   const out = await Z.signZhixingRequest(prepared);
   assert.equal(out.address, ZERO24_PUBKEY);
-  // 与 tests/zhixing-op.test.mjs 的节点向量相同
+  // 与 tests/zhixing-op.test.mjs 里节点生成的向量逐字节相同
   assert.equal(
     out.signed,
     '0000000000000003020000000000000008000000020000000000000000000000000000000000000000000000000000000000000000000000000000000007'
@@ -159,23 +167,17 @@ test('签名请求:弹窗前校验,摘要可读,签出的字节与节点一致',
   assert.equal(out.signed.length, (62 + 64) * 2);
 });
 
-test('用 node keygen 的密钥文件导入:加密 .json 与明文种子文件都得到既有成员的同一个公钥', async () => {
-  const fs = await import('node:fs');
-  const ks = fs.readFileSync(new URL('./fixtures/zhixing-keystore.json', import.meta.url), 'utf8');
-  const seedFile = fs.readFileSync(new URL('./fixtures/zhixing-seed.txt', import.meta.url), 'utf8');
-
+test('账户文件导出 → 导入:知行图账户原样恢复,重复导入时跳过', async () => {
   reset();
-  await assert.rejects(() => Z.handleImportZhixingKeyFile({ fileText: ks, password: P }), /ZHIXING_KEY_FILE_PASSWORD_REQUIRED/);
-  await assert.rejects(() => Z.handleImportZhixingKeyFile({ fileText: ks, filePassword: 'wrong', password: P }), /口令不对/);
-  const a = await Z.handleImportZhixingKeyFile({ fileText: ks, filePassword: 'ks-password-123', password: P });
-  assert.equal(a.address, ZERO24_PUBKEY);
-
+  await imp({ mnemonic: ZERO24 }, 'alice');
+  const exp = await ops.handleExportAccountsFile(P);
+  assert.equal(exp.success, true, exp.error);
   reset();
-  const b = await Z.handleImportZhixingKeyFile({ fileText: seedFile, password: P });
-  assert.equal(b.address, ZERO24_PUBKEY);
-
-  // 文件里记的公钥与种子对不上 ⇒ 拒绝(文件被改过或拼错了)
-  reset();
-  const tampered = seedFile.replace(/# pubkey: [0-9a-f]+/, '# pubkey: ' + 'ff'.repeat(32));
-  await assert.rejects(() => Z.handleImportZhixingKeyFile({ fileText: tampered, password: P }), /ZHIXING_BAD_KEY_FILE/);
+  const first = await ops.handleImportAccountsFile(exp.file, P);
+  assert.equal(first.success, true, first.error);
+  assert.equal(first.imported, 1);
+  assert.equal((await Z.getZhixingKeyInfo()).address, ZERO24_PUBKEY);
+  const again = await ops.handleImportAccountsFile(exp.file, P);
+  assert.equal(again.imported, 0, '同一个知行图账户不应再导入一份');
+  assert.equal(again.skipped, 1);
 });

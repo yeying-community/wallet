@@ -511,7 +511,7 @@ export async function routeRequest(method, params, metadata) {
 
 // ==================== 知行图(ZhixingGraph) ====================
 
-const ZHIXING_NO_KEY_MESSAGE = '钱包里还没有知行图密钥:请在钱包「设置 → 知行图」里生成新密钥,或用助记词导入已有的成员身份';
+const ZHIXING_NO_KEY_MESSAGE = '钱包里还没有知行图账户:请在「账户管理 → 导入钱包」里选择「知行图」,用助记词或密钥文件导入已有的成员身份';
 
 /**
  * zhixing_accounts          → 已授权本站时返回 [公钥],否则 [](不弹窗、不需要解锁)
@@ -557,7 +557,7 @@ async function handleZhixingRequest(method, params, origin, tabId, clientRequest
 
   // 先解锁、把密钥载入内存,再给用户看审批:避免"点了签名又弹解锁"两个窗口,
   // 也避免用户在审批页停留超过密码缓存时间后签不了。
-  if (needsZhixingUnlock()) {
+  if (await needsZhixingUnlock()) {
     if (!(await isActiveTab(tabId))) {
       throw createUserRejectedError('Unlock requires active tab');
     }

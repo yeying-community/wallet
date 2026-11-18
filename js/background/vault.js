@@ -30,6 +30,8 @@ import {
   createPrivateKeyInvalidError,
   createInvalidParams,
   createAccountNotFoundError,
+  createError,
+  ErrorCode,
 } from '../common/errors/index.js';
 import {
   DEFAULT_CHAIN_KEY,
@@ -58,6 +60,11 @@ import {
   BIP122_REFERENCE_MAINNET,
   BIP122_REFERENCE_TESTNET
 } from '../chain/adapters/bip122/chain-key-bridge.js';
+import {
+  zhixingSeedFromMnemonic,
+  zhixingAddressFromSeed
+} from '../chain/adapters/zhixing/keys.js';
+import { decryptZhixingKeystore, parseZhixingSeedFile, bytesToHex as zhixingBytesToHex } from '../chain/adapters/zhixing/keystore.js';
 
 // ==================== 钱包类型 ====================
 
@@ -90,7 +97,7 @@ export async function createWalletInstance(account, password) {
     //   - Solana：私钥字节经 ed25519-keypair.js 派生 nacl KeyPair 缓存到
     //     state.ed25519Keyring；ethers.Wallet 仅作私钥字节载体。
     //   - Bitcoin：同 secp256k1，signing-service 走 BIP-143 segwit 签名。
-    const NON_EVM_NAMESPACES = new Set(['tron', 'solana', 'bip122', 'bitcoin']);
+    const NON_EVM_NAMESPACES = new Set(['tron', 'solana', 'bip122', 'bitcoin', 'zhixing']);
     if (!NON_EVM_NAMESPACES.has(account.namespace)) {
       if (wallet.address.toLowerCase() !== account.address.toLowerCase()) {
         throw createInvalidAddressError('解密后的地址与账户地址不匹配');
@@ -1474,4 +1481,109 @@ export async function deriveBitcoinSubAccount(wallet, newIndex, accountName, pas
     if (error.code) throw error;
     throw createInternalError('派生 Bitcoin 子账户失败：' + error.message);
   }
+}
+
+
+// ==================== 知行图(ZhixingGraph)钱包 ====================
+//
+// 知行图账户的私钥字段存的是 32 字节 ed25519 种子(0x 十六进制),地址是 ed25519 公钥(64 位小写十六进制)。
+// 派生与知行图 `node keygen` 完全相同:助记词 → BIP-39 种子前 32 字节;所以导入同一组助记词 /
+// 同一个密钥文件,得到的就是成员原来那个链上账户。
+//
+// 钱包类型固定为 IMPORTED:一把种子对应一个知行图账户(没有 BIP-32 路径,不能派生子账户),
+// 因而也不参与按助记词重新派生的 HD 备份同步。知行图没有余额与转账,账户只用于签署知识操作。
+
+// 共用的 createPrivateKeyInvalidError / createMnemonicInvalidError 不带具体原因;
+// 知行图导入要告诉用户到底是口令错、文件被改过还是格式不对,所以带上消息。
+const zhixingKeyError = (message) => createError(ErrorCode.PRIVATE_KEY_INVALID, message);
+const zhixingMnemonicError = (message) => createError(ErrorCode.MNEMONIC_INVALID, message);
+
+export const ZHIXING_NAMESPACE = 'zhixing';
+export const ZHIXING_CHAIN_KEY = 'zhixing:testnet';
+
+async function buildZhixingWallet(accountName, seedHex, password, source) {
+  const validation = validatePassword(password);
+  if (!validation.valid) {
+    throw createInvalidPasswordError(validation.error);
+  }
+  const address = zhixingAddressFromSeed(seedHex);
+  const encryptedPrivateKey = await encryptString(seedHex, password);
+  const walletId = generateId('wallet');
+  const createdAt = getTimestamp();
+  const wallet = {
+    id: walletId,
+    name: '知行图钱包',
+    type: WALLET_TYPE.IMPORTED,
+    createdAt,
+    accountCount: 1
+  };
+  const mainAccount = {
+    id: generateAccountId(walletId, 0),
+    walletId,
+    name: accountName || '知行图账户',
+    index: 0,
+    address,
+    encryptedPrivateKey,
+    namespace: ZHIXING_NAMESPACE,
+    chainKey: ZHIXING_CHAIN_KEY,
+    publicKey: address,
+    zhixingSource: source,
+    createdAt,
+    nameUpdatedAt: createdAt
+  };
+  return { wallet, mainAccount };
+}
+
+/** 用助记词导入知行图钱包(可带 BIP-39 附加口令)。 */
+export async function importZhixingMnemonicWallet(accountName, mnemonic, password, options = {}) {
+  const validation = validateMnemonic(String(mnemonic || '').trim());
+  if (!validation.valid) {
+    throw zhixingMnemonicError('助记词无效：' + validation.error);
+  }
+  let seedHex;
+  try {
+    seedHex = zhixingSeedFromMnemonic(mnemonic, String(options.passphrase || ''));
+  } catch (error) {
+    throw zhixingMnemonicError('无法从助记词派生知行图密钥：' + error.message);
+  }
+  return buildZhixingWallet(accountName, seedHex, password, 'mnemonic');
+}
+
+/**
+ * 用私钥导入知行图钱包:接受
+ *   - 64 位十六进制种子(可带 0x),即 `node keygen` 明文种子文件的正文;
+ *   - `node keygen` 明文种子文件的完整内容(带 # 注释,有 # pubkey: 就核对);
+ *   - 加密密钥文件 JSON(`node keygen --encrypt`),此时 options.filePassword 是文件口令。
+ */
+export async function importZhixingPrivateKeyWallet(accountName, privateKey, password, options = {}) {
+  const text = String(privateKey || '').trim();
+  if (!text) {
+    throw zhixingKeyError('私钥不能为空');
+  }
+  let seedHex;
+  if (text.startsWith('{')) {
+    if (!options.filePassword) {
+      throw zhixingKeyError('这是加密的密钥文件,请填写它的口令');
+    }
+    let seed;
+    try {
+      seed = await decryptZhixingKeystore(text, String(options.filePassword));
+    } catch (error) {
+      throw zhixingKeyError(error.message);
+    }
+    seedHex = '0x' + zhixingBytesToHex(seed);
+    seed.fill(0);
+  } else {
+    let parsed;
+    try {
+      parsed = parseZhixingSeedFile(text.replace(/^0x/i, ''));
+    } catch (error) {
+      throw zhixingKeyError(error.message);
+    }
+    seedHex = '0x' + parsed.seedHex;
+    if (parsed.pubkey && zhixingAddressFromSeed(seedHex) !== parsed.pubkey.toLowerCase()) {
+      throw zhixingKeyError('种子与文件里记录的公钥不一致');
+    }
+  }
+  return buildZhixingWallet(accountName, seedHex, password, text.startsWith('{') ? 'key-file' : 'private-key');
 }

@@ -116,10 +116,9 @@ export const IdentityStorageKeys = {
   SELECTED_IDENTITY: 'selected_wallet_identity_id'
 };
 
-// 知行图(ZhixingGraph)成员密钥:不是链账户(没有余额、不进 accounts/备份同步),
-// 由钱包密码加密保存,与钱包身份控制密钥同一种处理方式。
+// 知行图(ZhixingGraph):账户是普通钱包账户(namespace=zhixing);这里只有站点授权,
+// 单独记录、不与 EVM 站点授权混在一起(在「网站管理」里合并显示与撤销)。
 export const ZhixingStorageKeys = {
-  KEY: 'zhixing_member_key',
   SITES: 'zhixing_authorized_sites'
 };
 

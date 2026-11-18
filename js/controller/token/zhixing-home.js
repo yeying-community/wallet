@@ -3,7 +3,7 @@
  *
  * 知行图没有资产:不显示转账、添加通证、藏品、活动;切回其他网络时恢复。
  * 状态来自后台 ZHIXING_GET_STATUS(公钥 → 是否成员、账户编号、见习期;链高度),
- * 成员密钥在「设置 → 知行图」里管理(不是钱包账户)。
+ * 知行图账户在「账户管理 → 导入钱包」里选「知行图」导入。
  */
 const el = (id) => document.getElementById(id);
 
@@ -77,7 +77,7 @@ export async function renderZhixingHome(wallet) {
   if (!s || !s.hasKey) {
     const p = document.createElement('p');
     p.className = 'settings-hint';
-    p.textContent = '钱包里还没有知行图密钥。到「设置 → 📚 知行图」用助记词导入(已是成员)或生成新密钥。';
+    p.textContent = '钱包里还没有知行图账户。到「账户管理 → 导入钱包」选择「知行图」,用助记词或密钥文件导入。';
     list.appendChild(p);
     if (s && s.height) list.appendChild(row('链高度', text(s.height)));
     return;

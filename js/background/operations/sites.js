@@ -13,6 +13,7 @@ import {
 } from '../../storage/index.js';
 import { updateKeepAlive } from '../offscreen.js';
 import { sendEvent } from '../connection.js';
+import { listZhixingSites, revokeZhixingSite } from './zhixing.js';
 
 /**
  * 获取授权网站列表
@@ -21,6 +22,13 @@ import { sendEvent } from '../connection.js';
 export async function handleGetAuthorizedSites() {
   try {
     const sites = await getAuthorizationList();
+    // 知行图连接单独记录(不混入 EVM 授权),在这里合并显示,撤销也在同一处
+    const zhixing = await listZhixingSites();
+    for (const z of zhixing) {
+      const existing = sites.find((x) => x.origin === z.origin);
+      if (existing) existing.zhixingAddress = z.address;
+      else sites.push({ origin: z.origin, address: z.address, zhixingAddress: z.address, timestamp: z.grantedAt, accounts: [z.address] });
+    }
     return { success: true, sites };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to get authorized sites' };
@@ -90,6 +98,7 @@ export async function handleRevokeSite(origin) {
 
   try {
     await deleteAuthorization(origin);
+    await revokeZhixingSite({ origin });
     state.connectedSites.delete(origin);
     updateKeepAlive();
 
@@ -112,6 +121,7 @@ export async function handleRevokeSite(origin) {
 export async function handleClearAllAuthorizations() {
   try {
     await clearAllAuthorizations();
+    for (const z of await listZhixingSites()) await revokeZhixingSite({ origin: z.origin });
     state.connectedSites.clear();
     updateKeepAlive();
 

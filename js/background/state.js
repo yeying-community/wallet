@@ -24,7 +24,6 @@ export const state = {
 
   // 🔐 密钥管理（仅在内存中）
   keyring: null,                   // Map<accountId, WalletInstance>
-  zhixingKeypair: null,            // 知行图成员密钥(nacl KeyPair);锁定时清除
   lockTimer: null,                 // 自动锁定计时器
 
   // 🔑 密码缓存（限时 60 秒）
@@ -43,7 +42,6 @@ export function resetState() {
   state.pendingRequests.clear();
   state.approvalSessions.clear();
   state.keyring = null;
-  state.zhixingKeypair = null;
   state.lockTimer = null;
   state.passwordCache = null;
   state.passwordCacheTimer = null;

@@ -111,7 +111,8 @@ export async function unlockWallet(password, accountId, source = 'unknown') {
 
     // Solana（ed25519 曲线）账户：把同一私钥字节派生 ed25519 keypair 缓存到
     // state.ed25519Keyring（独立 Map，避免与 secp256k1 ethers.Wallet 冲突）。
-    if (account.namespace === 'solana' && walletInstance && walletInstance.privateKey) {
+    // 知行图账户同理:私钥字段就是 ed25519 种子。
+    if ((account.namespace === 'solana' || account.namespace === 'zhixing') && walletInstance && walletInstance.privateKey) {
       if (!state.ed25519Keyring) {
         state.ed25519Keyring = new Map();
       }
@@ -177,10 +178,6 @@ export async function lockWallet() {
     if (state.ed25519Keyring) {
       state.ed25519Keyring.clear();
       state.ed25519Keyring = null;
-    }
-    if (state.zhixingKeypair) {
-      state.zhixingKeypair.secretKey.fill(0);
-      state.zhixingKeypair = null;
     }
 
     // 清除密码缓存

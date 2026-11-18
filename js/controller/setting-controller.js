@@ -3,7 +3,6 @@ import { MpcSettingsController } from './setting/mpc-settings-controller.js';
 import { AuthorizedSitesController } from './setting/authorized-sites-controller.js';
 import { AccountSettingsController } from './setting/account-settings-controller.js';
 import { WalletIdentitySettingsController } from './setting/wallet-identity-settings-controller.js';
-import { ZhixingSettingsController } from './setting/zhixing-settings-controller.js';
 import { getLocale, setLocale, SUPPORTED_LOCALES, t } from '../common/i18n/index.js';
 
 export class SettingController {
@@ -19,7 +18,6 @@ export class SettingController {
       onClearAllAuthorizations: () => this.sitesController.handleClearAllAuthorizations()
     });
     this.walletIdentityController = new WalletIdentitySettingsController({ wallet, transaction, requestPassword });
-    this.zhixingController = new ZhixingSettingsController({ wallet, requestPassword });
   }
 
   bindEvents() {
@@ -29,7 +27,6 @@ export class SettingController {
     this.sitesController.bindEvents();
     this.accountController.bindEvents();
     this.walletIdentityController.bindEvents();
-    this.zhixingController.bindEvents();
   }
 
   bindLanguageEvents() {
@@ -68,7 +65,6 @@ export class SettingController {
 
   async loadBackupSyncSettings() {
     await this.walletIdentityController.load();
-    await this.zhixingController.load();
     return this.backupController.loadSettings();
   }
 

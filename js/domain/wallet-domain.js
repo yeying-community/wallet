@@ -39,38 +39,19 @@ export class WalletDomain extends BaseDomain {
     }
   }
 
-  // ==================== 知行图(ZhixingGraph)成员密钥 ====================
+  // ==================== 知行图(ZhixingGraph) ====================
 
-  async getZhixingKey() {
-    return (await this._sendMessage(WalletMessageType.ZHIXING_GET_KEY)).key || null;
-  }
-
-  async createZhixingKey(password) {
-    return this._sendMessage(WalletMessageType.ZHIXING_CREATE_KEY, { password });
-  }
-
-  async importZhixingKey(mnemonic, passphrase, password) {
-    return this._sendMessage(WalletMessageType.ZHIXING_IMPORT_KEY, { mnemonic, passphrase, password });
-  }
-
-  async importZhixingKeyFile(fileText, filePassword, password) {
-    return this._sendMessage(WalletMessageType.ZHIXING_IMPORT_KEY_FILE, { fileText, filePassword, password });
-  }
-
-  async removeZhixingKey(password) {
-    return this._sendMessage(WalletMessageType.ZHIXING_REMOVE_KEY, { password });
-  }
-
-  async listZhixingSites() {
-    return (await this._sendMessage(WalletMessageType.ZHIXING_LIST_SITES)).sites || [];
+  /**
+   * 导入知行图钱包。source:{ mnemonic, passphrase? } | { privateKey } | { privateKey: <密钥文件 JSON>, filePassword }
+   */
+  async importZhixingWallet(accountName, source, password) {
+    const result = await this._sendMessage(WalletMessageType.IMPORT_ZHIXING_WALLET, { accountName, source, password });
+    this._currentAccount = result.account;
+    return result;
   }
 
   async getZhixingStatus(force = false) {
     return (await this._sendMessage(WalletMessageType.ZHIXING_GET_STATUS, { force })).status || null;
-  }
-
-  async revokeZhixingSite(origin) {
-    return this._sendMessage(WalletMessageType.ZHIXING_REVOKE_SITE, { origin });
   }
 
   async createIdentity(password) {

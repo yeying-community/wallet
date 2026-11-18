@@ -23,7 +23,10 @@ const IMPORT_FIELD_IDS = [
   'importMnemonic',
   'importPrivateKey',
   'importWalletPassword',
-  'importAccountsFile'
+  'importAccountsFile',
+  'importZhixingPassphrase',
+  'importZhixingKeyFile',
+  'importZhixingFilePassword'
 ];
 
 // 每个网络对应的 reference 选项 + 默认 reference（决定非 EVM 链走主网还是测试网）
@@ -42,12 +45,16 @@ const NETWORK_REFERENCES = {
   bitcoin: [
     { value: 'mainnet', label: 'Mainnet' },
     { value: 'testnet', label: 'Testnet' }
+  ],
+  zhixing: [
+    { value: 'testnet', label: '测试网' }
   ]
 };
 const NETWORK_DEFAULT_REFERENCE = {
   tron: 'mainnet',
   solana: 'mainnet-beta',
-  bitcoin: 'mainnet'
+  bitcoin: 'mainnet',
+  zhixing: 'testnet'
 };
 
 export function clearImportWalletForm({ resetType = true } = {}) {
@@ -125,6 +132,10 @@ function setActiveMethod(method) {
  * 切换当前网络（决定是否展示 reference 选择器 + 用哪个 reference 列表）。
  */
 function setActiveNetwork(network) {
+  // 知行图专有的输入项(附加口令、密钥文件)只在选中知行图时显示
+  document.querySelectorAll('.zhixing-only').forEach((node) => node.classList.toggle('hidden', network !== 'zhixing'));
+  const pk = document.getElementById('importPrivateKey');
+  if (pk) pk.placeholder = network === 'zhixing' ? '64 位十六进制种子（node keygen 生成）' : '输入私钥（0x开头）';
   const refs = NETWORK_REFERENCES[network] || [];
   const refGroup = document.getElementById('importReferenceGroup');
   const refMenu = document.getElementById('importReferenceMenu');
@@ -460,8 +471,9 @@ export class ImportWalletController {
         }
       } else if (importType === 'privateKey') {
         const privateKey = document.getElementById('importPrivateKey')?.value.trim();
-        if (!privateKey) {
-          showError('请输入私钥');
+        const hasZhixingFile = methodChain === 'zhixing' && document.getElementById('importZhixingKeyFile')?.files?.[0];
+        if (!privateKey && !hasZhixingFile) {
+          showError(methodChain === 'zhixing' ? '请输入种子或选择密钥文件' : '请输入私钥');
           return;
         }
       } else if (!document.getElementById('importAccountsFile')?.files?.[0]) {
@@ -487,6 +499,9 @@ export class ImportWalletController {
           await this.wallet.importSolanaFromMnemonic(name, mnemonic, password, importOptions);
         } else if (methodChain === 'bitcoin') {
           await this.wallet.importBitcoinFromMnemonic(name, mnemonic, password, importOptions);
+        } else if (methodChain === 'zhixing') {
+          const passphrase = document.getElementById('importZhixingPassphrase')?.value || '';
+          await this.wallet.importZhixingWallet(name, { mnemonic, passphrase }, password);
         } else {
           await this.wallet.importFromMnemonic(name, mnemonic, password);
         }
@@ -498,6 +513,14 @@ export class ImportWalletController {
           await this.wallet.importSolanaFromPrivateKey(name, privateKey, password, importOptions);
         } else if (methodChain === 'bitcoin') {
           await this.wallet.importBitcoinFromPrivateKey(name, privateKey, password, importOptions);
+        } else if (methodChain === 'zhixing') {
+          // 选了密钥文件就用文件内容(加密 .json 或明文种子文件),否则用输入框里的种子
+          const file = document.getElementById('importZhixingKeyFile')?.files?.[0];
+          if (file && file.size > 64 * 1024) throw new Error('这个文件太大,不像是密钥文件');
+          const keyText = file ? await file.text() : privateKey;
+          const filePassword = document.getElementById('importZhixingFilePassword')?.value || '';
+          if (keyText.trim().startsWith('{') && !filePassword) throw new Error('这是加密的密钥文件,请填写它的口令');
+          await this.wallet.importZhixingWallet(name, { privateKey: keyText, filePassword }, password);
         } else {
           await this.wallet.importFromPrivateKey(name, privateKey, password);
         }
@@ -570,7 +593,8 @@ export class ImportWalletController {
     const key = ({
       tron: 'tronReference',
       solana: 'solanaReference',
-      bitcoin: 'bitcoinReference'
+      bitcoin: 'bitcoinReference',
+      zhixing: 'zhixingReference'
     })[network];
     if (!key) return {};
     return { [key]: reference };

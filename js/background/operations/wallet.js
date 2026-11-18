@@ -18,6 +18,8 @@ import {
   createSolanaHDWallet,
   importSolanaHDWallet,
   importSolanaPrivateKeyWallet,
+  importZhixingMnemonicWallet,
+  importZhixingPrivateKeyWallet,
   deriveSolanaSubAccount,
   createBitcoinHDWallet,
   importBitcoinHDWallet,
@@ -72,7 +74,6 @@ import { getTimestamp } from '../../common/utils/time-utils.js';
 import { mpcService } from '../mpc-service.js';
 import { decryptIdentityKeyMaterial, getIdentities, saveIdentity } from '../../storage/identity-storage.js';
 import { IdentityStorageKeys } from '../../storage/storage-keys.js';
-import { reencryptZhixingKey } from './zhixing.js';
 import { getValue, setValue } from '../../storage/storage-base.js';
 import { validateIdentityDocument } from '../../common/identity/identity-document.js';
 import { normalizeIdentityNodeEndpoint } from '../../config/identity-config.js';
@@ -317,7 +318,8 @@ async function rememberUnlockedAccount(account, password) {
   // Solana（ed25519 曲线）账户：与 unlockWallet 一致，把同一私钥字节派生 ed25519
   // keypair 缓存到 state.ed25519Keyring，否则导入后立即签名会因 keyring 为空而
   // 抛 “Wallet is locked”。
-  if (account.namespace === 'solana' && walletInstance && walletInstance.privateKey) {
+  // 知行图账户同理:私钥字段就是 ed25519 种子
+  if ((account.namespace === 'solana' || account.namespace === 'zhixing') && walletInstance && walletInstance.privateKey) {
     if (!state.ed25519Keyring) {
       state.ed25519Keyring = new Map();
     }
@@ -799,6 +801,36 @@ export async function handleCreateSolanaSubAccount(walletId, password, options =
   }
 }
 
+// ==================== 知行图钱包(一把种子一个账户,无子账户) ====================
+
+/**
+ * 导入知行图钱包。source 三选一:
+ *   { mnemonic, passphrase? }                 助记词
+ *   { privateKey }                            64 位十六进制种子 / node keygen 明文种子文件内容
+ *   { privateKey: <keystore JSON>, filePassword }  node keygen --encrypt 的加密密钥文件
+ */
+export async function handleImportZhixingWallet(accountName, source, password) {
+  try {
+    const built = source?.mnemonic
+      ? await importZhixingMnemonicWallet(accountName, source.mnemonic, password, { passphrase: source.passphrase })
+      : await importZhixingPrivateKeyWallet(accountName, source?.privateKey, password, { filePassword: source?.filePassword });
+    const { wallet, mainAccount } = built;
+    const existing = await getAccountList();
+    if ((existing || []).some((a) => a?.namespace === 'zhixing' && String(a.address).toLowerCase() === mainAccount.address)) {
+      return { success: false, error: '这个知行图账户已经在钱包里了' };
+    }
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Zhixing wallet imported and saved:', wallet.id, mainAccount.address);
+    return { success: true, wallet, account: mainAccount };
+  } catch (error) {
+    console.error('❌ Handle import Zhixing wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 // ==================== Bitcoin 钱包 / 子账户（v1：secp256k1 / native BTC P2WPKH） ====================
 
 export async function handleCreateBitcoinHDWallet(accountName, password, options = {}) {
@@ -1161,6 +1193,8 @@ function importPrivateKeyWalletByNamespace(name, privateKey, password, meta) {
     case 'bip122':
     case 'utxo':
       return importBitcoinPrivateKeyWallet(name, privateKey, password, reference ? { bip122Reference: reference } : {});
+    case 'zhixing':
+      return importZhixingPrivateKeyWallet(name, privateKey, password);
     case 'eip155':
       return importPrivateKeyWallet(name, privateKey, password);
     default:
@@ -1183,6 +1217,8 @@ export function handleImportPrivateKeyWalletByNamespace(name, privateKey, passwo
     case 'bip122':
     case 'utxo':
       return handleImportBitcoinPrivateKeyWallet(name, privateKey, password, reference ? { bip122Reference: reference } : {});
+    case 'zhixing':
+      return handleImportZhixingWallet(name, { privateKey }, password);
     case 'eip155':
       return handleImportPrivateKeyWallet(name, privateKey, password);
     default:
@@ -1650,13 +1686,10 @@ export async function changePassword(oldPassword, newPassword) {
 
   // 2) 一次性原子写入钱包与账户，避免逐账户写入被 Service Worker 回收打断、
   //    造成新旧密码混杂导致导出/解锁失败。chrome.storage.local.set 单次写多个 key 即为原子。
-  // 知行图成员密钥同样由钱包密码保护:一起重加密、一起写入,不能留下只认旧密码的密钥。
-  const nextZhixing = await reencryptZhixingKey(oldPassword, newPassword);
   await setStorage({
     [WalletStorageKeys.WALLETS]: nextWalletsMap,
     [WalletStorageKeys.ACCOUNTS]: nextAccountsMap,
-    [IdentityStorageKeys.IDENTITIES]: nextIdentitiesMap,
-    ...nextZhixing
+    [IdentityStorageKeys.IDENTITIES]: nextIdentitiesMap
   });
 
   // 3) 钱包密钥一致后再迁移 MPC 设备密钥。MPC 为独立存储，失败不应回退已成功的钱包改密，
