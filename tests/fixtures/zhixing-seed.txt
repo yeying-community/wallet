@@ -1,0 +1,4 @@
+# zhixing-node validator key (M169 · BIP-39)
+# passphrase: <empty>
+# pubkey: 1de352e44cd333672593f2334a730e180aaf290de89aa16d480de594e34e2961
+408b285c123836004f4b8842c89324c1f01382450c0d439af345ba7fc49acf70

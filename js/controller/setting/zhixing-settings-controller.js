@@ -12,7 +12,9 @@ const toggle = (id, show) => el(id)?.classList.toggle('hidden', !show);
 const ERRORS = {
   ZHIXING_BAD_MNEMONIC: '助记词无效:请检查词数、拼写和顺序',
   ZHIXING_KEY_EXISTS: '钱包里已经有一把知行图密钥;如需更换请先移除',
-  ZHIXING_PASSWORD_REQUIRED: '需要钱包密码'
+  ZHIXING_PASSWORD_REQUIRED: '需要钱包密码',
+  ZHIXING_KEY_FILE_PASSWORD_REQUIRED: '这是加密的密钥文件,请填写它的口令',
+  ZHIXING_BAD_KEY_FILE: '密钥文件无效'
 };
 function message(error) {
   const m = String(error?.message || error || '');
@@ -29,8 +31,15 @@ export class ZhixingSettingsController {
   bindEvents() {
     el('zhixingImportBtn')?.addEventListener('click', () => {
       toggle('zhixingImportForm', true);
+      toggle('zhixingImportFileForm', false);
       toggle('zhixingNewMnemonic', false);
     });
+    el('zhixingImportFileBtn')?.addEventListener('click', () => {
+      toggle('zhixingImportFileForm', true);
+      toggle('zhixingImportForm', false);
+      toggle('zhixingNewMnemonic', false);
+    });
+    el('zhixingImportFileConfirmBtn')?.addEventListener('click', () => this.handleImportFile());
     el('zhixingImportConfirmBtn')?.addEventListener('click', () => this.handleImport());
     el('zhixingCreateBtn')?.addEventListener('click', () => this.handleCreate());
     el('zhixingNewMnemonicDoneBtn')?.addEventListener('click', () => {
@@ -96,6 +105,29 @@ export class ZhixingSettingsController {
       el('zhixingMnemonic').value = '';
       el('zhixingPassphrase').value = '';
       toggle('zhixingImportForm', false);
+      showSuccess('已导入知行图密钥');
+      await this.load();
+    } catch (error) {
+      showError(message(error));
+    }
+  }
+
+  async handleImportFile() {
+    const file = el('zhixingKeyFile')?.files?.[0];
+    if (!file) return showError('请先选择密钥文件');
+    if (file.size > 64 * 1024) return showError('这个文件太大,不像是密钥文件');
+    const fileText = await file.text();
+    const filePassword = el('zhixingKeyFilePassword')?.value || '';
+    if (fileText.trim().startsWith('{') && !filePassword) return showError('这是加密的密钥文件,请填写它的口令');
+    const password = await this.requestPassword?.();
+    if (!password) return;
+    try {
+      // 加密文件用了很强的 scrypt,解密需要几秒到十几秒
+      showSuccess('解密中,需要几秒…');
+      await this.wallet.importZhixingKeyFile(fileText, filePassword, password);
+      el('zhixingKeyFile').value = '';
+      el('zhixingKeyFilePassword').value = '';
+      toggle('zhixingImportFileForm', false);
       showSuccess('已导入知行图密钥');
       await this.load();
     } catch (error) {

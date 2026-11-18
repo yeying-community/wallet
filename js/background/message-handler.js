@@ -110,6 +110,7 @@ import {
   getZhixingKeyInfo,
   handleCreateZhixingKey,
   handleImportZhixingKey,
+  handleImportZhixingKeyFile,
   handleRemoveZhixingKey,
   listZhixingSites,
   revokeZhixingSite,
@@ -968,6 +969,7 @@ const popupHandlers = new Map([
   [WalletMessageType.ZHIXING_GET_KEY, async () => ({ success: true, key: await getZhixingKeyInfo() })],
   [WalletMessageType.ZHIXING_CREATE_KEY, async (data) => ({ success: true, ...(await handleCreateZhixingKey(data)) })],
   [WalletMessageType.ZHIXING_IMPORT_KEY, async (data) => ({ success: true, ...(await handleImportZhixingKey(data)) })],
+  [WalletMessageType.ZHIXING_IMPORT_KEY_FILE, async (data) => ({ success: true, ...(await handleImportZhixingKeyFile(data)) })],
   [WalletMessageType.ZHIXING_REMOVE_KEY, async (data) => ({ success: true, ...(await handleRemoveZhixingKey(data)) })],
   [WalletMessageType.ZHIXING_LIST_SITES, async () => ({ success: true, sites: await listZhixingSites() })],
   [WalletMessageType.ZHIXING_GET_STATUS, async (data) => ({

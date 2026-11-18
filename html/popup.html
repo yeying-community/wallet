@@ -1146,7 +1146,14 @@
               <p class="settings-hint">还没有知行图密钥。已经是知行图成员?用你的助记词导入,得到的就是原来那个账户。</p>
               <div class="settings-row">
                 <button id="zhixingImportBtn" class="btn btn-primary btn-small btn-block" type="button">用助记词导入</button>
+                <button id="zhixingImportFileBtn" class="btn btn-secondary btn-small btn-block" type="button">导入密钥文件</button>
                 <button id="zhixingCreateBtn" class="btn btn-secondary btn-small btn-block" type="button">生成新密钥</button>
+              </div>
+              <div id="zhixingImportFileForm" class="hidden">
+                <p class="settings-hint">选择 <code>node keygen</code> 生成的密钥文件:加密的 .json(<code>--encrypt</code>)需要它的口令;明文种子文件不需要。文件只在钱包里读取,不会上传。</p>
+                <input id="zhixingKeyFile" class="input" type="file" accept=".json,.txt,.key,.seed,application/json,text/plain" />
+                <input id="zhixingKeyFilePassword" class="input" type="password" placeholder="密钥文件的口令(.json 才需要)" autocomplete="off" />
+                <button id="zhixingImportFileConfirmBtn" class="btn btn-primary btn-small btn-block" type="button">导入</button>
               </div>
               <div id="zhixingImportForm" class="hidden">
                 <textarea id="zhixingMnemonic" class="input" rows="3" placeholder="12 或 24 个词,用空格隔开" autocomplete="off" spellcheck="false"></textarea>

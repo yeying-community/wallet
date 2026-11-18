@@ -158,3 +158,24 @@ test('签名请求:弹窗前校验,摘要可读,签出的字节与节点一致',
   );
   assert.equal(out.signed.length, (62 + 64) * 2);
 });
+
+test('用 node keygen 的密钥文件导入:加密 .json 与明文种子文件都得到既有成员的同一个公钥', async () => {
+  const fs = await import('node:fs');
+  const ks = fs.readFileSync(new URL('./fixtures/zhixing-keystore.json', import.meta.url), 'utf8');
+  const seedFile = fs.readFileSync(new URL('./fixtures/zhixing-seed.txt', import.meta.url), 'utf8');
+
+  reset();
+  await assert.rejects(() => Z.handleImportZhixingKeyFile({ fileText: ks, password: P }), /ZHIXING_KEY_FILE_PASSWORD_REQUIRED/);
+  await assert.rejects(() => Z.handleImportZhixingKeyFile({ fileText: ks, filePassword: 'wrong', password: P }), /口令不对/);
+  const a = await Z.handleImportZhixingKeyFile({ fileText: ks, filePassword: 'ks-password-123', password: P });
+  assert.equal(a.address, ZERO24_PUBKEY);
+
+  reset();
+  const b = await Z.handleImportZhixingKeyFile({ fileText: seedFile, password: P });
+  assert.equal(b.address, ZERO24_PUBKEY);
+
+  // 文件里记的公钥与种子对不上 ⇒ 拒绝(文件被改过或拼错了)
+  reset();
+  const tampered = seedFile.replace(/# pubkey: [0-9a-f]+/, '# pubkey: ' + 'ff'.repeat(32));
+  await assert.rejects(() => Z.handleImportZhixingKeyFile({ fileText: tampered, password: P }), /ZHIXING_BAD_KEY_FILE/);
+});

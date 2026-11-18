@@ -53,6 +53,10 @@ export class WalletDomain extends BaseDomain {
     return this._sendMessage(WalletMessageType.ZHIXING_IMPORT_KEY, { mnemonic, passphrase, password });
   }
 
+  async importZhixingKeyFile(fileText, filePassword, password) {
+    return this._sendMessage(WalletMessageType.ZHIXING_IMPORT_KEY_FILE, { fileText, filePassword, password });
+  }
+
   async removeZhixingKey(password) {
     return this._sendMessage(WalletMessageType.ZHIXING_REMOVE_KEY, { password });
   }

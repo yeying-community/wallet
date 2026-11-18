@@ -30,6 +30,7 @@ import {
 } from '../../chain/adapters/zhixing/op.js';
 import { ethers } from '../../../lib/ethers-6.16.esm.min.js';
 import { ZHIXING_DEFAULT_RPC, getZhixingChainInfo, findZhixingMember } from '../../chain/adapters/zhixing/rpc.js';
+import { decryptZhixingKeystore, parseZhixingSeedFile } from '../../chain/adapters/zhixing/keystore.js';
 
 function requirePassword(password) {
   if (typeof password !== 'string' || password.length === 0) {
@@ -82,6 +83,35 @@ export async function handleImportZhixingKey({ mnemonic, passphrase = '', passwo
     throw new Error('ZHIXING_BAD_MNEMONIC');
   }
   return saveSeed(seedHex, password, 'mnemonic');
+}
+
+/**
+ * 用知行图的密钥文件导入:`node keygen --encrypt` / `node encrypt-key` 写的加密 .json,
+ * 或 `node keygen` 写的明文种子文件(64 位十六进制,可带 # 注释)。
+ * 和助记词导入得到的是同一把密钥(同一个链上账户)。
+ * @param {{ fileText?: string, filePassword?: string, password?: string }} [args]
+ */
+export async function handleImportZhixingKeyFile({ fileText, filePassword = '', password } = {}) {
+  requirePassword(password);
+  if (await getZhixingKeyInfo()) throw new Error('ZHIXING_KEY_EXISTS');
+  const text = String(fileText || '');
+  if (text.length === 0 || text.length > 64 * 1024) throw new Error('ZHIXING_BAD_KEY_FILE: 文件为空或过大');
+  let seedHex;
+  const trimmed = text.trim();
+  if (trimmed.startsWith('{')) {
+    if (!filePassword) throw new Error('ZHIXING_KEY_FILE_PASSWORD_REQUIRED');
+    const seed = await decryptZhixingKeystore(trimmed, String(filePassword));
+    seedHex = '0x' + bytesToHex(seed);
+    seed.fill(0);
+  } else {
+    const parsed = parseZhixingSeedFile(trimmed);
+    seedHex = '0x' + parsed.seedHex;
+    // 文件里记了公钥就核对一下:不一致说明文件被改过或拼错了
+    if (parsed.pubkey && zhixingAddressFromSeed(seedHex) !== parsed.pubkey.toLowerCase()) {
+      throw new Error('ZHIXING_BAD_KEY_FILE: 种子与文件里记录的公钥不一致');
+    }
+  }
+  return saveSeed(seedHex, password, 'key-file');
 }
 
 /** 移除:需要密码确认(防止误删;没有助记词就永久找不回)。 */
