@@ -349,9 +349,9 @@ export async function routeRequest(method, params, metadata) {
     return handleWalletRevokePermissions(origin, paramsArray);
   }
 
-  // ==================== 知行图(ZhixingGraph) ====================
-  // 不依赖"当前选中的链账户":知行图密钥单独保存(见 operations/zhixing.js),
-  // 所以放在选中账户的解锁守门之前,自己处理解锁与授权。
+  // ==================== 知行图(Knowing-Doing Graph) ====================
+  // 签名用的是钱包里的知行图账户(选中的是知行图账户就用它,否则用第一个,见 operations/zhixing.js),
+  // 不一定是当前选中的链账户,所以放在选中账户的解锁守门之前,自己处理解锁与授权。
   if (method === 'zhixing_accounts' || method === 'zhixing_requestAccounts' || method === 'zhixing_signKnowledgeOp') {
     return handleZhixingRequest(method, paramsArray, origin, tabId, clientRequestId);
   }
@@ -509,7 +509,7 @@ export async function routeRequest(method, params, metadata) {
 }
 
 
-// ==================== 知行图(ZhixingGraph) ====================
+// ==================== 知行图(Knowing-Doing Graph) ====================
 
 const ZHIXING_NO_KEY_MESSAGE = '钱包里还没有知行图账户:请在「账户管理 → 导入钱包」里选择「知行图」,用助记词或密钥文件导入已有的成员身份';
 

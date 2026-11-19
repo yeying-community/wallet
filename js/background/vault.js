@@ -1484,7 +1484,7 @@ export async function deriveBitcoinSubAccount(wallet, newIndex, accountName, pas
 }
 
 
-// ==================== 知行图(ZhixingGraph)钱包 ====================
+// ==================== 知行图(Knowing-Doing Graph)钱包 ====================
 //
 // 知行图账户的私钥字段存的是 32 字节 ed25519 种子(0x 十六进制),地址是 ed25519 公钥(64 位小写十六进制)。
 // 派生与知行图 `node keygen` 完全相同:助记词 → BIP-39 种子前 32 字节;所以导入同一组助记词 /

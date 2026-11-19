@@ -171,5 +171,15 @@ export const legacyEnglishText = Object.freeze({
   '暂无 UCAN 会话': 'No UCAN sessions',
   '创建时间': 'Created at',
   '过期时间': 'Expires at',
-  '撤销授权': 'Revoke authorization'
+  '撤销授权': 'Revoke authorization',
+  '知行图': 'Knowing-Doing Graph',
+  '知行图测试网': 'Knowing-Doing Graph Testnet',
+  '知行图公钥': 'Knowing-Doing Graph public key',
+  '连接知行图': 'Connect to Knowing-Doing Graph',
+  '此网站请求读取你的知行图公钥': 'This site wants to read your Knowing-Doing Graph public key',
+  '网站只能看到公钥,看不到私钥或助记词。': 'The site sees only your public key, never your private key or mnemonic.',
+  '之后每次签署知识操作,钱包都会单独请你确认。': 'Every knowledge operation you sign later will ask for your confirmation separately.',
+  '签署知行图知识操作': 'Sign a Knowing-Doing Graph knowledge operation',
+  '连接': 'Connect',
+  '签名': 'Sign'
 });

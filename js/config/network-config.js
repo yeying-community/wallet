@@ -20,12 +20,14 @@ export const LEGACY_YEYING_NETWORK = Object.freeze({
 
 // ==================== 网络配置 ====================
 export const NETWORKS = {
-  // ===== 知行图(ZhixingGraph)=====
+  // ===== 知行图(英文名 Knowing-Doing Graph)=====
   // 记录知识单元、版本、引用与核验的公开图谱。RPC 是 REST + JSON(GET /info、/members…),
   // 不是以太坊 JSON-RPC;钱包只用它显示成员状态。签名见 js/background/operations/zhixing.js。
   zhixingTestnet: {
     id: 'zhixingTestnet',
-    name: '知行图测试网',
+    name: 'Knowing-Doing Graph Testnet',
+    // 显示名按界面语言取(js/config/network-names.js);name 是英文名,用于存储与导出
+    names: { 'zh-CN': '知行图测试网', 'en-US': 'Knowing-Doing Graph Testnet' },
     rpc: 'https://blockchain.yeying.pub/rpc',
     rpcUrl: 'https://blockchain.yeying.pub/rpc',
     symbol: '',
@@ -41,6 +43,8 @@ export const NETWORKS = {
   ethereum: {
     id: 'ethereum',
     name: 'Ethereum Mainnet',
+    // 显示名按界面语言取(js/config/network-names.js);name 是英文名,用于存储与导出
+    names: { 'zh-CN': '以太坊主网', 'en-US': 'Ethereum Mainnet' },
     rpc: 'https://ethereum-rpc.publicnode.com',
     rpcUrl: 'https://ethereum-rpc.publicnode.com',
     chainId: 1,
@@ -60,6 +64,8 @@ export const NETWORKS = {
   sepolia: {
     id: 'sepolia',
     name: 'Ethereum Sepolia',
+    // 显示名按界面语言取(js/config/network-names.js);name 是英文名,用于存储与导出
+    names: { 'zh-CN': '以太坊 Sepolia 测试网', 'en-US': 'Ethereum Sepolia' },
     rpc: 'https://ethereum-sepolia-rpc.publicnode.com',
     rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
     chainId: 11155111,
@@ -79,6 +85,8 @@ export const NETWORKS = {
   'polygon-amoy': {
     id: 'polygon-amoy',
     name: 'Polygon Amoy',
+    // 显示名按界面语言取(js/config/network-names.js);name 是英文名,用于存储与导出
+    names: { 'zh-CN': 'Polygon Amoy 测试网', 'en-US': 'Polygon Amoy' },
     rpc: 'https://polygon-amoy-bor-rpc.publicnode.com',
     rpcUrl: 'https://polygon-amoy-bor-rpc.publicnode.com',
     chainId: 80002,
@@ -97,6 +105,8 @@ export const NETWORKS = {
   'bsc-testnet': {
     id: 'bsc-testnet',
     name: 'BNB Smart Chain Testnet',
+    // 显示名按界面语言取(js/config/network-names.js);name 是英文名,用于存储与导出
+    names: { 'zh-CN': 'BNB 智能链测试网', 'en-US': 'BNB Smart Chain Testnet' },
     rpc: 'https://bsc-testnet-rpc.publicnode.com',
     rpcUrl: 'https://bsc-testnet-rpc.publicnode.com',
     chainId: 97,
@@ -118,6 +128,8 @@ export const NETWORKS = {
   tronMainnet: {
     id: 'tronMainnet',
     name: 'Tron Mainnet',
+    // 显示名按界面语言取(js/config/network-names.js);name 是英文名,用于存储与导出
+    names: { 'zh-CN': '波场主网', 'en-US': 'Tron Mainnet' },
     rpc: 'https://api.trongrid.io',
     rpcUrl: 'https://api.trongrid.io',
     tronRpcUrl: 'https://api.trongrid.io',
@@ -138,6 +150,8 @@ export const NETWORKS = {
   tronShasta: {
     id: 'tronShasta',
     name: 'Tron Shasta Testnet',
+    // 显示名按界面语言取(js/config/network-names.js);name 是英文名,用于存储与导出
+    names: { 'zh-CN': '波场 Shasta 测试网', 'en-US': 'Tron Shasta Testnet' },
     rpc: 'https://api.shasta.trongrid.io',
     rpcUrl: 'https://api.shasta.trongrid.io',
     tronRpcUrl: 'https://api.shasta.trongrid.io',
@@ -158,6 +172,8 @@ export const NETWORKS = {
   tronNile: {
     id: 'tronNile',
     name: 'Tron Nile Testnet',
+    // 显示名按界面语言取(js/config/network-names.js);name 是英文名,用于存储与导出
+    names: { 'zh-CN': '波场 Nile 测试网', 'en-US': 'Tron Nile Testnet' },
     rpc: 'https://api.nile.trongrid.io',
     rpcUrl: 'https://api.nile.trongrid.io',
     tronRpcUrl: 'https://api.nile.trongrid.io',
@@ -180,6 +196,8 @@ export const NETWORKS = {
   solanaMainnet: {
     id: 'solanaMainnet',
     name: 'Solana Mainnet',
+    // 显示名按界面语言取(js/config/network-names.js);name 是英文名,用于存储与导出
+    names: { 'zh-CN': 'Solana 主网', 'en-US': 'Solana Mainnet' },
     rpc: 'https://api.mainnet-beta.solana.com',
     rpcUrl: 'https://api.mainnet-beta.solana.com',
     solanaRpcUrl: 'https://api.mainnet-beta.solana.com',
@@ -200,6 +218,8 @@ export const NETWORKS = {
   solanaDevnet: {
     id: 'solanaDevnet',
     name: 'Solana Devnet',
+    // 显示名按界面语言取(js/config/network-names.js);name 是英文名,用于存储与导出
+    names: { 'zh-CN': 'Solana 开发网', 'en-US': 'Solana Devnet' },
     rpc: 'https://api.devnet.solana.com',
     rpcUrl: 'https://api.devnet.solana.com',
     solanaRpcUrl: 'https://api.devnet.solana.com',
@@ -220,6 +240,8 @@ export const NETWORKS = {
   solanaTestnet: {
     id: 'solanaTestnet',
     name: 'Solana Testnet',
+    // 显示名按界面语言取(js/config/network-names.js);name 是英文名,用于存储与导出
+    names: { 'zh-CN': 'Solana 测试网', 'en-US': 'Solana Testnet' },
     rpc: 'https://api.testnet.solana.com',
     rpcUrl: 'https://api.testnet.solana.com',
     solanaRpcUrl: 'https://api.testnet.solana.com',
@@ -244,6 +266,8 @@ export const NETWORKS = {
   bitcoinMainnet: {
     id: 'bitcoinMainnet',
     name: 'Bitcoin Mainnet',
+    // 显示名按界面语言取(js/config/network-names.js);name 是英文名,用于存储与导出
+    names: { 'zh-CN': '比特币主网', 'en-US': 'Bitcoin Mainnet' },
     rpc: 'https://blockstream.info/api',
     rpcUrl: 'https://blockstream.info/api',
     bitcoinRpcUrl: 'https://blockstream.info/api',
@@ -264,6 +288,8 @@ export const NETWORKS = {
   bitcoinTestnet: {
     id: 'bitcoinTestnet',
     name: 'Bitcoin Testnet',
+    // 显示名按界面语言取(js/config/network-names.js);name 是英文名,用于存储与导出
+    names: { 'zh-CN': '比特币测试网', 'en-US': 'Bitcoin Testnet' },
     rpc: 'https://blockstream.info/testnet/api',
     rpcUrl: 'https://blockstream.info/testnet/api',
     bitcoinRpcUrl: 'https://blockstream.info/testnet/api',
@@ -569,7 +595,7 @@ export function formatNetworkConfig(config) {
     const reference = String(raw.reference || 'testnet').toLowerCase();
     return {
       id: raw.id || `zhixing-${reference}`,
-      name: raw.name || '知行图',
+      name: raw.name || 'Knowing-Doing Graph',
       rpc: raw.rpc || raw.rpcUrl || '',
       rpcUrl: raw.rpcUrl || raw.rpc || '',
       symbol: '',

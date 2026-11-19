@@ -116,7 +116,7 @@ export const IdentityStorageKeys = {
   SELECTED_IDENTITY: 'selected_wallet_identity_id'
 };
 
-// 知行图(ZhixingGraph):账户是普通钱包账户(namespace=zhixing);这里只有站点授权,
+// 知行图(Knowing-Doing Graph):账户是普通钱包账户(namespace=zhixing);这里只有站点授权,
 // 单独记录、不与 EVM 站点授权混在一起(在「网站管理」里合并显示与撤销)。
 export const ZhixingStorageKeys = {
   SITES: 'zhixing_authorized_sites'

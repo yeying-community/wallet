@@ -9,6 +9,8 @@
  * 通信协议：{ type, data }
  */
 import { NetworkMessageType } from '../protocol/extension-protocol.js';
+import { getNetworkDisplayName, findBuiltinNetwork } from '../config/network-names.js';
+import { t } from '../common/i18n/index.js';
 import { BaseDomain } from './base-domain.js';
 export { NetworkMessageType };
 
@@ -287,17 +289,15 @@ export class NetworkDomain extends BaseDomain {
       n.chainId === chainIdOrKey || n.chainIdHex === chainIdOrKey || n.chainKey === chainIdOrKey
     );
     if (network) {
-      return network.name || network.chainName || '网络';
+      return getNetworkDisplayName(network);
     }
-    // Tron chainKey 回退名
-    if (chainIdOrKey === 'tron:mainnet') return 'Tron Mainnet';
-    if (chainIdOrKey === 'tron:shasta') return 'Tron Shasta Testnet';
-    if (chainIdOrKey === 'tron:nile') return 'Tron Nile Testnet';
+    // 内置的非 EVM 网络(按 chainKey)
+    if (findBuiltinNetwork(chainIdOrKey)) return getNetworkDisplayName(chainIdOrKey);
     // 其他未知 chainId 用 hex 兜底
     if (chainIdOrKey && chainIdOrKey.startsWith('0x')) {
       return `Chain ${parseInt(chainIdOrKey, 16)}`;
     }
-    return chainIdOrKey || '未知网络';
+    return chainIdOrKey || t('network.unknown');
   }
 
   /**

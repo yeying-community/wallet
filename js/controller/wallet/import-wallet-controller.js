@@ -2,6 +2,15 @@ import { showPage, showError, showSuccess, showWarning, showWaiting, hideWaiting
 import { savePopupSessionState } from '../../common/ui/popup-session-state.js';
 import { IDENTITY_NODE_ENDPOINT_STORAGE_KEY, normalizeIdentityNodeEndpoint } from '../../config/identity-config.js';
 import { WalletMessageType } from '../../protocol/extension-protocol.js';
+import { t } from '../../common/i18n/index.js';
+
+/** 把选项的文字和翻译键一起复制到标签上:切换界面语言时标签会跟着变(applyTranslations 处理 data-i18n)。 */
+export function copyOptionLabel(labelEl, optionEl) {
+  if (!labelEl || !optionEl) return;
+  labelEl.textContent = optionEl.textContent.trim();
+  if (optionEl.dataset.i18n) labelEl.dataset.i18n = optionEl.dataset.i18n;
+  else delete labelEl.dataset.i18n;
+}
 
 function isLinuxDesktop() {
   const navigatorRef = globalThis.navigator;
@@ -32,22 +41,23 @@ const IMPORT_FIELD_IDS = [
 // 每个网络对应的 reference 选项 + 默认 reference（决定非 EVM 链走主网还是测试网）
 const NETWORK_REFERENCES = {
   evm: [], // EVM 固定 eip155:1，无 reference 可选
+  // i18n:显示名的翻译键(messages-*.js 的 network.ref.*)
   tron: [
-    { value: 'mainnet', label: 'Mainnet' },
-    { value: 'shasta', label: 'Shasta (Testnet)' },
-    { value: 'nile', label: 'Nile (Testnet)' }
+    { value: 'mainnet', i18n: 'network.ref.mainnet' },
+    { value: 'shasta', i18n: 'network.ref.shasta' },
+    { value: 'nile', i18n: 'network.ref.nile' }
   ],
   solana: [
-    { value: 'mainnet-beta', label: 'Mainnet' },
-    { value: 'devnet', label: 'Devnet' },
-    { value: 'testnet', label: 'Testnet' }
+    { value: 'mainnet-beta', i18n: 'network.ref.mainnet' },
+    { value: 'devnet', i18n: 'network.ref.devnet' },
+    { value: 'testnet', i18n: 'network.ref.testnet' }
   ],
   bitcoin: [
-    { value: 'mainnet', label: 'Mainnet' },
-    { value: 'testnet', label: 'Testnet' }
+    { value: 'mainnet', i18n: 'network.ref.mainnet' },
+    { value: 'testnet', i18n: 'network.ref.testnet' }
   ],
   zhixing: [
-    { value: 'testnet', label: '测试网' }
+    { value: 'testnet', i18n: 'network.ref.testnet' }
   ]
 };
 const NETWORK_DEFAULT_REFERENCE = {
@@ -92,7 +102,7 @@ export function clearImportWalletForm({ resetType = true } = {}) {
   const networkSelect = document.getElementById('importNetworkSelect');
   if (networkSelect) networkSelect.value = 'evm';
   const networkLabel = document.getElementById('importNetworkLabel');
-  if (networkLabel) networkLabel.textContent = 'Ethereum';
+  if (networkLabel) { networkLabel.textContent = t('network.family.evm'); networkLabel.dataset.i18n = 'network.family.evm'; }
   const networkMenu = document.getElementById('importNetworkMenu');
   networkMenu?.querySelectorAll('.network-option').forEach((opt) => {
     opt.classList.toggle('active', opt.dataset.networkValue === 'evm');
@@ -154,7 +164,8 @@ function setActiveNetwork(network) {
       btn.type = 'button';
       btn.className = 'network-option';
       btn.dataset.referenceValue = r.value;
-      btn.textContent = r.label;
+      btn.dataset.i18n = r.i18n;
+      btn.textContent = t(r.i18n);
       refMenu.appendChild(btn);
     }
   }
@@ -163,7 +174,8 @@ function setActiveNetwork(network) {
     for (const r of refs) {
       const opt = document.createElement('option');
       opt.value = r.value;
-      opt.textContent = r.label;
+      opt.dataset.i18n = r.i18n;
+      opt.textContent = t(r.i18n);
       refSelect.appendChild(opt);
     }
     const defaultRef = NETWORK_DEFAULT_REFERENCE[network] || refs[0].value;
@@ -171,7 +183,8 @@ function setActiveNetwork(network) {
     const labelEl = document.getElementById('importReferenceLabel');
     if (labelEl) {
       const match = refs.find((r) => r.value === defaultRef);
-      labelEl.textContent = match ? match.label : defaultRef;
+      labelEl.textContent = match ? t(match.i18n) : defaultRef;
+      if (match) labelEl.dataset.i18n = match.i18n; else delete labelEl.dataset.i18n;
     }
     refMenu?.querySelectorAll('.network-option').forEach((opt) => {
       opt.classList.toggle('active', opt.dataset.referenceValue === defaultRef);
@@ -355,8 +368,7 @@ export class ImportWalletController {
       const current = select.value;
       if (current !== nextNetwork) {
         select.value = nextNetwork;
-        const labelEl = document.getElementById('importNetworkLabel');
-        if (labelEl) labelEl.textContent = option.textContent.trim();
+        copyOptionLabel(document.getElementById('importNetworkLabel'), option);
         menu.querySelectorAll('.network-option').forEach((opt) => {
           opt.classList.toggle('active', opt.dataset.networkValue === nextNetwork);
         });
@@ -403,8 +415,7 @@ export class ImportWalletController {
       if (!nextRef) return;
       if (select.value !== nextRef) {
         select.value = nextRef;
-        const labelEl = document.getElementById('importReferenceLabel');
-        if (labelEl) labelEl.textContent = option.textContent.trim();
+        copyOptionLabel(document.getElementById('importReferenceLabel'), option);
         menu.querySelectorAll('.network-option').forEach((opt) => {
           opt.classList.toggle('active', opt.dataset.referenceValue === nextRef);
         });

@@ -8,6 +8,8 @@ import {
   createCopyToastHandler
 } from '../../common/ui/index.js';
 import { formatLocaleDateTime, getTimestamp } from '../../common/utils/time-utils.js';
+import { getNetworkDisplayName } from '../../config/network-names.js';
+import { t } from '../../common/i18n/index.js';
 
 export class TransactionDetailController {
   constructor({ transaction, network } = {}) {
@@ -51,7 +53,7 @@ export class TransactionDetailController {
     const timeValue = tx?.timestamp ? tx.timestamp : getTimestamp();
     this.setDetailValue('txDetailTime', formatLocaleDateTime(timeValue));
 
-    this.setDetailValue('txDetailNetwork', networkMeta?.name || '网络');
+    this.setDetailValue('txDetailNetwork', networkMeta?.name || t('network.generic'));
 
     if (tx?.confirmedAt) {
       this.toggleDetailRow('txDetailConfirmedRow', true);
@@ -175,7 +177,7 @@ export class TransactionDetailController {
 
   async getNetworkMeta(chainId) {
     if (!this.network) {
-      return { name: '网络', symbol: 'ETH', explorer: '' };
+      return { name: t('network.generic'), symbol: 'ETH', explorer: '' };
     }
 
     let normalized = null;
@@ -213,7 +215,7 @@ export class TransactionDetailController {
       }
     }
 
-    const name = matched?.chainName || matched?.name || matched?.nativeCurrency?.name || matched?.symbol || '网络';
+    const name = getNetworkDisplayName(matched, matched?.nativeCurrency?.name || matched?.symbol || t('network.generic'));
     const symbol = matched?.nativeCurrency?.symbol || matched?.symbol || 'ETH';
     const explorer = matched?.explorer || matched?.blockExplorerUrls?.[0] || '';
     const namespace = matched?.namespace || '';

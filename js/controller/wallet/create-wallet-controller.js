@@ -9,6 +9,7 @@ import {
   setPageOrigin
 } from '../../common/ui/index.js';
 import { DEFAULT_MPC_COORDINATOR_ENDPOINT } from '../setting/settings-utils.js';
+import { copyOptionLabel } from './import-wallet-controller.js';
 
 const CREATE_WALLET_DRAFT_KEY = 'createWalletDraft';
 const GENERATED_WALLET_NAME_PATTERN = /^(hd|mpc)-\d{4}$/;
@@ -452,7 +453,7 @@ export class CreateWalletController {
       if (select.value !== nextRef) {
         select.value = nextRef;
         const labelEl = document.getElementById('tronCreateNetworkLabel');
-        if (labelEl) labelEl.textContent = option.textContent.trim();
+        copyOptionLabel(labelEl, option);
         menu.querySelectorAll('.network-option').forEach(opt => {
           opt.classList.toggle('active', opt.dataset.tronReference === nextRef);
         });
@@ -500,7 +501,7 @@ export class CreateWalletController {
       if (select.value !== nextRef) {
         select.value = nextRef;
         const labelEl = document.getElementById('solanaCreateNetworkLabel');
-        if (labelEl) labelEl.textContent = option.textContent.trim();
+        copyOptionLabel(labelEl, option);
         menu.querySelectorAll('.network-option').forEach(opt => {
           opt.classList.toggle('active', opt.dataset.solanaReference === nextRef);
         });
@@ -548,7 +549,7 @@ export class CreateWalletController {
       if (select.value !== nextRef) {
         select.value = nextRef;
         const labelEl = document.getElementById('bitcoinCreateNetworkLabel');
-        if (labelEl) labelEl.textContent = option.textContent.trim();
+        copyOptionLabel(labelEl, option);
         menu.querySelectorAll('.network-option').forEach(opt => {
           opt.classList.toggle('active', opt.dataset.bitcoinReference === nextRef);
         });
@@ -832,7 +833,7 @@ export class CreateWalletController {
       const tronLabel = document.getElementById('tronCreateNetworkLabel');
       if (tronLabel) {
         const opt = document.querySelector(`#tronCreateNetworkMenu [data-tron-reference="${draft.tronReference}"]`);
-        if (opt) tronLabel.textContent = opt.textContent.trim();
+        if (opt) copyOptionLabel(tronLabel, opt);
       }
     }
     this.selectedMpcParticipants = Array.isArray(draft.participants)

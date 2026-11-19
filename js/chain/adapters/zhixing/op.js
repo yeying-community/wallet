@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * 知行图(ZhixingGraph)知识操作:编码、可读摘要、签名。
+ * 知行图(Knowing-Doing Graph)知识操作:编码、可读摘要、签名。
  *
  * 知行图是一条记录"知识单元、版本、引用与核验"的链(https://github.com/yeying-community/blockchain)。
  * 它没有代币余额,也没有转账;钱包在这里只做一件事:**替成员签署知识操作**(写作、修订、核验、邀请)。

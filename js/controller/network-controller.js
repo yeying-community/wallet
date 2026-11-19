@@ -1,6 +1,8 @@
 import { DEFAULT_NETWORK } from '../config/index.js';
 import { normalizeChainId } from '../common/chain/index.js';
 import { getSelectedNetworkName, getNetworkConfigByKey } from '../storage/index.js';
+import { getNetworkDisplayName } from '../config/network-names.js';
+import { t } from '../common/i18n/index.js';
 import {
   showPage,
   showWaiting,
@@ -17,12 +19,29 @@ export class NetworkController {
     this.handleDocumentClick = this.handleDocumentClick.bind(this);
   }
 
-  getNetworkLabel(network, fallback = '网络') {
+  // 网络显示名按界面语言取(内置网络有中英文名;自定义网络用自己的名字),见 js/config/network-names.js
+  getNetworkLabel(network, fallback = t('network.generic')) {
     if (!network) return fallback;
-    return network.chainName || network.name || network.nativeCurrency?.name || fallback;
+    return getNetworkDisplayName(network, network.nativeCurrency?.name || fallback);
+  }
+
+  chainLabel(network) {
+    return network?.chainId ? t('network.chainLabel', { id: network.chainId }) : t('network.generic');
+  }
+
+  // 切换语言后重画网络名(下拉菜单、标签、网络管理列表)
+  bindLanguageChange() {
+    if (this.boundLanguageChange || typeof globalThis.addEventListener !== 'function') return;
+    this.boundLanguageChange = true;
+    globalThis.addEventListener('wallet-language-changed', () => {
+      this.refreshNetworkOptions().catch(() => {});
+      const page = document.getElementById('networkManagePage');
+      if (page && !page.classList.contains('hidden')) this.loadNetworkList().catch(() => {});
+    });
   }
 
   bindEvents() {
+    this.bindLanguageChange();
     const selectors = this.getNetworkSelectors();
     selectors.forEach((selector) => {
       const trigger = selector.querySelector('.network-trigger');
@@ -249,13 +268,13 @@ export class NetworkController {
       const rpc = network?.rpcUrl || network?.rpc;
       if (!rpc) return;
       if (values.has(rpc)) return;
-      const label = this.getNetworkLabel(network, `Chain ${network.chainId || ''}`.trim());
+      const label = this.getNetworkLabel(network, this.chainLabel(network));
       options.push({ value: rpc, label, key: network.key || network.id || '' });
       values.add(rpc);
     });
 
     if (!options.length && currentRpc) {
-      options.push({ value: currentRpc, label: '当前网络' });
+      options.push({ value: currentRpc, label: t('network.current') });
       values.add(currentRpc);
     }
 
@@ -263,7 +282,7 @@ export class NetworkController {
     const selectedValue = values.has(currentRpc) ? currentRpc : fallbackValue;
     this.currentNetworkValue = selectedValue;
 
-    const selectedLabel = options.find(option => option.value === selectedValue)?.label || '网络';
+    const selectedLabel = options.find(option => option.value === selectedValue)?.label || t('network.generic');
 
     selectors.forEach((selector) => {
       const labelEl = selector.querySelector('.network-label');
@@ -296,7 +315,7 @@ export class NetworkController {
       const manageButton = document.createElement('button');
       manageButton.type = 'button';
       manageButton.className = 'network-option network-option-manage';
-      manageButton.textContent = '网络管理';
+      manageButton.textContent = t('network.manage');
       manageButton.addEventListener('click', async (event) => {
         event.stopPropagation();
         this.closeAllMenus();
@@ -591,17 +610,17 @@ export class NetworkController {
 
       const title = document.createElement('div');
       title.className = 'network-item-title';
-      title.textContent = this.getNetworkLabel(network, `Chain ${network.chainId || ''}`.trim());
+      title.textContent = this.getNetworkLabel(network, this.chainLabel(network));
       if (network.key === DEFAULT_NETWORK || network.id === DEFAULT_NETWORK) {
         const defaultBadge = document.createElement('span');
         defaultBadge.className = 'network-badge';
-        defaultBadge.textContent = '默认';
+        defaultBadge.textContent = t('network.default');
         title.appendChild(defaultBadge);
       }
       if (isNetworkCurrent) {
         const currentBadge = document.createElement('span');
         currentBadge.className = 'network-badge current';
-        currentBadge.textContent = '当前';
+        currentBadge.textContent = t('network.active');
         title.appendChild(currentBadge);
       }
 
@@ -627,7 +646,7 @@ export class NetworkController {
       if (evmId) {
         meta.textContent = `Chain ID: ${evmId} | 符号: ${network.symbol || network.nativeCurrency?.symbol || 'ETH'}`;
       } else if (network.namespace === 'zhixing') {
-        meta.textContent = `${network.chainKey || 'zhixing'} | 知识图谱,没有资产`;
+        meta.textContent = t('network.zhixingMeta', { chainKey: network.chainKey || 'zhixing' });
       } else {
         meta.textContent = `${network.chainKey || network.namespace || ''} | 符号: ${network.symbol || network.nativeCurrency?.symbol || ''}`;
       }
@@ -679,7 +698,7 @@ export class NetworkController {
       showError('至少保留一个网络');
       return;
     }
-    if (!confirm(`确定要删除 "${network.chainName || network.name || targetChainId}" 吗？`)) {
+    if (!confirm(`确定要删除 "${this.getNetworkLabel(network, targetChainId)}" 吗？`)) {
       return;
     }
 

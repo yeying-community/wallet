@@ -5,6 +5,8 @@
  * 状态来自后台 ZHIXING_GET_STATUS(公钥 → 是否成员、账户编号、见习期;链高度),
  * 知行图账户在「账户管理 → 导入钱包」里选「知行图」导入。
  */
+import { t } from '../../common/i18n/index.js';
+
 const el = (id) => document.getElementById(id);
 
 // 选中知行图时隐藏的元素(资产相关)
@@ -15,6 +17,7 @@ export function setZhixingHomeMode(on) {
     const node = el(id);
     if (node) node.classList.toggle('hidden', !!on);
   }
+  if (!on) { const list = el('tokenList'); if (list) delete list.dataset.zhixingHome; }
   if (on) {
     // 回到"通证"页签,其余页签内容隐藏
     el('tokensContent')?.classList.remove('hidden');
@@ -48,16 +51,20 @@ function text(t, mono = false) {
   return s;
 }
 
+let lastStatus = null;
+let languageListenerBound = false;
+
 /**
  * @param {{ getZhixingStatus: (force?: boolean) => Promise<any> }} wallet
  */
 export async function renderZhixingHome(wallet) {
   const list = el('tokenList');
   if (!list) return;
+  bindLanguageChange();
   list.textContent = '';
   const loading = document.createElement('div');
   loading.className = 'empty-state';
-  loading.textContent = '读取知行图状态…';
+  loading.textContent = t('zhixing.loading');
   list.appendChild(loading);
 
   let s = null;
@@ -66,37 +73,55 @@ export async function renderZhixingHome(wallet) {
   } catch (error) {
     s = { error: String(error?.message || error) };
   }
+  lastStatus = s;
+  drawStatus(s);
+}
+
+// 切换界面语言时用上次的状态重画(不重新查询)
+function bindLanguageChange() {
+  if (languageListenerBound || typeof globalThis.addEventListener !== 'function') return;
+  languageListenerBound = true;
+  globalThis.addEventListener('wallet-language-changed', () => {
+    const list = el('tokenList');
+    if (lastStatus && list?.dataset.zhixingHome === '1') drawStatus(lastStatus);
+  });
+}
+
+function drawStatus(s) {
+  const list = el('tokenList');
+  if (!list) return;
   list.textContent = '';
+  list.dataset.zhixingHome = '1';
 
   const intro = document.createElement('p');
   intro.className = 'settings-hint';
   intro.style.marginTop = '12px'; // 别被上方的网络选择器盖住
-  intro.textContent = '知行图是记录知识、引用与核验的公开图谱,没有余额与转账。这里显示你的成员身份。';
+  intro.textContent = t('zhixing.intro');
   list.appendChild(intro);
 
   if (!s || !s.hasKey) {
     const p = document.createElement('p');
     p.className = 'settings-hint';
-    p.textContent = '钱包里还没有知行图账户。到「账户管理 → 导入钱包」选择「知行图」,用助记词或密钥文件导入。';
+    p.textContent = t('zhixing.noAccount');
     list.appendChild(p);
-    if (s && s.height) list.appendChild(row('链高度', text(s.height)));
+    if (s && s.height) list.appendChild(row(t('zhixing.height'), text(s.height)));
     return;
   }
 
-  list.appendChild(row('公钥', text(s.address, true)));
+  list.appendChild(row(t('zhixing.pubkey'), text(s.address, true)));
   let status;
-  if (s.error) status = `查询失败:${s.error}`;
-  else if (!s.member) status = '还不是成员:把公钥发给邀请你的成员';
-  else status = `账户 #${s.id} · ${s.established ? '已过见习期' : '见习期中(核验暂不计入可信度)'}`;
-  list.appendChild(row('状态', text(status)));
-  if (s.height) list.appendChild(row('链高度', text(s.height)));
+  if (s.error) status = t('zhixing.statusError', { message: s.error });
+  else if (!s.member) status = t('zhixing.notMember');
+  else status = t('zhixing.member', { id: s.id, stage: t(s.established ? 'zhixing.established' : 'zhixing.probation') });
+  list.appendChild(row(t('zhixing.status'), text(status)));
+  if (s.height) list.appendChild(row(t('zhixing.height'), text(s.height)));
 
   if (s.explorer) {
     const a = document.createElement('a');
     a.href = s.explorer;
     a.target = '_blank';
     a.rel = 'noopener';
-    a.textContent = '打开知行图 ↗';
-    list.appendChild(row('浏览器', a));
+    a.textContent = t('zhixing.open');
+    list.appendChild(row(t('zhixing.explorer'), a));
   }
 }
