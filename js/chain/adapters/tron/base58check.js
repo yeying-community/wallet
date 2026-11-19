@@ -167,16 +167,23 @@ function computeChecksum(payload) {
 }
 
 // ===== Tron 专用入口 =====
-// Tron 21 字节 payload：1 字节 prefix（mainnet 0x41 / testnet 0xa0）+ 20 字节 keccak256(pubkey[64]).slice(-20)
+// Tron 21 字节 payload：1 字节 prefix 0x41 + 20 字节 keccak256(pubkey[64]).slice(-20)。
+//
+// 主网与测试网(Shasta / Nile)用同一个前缀 0x41,地址都是 T 开头。2026-11 对照 nile.trongrid.io 与
+// api.shasta.trongrid.io 的 /wallet/validateaddress 核实:T 开头地址 → 合法;0xa0 前缀(27 开头,35 位)
+// → "Length error"。0xa0 是 Tron 早年测试网的前缀,早期版本的钱包曾用它生成测试网地址,
+// 这些地址在链上无效,启动时由 upgradeLegacyTronAddress 迁移为同一把密钥的 T 地址。
 
 export const TRON_MAINNET_PREFIX = 0x41;
-export const TRON_SHASTA_PREFIX = 0xa0;
-export const TRON_NILE_PREFIX = 0xa0;
+export const TRON_SHASTA_PREFIX = 0x41;
+export const TRON_NILE_PREFIX = 0x41;
+/** 早期版本误用的测试网前缀;只用于识别并迁移旧地址,不再生成、也不再视为合法地址。 */
+export const TRON_LEGACY_TESTNET_PREFIX = 0xa0;
 
 /**
- * 编码 20 字节 hash 成 Tron 地址字符串（默认 mainnet prefix 0x41）。
+ * 编码 20 字节 hash 成 Tron 地址字符串（prefix 0x41，主网与测试网相同）。
  * @param {Uint8Array} hash20  20 字节 keccak256(pubkey[64]).slice(-20)
- * @param {number} [prefix]    默认 0x41；shasta/nile 用 0xa0
+ * @param {number} [prefix]    默认 0x41
  */
 export function trxBase58CheckEncode(hash20, prefix = TRON_MAINNET_PREFIX) {
   if (!(hash20 instanceof Uint8Array) || hash20.length !== 20) {
@@ -189,7 +196,7 @@ export function trxBase58CheckEncode(hash20, prefix = TRON_MAINNET_PREFIX) {
 }
 
 /**
- * 解码 Tron 地址为 20 字节 hash。校验 prefix（必须为 0x41 或 0xa0）。
+ * 解码 Tron 地址为 20 字节 hash。校验 prefix（必须为 0x41；旧的 0xa0 测试网地址在链上无效，不接受）。
  */
 export function trxBase58CheckDecode(addr) {
   const payload = base58CheckDecode(addr);
@@ -197,10 +204,27 @@ export function trxBase58CheckDecode(addr) {
     throw new Error(`Invalid Tron address payload length: ${payload.length}`);
   }
   const prefix = payload[0];
-  if (prefix !== TRON_MAINNET_PREFIX && prefix !== TRON_SHASTA_PREFIX && prefix !== TRON_NILE_PREFIX) {
+  if (prefix !== TRON_MAINNET_PREFIX) {
     throw new Error(`Invalid Tron address prefix: 0x${prefix.toString(16)}`);
   }
   return payload.slice(1);
+}
+
+/**
+ * 早期版本生成的测试网地址(前缀 0xa0,27 开头)→ 同一把密钥的正确地址(前缀 0x41,T 开头)。
+ * 其他输入原样返回。只换前缀、不涉及私钥:hash20 就是 keccak256(公钥) 的后 20 字节,与前缀无关。
+ * @param {string} addr
+ * @returns {string}
+ */
+export function upgradeLegacyTronAddress(addr) {
+  const raw = String(addr || '').trim();
+  try {
+    const payload = base58CheckDecode(raw);
+    if (payload.length !== 21 || payload[0] !== TRON_LEGACY_TESTNET_PREFIX) return addr;
+    return trxBase58CheckEncode(payload.slice(1), TRON_MAINNET_PREFIX);
+  } catch {
+    return addr;
+  }
 }
 
 /**

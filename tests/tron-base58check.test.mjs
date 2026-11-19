@@ -27,6 +27,8 @@ import {
   TRON_MAINNET_PREFIX,
   TRON_SHASTA_PREFIX,
   TRON_NILE_PREFIX,
+  TRON_LEGACY_TESTNET_PREFIX,
+  upgradeLegacyTronAddress,
   hexToBytes,
   bytesToHex
 } from '../js/chain/adapters/tron/base58check.js';
@@ -146,10 +148,11 @@ test('base58CheckEncode：非 Uint8Array 抛错', () => {
 
 // ==================== Tron prefix 常量 ====================
 
-test('Tron prefix 常量：mainnet 0x41 / shasta&nile 0xa0', () => {
+test('Tron prefix 常量：主网与测试网都是 0x41(地址都是 T 开头)', () => {
   assert.equal(TRON_MAINNET_PREFIX, 0x41);
-  assert.equal(TRON_SHASTA_PREFIX, 0xa0);
-  assert.equal(TRON_NILE_PREFIX, 0xa0);
+  assert.equal(TRON_SHASTA_PREFIX, 0x41);
+  assert.equal(TRON_NILE_PREFIX, 0x41);
+  assert.equal(TRON_LEGACY_TESTNET_PREFIX, 0xa0, '旧的测试网前缀只用于识别并迁移');
 });
 
 // ==================== trxBase58CheckEncode / Decode / Verify ====================
@@ -163,15 +166,16 @@ test('trxBase58CheckEncode：20 字节 hash → 34 字符地址', () => {
   assert.ok(addr.startsWith('T'), 'mainnet 地址以 T 开头');
 });
 
-test('trxBase58CheckEncode：testnet prefix 0xa0 → 35 字符地址（无前导零）', () => {
+test('trxBase58CheckEncode：测试网与主网同一个前缀,地址相同', () => {
   const hash = new Uint8Array(20);
   for (let i = 0; i < 20; i += 1) hash[i] = i + 1;
-  const addr = trxBase58CheckEncode(hash, TRON_SHASTA_PREFIX);
-  // 0xa0 = 160，非前导 0；前缀 base58 编码后不是 'a'
-  // 主要校验：长度稳定（25 字节 + checksum → 34 字符，但具体长度由 payload 值决定）
-  assert.ok(addr.length >= 33 && addr.length <= 36);
+  const mainnet = trxBase58CheckEncode(hash, TRON_MAINNET_PREFIX);
+  const testnet = trxBase58CheckEncode(hash, TRON_SHASTA_PREFIX);
+  assert.equal(testnet, mainnet, '主网与测试网用同一把密钥时地址相同');
+  assert.equal(mainnet.length, 34);
+  assert.ok(mainnet.startsWith('T'));
   // 解码能正确拿到原 hash（确定性 round-trip）
-  const back = trxBase58CheckDecode(addr);
+  const back = trxBase58CheckDecode(testnet);
   assert.deepEqual(Array.from(back), Array.from(hash));
 });
 
@@ -242,4 +246,18 @@ test('完整 round-trip：20 字节 hash → 主网地址 → 解码回原 hash'
   const addr = trxBase58CheckEncode(original);
   const back = trxBase58CheckDecode(addr);
   assert.deepEqual(Array.from(back), Array.from(original));
+});
+test('upgradeLegacyTronAddress:旧的 27 开头测试网地址 → 同一把密钥的 T 地址;其他输入不变', () => {
+  const hash = new Uint8Array(20);
+  for (let i = 0; i < 20; i += 1) hash[i] = 200 - i;
+  const legacy = trxBase58CheckEncode(hash, TRON_LEGACY_TESTNET_PREFIX);
+  const correct = trxBase58CheckEncode(hash, TRON_MAINNET_PREFIX);
+  assert.ok(legacy.startsWith('2') && legacy.length === 35);
+  assert.equal(trxBase58CheckVerify(legacy), false, '旧地址不再视为合法');
+  assert.equal(upgradeLegacyTronAddress(legacy), correct);
+  assert.equal(upgradeLegacyTronAddress(correct), correct, 'T 地址不变');
+  assert.equal(upgradeLegacyTronAddress('0x9858EfFD232B4033E47d90003D41EC34EcaEda94'), '0x9858EfFD232B4033E47d90003D41EC34EcaEda94');
+  assert.equal(upgradeLegacyTronAddress(''), '');
+  // 与节点核实过的一对:同一把密钥的旧地址 / 正确地址
+  assert.equal(upgradeLegacyTronAddress('27T8ah1q7SgfBgPVedXbRFAZarHFLm7YxLJ').startsWith('T'), true);
 });

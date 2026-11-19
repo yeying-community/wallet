@@ -28,8 +28,8 @@
  */
 
 const EVM_REGEX = /^0x[0-9a-fA-F]{40}$/;
-// 主网(前缀 0x41)地址 34 位,测试网 Shasta / Nile(前缀 0xa0)地址 35 位
-const TRON_PLAIN_REGEX = /^[A-HJ-NP-Za-km-z1-9]{34,35}$/;
+// Tron 地址(主网与测试网相同,前缀 0x41)固定 34 位、T 开头
+const TRON_PLAIN_REGEX = /^T[A-HJ-NP-Za-km-z1-9]{33}$/;
 const SOLANA_PLAIN_REGEX = /^[A-HJ-NP-Za-km-z1-9]{32,44}$/;  // base58(32B) ≈ 43-44 字符
 // Bitcoin：base58 (P2PKH/P2SH，前缀 1/3/m/n/2) 或 bech32/bech32m (bc1/tb1)。
 // 粗字符集/前缀预校验；严格校验（校验和 / bech32 polymod）走注入的 validator。

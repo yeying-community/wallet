@@ -42,8 +42,9 @@ export {
 registerTronStrictValidator(trxBase58CheckVerify);
 
 // ===== 地址 prefix 常量 =====
+// 主网与测试网(Shasta / Nile)地址前缀相同,都是 0x41(T 开头);见 base58check.js 的说明
 export const TRON_ADDRESS_PREFIX_MAINNET = 0x41;
-export const TRON_ADDRESS_PREFIX_TESTNET = 0xa0;
+export const TRON_ADDRESS_PREFIX_TESTNET = 0x41;
 
 // ===== BIP-44 派生常量 =====
 export const TRON_COIN_TYPE = 195;
@@ -106,8 +107,7 @@ export function isValidTronAddress(value) {
 }
 
 /**
- * 校验是否是给定 reference 的合法地址（mainnet 仅接受 0x41 prefix；
- * shasta/nile 接受 0xa0）。
+ * 校验是否是给定 reference(mainnet / shasta / nile)的合法地址：三者都只接受 0x41 前缀(T 开头)。
  *
  * @param {string} value
  * @param {string} reference mainnet | shasta | nile
@@ -120,24 +120,18 @@ export function isValidTronAddressForReference(value, reference) {
   try {
     const hash = trxBase58CheckDecode(raw);
     if (hash.length !== 20) return false;
-    // 重新编码用 reference 对应 prefix，对比原串
-    const expectedPrefix = reference === TRON_REFERENCE_MAINNET
-      ? TRON_ADDRESS_PREFIX_MAINNET
-      : TRON_ADDRESS_PREFIX_TESTNET;
-    return trxBase58CheckEncode(hash, expectedPrefix) === raw;
+    return trxBase58CheckEncode(hash, tronPrefixForReference(reference)) === raw;
   } catch {
     return false;
   }
 }
 
 /**
- * reference → 前缀字节（mainnet 0x41；testnet 0xa0）。
+ * reference → 前缀字节：主网与测试网都是 0x41。
  */
 export function tronPrefixForReference(reference) {
   if (!isValidTronReference(reference)) throw new Error(`Invalid tron reference: ${reference}`);
-  return reference === TRON_REFERENCE_MAINNET
-    ? TRON_ADDRESS_PREFIX_MAINNET
-    : TRON_ADDRESS_PREFIX_TESTNET;
+  return TRON_ADDRESS_PREFIX_MAINNET;
 }
 
 /**

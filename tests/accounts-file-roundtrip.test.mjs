@@ -179,7 +179,7 @@ test('测试网 HD 钱包派生的子账户仍在同一个测试网上(波场 Ni
   const tron = must(await ops.handleImportTronHDWallet('波场', M24, P, { tronReference: 'nile' }), 'Tron HD');
   const tSub = must(await ops.handleCreateTronSubAccount(tron.wallet.id, P), 'Tron 子账户');
   assert.equal(tSub.account.chainKey, 'tron:nile');
-  assert.ok(tSub.account.address.startsWith('27'), `Nile 地址应以 27 开头(前缀 0xa0),实际 ${tSub.account.address}`);
+  assert.ok(tSub.account.address.startsWith('T'), `Nile 地址应以 T 开头(与主网同一前缀 0x41),实际 ${tSub.account.address}`);
   const sol = must(await ops.handleImportSolanaHDWallet('索拉纳', M24, P, { solanaReference: 'devnet' }), 'Solana HD');
   const sSub = must(await ops.handleCreateSolanaSubAccount(sol.wallet.id, P), 'Solana 子账户');
   assert.equal(sSub.account.chainKey, sol.account.chainKey);
@@ -187,12 +187,4 @@ test('测试网 HD 钱包派生的子账户仍在同一个测试网上(波场 Ni
   const bSub = must(await ops.handleCreateBitcoinSubAccount(btc.wallet.id, P), 'Bitcoin 子账户');
   assert.equal(bSub.account.chainKey, btc.account.chainKey);
   assert.ok(bSub.account.address.startsWith('tb1'), `测试网地址应以 tb1 开头,实际 ${bSub.account.address}`);
-});
-
-test('波场测试网地址(35 位)能被识别;多个测试网账户不会被当成重复', async () => {
-  const { normalizeAddressForFamily } = await import('../js/common/chain/address-normalize.js');
-  await import('../js/chain/adapters/tron/address.js'); // 注册 Base58Check 严格校验
-  assert.equal(normalizeAddressForFamily('27T8ah1q7SgfBgPVedXbRFAZarHFLm7YxLJ', 'tron'), '27T8ah1q7SgfBgPVedXbRFAZarHFLm7YxLJ');
-  assert.equal(normalizeAddressForFamily('TKkgw2wLr84qg3wB525orEpag6Ao3GF9xt', 'tron'), 'TKkgw2wLr84qg3wB525orEpag6Ao3GF9xt');
-  assert.equal(normalizeAddressForFamily('27T8ah1q7SgfBgPVedXbRFAZarHFLm7YxLX', 'tron'), '', '校验和不对的地址仍然拒绝');
 });

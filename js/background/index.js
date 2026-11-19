@@ -4,6 +4,7 @@
  */
 
 import { initMessageListeners } from './message-handler.js';
+import { migrateLegacyTronTestnetAddresses } from './migrations/tron-testnet-address.js';
 import { cleanupConnections } from './connection.js';
 import { state } from './state.js';
 import { updateKeepAlive } from './offscreen.js';
@@ -55,6 +56,8 @@ async function init() {
       }
     }
     const seededNetworks = await ensureDefaultNetworks(NETWORKS);
+    // 早期版本的波场测试网地址(27 开头)在链上无效,迁移为同一把密钥的 T 地址
+    await migrateLegacyTronTestnetAddresses().catch((error) => console.warn('[Migration] 波场测试网地址迁移失败:', error?.message || error));
 
     // 加载保存的网络选择
     const savedNetwork = await getSelectedNetworkName();
