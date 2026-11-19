@@ -687,7 +687,7 @@ test('renderIdentityPasskeys labels the authenticator type', () => {
   // typeRow is inserted right after the top line (before the ID row).
   assert.equal(platformItem.children[1].className, 'identity-passkey-type-row');
   assert.equal(platformItem.children[1].children[0].textContent, '类型');
-  assert.equal(platformItem.children[1].children[1].textContent, '本机生物识别');
+  assert.equal(platformItem.children[1].children[1].textContent, '本机设备认证器');
   assert.equal(phoneItem.children[1].children[1].textContent, '手机扫码');
 });
 
@@ -729,7 +729,7 @@ test('registerIdentityPasskey explains WebAuthn exclusion of a synced credential
 
   await controller.registerIdentityPasskey();
 
-  assert.match(status, /已同步的现有通行证/);
+  assert.match(status, /已同步的现有通行密钥/);
 });
 
 test('renderIdentityPasskeys shows structured passkey cards', () => {
@@ -751,7 +751,7 @@ test('renderIdentityPasskeys shows structured passkey cards', () => {
   const [topLine, idRow, timeGrid] = item.children;
   const [name, revoke] = topLine.children;
   assert.equal(name.textContent, '夜莺钱包身份');
-  assert.equal(revoke.textContent, '撤销通行证');
+  assert.equal(revoke.textContent, '撤销通行密钥');
   assert.equal(revoke.dataset.passkeyRevoke, 'xuXQCaYR1234567890abcdefghiJh9IzOM');
   assert.equal(idRow.className, 'identity-passkey-id-row');
   assert.equal(idRow.children[0].textContent, 'ID');

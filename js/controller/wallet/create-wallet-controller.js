@@ -9,6 +9,7 @@ import {
   setPageOrigin
 } from '../../common/ui/index.js';
 import { DEFAULT_MPC_COORDINATOR_ENDPOINT } from '../setting/settings-utils.js';
+import { copyOptionLabel } from './import-wallet-controller.js';
 
 const CREATE_WALLET_DRAFT_KEY = 'createWalletDraft';
 const GENERATED_WALLET_NAME_PATTERN = /^(hd|mpc)-\d{4}$/;
@@ -152,7 +153,7 @@ export class CreateWalletController {
         await this.wallet.createHDWallet(name, password);
       }
 
-      showSuccess(isTron ? 'Tron 钱包创建成功' : (isSolana ? 'Solana 钱包创建成功' : (isBitcoin ? 'Bitcoin 钱包创建成功' : '钱包创建成功')));
+      showSuccess(isTron ? '波场钱包创建成功' : (isSolana ? '索拉纳钱包创建成功' : (isBitcoin ? '比特币钱包创建成功' : '钱包创建成功')));
       showPage('walletPage');
 
       this.resetForm();
@@ -319,9 +320,9 @@ export class CreateWalletController {
     }
     if (hint) {
       if (normalized === 'mpc') hint.textContent = '请填写钱包名称和参与方';
-      else if (normalized === 'tron') hint.textContent = '请填写 Tron 钱包名称';
-      else if (normalized === 'solana') hint.textContent = '请填写 Solana 钱包名称';
-      else if (normalized === 'bitcoin') hint.textContent = '请填写 Bitcoin 钱包名称';
+      else if (normalized === 'tron') hint.textContent = '请填写波场钱包名称';
+      else if (normalized === 'solana') hint.textContent = '请填写索拉纳钱包名称';
+      else if (normalized === 'bitcoin') hint.textContent = '请填写比特币钱包名称';
       else hint.textContent = '请填写钱包名称';
     }
     if (setPasswordBtn && isAccounts) {
@@ -403,11 +404,11 @@ export class CreateWalletController {
   }
 
   updateWalletTypeMenu(type) {
-    let label = 'HD Wallet';
-    if (type === 'mpc') label = 'MPC Wallet';
-    else if (type === 'tron') label = 'Tron HD';
-    else if (type === 'solana') label = 'Solana 钱包';
-    else if (type === 'bitcoin') label = 'Bitcoin 钱包';
+    let label = 'HD 钱包';
+    if (type === 'mpc') label = 'MPC 钱包';
+    else if (type === 'tron') label = '波场 HD 钱包';
+    else if (type === 'solana') label = '索拉纳钱包';
+    else if (type === 'bitcoin') label = '比特币钱包';
     const labelEl = document.getElementById('createWalletTypeLabel');
     if (labelEl) {
       labelEl.textContent = label;
@@ -452,7 +453,7 @@ export class CreateWalletController {
       if (select.value !== nextRef) {
         select.value = nextRef;
         const labelEl = document.getElementById('tronCreateNetworkLabel');
-        if (labelEl) labelEl.textContent = option.textContent.trim();
+        copyOptionLabel(labelEl, option);
         menu.querySelectorAll('.network-option').forEach(opt => {
           opt.classList.toggle('active', opt.dataset.tronReference === nextRef);
         });
@@ -500,7 +501,7 @@ export class CreateWalletController {
       if (select.value !== nextRef) {
         select.value = nextRef;
         const labelEl = document.getElementById('solanaCreateNetworkLabel');
-        if (labelEl) labelEl.textContent = option.textContent.trim();
+        copyOptionLabel(labelEl, option);
         menu.querySelectorAll('.network-option').forEach(opt => {
           opt.classList.toggle('active', opt.dataset.solanaReference === nextRef);
         });
@@ -548,7 +549,7 @@ export class CreateWalletController {
       if (select.value !== nextRef) {
         select.value = nextRef;
         const labelEl = document.getElementById('bitcoinCreateNetworkLabel');
-        if (labelEl) labelEl.textContent = option.textContent.trim();
+        copyOptionLabel(labelEl, option);
         menu.querySelectorAll('.network-option').forEach(opt => {
           opt.classList.toggle('active', opt.dataset.bitcoinReference === nextRef);
         });
@@ -832,7 +833,7 @@ export class CreateWalletController {
       const tronLabel = document.getElementById('tronCreateNetworkLabel');
       if (tronLabel) {
         const opt = document.querySelector(`#tronCreateNetworkMenu [data-tron-reference="${draft.tronReference}"]`);
-        if (opt) tronLabel.textContent = opt.textContent.trim();
+        if (opt) copyOptionLabel(tronLabel, opt);
       }
     }
     this.selectedMpcParticipants = Array.isArray(draft.participants)

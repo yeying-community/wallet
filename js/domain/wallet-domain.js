@@ -39,6 +39,21 @@ export class WalletDomain extends BaseDomain {
     }
   }
 
+  // ==================== 知行图(KnowDoGraph) ====================
+
+  /**
+   * 导入知行图钱包。source:{ mnemonic, passphrase? } | { privateKey } | { privateKey: <密钥文件 JSON>, filePassword }
+   */
+  async importZhixingWallet(accountName, source, password) {
+    const result = await this._sendMessage(WalletMessageType.IMPORT_ZHIXING_WALLET, { accountName, source, password });
+    this._currentAccount = result.account;
+    return result;
+  }
+
+  async getZhixingStatus(force = false) {
+    return (await this._sendMessage(WalletMessageType.ZHIXING_GET_STATUS, { force })).status || null;
+  }
+
   async createIdentity(password) {
     return this._sendMessage(WalletMessageType.IDENTITY_CREATE, { password });
   }
@@ -191,7 +206,7 @@ export class WalletDomain extends BaseDomain {
       throw new Error('密码至少需要8位字符');
     }
     const result = await this._sendMessage(WalletMessageType.CREATE_TRON_HD_WALLET, {
-      accountName: accountName || 'Tron 钱包',
+      accountName: accountName || '波场钱包',
       password,
       options
     });
@@ -210,7 +225,7 @@ export class WalletDomain extends BaseDomain {
       throw new Error('密码至少需要8位字符');
     }
     const result = await this._sendMessage(WalletMessageType.CREATE_SOLANA_HD_WALLET, {
-      accountName: accountName || 'Solana 钱包',
+      accountName: accountName || '索拉纳钱包',
       password,
       options
     });
@@ -229,7 +244,7 @@ export class WalletDomain extends BaseDomain {
       throw new Error('密码至少需要8位字符');
     }
     const result = await this._sendMessage(WalletMessageType.CREATE_BITCOIN_HD_WALLET, {
-      accountName: accountName || 'Bitcoin 钱包',
+      accountName: accountName || '比特币钱包',
       password,
       options
     });
@@ -284,7 +299,7 @@ export class WalletDomain extends BaseDomain {
       throw new Error('密码至少需要8位字符');
     }
     const result = await this._sendMessage(WalletMessageType.IMPORT_TRON_HD_WALLET, {
-      accountName: accountName || 'Tron 导入钱包',
+      accountName: accountName || '波场导入钱包',
       mnemonic: mnemonic.trim(),
       password,
       options
@@ -301,7 +316,7 @@ export class WalletDomain extends BaseDomain {
       throw new Error('密码至少需要8位字符');
     }
     const result = await this._sendMessage(WalletMessageType.IMPORT_SOLANA_HD_WALLET, {
-      accountName: accountName || 'Solana 导入钱包',
+      accountName: accountName || '索拉纳导入钱包',
       mnemonic: mnemonic.trim(),
       password,
       options
@@ -318,7 +333,7 @@ export class WalletDomain extends BaseDomain {
       throw new Error('密码至少需要8位字符');
     }
     const result = await this._sendMessage(WalletMessageType.IMPORT_BITCOIN_HD_WALLET, {
-      accountName: accountName || 'Bitcoin 导入钱包',
+      accountName: accountName || '比特币导入钱包',
       mnemonic: mnemonic.trim(),
       password,
       options
@@ -359,13 +374,13 @@ export class WalletDomain extends BaseDomain {
   async importTronFromPrivateKey(accountName, privateKey, password, options = {}) {
     const trimmed = String(privateKey || '').trim();
     if (!trimmed) {
-      throw new Error('请输入 Tron 私钥');
+      throw new Error('请输入波场私钥');
     }
     if (!password || password.length < 8) {
       throw new Error('密码至少需要8位字符');
     }
     const result = await this._sendMessage(WalletMessageType.IMPORT_TRON_PRIVATE_KEY_WALLET, {
-      accountName: accountName || 'Tron 私钥钱包',
+      accountName: accountName || '波场私钥钱包',
       privateKey: trimmed,
       password,
       options
@@ -377,13 +392,13 @@ export class WalletDomain extends BaseDomain {
   async importSolanaFromPrivateKey(accountName, privateKey, password, options = {}) {
     const trimmed = String(privateKey || '').trim();
     if (!trimmed) {
-      throw new Error('请输入 Solana 私钥');
+      throw new Error('请输入索拉纳私钥');
     }
     if (!password || password.length < 8) {
       throw new Error('密码至少需要8位字符');
     }
     const result = await this._sendMessage(WalletMessageType.IMPORT_SOLANA_PRIVATE_KEY_WALLET, {
-      accountName: accountName || 'Solana 私钥钱包',
+      accountName: accountName || '索拉纳私钥钱包',
       privateKey: trimmed,
       password,
       options
@@ -395,13 +410,13 @@ export class WalletDomain extends BaseDomain {
   async importBitcoinFromPrivateKey(accountName, privateKey, password, options = {}) {
     const trimmed = String(privateKey || '').trim();
     if (!trimmed) {
-      throw new Error('请输入 Bitcoin 私钥');
+      throw new Error('请输入比特币私钥');
     }
     if (!password || password.length < 8) {
       throw new Error('密码至少需要8位字符');
     }
     const result = await this._sendMessage(WalletMessageType.IMPORT_BITCOIN_PRIVATE_KEY_WALLET, {
-      accountName: accountName || 'Bitcoin 私钥钱包',
+      accountName: accountName || '比特币私钥钱包',
       privateKey: trimmed,
       password,
       options

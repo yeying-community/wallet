@@ -29,6 +29,7 @@ import {
   handleImportPrivateKeyWallet,
   handleImportTronPrivateKeyWallet,
   handleImportSolanaPrivateKeyWallet,
+  handleImportZhixingWallet,
   handleImportBitcoinPrivateKeyWallet,
   handleCreateSubAccount,
   handleCreateTronSubAccount,
@@ -106,6 +107,7 @@ import {
   handleMpcExportAuditLogs,
   handleMpcFlushAuditExportQueue
 } from './operations/mpc.js';
+import { getZhixingStatus } from './operations/zhixing.js';
 import {
   handleCreateIdentity,
   handleListIdentities,
@@ -137,7 +139,8 @@ import {
   setCurrentChainKey,
   chainIdToChainKey
 } from '../chain/current-chain.js';
-import { DEFAULT_NETWORK, POPUP_DIMENSIONS } from '../config/index.js';
+import { namespaceOf, ZHIXING_NAMESPACE } from '../chain/chain-key.js';
+import { DEFAULT_NETWORK, DEFAULT_EVM_NETWORK, POPUP_DIMENSIONS } from '../config/index.js';
 import { withPopupBoundsAsync } from './window-utils.js';
 import { normalizeChainId } from '../common/chain/index.js';
 import { compareAddresses } from '../common/chain/address-normalize.js';
@@ -210,6 +213,70 @@ async function fetchChainIdFromRpc(rpcUrl) {
   }
 
   return data.result;
+}
+
+// ==================== 账户与网络保持在同一条链上 ====================
+// 网络和账户各选各的,会出现「以太坊网络 + 波场账户」(余额查不到,首页显示「暂无通证」)或
+// 「波场网络 + 以太坊地址」(拿以太坊地址去查波场)。切网络时换成该链的账户,切账户时换到该账户的链。
+
+/** 链族:同一族的网络与账户地址格式相同(EVM 各网络共用一个地址)。 */
+function familyOfNamespace(namespace) {
+  const ns = String(namespace || 'eip155').toLowerCase();
+  if (ns === 'utxo') return 'bip122';
+  return ns;
+}
+
+async function getNetworkConfigByChainKey(chainKey) {
+  const key = String(chainKey || '');
+  if (!key) return null;
+  const networks = await getNetworks();
+  const list = Array.isArray(networks) ? networks : Object.values(networks || {});
+  return list.find((n) => n?.chainKey === key) || null;
+}
+
+/** 切网络之后:当前账户不在这条链上,就换成这条链上的账户(同一网络的优先,其次同一条链)。 */
+async function alignAccountToCurrentNetwork() {
+  const chainKey = state.currentChainKey || '';
+  const family = familyOfNamespace(namespaceOf(chainKey) || 'eip155');
+  // 知行图首页用钱包里的知行图账户,不依赖当前选中的账户
+  if (family === ZHIXING_NAMESPACE) return null;
+  const current = await getSelectedAccount();
+  const currentFamily = familyOfNamespace(current?.namespace);
+  const accounts = await getAccountList();
+  const sameFamily = accounts.filter((a) => familyOfNamespace(a?.namespace) === family);
+  if (sameFamily.length === 0) return null; // 这条链上还没有账户:首页会提示去新建或导入
+  if (current && currentFamily === family) {
+    // 非 EVM 链的主网与测试网地址不同(例如波场测试网前缀不同):有同一网络的账户就换过去
+    if (family === 'eip155' || current.chainKey === chainKey) return null;
+    const exact = sameFamily.find((a) => a.chainKey === chainKey);
+    if (!exact) return null;
+    const switched = await handleSwitchAccount(exact.id);
+    return switched?.success ? exact.id : null;
+  }
+  const target = sameFamily.find((a) => a.chainKey === chainKey) || sameFamily[0];
+  const switched = await handleSwitchAccount(target.id);
+  return switched?.success ? target.id : null;
+}
+
+/** 切账户之后:当前网络不在这个账户的链上,就切到该账户所在的网络(找不到就切到该链的第一个网络)。 */
+async function alignNetworkToAccount(accountId) {
+  const accounts = await getAccountList();
+  const account = accounts.find((a) => a?.id === accountId);
+  if (!account) return null;
+  const family = familyOfNamespace(account.namespace);
+  const currentFamily = familyOfNamespace(namespaceOf(state.currentChainKey || '') || 'eip155');
+  if (family === currentFamily) return null;
+  const networks = await getNetworks();
+  const list = Array.isArray(networks) ? networks : Object.values(networks || {});
+  const target = list.find((n) => n?.chainKey && n.chainKey === account.chainKey)
+    || list.find((n) => {
+      const ns = n?.chainKey ? namespaceOf(n.chainKey) : 'eip155';
+      return familyOfNamespace(ns) === family;
+    });
+  const key = target?.key || target?.id;
+  if (!key) return null;
+  const result = await handleSwitchNetworkMessage({ networkKey: key });
+  return result?.success ? key : null;
 }
 
 async function handleSwitchNetworkMessage(data) {
@@ -289,6 +356,7 @@ async function handleSwitchNetworkMessage(data) {
   return {
     success: true,
     chainId: getCurrentEvmChainIdHex(),
+    chainKey: state.currentChainKey || '',
     rpcUrl: state.currentRpcUrl,
   };
 }
@@ -365,9 +433,12 @@ async function handleGetNetworkInfoMessage() {
       // 让 dApp/popup 自行按 chainKey 路由；不要 fallback 到 defaultConfig
       // 的 EVM chainId，否则会把 currentChainKey 强制改写成 EVM 形态，
       // 破坏 SWITCH_NETWORK 写入的目标链。
+      // 带上该网络的完整配置(原生币符号、名称、精度):否则首页只能按 EVM 默认值显示「ETH / 原生代币」
+      const config = await getNetworkConfigByChainKey(state.currentChainKey);
       return {
         success: true,
         network: {
+          ...(config || {}),
           chainId: null,
           chainKey: state.currentChainKey,
           rpcUrl: state.currentRpcUrl,
@@ -734,7 +805,8 @@ async function resolveRpcUrl(chainIdOverride = null) {
     rpcUrl = rpcUrl || network?.rpcUrl || network?.rpc;
   }
   if (!rpcUrl) {
-    const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+    // 这里服务的是 EVM 请求(估 gas、查 gas 价、发交易):兜底必须是 EVM 网络,不能是默认的知行图
+    const fallbackConfig = await getNetworkConfigByKey(DEFAULT_EVM_NETWORK);
     rpcUrl = fallbackConfig?.rpcUrl || fallbackConfig?.rpc || '';
   }
   return rpcUrl;
@@ -778,6 +850,10 @@ async function refreshTransactionStatuses(transactions, chainId = null) {
 
 async function handleGetTransactionsMessage(data) {
   const { address, chainId } = data || {};
+  // 知行图没有交易记录;也不能去刷新挂起交易的状态(那会对它的 REST 接口发 JSON-RPC)
+  if (!chainId && namespaceOf(state.currentChainKey || '') === ZHIXING_NAMESPACE) {
+    return { success: true, transactions: [] };
+  }
   let normalizedChainId = null;
   if (chainId) {
     try {
@@ -948,6 +1024,12 @@ const popupHandlers = new Map([
   [WalletMessageType.IDENTITY_LIST_CREDENTIALS, async (data) => await handleListIdentityCredentials(data)],
   [WalletMessageType.IDENTITY_VERIFICATION_REQUEST, async (data) => await handleRequestIdentityVerification(data)],
   [WalletMessageType.IDENTITY_VERIFICATION_CONFIRM, async (data) => await handleConfirmIdentityVerification(data)],
+  // ==================== 知行图(KnowDoGraph) ====================
+  [WalletMessageType.IMPORT_ZHIXING_WALLET, async (data) => await handleImportZhixingWallet(data.accountName, data.source || {}, data.password)],
+  [WalletMessageType.ZHIXING_GET_STATUS, async (data) => ({
+    success: true,
+    status: await getZhixingStatus({ rpcUrl: state.currentRpcUrl || undefined, force: !!data?.force })
+  })],
   // ==================== 钱包管理 ====================
   ['IS_WALLET_INITIALIZED', async () => await isWalletInitialized()],
   ['GET_ALL_WALLETS', async () => await HandleGetWalletList()],
@@ -968,7 +1050,14 @@ const popupHandlers = new Map([
   ['CREATE_TRON_SUB_ACCOUNT', async (data) => await handleCreateTronSubAccount(data.walletId, data.password)],
   ['CREATE_SOLANA_SUB_ACCOUNT', async (data) => await handleCreateSolanaSubAccount(data.walletId, data.password, data.options || {})],
   ['CREATE_BITCOIN_SUB_ACCOUNT', async (data) => await handleCreateBitcoinSubAccount(data.walletId, data.password, data.options || {})],
-  ['SWITCH_ACCOUNT', async (data) => await handleSwitchAccount(data.accountId, data.password)],
+  ['SWITCH_ACCOUNT', async (data) => {
+    const result = await handleSwitchAccount(data.accountId, data.password);
+    if (result?.success) {
+      const networkKey = await alignNetworkToAccount(data.accountId);
+      if (networkKey) result.networkKey = networkKey;
+    }
+    return result;
+  }],
 
   // ==================== 解锁/锁定 ====================
   ['UNLOCK_WALLET', async (data) => {
@@ -1014,6 +1103,7 @@ const popupHandlers = new Map([
       chainId: state.currentChainKey ? getCurrentEvmChainIdHex() : null,
     };
   }],
+  [NetworkMessageType.GET_CURRENT_CHAIN_KEY, async () => ({ success: true, chainKey: state.currentChainKey || '' })],
   [NetworkMessageType.GET_CURRENT_RPC_URL, async () => {
     let rpcUrl = state.currentRpcUrl;
     if (!rpcUrl) {
@@ -1025,7 +1115,14 @@ const popupHandlers = new Map([
     }
     return { success: true, rpcUrl };
   }],
-  [NetworkMessageType.SWITCH_NETWORK, async (data) => await handleSwitchNetworkMessage(data)],
+  [NetworkMessageType.SWITCH_NETWORK, async (data) => {
+    const result = await handleSwitchNetworkMessage(data);
+    if (result?.success) {
+      const accountId = await alignAccountToCurrentNetwork();
+      if (accountId) result.accountId = accountId;
+    }
+    return result;
+  }],
   [NetworkMessageType.ADD_CUSTOM_NETWORK, async (data) => await handleAddCustomNetworkMessage(data)],
   [NetworkMessageType.UPDATE_CUSTOM_NETWORK, async (data) => await handleUpdateCustomNetworkMessage(data)],
   [NetworkMessageType.GET_SUPPORTED_NETWORKS, async () => await handleGetSupportedNetworksMessage()],

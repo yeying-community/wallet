@@ -28,10 +28,12 @@
  */
 
 const EVM_REGEX = /^0x[0-9a-fA-F]{40}$/;
-const TRON_PLAIN_REGEX = /^[A-HJ-NP-Za-km-z1-9]{34}$/;
+// Tron 地址(主网与测试网相同,前缀 0x41)固定 34 位、T 开头
+const TRON_PLAIN_REGEX = /^T[A-HJ-NP-Za-km-z1-9]{33}$/;
 const SOLANA_PLAIN_REGEX = /^[A-HJ-NP-Za-km-z1-9]{32,44}$/;  // base58(32B) ≈ 43-44 字符
 // Bitcoin：base58 (P2PKH/P2SH，前缀 1/3/m/n/2) 或 bech32/bech32m (bc1/tb1)。
 // 粗字符集/前缀预校验；严格校验（校验和 / bech32 polymod）走注入的 validator。
+const ZHIXING_REGEX = /^[0-9a-f]{64}$/;  // 知行图:ed25519 公钥的十六进制
 const BITCOIN_PLAIN_REGEX = /^(bc1|tb1)[0-9ac-hj-np-z]{6,87}$|^[123mn2][A-HJ-NP-Za-km-z1-9]{25,39}$/;
 
 let _tronStrictValidator = null;
@@ -78,6 +80,10 @@ function normalizeAddress(value, family = DEFAULT_ADDRESS_FAMILY) {
     if (!SOLANA_PLAIN_REGEX.test(raw)) return '';
     if (_solanaStrictValidator && !_solanaStrictValidator(raw)) return '';
     return raw;
+  }
+  if (ns === 'zhixing') {
+    const lowered = raw.toLowerCase();
+    return ZHIXING_REGEX.test(lowered) ? lowered : '';
   }
   if (ns === 'utxo' || ns === 'bip122') {
     // Bitcoin 大小写敏感（base58）/ bech32 强制小写；保持原值。

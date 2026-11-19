@@ -53,9 +53,9 @@ const EVM_ADDR_1 = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
 
 // ==================== 常量 ====================
 
-test('prefix 常量：mainnet 0x41 / testnet 0xa0', () => {
+test('prefix 常量：主网与测试网都是 0x41(地址都是 T 开头)', () => {
   assert.equal(TRON_ADDRESS_PREFIX_MAINNET, 0x41);
-  assert.equal(TRON_ADDRESS_PREFIX_TESTNET, 0xa0);
+  assert.equal(TRON_ADDRESS_PREFIX_TESTNET, 0x41);
 });
 
 test('TRON_DERIVATION_PATH：m/44\'/195\'/0\'/0/{index}', () => {
@@ -73,11 +73,11 @@ test('privateKeyToTronAddress：priv_2 → 公开地址 TRON_ADDR_2', () => {
   assert.equal(privateKeyToTronAddress(PRIV_HEX_2), TRON_ADDR_2);
 });
 
-test('privateKeyToTronAddress：testnet prefix 0xa0 → 同样 hash 不同地址', () => {
-  // 同一私钥同样 hash，但 mainnet/testnet prefix 不同 → 地址不同
+test('privateKeyToTronAddress：主网与测试网地址相同(同一前缀)', () => {
   const mainnet = privateKeyToTronAddress(PRIV_HEX_1);
   const testnet = privateKeyToTronAddress(PRIV_HEX_1, TRON_ADDRESS_PREFIX_TESTNET);
-  assert.notEqual(mainnet, testnet, 'mainnet/testnet prefix 改变地址');
+  assert.equal(testnet, mainnet, '主网与测试网前缀相同');
+  assert.ok(mainnet.startsWith('T'));
 });
 
 test('privateKeyToTronAddress：非法私钥抛错', () => {
@@ -143,15 +143,18 @@ test('isValidTronAddressForReference：mainnet 接受 0x41 prefix 地址', () =>
   assert.equal(isValidTronAddressForReference(TRON_ADDR_1, 'mainnet'), true);
 });
 
-test('isValidTronAddressForReference：mainnet 拒绝 0xa0 prefix 地址', () => {
-  const testnet = privateKeyToTronAddress(PRIV_HEX_1, TRON_ADDRESS_PREFIX_TESTNET);
-  assert.equal(isValidTronAddressForReference(testnet, 'mainnet'), false);
+test('isValidTronAddressForReference：旧的 0xa0 测试网地址在三个网络上都不合法', () => {
+  const legacy = privateKeyToTronAddress(PRIV_HEX_1, 0xa0);
+  assert.equal(isValidTronAddressForReference(legacy, 'mainnet'), false);
+  assert.equal(isValidTronAddressForReference(legacy, 'shasta'), false);
+  assert.equal(isValidTronAddressForReference(legacy, 'nile'), false);
 });
 
-test('isValidTronAddressForReference：testnet (shasta/nile) 接受 0xa0 prefix 地址', () => {
-  const testnet = privateKeyToTronAddress(PRIV_HEX_1, TRON_ADDRESS_PREFIX_TESTNET);
-  assert.equal(isValidTronAddressForReference(testnet, 'shasta'), true);
-  assert.equal(isValidTronAddressForReference(testnet, 'nile'), true);
+test('isValidTronAddressForReference：主网与测试网都接受 T 开头地址', () => {
+  const addr = privateKeyToTronAddress(PRIV_HEX_1);
+  for (const ref of ['mainnet', 'shasta', 'nile']) {
+    assert.equal(isValidTronAddressForReference(addr, ref), true, ref);
+  }
 });
 
 test('isValidTronAddressForReference：非法 reference → false', () => {
@@ -161,10 +164,10 @@ test('isValidTronAddressForReference：非法 reference → false', () => {
 
 // ==================== tronPrefixForReference ====================
 
-test('tronPrefixForReference：reference → 字节前缀', () => {
+test('tronPrefixForReference：主网与测试网都是 0x41(经 Nile / Shasta 节点核实,0xa0 地址会被拒绝)', () => {
   assert.equal(tronPrefixForReference('mainnet'), 0x41);
-  assert.equal(tronPrefixForReference('shasta'), 0xa0);
-  assert.equal(tronPrefixForReference('nile'), 0xa0);
+  assert.equal(tronPrefixForReference('shasta'), 0x41);
+  assert.equal(tronPrefixForReference('nile'), 0x41);
 });
 
 test('tronPrefixForReference：非法 reference 抛错', () => {

@@ -435,3 +435,12 @@ test('导出检测到历史 Identity 密码时提示输入修改前的钱包密�
   assert.equal(prompts[1].title, '恢复 Wallet Identity');
   assert.equal(prompts[1].placeholder, '输入修改前的钱包密码');
 });
+
+test('助记词 / 私钥页签里没有文件输入;文件只在备份文件页签(钱包自己的账户文件)', async () => {
+  const fs = await import('node:fs');
+  const html = fs.readFileSync(new URL('../html/popup.html', import.meta.url), 'utf8');
+  const walletSection = html.slice(html.indexOf('id="walletImportSection"'), html.indexOf('id="fileImportSection"'));
+  assert.doesNotMatch(walletSection, /type="file"/, '助记词 / 私钥页签不应有文件输入');
+  const fileSection = html.slice(html.indexOf('id="fileImportSection"'), html.indexOf('id="custodyImportSection"'));
+  assert.match(fileSection, /type="file"/);
+});

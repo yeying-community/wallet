@@ -3,13 +3,13 @@
  * EVM RPC 层：rpcUrl 解析 + JSON-RPC 调用（收敛 rpc-handler / request-router / signing 三处重复）
  *
  * resolveEvmRpcUrl(chainKey) 复刻原三处逐字节一致的解析顺序：
- *   state.currentRpcUrl → 该链 network.rpcUrl/rpc → DEFAULT_NETWORK 兜底 → 无则抛错。
+ *   state.currentRpcUrl → 该链 network.rpcUrl/rpc → DEFAULT_EVM_NETWORK 兜底 → 无则抛错。
  * 阶段 0 Step 2 为新增，调用方切换在 Step 4；此前 evm 适配器的 broadcast/余额已用它。
  */
 
 import { state } from '../../../background/state.js';
 import { getNetworkByChainId, getNetworkConfigByKey } from '../../../storage/index.js';
-import { DEFAULT_NETWORK } from '../../../config/index.js';
+import { DEFAULT_EVM_NETWORK } from '../../../config/index.js';
 import { getTimestamp } from '../../../common/utils/time-utils.js';
 import { chainKeyToHex } from '../../chain-key.js';
 
@@ -23,7 +23,7 @@ export async function resolveEvmRpcUrl(chainKey) {
   const network = await getNetworkByChainId(chainIdHex);
   let rpcUrl = state.currentRpcUrl || network?.rpcUrl || network?.rpc;
   if (!rpcUrl) {
-    const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+    const fallbackConfig = await getNetworkConfigByKey(DEFAULT_EVM_NETWORK);
     rpcUrl = fallbackConfig?.rpcUrl || fallbackConfig?.rpc || '';
   }
   if (!rpcUrl) {

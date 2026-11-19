@@ -30,7 +30,7 @@ did:yeying:wid_*
 - `walletAddress`：已验证关联的钱包账户，不是身份主键。
 - `UsernameCredential`：Node 签发的用户名 JWT-VC。
 - `EmailCredential`：Node 签发的邮箱 JWT-VC。
-- Passkey：身份认证器，用于无钱包插件登录或高风险确认。
+- 通行密钥（Passkey）：绑定到 Wallet Identity DID 的 Web 身份验证（Web Authentication，简称 WebAuthn）凭证，用于无钱包插件应用登录和指定的托管授权；不代替 DID controller 对敏感操作签名。
 
 ## 3. 有钱包插件登录
 

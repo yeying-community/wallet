@@ -67,10 +67,10 @@ export class TransactionSendController {
       : isValidAddressForFamily(recipient, family);
     if (!isAddressValid) {
       const errorText = family === 'tron'
-        ? 'Tron 地址格式无效'
+        ? '波场地址格式无效'
         : (family === 'solana'
-          ? 'Solana 地址格式无效'
-          : (family === 'utxo' ? 'Bitcoin 地址格式无效' : '地址格式无效'));
+          ? '索拉纳地址格式无效'
+          : (family === 'utxo' ? '比特币地址格式无效' : '地址格式无效'));
       showError(errorText);
       return;
     }

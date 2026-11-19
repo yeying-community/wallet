@@ -10,10 +10,31 @@ import { NetworkStorageKeys } from './storage-keys.js';
 import { getValue, setValue, getArray, setArray } from './storage-base.js';
 import { logError } from '../common/errors/index.js';
 import { normalizeChainId } from '../common/chain/index.js';
+import { LEGACY_YEYING_NETWORK, DEFAULT_NETWORK } from '../config/network-config.js';
 
 const LEGACY_CUSTOM_NETWORKS_KEY = 'customNetworks';
 const LEGACY_CONFIG_NETWORKS_KEY = 'networkConfigs';
 const STORE = NetworkStorageKeys.NETWORKS; // 'networks'
+
+/**
+ * 是否是已停用的旧默认网络 YeYing Mainnet(EVM 5432,RPC blockchain.yeying.pub)。
+ * 只认"内置那一条":用户自己添加的、指向别的 RPC 的 5432 网络保留。
+ */
+export function isLegacyYeyingNetwork(network) {
+  if (!network) return false;
+  if (network.key === LEGACY_YEYING_NETWORK.key || network.id === LEGACY_YEYING_NETWORK.key) return true;
+  let id = null;
+  try { id = normalizeChainId(network.chainIdHex || network.chainId); } catch { return false; }
+  if (id !== LEGACY_YEYING_NETWORK.chainIdHex) return false;
+  const rpc = String(network.rpcUrl || network.rpc || '');
+  try { return new URL(rpc).host === LEGACY_YEYING_NETWORK.rpcHost; } catch { return false; }
+}
+
+/** 选中网络名是否指向旧默认网络(可能存成 key、十六进制或十进制 chainId)。 */
+function isLegacyYeyingSelection(name) {
+  const v = String(name || '').trim().toLowerCase();
+  return v === LEGACY_YEYING_NETWORK.key || v === LEGACY_YEYING_NETWORK.chainIdHex || v === '5432';
+}
 
 function getChainIdKey(network) {
   if (!network) return null;
@@ -187,6 +208,20 @@ export async function ensureDefaultNetworks(defaults) {
       }
     }
 
+    // 迁移:移除已停用的旧默认网络 YeYing Mainnet(它的 RPC 域名现在是知行图)。
+    // 幂等,每次启动都安全;旧的 legacy 键里若也有它,一并清掉,免得下次又被合并回来。
+    const withoutLegacy = merged.filter((n) => !isLegacyYeyingNetwork(n));
+    if (withoutLegacy.length !== merged.length) {
+      merged = withoutLegacy;
+      changed = true;
+    }
+    for (const legacyKey of [LEGACY_CONFIG_NETWORKS_KEY, LEGACY_CUSTOM_NETWORKS_KEY]) {
+      const arr = await getArray(legacyKey);
+      if (Array.isArray(arr) && arr.some(isLegacyYeyingNetwork)) {
+        await setArray(legacyKey, arr.filter((n) => !isLegacyYeyingNetwork(n)));
+      }
+    }
+
     const defaultNetworks = Object.entries(defaults || {}).map(([key, network]) => ({
       ...network,
       key
@@ -199,6 +234,16 @@ export async function ensureDefaultNetworks(defaults) {
 
     if (changed) {
       await saveNetworks(merged);
+    }
+
+    // 选中的还是旧默认网络 ⇒ 切到当前默认网络(否则启动时会连一个已经不存在的链)
+    const selected = await getSelectedNetworkName();
+    const stillThere = (n) => {
+      if (n.key === selected || n.id === selected) return true;
+      try { return normalizeChainId(n.chainIdHex || n.chainId) === normalizeChainId(selected); } catch { return false; }
+    };
+    if (selected && isLegacyYeyingSelection(selected) && !merged.some(stillThere)) {
+      await saveSelectedNetworkName(DEFAULT_NETWORK);
     }
 
     return merged;

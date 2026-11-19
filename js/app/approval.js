@@ -292,10 +292,55 @@ class ApprovalApp {
       case 'watchAsset':
         this.renderWatchAssetRequest();
         break;
+      case 'zhixing_connect':
+      case 'zhixing_sign':
+        this.renderZhixingRequest();
+        break;
       default:
         showToast('未知的请求类型: ' + this.requestType, 'error');
         setTimeout(() => window.close(), 2000);
     }
+  }
+
+  // 知行图:钱包自己编码并生成的摘要(见 js/chain/adapters/zhixing/op.js),这里只负责显示
+  renderZhixingRequest() {
+    const d = this.requestData || {};
+    document.getElementById('zhixingRequest').classList.remove('hidden');
+    document.getElementById('zhixingOrigin').textContent = d.origin || '';
+    document.getElementById('zhixingAddress').textContent = d.address || '';
+    const lines = document.getElementById('zhixingLines');
+    lines.textContent = '';
+    const addLine = (text) => {
+      const li = document.createElement('li');
+      li.textContent = text;
+      lines.appendChild(li);
+    };
+    const risk = document.getElementById('zhixingRisk');
+    const rawWrap = document.getElementById('zhixingRawWrap');
+    if (this.requestType === 'zhixing_connect') {
+      document.getElementById('zhixingTitle').textContent = '连接知行图';
+      document.getElementById('zhixingSummaryTitle').textContent = '此网站请求读取你的知行图公钥';
+      addLine('网站只能看到公钥,看不到私钥或助记词。');
+      addLine('之后每次签署知识操作,钱包都会单独请你确认。');
+      document.getElementById('approveZhixing').textContent = '连接';
+      risk.classList.add('hidden');
+      rawWrap.classList.add('hidden');
+      return;
+    }
+    const summary = d.summary || {};
+    document.getElementById('zhixingTitle').textContent = '签署知行图知识操作';
+    document.getElementById('zhixingSummaryTitle').textContent = summary.title || '';
+    for (const line of summary.lines || []) addLine(line);
+    if (summary.risk) {
+      risk.textContent = '⚠️ ' + summary.risk;
+      risk.classList.remove('hidden');
+    } else {
+      risk.classList.add('hidden');
+    }
+    document.getElementById('zhixingRaw').textContent = JSON.stringify(
+      { actor: d.actor, nonce: d.nonce, action: d.action }, null, 2);
+    rawWrap.classList.remove('hidden');
+    document.getElementById('approveZhixing').textContent = '签名';
   }
 
   renderConnectRequest() {

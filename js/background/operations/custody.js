@@ -613,7 +613,7 @@ export async function handleEnableCustody(options = {}) {
     const client = createClient({ ...settings, endpoint });
     const status = await client.getStatus();
     if (!status?.passkeyBound) {
-      throw new Error('打开托管服务前，请先绑定通行证');
+      throw new Error('打开托管服务前，请先绑定通行密钥');
     }
 
     const payload = await buildCustodyPayload(password);

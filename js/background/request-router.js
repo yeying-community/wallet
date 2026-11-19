@@ -19,6 +19,7 @@ import { grantIdentityScopes, handleEthAccounts, handleEthRequestAccounts, handl
 import { handleEthChainId, handleNetVersion, handleSwitchChain, handleAddEthereumChain } from './chain-handler.js';
 import { handleRpcMethod } from './rpc-handler.js';
 import { getCurrentChainKey } from '../chain/current-chain.js';
+import { namespaceOf, ZHIXING_NAMESPACE } from '../chain/chain-key.js';
 import {
   buildMpcSignedTransactionFromSignRequest,
   resolveMpcAccountIdByAddress,
@@ -38,6 +39,15 @@ import { withPopupBoundsAsync } from './window-utils.js';
 import { POPUP_DIMENSIONS, TIMEOUTS } from '../config/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { handleUcanSession, handleUcanSign } from './ucan.js';
+import {
+  getZhixingKeyInfo,
+  isZhixingSiteAuthorized,
+  grantZhixingSite,
+  prepareZhixingSignRequest,
+  loadZhixingKeypair,
+  needsZhixingUnlock,
+  signZhixingRequest
+} from './operations/zhixing.js';
 import { normalizeIdentityPresentationRequest, requestIdentityPresentation as handleIdentityPresentation } from './identity-presentation.js';
 import {
   handleYeyingEncrypt,
@@ -339,6 +349,13 @@ export async function routeRequest(method, params, metadata) {
     return handleWalletRevokePermissions(origin, paramsArray);
   }
 
+  // ==================== 知行图(KnowDoGraph) ====================
+  // 签名用的是钱包里的知行图账户(选中的是知行图账户就用它,否则用第一个,见 operations/zhixing.js),
+  // 不一定是当前选中的链账户,所以放在选中账户的解锁守门之前,自己处理解锁与授权。
+  if (method === 'zhixing_accounts' || method === 'zhixing_requestAccounts' || method === 'zhixing_signKnowledgeOp') {
+    return handleZhixingRequest(method, paramsArray, origin, tabId, clientRequestId);
+  }
+
   // ==================== 需要解锁的方法 ====================
 
   const unlockMethods = new Set([
@@ -491,6 +508,115 @@ export async function routeRequest(method, params, metadata) {
   return handleRpcMethod(method, rpcParams);
 }
 
+
+// ==================== 知行图(KnowDoGraph) ====================
+
+const ZHIXING_NO_KEY_MESSAGE = '钱包里还没有知行图账户:请在「账户管理 → 导入钱包」里选择「知行图」,用助记词或密钥文件导入已有的成员身份';
+
+/**
+ * zhixing_accounts          → 已授权本站时返回 [公钥],否则 [](不弹窗、不需要解锁)
+ * zhixing_requestAccounts   → 请求本站读取知行图公钥(首次弹窗确认)
+ * zhixing_signKnowledgeOp   → 签署一条知识操作:参数 { actor, nonce, action },返回 { signed, address }
+ *                             signed 是 op ‖ 签名 的十六进制,可直接 POST 到节点 /knowledge
+ */
+async function handleZhixingRequest(method, params, origin, tabId, clientRequestId) {
+  const info = await getZhixingKeyInfo();
+
+  if (method === 'zhixing_accounts') {
+    return info && await isZhixingSiteAuthorized(origin) ? [info.address] : [];
+  }
+  if (!info) {
+    throw createError(4900, ZHIXING_NO_KEY_MESSAGE);
+  }
+
+  if (method === 'zhixing_requestAccounts') {
+    if (await isZhixingSiteAuthorized(origin)) return [info.address];
+    await runZhixingApproval({
+      requestType: 'zhixing_connect',
+      origin,
+      tabId,
+      method,
+      clientRequestId,
+      data: { origin, address: info.address },
+      onApproved: async () => { await grantZhixingSite(origin); },
+      onRejectedMessage: 'User rejected the 知行图 connection'
+    });
+    return [info.address];
+  }
+
+  // zhixing_signKnowledgeOp
+  if (!(await isZhixingSiteAuthorized(origin))) {
+    throw createUnauthorizedError('请先调用 zhixing_requestAccounts 连接知行图');
+  }
+  let prepared;
+  try {
+    prepared = prepareZhixingSignRequest(params);
+  } catch (error) {
+    throw createInvalidParams(String(error?.message || error));
+  }
+
+  // 先解锁、把密钥载入内存,再给用户看审批:避免"点了签名又弹解锁"两个窗口,
+  // 也避免用户在审批页停留超过密码缓存时间后签不了。
+  if (await needsZhixingUnlock()) {
+    if (!(await isActiveTab(tabId))) {
+      throw createUserRejectedError('Unlock requires active tab');
+    }
+    await requestUnlock({ origin, tabId, method, accountId: null, force: true });
+  }
+  await loadZhixingKeypair();
+
+  return runZhixingApproval({
+    requestType: 'zhixing_sign',
+    origin,
+    tabId,
+    method,
+    clientRequestId,
+    data: {
+      origin,
+      address: info.address,
+      actor: prepared.actor,
+      nonce: prepared.nonce,
+      action: prepared.action,
+      summary: prepared.summary
+    },
+    onApproved: async () => signZhixingRequest(prepared),
+    onRejectedMessage: 'User rejected the 知行图 signature request'
+  });
+}
+
+function runZhixingApproval({ requestType, origin, tabId, method, clientRequestId, data, onApproved, onRejectedMessage }) {
+  const clientRequestKey = getClientRequestKey(origin, tabId, method, clientRequestId);
+  const existingPending = findPendingRequestByClientKey(clientRequestKey);
+  const pending = findPendingRequest(requestType, origin, tabId);
+  if (pending && !existingPending) {
+    focusPendingWindow(pending);
+    throw createError(-32002, '知行图请求已在等待确认');
+  }
+  return waitForApprovalAndExecute({
+    existingPending,
+    requestType,
+    origin,
+    tabId,
+    reuseSession: true,
+    createPending: () => {
+      const requestId = `${requestType}_${getTimestamp()}_${Math.random().toString(36).slice(2, 11)}`;
+      addPendingRequest(requestId, {
+        type: requestType,
+        approvalType: requestType,
+        origin,
+        tabId,
+        reuseSession: true,
+        clientRequestKey,
+        expiresAt: Date.now() + TIMEOUTS.REQUEST,
+        data,
+        timestamp: getTimestamp()
+      });
+      return requestId;
+    },
+    onApproved,
+    onRejectedMessage
+  });
+}
 
 async function handleIdentityPresentationApproval(account, params, origin, tabId) {
   const request = normalizeIdentityPresentationRequest(params, origin);
@@ -647,6 +773,11 @@ async function handleWatchAsset(origin, params, tabId) {
 async function handleSendTransaction(account, params, origin, tabId, clientRequestId) {
   const [transaction] = params;
 
+  // 知行图不是 EVM 链:不弹审批让用户确认一笔注定失败的交易
+  if (namespaceOf(getCurrentChainKey()) === ZHIXING_NAMESPACE) {
+    throw createError(4901, '当前网络是知行图,不能发送以太坊交易;请先切换到 EVM 网络');
+  }
+
   if (!transaction || typeof transaction !== 'object') {
     throw createInvalidParams('Invalid transaction object');
   }
@@ -709,6 +840,11 @@ async function handleSendTransaction(account, params, origin, tabId, clientReque
 async function handleSignTransaction(account, params, origin, tabId, clientRequestId) {
   // 与 handleSendTransaction 类似，但只返回签名后的交易，不发送
   const [transaction] = params;
+
+  // 知行图不是 EVM 链:不弹审批让用户确认一笔注定失败的交易
+  if (namespaceOf(getCurrentChainKey()) === ZHIXING_NAMESPACE) {
+    throw createError(4901, '当前网络是知行图,不能发送以太坊交易;请先切换到 EVM 网络');
+  }
 
   if (!transaction || typeof transaction !== 'object') {
     throw createInvalidParams('Invalid transaction object');

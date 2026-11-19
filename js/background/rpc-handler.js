@@ -4,13 +4,14 @@
  */
 
 import { state } from './state.js';
-import { createRpcError, createNetworkError } from '../common/errors/index.js';
-import { DEFAULT_NETWORK } from '../config/index.js';
+import { createRpcError, createNetworkError, createError } from '../common/errors/index.js';
+import { DEFAULT_EVM_NETWORK } from '../config/index.js';
 import { getNetworkByChainId, getNetworkConfigByKey } from '../storage/index.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
 import { diagnostics } from './diagnostics.js';
 import { RPC_CONFIG } from '../config/index.js';
-import { getCurrentEvmChainIdHex } from '../chain/current-chain.js';
+import { getCurrentEvmChainIdHex, getCurrentChainKey } from '../chain/current-chain.js';
+import { isEvmChainKey } from '../chain/chain-key.js';
 
 /**
  * 处理 RPC 方法
@@ -29,10 +30,15 @@ export async function handleRpcMethod(method, params) {
  * @returns {Promise<any>} RPC 结果
  */
 async function rpcCall(method, params) {
+  // 只有 EVM 链有以太坊 JSON-RPC。当前是知行图 / Tron / Solana / Bitcoin 时不转发,
+  // 否则会把 JSON-RPC 发到那条链的接口(例如知行图的 REST API)上。
+  if (!isEvmChainKey(getCurrentChainKey())) {
+    throw createError(4901, `EVM RPC is not available on the current network (${getCurrentChainKey()}); switch to an EVM network`);
+  }
   const network = await getNetworkByChainId(getCurrentEvmChainIdHex());
   let rpcUrl = state.currentRpcUrl || network?.rpcUrl || network?.rpc;
   if (!rpcUrl) {
-    const fallbackConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
+    const fallbackConfig = await getNetworkConfigByKey(DEFAULT_EVM_NETWORK);
     rpcUrl = fallbackConfig?.rpcUrl || fallbackConfig?.rpc || '';
   }
   if (!rpcUrl) {

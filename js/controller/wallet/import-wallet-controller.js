@@ -2,6 +2,15 @@ import { showPage, showError, showSuccess, showWarning, showWaiting, hideWaiting
 import { savePopupSessionState } from '../../common/ui/popup-session-state.js';
 import { IDENTITY_NODE_ENDPOINT_STORAGE_KEY, normalizeIdentityNodeEndpoint } from '../../config/identity-config.js';
 import { WalletMessageType } from '../../protocol/extension-protocol.js';
+import { t } from '../../common/i18n/index.js';
+
+/** 把选项的文字和翻译键一起复制到标签上:切换界面语言时标签会跟着变(applyTranslations 处理 data-i18n)。 */
+export function copyOptionLabel(labelEl, optionEl) {
+  if (!labelEl || !optionEl) return;
+  labelEl.textContent = optionEl.textContent.trim();
+  if (optionEl.dataset.i18n) labelEl.dataset.i18n = optionEl.dataset.i18n;
+  else delete labelEl.dataset.i18n;
+}
 
 function isLinuxDesktop() {
   const navigatorRef = globalThis.navigator;
@@ -23,31 +32,39 @@ const IMPORT_FIELD_IDS = [
   'importMnemonic',
   'importPrivateKey',
   'importWalletPassword',
-  'importAccountsFile'
+  'importAccountsFile',
+  'importZhixingPassphrase'
 ];
+
+const FILE_HINT = '支持 JSON 格式的加密备份文件';
 
 // 每个网络对应的 reference 选项 + 默认 reference（决定非 EVM 链走主网还是测试网）
 const NETWORK_REFERENCES = {
   evm: [], // EVM 固定 eip155:1，无 reference 可选
+  // i18n:显示名的翻译键(messages-*.js 的 network.ref.*)
   tron: [
-    { value: 'mainnet', label: 'Mainnet' },
-    { value: 'shasta', label: 'Shasta (Testnet)' },
-    { value: 'nile', label: 'Nile (Testnet)' }
+    { value: 'mainnet', i18n: 'network.ref.mainnet' },
+    { value: 'shasta', i18n: 'network.ref.shasta' },
+    { value: 'nile', i18n: 'network.ref.nile' }
   ],
   solana: [
-    { value: 'mainnet-beta', label: 'Mainnet' },
-    { value: 'devnet', label: 'Devnet' },
-    { value: 'testnet', label: 'Testnet' }
+    { value: 'mainnet-beta', i18n: 'network.ref.mainnet' },
+    { value: 'devnet', i18n: 'network.ref.devnet' },
+    { value: 'testnet', i18n: 'network.ref.testnet' }
   ],
   bitcoin: [
-    { value: 'mainnet', label: 'Mainnet' },
-    { value: 'testnet', label: 'Testnet' }
+    { value: 'mainnet', i18n: 'network.ref.mainnet' },
+    { value: 'testnet', i18n: 'network.ref.testnet' }
+  ],
+  zhixing: [
+    { value: 'testnet', i18n: 'network.ref.testnet' }
   ]
 };
 const NETWORK_DEFAULT_REFERENCE = {
   tron: 'mainnet',
   solana: 'mainnet-beta',
-  bitcoin: 'mainnet'
+  bitcoin: 'mainnet',
+  zhixing: 'testnet'
 };
 
 export function clearImportWalletForm({ resetType = true } = {}) {
@@ -60,7 +77,7 @@ export function clearImportWalletForm({ resetType = true } = {}) {
 
   const fileName = document.getElementById('importAccountsFileName');
   if (fileName) {
-    fileName.textContent = '支持 JSON 格式的加密备份文件';
+    fileName.textContent = FILE_HINT;
     fileName.title = '';
   }
 
@@ -85,7 +102,7 @@ export function clearImportWalletForm({ resetType = true } = {}) {
   const networkSelect = document.getElementById('importNetworkSelect');
   if (networkSelect) networkSelect.value = 'evm';
   const networkLabel = document.getElementById('importNetworkLabel');
-  if (networkLabel) networkLabel.textContent = 'Ethereum';
+  if (networkLabel) { networkLabel.textContent = t('network.family.evm'); networkLabel.dataset.i18n = 'network.family.evm'; }
   const networkMenu = document.getElementById('importNetworkMenu');
   networkMenu?.querySelectorAll('.network-option').forEach((opt) => {
     opt.classList.toggle('active', opt.dataset.networkValue === 'evm');
@@ -125,6 +142,10 @@ function setActiveMethod(method) {
  * 切换当前网络（决定是否展示 reference 选择器 + 用哪个 reference 列表）。
  */
 function setActiveNetwork(network) {
+  // 知行图专有的输入项(附加口令、密钥文件)只在选中知行图时显示
+  document.querySelectorAll('.zhixing-only').forEach((node) => node.classList.toggle('hidden', network !== 'zhixing'));
+  const pk = document.getElementById('importPrivateKey');
+  if (pk) pk.placeholder = network === 'zhixing' ? '64 位十六进制种子（node keygen 生成）' : '输入私钥（0x开头）';
   const refs = NETWORK_REFERENCES[network] || [];
   const refGroup = document.getElementById('importReferenceGroup');
   const refMenu = document.getElementById('importReferenceMenu');
@@ -143,7 +164,8 @@ function setActiveNetwork(network) {
       btn.type = 'button';
       btn.className = 'network-option';
       btn.dataset.referenceValue = r.value;
-      btn.textContent = r.label;
+      btn.dataset.i18n = r.i18n;
+      btn.textContent = t(r.i18n);
       refMenu.appendChild(btn);
     }
   }
@@ -152,7 +174,8 @@ function setActiveNetwork(network) {
     for (const r of refs) {
       const opt = document.createElement('option');
       opt.value = r.value;
-      opt.textContent = r.label;
+      opt.dataset.i18n = r.i18n;
+      opt.textContent = t(r.i18n);
       refSelect.appendChild(opt);
     }
     const defaultRef = NETWORK_DEFAULT_REFERENCE[network] || refs[0].value;
@@ -160,7 +183,8 @@ function setActiveNetwork(network) {
     const labelEl = document.getElementById('importReferenceLabel');
     if (labelEl) {
       const match = refs.find((r) => r.value === defaultRef);
-      labelEl.textContent = match ? match.label : defaultRef;
+      labelEl.textContent = match ? t(match.i18n) : defaultRef;
+      if (match) labelEl.dataset.i18n = match.i18n; else delete labelEl.dataset.i18n;
     }
     refMenu?.querySelectorAll('.network-option').forEach((opt) => {
       opt.classList.toggle('active', opt.dataset.referenceValue === defaultRef);
@@ -266,15 +290,17 @@ export class ImportWalletController {
 
     const fileInput = document.getElementById('importAccountsFile');
     fileInput?.addEventListener('click', (event) => this.handleFilePickerClick(event));
-    fileInput?.addEventListener('change', () => {
-      const name = fileInput.files?.[0]?.name;
+    fileInput?.addEventListener('change', async () => {
+      const file = fileInput.files?.[0];
+      const name = file?.name;
       const nameEl = document.getElementById('importAccountsFileName');
       const importPage = document.getElementById('importPage');
       if (importPage) importPage.dataset.filePickerHandoff = 'false';
       if (nameEl) {
-        nameEl.textContent = name || '支持 JSON 格式的加密备份文件';
+        nameEl.textContent = name || FILE_HINT;
         nameEl.title = name || '';
       }
+
       void savePopupSessionState('importPage').catch((error) => {
         console.warn('[ImportWalletController] 保存导入页面状态失败:', error);
       });
@@ -344,8 +370,7 @@ export class ImportWalletController {
       const current = select.value;
       if (current !== nextNetwork) {
         select.value = nextNetwork;
-        const labelEl = document.getElementById('importNetworkLabel');
-        if (labelEl) labelEl.textContent = option.textContent.trim();
+        copyOptionLabel(document.getElementById('importNetworkLabel'), option);
         menu.querySelectorAll('.network-option').forEach((opt) => {
           opt.classList.toggle('active', opt.dataset.networkValue === nextNetwork);
         });
@@ -392,8 +417,7 @@ export class ImportWalletController {
       if (!nextRef) return;
       if (select.value !== nextRef) {
         select.value = nextRef;
-        const labelEl = document.getElementById('importReferenceLabel');
-        if (labelEl) labelEl.textContent = option.textContent.trim();
+        copyOptionLabel(document.getElementById('importReferenceLabel'), option);
         menu.querySelectorAll('.network-option').forEach((opt) => {
           opt.classList.toggle('active', opt.dataset.referenceValue === nextRef);
         });
@@ -461,7 +485,7 @@ export class ImportWalletController {
       } else if (importType === 'privateKey') {
         const privateKey = document.getElementById('importPrivateKey')?.value.trim();
         if (!privateKey) {
-          showError('请输入私钥');
+          showError(methodChain === 'zhixing' ? '请输入种子' : '请输入私钥');
           return;
         }
       } else if (!document.getElementById('importAccountsFile')?.files?.[0]) {
@@ -487,6 +511,9 @@ export class ImportWalletController {
           await this.wallet.importSolanaFromMnemonic(name, mnemonic, password, importOptions);
         } else if (methodChain === 'bitcoin') {
           await this.wallet.importBitcoinFromMnemonic(name, mnemonic, password, importOptions);
+        } else if (methodChain === 'zhixing') {
+          const passphrase = document.getElementById('importZhixingPassphrase')?.value || '';
+          await this.wallet.importZhixingWallet(name, { mnemonic, passphrase }, password);
         } else {
           await this.wallet.importFromMnemonic(name, mnemonic, password);
         }
@@ -498,6 +525,9 @@ export class ImportWalletController {
           await this.wallet.importSolanaFromPrivateKey(name, privateKey, password, importOptions);
         } else if (methodChain === 'bitcoin') {
           await this.wallet.importBitcoinFromPrivateKey(name, privateKey, password, importOptions);
+        } else if (methodChain === 'zhixing') {
+          // 私钥页签只接受粘贴的 64 位十六进制种子;密钥文件在「备份文件」页签导入
+          await this.wallet.importZhixingWallet(name, { privateKey }, password);
         } else {
           await this.wallet.importFromPrivateKey(name, privateKey, password);
         }
@@ -570,7 +600,8 @@ export class ImportWalletController {
     const key = ({
       tron: 'tronReference',
       solana: 'solanaReference',
-      bitcoin: 'bitcoinReference'
+      bitcoin: 'bitcoinReference',
+      zhixing: 'zhixingReference'
     })[network];
     if (!key) return {};
     return { [key]: reference };

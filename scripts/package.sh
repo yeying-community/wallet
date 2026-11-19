@@ -32,7 +32,7 @@ mkdir -p "$output_dir"
 output_dir="$(cd "$output_dir" && pwd -P)"
 [[ -z "$(find "$output_dir" -mindepth 1 -maxdepth 1 -print -quit)" ]] || { echo 'Output directory must be empty.' >&2; exit 1; }
 commit_short="${source_commit:0:7}"
-package_root="wallet-v${version}-${commit_short}"
+package_root="wallet-desktop-v${version}-${commit_short}"
 package_name="${package_root}.zip"
 stage="$(mktemp -d "${TMPDIR:-/tmp}/wallet-package.XXXXXX")"
 trap 'rm -rf "$stage"' EXIT HUP INT TERM
@@ -42,7 +42,7 @@ for build_only in scripts output docs examples .git; do rm -rf "$stage/$package_
 (cd "$stage" && zip -qry "$package_name" "$package_root")
 if [[ "$sha_command" == sha256sum ]]; then checksum="$(sha256sum "$stage/$package_name" | awk '{print $1}')"
 else checksum="$(shasum -a 256 "$stage/$package_name" | awk '{print $1}')"; fi
-artifact="$(jq -cnS --arg version "$version" --arg package "$package_name" --arg sha "$checksum" --arg root "$package_root" '{unit_id:"wallet",type:"desktop",version:$version,package:$package,sha256:$sha,package_root:$root}')"
+artifact="$(jq -cnS --arg version "$version" --arg package "$package_name" --arg sha "$checksum" --arg root "$package_root" '{unit_id:"wallet-desktop",type:"desktop",version:$version,package:$package,sha256:$sha,package_root:$root}')"
 jq -cnS --arg repository wallet --arg source_commit "$source_commit" --argjson artifact "$artifact" '{schema_version:1,repository:$repository,source_commit:$source_commit,artifacts:[$artifact]}' > "$stage/release-manifest.json"
 mv "$stage/$package_name" "$output_dir/$package_name"
 mv "$stage/release-manifest.json" "$output_dir/release-manifest.json"

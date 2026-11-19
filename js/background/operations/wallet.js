@@ -18,6 +18,8 @@ import {
   createSolanaHDWallet,
   importSolanaHDWallet,
   importSolanaPrivateKeyWallet,
+  importZhixingMnemonicWallet,
+  importZhixingPrivateKeyWallet,
   deriveSolanaSubAccount,
   createBitcoinHDWallet,
   importBitcoinHDWallet,
@@ -29,7 +31,7 @@ import {
   getWalletMnemonic,
   changeWalletPassword
 } from '../vault.js';
-import { encryptObject, decryptObject } from '../../common/crypto/index.js';
+import { encryptObject, decryptObject, decryptString } from '../../common/crypto/index.js';
 import {
   getAccount,
   setSelectedAccountId,
@@ -316,7 +318,8 @@ async function rememberUnlockedAccount(account, password) {
   // Solana（ed25519 曲线）账户：与 unlockWallet 一致，把同一私钥字节派生 ed25519
   // keypair 缓存到 state.ed25519Keyring，否则导入后立即签名会因 keyring 为空而
   // 抛 “Wallet is locked”。
-  if (account.namespace === 'solana' && walletInstance && walletInstance.privateKey) {
+  // 知行图账户同理:私钥字段就是 ed25519 种子
+  if ((account.namespace === 'solana' || account.namespace === 'zhixing') && walletInstance && walletInstance.privateKey) {
     if (!state.ed25519Keyring) {
       state.ed25519Keyring = new Map();
     }
@@ -686,6 +689,14 @@ export async function handleImportTronPrivateKeyWallet(accountName, privateKey, 
  * @param {string|null} password
  * @returns {Promise<Object>} { success, account }
  */
+// 子账户与主账户在同一个网络上:从钱包已有账户的 chainKey 取 reference(调用方显式给出的优先)。
+// 否则测试网钱包派生的子账户会落到主网(地址前缀不同,资产也在另一条链上)。
+function referenceOfWallet(walletAccounts, namespace) {
+  const main = walletAccounts.find(a => (a.namespace || 'eip155') === namespace && (a.index ?? 0) === 0)
+    || walletAccounts.find(a => (a.namespace || 'eip155') === namespace);
+  return String(main?.chainKey || '').split(':')[1] || '';
+}
+
 export async function handleCreateTronSubAccount(walletId, password) {
   try {
     const wallet = await getWallet(walletId);
@@ -701,7 +712,8 @@ export async function handleCreateTronSubAccount(walletId, password) {
     );
     const newIndex = maxIndex + 1;
 
-    const subAccount = await deriveTronSubAccount(wallet, newIndex, undefined, password);
+    const tronReference = referenceOfWallet(walletAccounts, 'tron');
+    const subAccount = await deriveTronSubAccount(wallet, newIndex, undefined, password, tronReference ? { tronReference } : {});
     await saveAccount(subAccount);
 
     wallet.accountCount = (wallet.accountCount || 0) + 1;
@@ -781,7 +793,8 @@ export async function handleCreateSolanaSubAccount(walletId, password, options =
       -1
     );
     const newIndex = maxIndex + 1;
-    const subAccount = await deriveSolanaSubAccount(wallet, newIndex, undefined, password, options || {});
+    const solanaReference = options?.solanaReference || referenceOfWallet(walletAccounts, 'solana');
+    const subAccount = await deriveSolanaSubAccount(wallet, newIndex, undefined, password, solanaReference ? { ...options, solanaReference } : (options || {}));
     await saveAccount(subAccount);
     wallet.accountCount = (wallet.accountCount || 0) + 1;
     await saveWallet(wallet);
@@ -794,6 +807,36 @@ export async function handleCreateSolanaSubAccount(walletId, password, options =
     return { success: true, account: subAccount };
   } catch (error) {
     console.error('❌ Handle create Solana sub account failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ==================== 知行图钱包(一把种子一个账户,无子账户) ====================
+
+/**
+ * 导入知行图钱包。source 三选一:
+ *   { mnemonic, passphrase? }                 助记词
+ *   { privateKey }                            64 位十六进制种子 / node keygen 明文种子文件内容
+ *   { privateKey: <keystore JSON>, filePassword }  node keygen --encrypt 的加密密钥文件
+ */
+export async function handleImportZhixingWallet(accountName, source, password) {
+  try {
+    const built = source?.mnemonic
+      ? await importZhixingMnemonicWallet(accountName, source.mnemonic, password, { passphrase: source.passphrase })
+      : await importZhixingPrivateKeyWallet(accountName, source?.privateKey, password, { filePassword: source?.filePassword });
+    const { wallet, mainAccount } = built;
+    const existing = await getAccountList();
+    if ((existing || []).some((a) => a?.namespace === 'zhixing' && String(a.address).toLowerCase() === mainAccount.address)) {
+      return { success: false, error: '这个知行图账户已经在钱包里了' };
+    }
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Zhixing wallet imported and saved:', wallet.id, mainAccount.address);
+    return { success: true, wallet, account: mainAccount };
+  } catch (error) {
+    console.error('❌ Handle import Zhixing wallet failed:', error);
     return { success: false, error: error.message };
   }
 }
@@ -857,7 +900,8 @@ export async function handleCreateBitcoinSubAccount(walletId, password, options 
       -1
     );
     const newIndex = maxIndex + 1;
-    const subAccount = await deriveBitcoinSubAccount(wallet, newIndex, undefined, password, options || {});
+    const bip122Reference = options?.bip122Reference || referenceOfWallet(walletAccounts, 'bip122');
+    const subAccount = await deriveBitcoinSubAccount(wallet, newIndex, undefined, password, bip122Reference ? { ...options, bip122Reference } : (options || {}));
     await saveAccount(subAccount);
     wallet.accountCount = (wallet.accountCount || 0) + 1;
     await saveWallet(wallet);
@@ -1124,6 +1168,26 @@ export async function handleGetProfile() {
 // sub-accounts are not mis-derived as EVM. reference (BTC testnet / Solana
 // devnet / Tron shasta…) is parsed from chainKey; v1 entries without namespace
 // fall back to EVM. Returns null for unknown namespaces (caller skips).
+// 按主账户的链恢复 HD 钱包(与 deriveSubAccountByNamespace 对应);v1 备份没有 namespace,按以太坊处理。
+function importHDWalletByNamespace(name, mnemonic, password, meta) {
+  const namespace = String(meta?.namespace || 'eip155').toLowerCase();
+  const reference = String(meta?.chainKey || '').split(':')[1] || '';
+  switch (namespace) {
+    case 'tron':
+      return importTronHDWallet(name, mnemonic, password, reference ? { tronReference: reference } : {});
+    case 'solana':
+      return importSolanaHDWallet(name, mnemonic, password, reference ? { solanaReference: reference } : {});
+    case 'bip122':
+    case 'utxo':
+      return importBitcoinHDWallet(name, mnemonic, password, reference ? { bip122Reference: reference } : {});
+    case 'eip155':
+      return importHDWallet(name, mnemonic, password);
+    default:
+      console.warn(`[ImportAccounts] unknown HD wallet namespace "${namespace}", skipping`);
+      return null;
+  }
+}
+
 function deriveSubAccountByNamespace(wallet, index, meta, password) {
   const namespace = String(meta?.namespace || 'eip155').toLowerCase();
   const name = meta?.name;
@@ -1160,6 +1224,8 @@ function importPrivateKeyWalletByNamespace(name, privateKey, password, meta) {
     case 'bip122':
     case 'utxo':
       return importBitcoinPrivateKeyWallet(name, privateKey, password, reference ? { bip122Reference: reference } : {});
+    case 'zhixing':
+      return importZhixingPrivateKeyWallet(name, privateKey, password);
     case 'eip155':
       return importPrivateKeyWallet(name, privateKey, password);
     default:
@@ -1182,6 +1248,8 @@ export function handleImportPrivateKeyWalletByNamespace(name, privateKey, passwo
     case 'bip122':
     case 'utxo':
       return handleImportBitcoinPrivateKeyWallet(name, privateKey, password, reference ? { bip122Reference: reference } : {});
+    case 'zhixing':
+      return handleImportZhixingWallet(name, { privateKey }, password);
     case 'eip155':
       return handleImportPrivateKeyWallet(name, privateKey, password);
     default:
@@ -1291,12 +1359,49 @@ export async function handleExportAccountsFile(password, identityEndpoint = '', 
   }
 }
 
+/**
+ * 钱包里已有本地钱包时,确认 password 就是当前钱包密码:能解开任意一个已有钱包的助记词或私钥即可。
+ * 钱包为空时返回 true(首次导入由这次的密码决定钱包密码)。
+ */
+async function isCurrentWalletPassword(password) {
+  const wallets = Object.values(await getWallets() || {});
+  const local = wallets.filter(w => w?.type === WALLET_TYPE.HD || w?.type === WALLET_TYPE.IMPORTED);
+  if (local.length === 0) return true;
+  for (const wallet of local) {
+    try {
+      if (wallet.type === WALLET_TYPE.HD && wallet.encryptedMnemonic) {
+        await decryptString(wallet.encryptedMnemonic, password);
+        return true;
+      }
+      const [account] = await getWalletAccounts(wallet.id);
+      if (account?.encryptedPrivateKey) {
+        await decryptString(account.encryptedPrivateKey, password);
+        return true;
+      }
+    } catch {
+      return false; // 已有密文解不开:不是当前钱包密码
+    }
+  }
+  return false;
+}
+
+// 导入去重用的键:规整失败时(返回空串)退回「链 + 原地址」,不能让所有认不出的地址共用一个空键,
+// 否则第一个之后的账户都会被当成重复而静默跳过。
+function importDedupeKey(address, namespace) {
+  return normalizeAddressForFamily(address, namespace) || `${namespace || 'eip155'}:${String(address || '')}`;
+}
+
 export async function handleImportAccountsFile(file, password, options = {}) {
   if (!file || file.format !== 'yeying-wallet-accounts' || ![1, 2].includes(file.version) || !file.ciphertext) {
     return { success: false, error: '不支持的账户备份文件' };
   }
   if (!password || password.length < MIN_PASSWORD_LENGTH) {
     return { success: false, error: 'password is required' };
+  }
+  // 导入的账户会用这个密码加密保存:钱包里已有账户时它必须是当前钱包密码,
+  // 否则导入后这些账户与原有账户用的是两个不同的密码,之后无法统一解锁。
+  if (!(await isCurrentWalletPassword(password))) {
+    return { success: false, error: '请输入当前钱包密码(备份文件需用同一个密码导出)' };
   }
   try {
     const payload = await decryptObject(file.ciphertext, password);
@@ -1305,8 +1410,8 @@ export async function handleImportAccountsFile(file, password, options = {}) {
     }
     const existingAddresses = new Set(
       Object.values(await getAccounts())
-        .map(account => normalizeAddressForFamily(account.address, account.namespace))
-        .filter(Boolean)
+        .filter(account => account?.address)
+        .map(account => importDedupeKey(account.address, account.namespace))
     );
     let imported = 0;
     let skipped = 0;
@@ -1356,8 +1461,10 @@ export async function handleImportAccountsFile(file, password, options = {}) {
       const sourceAccounts = Array.isArray(source.accounts) ? source.accounts : [];
       if (source.type === WALLET_TYPE.HD && source.mnemonic) {
         const firstMeta = sourceAccounts.find(account => account.index === 0) || sourceAccounts[0] || {};
-        const preview = await importHDWallet(firstMeta.name || '导入账户', source.mnemonic, password);
-        if (existingAddresses.has(normalizeAddressForFamily(preview.mainAccount.address, preview.mainAccount.namespace))) {
+        // 按主账户的链恢复:波场 / 索拉纳 / 比特币 HD 钱包不能被当成以太坊 HD 钱包重建
+        const preview = await importHDWalletByNamespace(firstMeta.name || '导入账户', source.mnemonic, password, firstMeta);
+        if (!preview) { skipped += sourceAccounts.length || 1; continue; }
+        if (existingAddresses.has(importDedupeKey(preview.mainAccount.address, preview.mainAccount.namespace))) {
           skipped += sourceAccounts.length || 1;
           continue;
         }
@@ -1370,16 +1477,16 @@ export async function handleImportAccountsFile(file, password, options = {}) {
         });
         await saveAccount(preview.mainAccount);
         if (!firstImportedAccountId) firstImportedAccountId = preview.mainAccount.id;
-        existingAddresses.add(normalizeAddressForFamily(preview.mainAccount.address, preview.mainAccount.namespace));
+        existingAddresses.add(importDedupeKey(preview.mainAccount.address, preview.mainAccount.namespace));
         imported += 1;
         for (const meta of sourceAccounts.filter(account => Number.isInteger(account.index) && account.index > 0).sort((a, b) => a.index - b.index)) {
           const account = await deriveSubAccountByNamespace(preview.wallet, meta.index, meta, password);
           if (!account) { skipped += 1; continue; }
-          if (existingAddresses.has(normalizeAddressForFamily(account.address, account.namespace))) { skipped += 1; continue; }
+          if (existingAddresses.has(importDedupeKey(account.address, account.namespace))) { skipped += 1; continue; }
           account.username = meta.username || '';
           account.usernameUpdatedAt = meta.usernameUpdatedAt || 0;
           await saveAccount(account);
-          existingAddresses.add(normalizeAddressForFamily(account.address, account.namespace));
+          existingAddresses.add(importDedupeKey(account.address, account.namespace));
           imported += 1;
           preview.wallet.accountCount = Math.max(preview.wallet.accountCount || 1, meta.index + 1);
         }
@@ -1389,14 +1496,14 @@ export async function handleImportAccountsFile(file, password, options = {}) {
           const meta = sourceAccounts[index] || {};
           const preview = await importPrivateKeyWalletByNamespace(meta.name || '导入账户', source.privateKeys[index], password, meta);
           if (!preview) { skipped += 1; continue; }
-          if (existingAddresses.has(normalizeAddressForFamily(preview.mainAccount.address, preview.mainAccount.namespace))) { skipped += 1; continue; }
+          if (existingAddresses.has(importDedupeKey(preview.mainAccount.address, preview.mainAccount.namespace))) { skipped += 1; continue; }
           preview.wallet.name = source.name || preview.wallet.name;
           preview.mainAccount.username = meta.username || '';
           preview.mainAccount.usernameUpdatedAt = meta.usernameUpdatedAt || 0;
           await saveWallet(preview.wallet);
           await saveAccount(preview.mainAccount);
           if (!firstImportedAccountId) firstImportedAccountId = preview.mainAccount.id;
-          existingAddresses.add(normalizeAddressForFamily(preview.mainAccount.address, preview.mainAccount.namespace));
+          existingAddresses.add(importDedupeKey(preview.mainAccount.address, preview.mainAccount.namespace));
           imported += 1;
         }
       }
@@ -1698,8 +1805,13 @@ export async function handleResetWallet() {
 
     const defaultConfig = await getNetworkConfigByKey(DEFAULT_NETWORK);
     if (defaultConfig) {
-      const chainIdHex = defaultConfig.chainIdHex || normalizeChainId(defaultConfig.chainId);
-      setCurrentChainKey(chainIdToChainKey(chainIdHex));
+      // 默认网络可能是非 EVM(知行图):有 chainKey 就直接用,不要去推导数字 chainId
+      if (defaultConfig.chainKey) {
+        setCurrentChainKey(defaultConfig.chainKey);
+      } else {
+        const chainIdHex = defaultConfig.chainIdHex || normalizeChainId(defaultConfig.chainId);
+        setCurrentChainKey(chainIdToChainKey(chainIdHex));
+      }
       state.currentRpcUrl = defaultConfig.rpcUrl || defaultConfig.rpc || null;
     } else {
       state.currentChainKey = null;

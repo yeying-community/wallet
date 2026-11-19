@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 
 import {
   DEFAULT_NETWORK,
+  DEFAULT_EVM_NETWORK,
   NETWORKS,
   BUILTIN_TOKENS_BY_CHAIN_ID,
   NETWORK_TYPES,
@@ -32,21 +33,32 @@ import {
   getExplorerBlockUrl
 } from '../js/config/network-config.js';
 
-const YEYING = NETWORKS.yeying;
+const ZHIXING = NETWORKS.zhixingTestnet;
 const ETHEREUM = NETWORKS.ethereum;
 
 // ==================== 数据完整性 ====================
 
-test('DEFAULT_NETWORK = yeying 且存在于 NETWORKS', () => {
-  assert.equal(DEFAULT_NETWORK, 'yeying');
+test('DEFAULT_NETWORK = zhixingTestnet(知行图)且存在于 NETWORKS;EVM 兜底是 ethereum', () => {
+  assert.equal(DEFAULT_NETWORK, 'zhixingTestnet');
   assert.ok(NETWORKS[DEFAULT_NETWORK]);
+  assert.equal(DEFAULT_EVM_NETWORK, 'ethereum');
+  assert.ok(NETWORKS[DEFAULT_EVM_NETWORK].chainId);
 });
 
-test('NETWORKS：YeYing chainId 5432 / 0x1538、ETH chainId 1 / 0x1', () => {
-  assert.equal(YEYING.chainId, 5432);
-  assert.equal(YEYING.chainIdHex, '0x1538');
-  assert.equal(YEYING.type, NETWORK_TYPES.MAINNET);
-  assert.equal(YEYING.isTestnet, false);
+test('旧默认网络 YeYing Mainnet(EVM 5432)已移除:它的 RPC 域名现在是知行图', () => {
+  assert.equal(NETWORKS.yeying, undefined);
+  assert.equal(getNetworkByChainId(5432), null);
+  assert.equal(getNetworkByChainId('0x1538'), null);
+});
+
+test('NETWORKS：知行图是非资产链(无 chainId、无原生币);ETH chainId 1 / 0x1', () => {
+  assert.equal(ZHIXING.namespace, 'zhixing');
+  assert.equal(ZHIXING.chainKey, 'zhixing:testnet');
+  assert.equal(ZHIXING.rpcUrl, 'https://blockchain.yeying.pub/rpc');
+  assert.equal(ZHIXING.chainId, undefined);
+  assert.equal(ZHIXING.hasAssets, false);
+  assert.equal(ZHIXING.type, NETWORK_TYPES.TESTNET);
+  assert.equal(ZHIXING.isTestnet, true);
   assert.equal(ETHEREUM.chainId, 1);
   assert.equal(ETHEREUM.chainIdHex, '0x1');
   assert.equal(ETHEREUM.nativeCurrency.symbol, 'ETH');
@@ -96,13 +108,14 @@ test('RPC_CONFIG：必要字段存在且 > 0', () => {
 // ==================== getNetworkConfig ====================
 
 test('getNetworkConfig：已知 / 未知', () => {
-  assert.equal(getNetworkConfig('yeying'), YEYING);
+  assert.equal(getNetworkConfig('zhixingTestnet'), ZHIXING);
+  assert.equal(getNetworkConfig('yeying'), null);
   assert.equal(getNetworkConfig('unknown'), null);
   assert.equal(getNetworkConfig(null), null);
 });
 
-test('getDefaultNetworkConfig：返回 yeying', () => {
-  assert.equal(getDefaultNetworkConfig(), YEYING);
+test('getDefaultNetworkConfig：返回知行图', () => {
+  assert.equal(getDefaultNetworkConfig(), ZHIXING);
 });
 
 // ==================== getNetworkByChainId / getNetworkNameByChainId ====================
@@ -111,31 +124,29 @@ test('getNetworkByChainId：number / 0x 字符串 / 十进制字符串均可', (
   assert.equal(getNetworkByChainId(1), ETHEREUM);
   assert.equal(getNetworkByChainId('0x1'), ETHEREUM);
   assert.equal(getNetworkByChainId('1'), ETHEREUM);
-  assert.equal(getNetworkByChainId(5432), YEYING);
-  assert.equal(getNetworkByChainId('0x1538'), YEYING);
   assert.equal(getNetworkByChainId(999999), null);
   assert.equal(getNetworkByChainId('not-a-num'), null);
 });
 
-test('getNetworkNameByChainId：返回 key 名（"yeying" / "ethereum"）', () => {
+test('getNetworkNameByChainId：返回 key 名（"ethereum"）', () => {
   assert.equal(getNetworkNameByChainId(1), 'ethereum');
   assert.equal(getNetworkNameByChainId('0x1'), 'ethereum');
-  assert.equal(getNetworkNameByChainId(5432), 'yeying');
   assert.equal(getNetworkNameByChainId(999999), null);
 });
 
 // ==================== isNetworkSupported / getSupportedNetworks / getAllNetworks ====================
 
 test('isNetworkSupported', () => {
-  assert.equal(isNetworkSupported('yeying'), true);
+  assert.equal(isNetworkSupported('zhixingTestnet'), true);
+  assert.equal(isNetworkSupported('yeying'), false);
   assert.equal(isNetworkSupported('ethereum'), true);
   assert.equal(isNetworkSupported('foo'), false);
   assert.equal(isNetworkSupported(null), false);
 });
 
-test('getSupportedNetworks：含 yeying 与 ethereum', () => {
+test('getSupportedNetworks：含 zhixingTestnet 与 ethereum', () => {
   const list = getSupportedNetworks();
-  assert.ok(list.includes('yeying'));
+  assert.ok(list.includes('zhixingTestnet'));
   assert.ok(list.includes('ethereum'));
 });
 
@@ -145,12 +156,12 @@ test('getAllNetworks：长度 == getSupportedNetworks 长度', () => {
 
 // ==================== getMainnets / getTestnets ====================
 
-test('getMainnets：当前五条主网（yeying / ethereum / tronMainnet / solanaMainnet / bitcoinMainnet）', () => {
+test('getMainnets：当前四条主网（ethereum / tronMainnet / solanaMainnet / bitcoinMainnet）', () => {
   const mainnets = getMainnets();
-  assert.equal(mainnets.length, 5);
+  assert.equal(mainnets.length, 4);
   for (const n of mainnets) assert.equal(n.isTestnet, false);
   const ids = mainnets.map((n) => n.id);
-  assert.ok(ids.includes('yeying'));
+  assert.ok(!ids.includes('yeying'));
   assert.ok(ids.includes('ethereum'));
   assert.ok(ids.includes('tronMainnet'));
   assert.ok(ids.includes('solanaMainnet'));
@@ -163,6 +174,7 @@ test('getTestnets：sepolia / polygon-amoy / bsc-testnet 均为测试网', () =>
   assert.ok(ids.includes('sepolia'), 'sepolia 应在测试网列表');
   assert.ok(ids.includes('polygon-amoy'), 'polygon-amoy 应在测试网列表');
   assert.ok(ids.includes('bsc-testnet'), 'bsc-testnet 应在测试网列表');
+  assert.ok(ids.includes('zhixingTestnet'), '知行图测试网应在测试网列表');
   for (const n of testnets) {
     assert.equal(n.isTestnet, true);
     assert.equal(n.type, 'testnet');
@@ -316,26 +328,27 @@ test('formatNetworkConfig：自定义 explorer 与 decimals 透传', () => {
 // ==================== isSameNetwork ====================
 
 test('isSameNetwork：同 chainId → true、null/缺失 → false', () => {
-  assert.equal(isSameNetwork(YEYING, ETHEREUM), false);
-  assert.equal(isSameNetwork(YEYING, { chainId: 5432 }), true);
+  const SEPOLIA = NETWORKS.sepolia;
+  assert.equal(isSameNetwork(SEPOLIA, ETHEREUM), false);
+  assert.equal(isSameNetwork(SEPOLIA, { chainId: 11155111 }), true);
   assert.equal(isSameNetwork(null, ETHEREUM), false);
-  assert.equal(isSameNetwork(YEYING, null), false);
+  assert.equal(isSameNetwork(SEPOLIA, null), false);
 });
 
 // ==================== explorer URL ====================
 
 test('getExplorerAddressUrl / TxUrl / BlockUrl：已知网络 → 拼接', () => {
   assert.equal(
-    getExplorerAddressUrl('yeying', '0xabc'),
-    'https://blockscout.yeying.pub/address/0xabc'
+    getExplorerAddressUrl('ethereum', '0xabc'),
+    'https://etherscan.io/address/0xabc'
   );
   assert.equal(
     getExplorerTxUrl('ethereum', '0x' + 'a'.repeat(64)),
     'https://etherscan.io/tx/0x' + 'a'.repeat(64)
   );
   assert.equal(
-    getExplorerBlockUrl('yeying', 12345),
-    'https://blockscout.yeying.pub/block/12345'
+    getExplorerBlockUrl('sepolia', 12345),
+    'https://sepolia.etherscan.io/block/12345'
   );
 });
 

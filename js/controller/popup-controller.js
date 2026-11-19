@@ -15,7 +15,7 @@ import {
 import { TokenBalanceController } from './token/index.js';
 import { SettingController } from './setting-controller.js';
 import { ContactController } from './contact-controller.js';
-import { ImportWalletController } from './wallet/import-wallet-controller.js';
+import { ImportWalletController, copyOptionLabel } from './wallet/import-wallet-controller.js';
 import { CreateWalletController } from './wallet/create-wallet-controller.js';
 import {
   TransactionListController,
@@ -252,7 +252,7 @@ export class PopupController {
         const networkLabel = document.getElementById('importNetworkLabel');
         const networkMenu = document.getElementById('importNetworkMenu');
         const activeOpt = networkMenu?.querySelector(`.network-option[data-network-value="${network}"]`);
-        if (networkLabel && activeOpt) networkLabel.textContent = activeOpt.textContent.trim();
+        copyOptionLabel(networkLabel, activeOpt);
         networkMenu?.querySelectorAll('.network-option').forEach((opt) => {
           opt.classList.toggle('active', opt.dataset.networkValue === network);
         });
@@ -263,7 +263,7 @@ export class PopupController {
         const referenceLabel = document.getElementById('importReferenceLabel');
         const referenceMenu = document.getElementById('importReferenceMenu');
         const refOpt = referenceMenu?.querySelector(`.network-option[data-reference-value="${defaultRef}"]`);
-        if (referenceLabel && refOpt) referenceLabel.textContent = refOpt.textContent.trim();
+        copyOptionLabel(referenceLabel, refOpt);
         referenceMenu?.querySelectorAll('.network-option').forEach((opt) => {
           opt.classList.toggle('active', opt.dataset.referenceValue === defaultRef);
         });

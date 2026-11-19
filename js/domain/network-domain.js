@@ -9,6 +9,8 @@
  * 通信协议：{ type, data }
  */
 import { NetworkMessageType } from '../protocol/extension-protocol.js';
+import { getNetworkDisplayName, findBuiltinNetwork } from '../config/network-names.js';
+import { t } from '../common/i18n/index.js';
 import { BaseDomain } from './base-domain.js';
 export { NetworkMessageType };
 
@@ -37,6 +39,7 @@ export class NetworkDomain extends BaseDomain {
       if (result.chainId) {
         this._currentChainId = result.chainId;
       }
+      this._currentChainKey = result.chainKey || '';
 
       return result;
     }
@@ -46,7 +49,9 @@ export class NetworkDomain extends BaseDomain {
         networkKey
       });
 
-      this._currentChainId = result.chainId || this._currentChainId;
+      // 非 EVM 网络(知行图 / Tron …)的 chainId 是 null:要清掉,不能沿用上一个 EVM 网络的
+      this._currentChainId = result.chainId ?? null;
+      this._currentChainKey = result.chainKey || '';
       this._currentRpcUrl = result.rpcUrl || this._currentRpcUrl;
       return result;
     }
@@ -72,6 +77,7 @@ export class NetworkDomain extends BaseDomain {
     if (result.chainId) {
       this._currentChainId = result.chainId;
     }
+    this._currentChainKey = result.chainKey || '';
 
     return result;
   }
@@ -206,10 +212,19 @@ export class NetworkDomain extends BaseDomain {
    */
   async getChainKey() {
     try {
+      if (!this._currentChainKey) {
+        const r = await this._sendMessage(NetworkMessageType.GET_CURRENT_CHAIN_KEY);
+        this._currentChainKey = r?.chainKey || '';
+      }
       return String(this._currentChainKey || '').toLowerCase();
     } catch {
       return '';
     }
+  }
+
+  /** 当前是否是知行图网络(非资产链,首页显示成员状态而不是余额)。 */
+  async isZhixing() {
+    return (await this.getChainKey()).startsWith('zhixing:');
   }
 
   /**
@@ -274,17 +289,15 @@ export class NetworkDomain extends BaseDomain {
       n.chainId === chainIdOrKey || n.chainIdHex === chainIdOrKey || n.chainKey === chainIdOrKey
     );
     if (network) {
-      return network.name || network.chainName || '网络';
+      return getNetworkDisplayName(network);
     }
-    // Tron chainKey 回退名
-    if (chainIdOrKey === 'tron:mainnet') return 'Tron Mainnet';
-    if (chainIdOrKey === 'tron:shasta') return 'Tron Shasta Testnet';
-    if (chainIdOrKey === 'tron:nile') return 'Tron Nile Testnet';
+    // 内置的非 EVM 网络(按 chainKey)
+    if (findBuiltinNetwork(chainIdOrKey)) return getNetworkDisplayName(chainIdOrKey);
     // 其他未知 chainId 用 hex 兜底
     if (chainIdOrKey && chainIdOrKey.startsWith('0x')) {
       return `Chain ${parseInt(chainIdOrKey, 16)}`;
     }
-    return chainIdOrKey || '未知网络';
+    return chainIdOrKey || t('network.unknown');
   }
 
   /**

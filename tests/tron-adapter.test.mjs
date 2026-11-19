@@ -184,7 +184,7 @@ test('buildUnsigned：digest = sha256(raw_data_hex 字节)', async () => {
   restore();
 });
 
-test('buildUnsigned：mainnet 拒绝 testnet prefix 地址', async () => {
+test('buildUnsigned：mainnet 拒绝旧的 0xa0 前缀地址(27 开头)', async () => {
   const restore = installFetchMock({
     '/wallet/createtransaction': () => fakeCreateTransactionResponse()
   });
@@ -202,21 +202,31 @@ test('buildUnsigned：mainnet 拒绝 testnet prefix 地址', async () => {
   restore();
 });
 
-test('buildUnsigned：shasta 接受 testnet prefix 地址', async () => {
+test('buildUnsigned：测试网(Shasta / Nile)用 T 开头地址;旧的 27 开头地址被拒绝', async () => {
   const tx = fakeCreateTransactionResponse();
   const restore = installFetchMock({
     '/wallet/createtransaction': () => tx
   });
 
-  // mainnet 占位 + shasta ref 接受的 testnet 前缀地址
-  const unsigned = await buildUnsigned({
-    type: 'native-transfer',
-    from: '27PAqdM7TzL3oZnzPBR8YXqhEo5siz4GZi7',
-    toAddress: '27PAqdM7TzL3oZnzPBR8YXqhEo5siz4GZi7',
-    amount: '1'
-  }, { chainKey: 'tron:shasta' });
-
-  assert.equal(unsigned.payloads[0].hashAlg, 'sha256');
+  // 测试网与主网同一前缀 0x41(经 Nile / Shasta 节点核实)
+  for (const chainKey of ['tron:shasta', 'tron:nile']) {
+    const unsigned = await buildUnsigned({
+      type: 'native-transfer',
+      from: 'TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW',
+      toAddress: 'TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW',
+      amount: '1'
+    }, { chainKey });
+    assert.equal(unsigned.payloads[0].hashAlg, 'sha256');
+    await assert.rejects(
+      () => buildUnsigned({
+        type: 'native-transfer',
+        from: 'TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW',
+        toAddress: '27PAqdM7TzL3oZnzPBR8YXqhEo5siz4GZi7',
+        amount: '1'
+      }, { chainKey }),
+      /invalid to address/
+    );
+  }
 
   restore();
 });

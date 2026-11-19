@@ -71,6 +71,10 @@ export class ApprovalController {
       case 'watchAsset':
         this.bindWatchAssetEvents();
         break;
+      case 'zhixing_connect':
+      case 'zhixing_sign':
+        this.bindZhixingEvents();
+        break;
       default:
         console.error(`[ApprovalController] 未知的请求类型: ${this.requestType}`);
         showError(`不支持的请求类型: ${this.requestType}`);
@@ -380,6 +384,29 @@ export class ApprovalController {
     } catch (error) {
       this.isProcessing = false;
       showError('签名失败: ' + error.message);
+    }
+  }
+
+  // ==================== 知行图(连接 / 签署知识操作) ====================
+
+  bindZhixingEvents() {
+    const approveBtn = document.getElementById('approveZhixing');
+    const rejectBtn = document.getElementById('rejectZhixing');
+    if (approveBtn) {
+      this.addDomListener(approveBtn, 'click', async () => {
+        if (this.isProcessing) return;
+        this.isProcessing = true;
+        try {
+          await this.sendResponse({ approved: true });
+          this.closeWindow();
+        } catch (error) {
+          this.isProcessing = false;
+          showError('操作失败: ' + error.message);
+        }
+      });
+    }
+    if (rejectBtn) {
+      this.addDomListener(rejectBtn, 'click', () => this.reject());
     }
   }
 
