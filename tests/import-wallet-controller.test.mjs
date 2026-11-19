@@ -435,3 +435,25 @@ test('导出检测到历史 Identity 密码时提示输入修改前的钱包密�
   assert.equal(prompts[1].title, '恢复 Wallet Identity');
   assert.equal(prompts[1].placeholder, '输入修改前的钱包密码');
 });
+
+test('备份文件页签识别文件种类:钱包账户文件 / 知行图加密密钥文件 / 知行图明文种子文件', async () => {
+  const { detectImportFileKind } = await import('../js/controller/wallet/import-wallet-controller.js');
+  const fs = await import('node:fs');
+  const keystore = fs.readFileSync(new URL('./fixtures/zhixing-keystore.json', import.meta.url), 'utf8');
+  const seedFile = fs.readFileSync(new URL('./fixtures/zhixing-seed.txt', import.meta.url), 'utf8');
+  assert.equal(detectImportFileKind(JSON.stringify({ format: 'yeying-wallet-accounts', version: 2, cipher: 'AES-GCM', ciphertext: 'x' })), 'accounts');
+  assert.equal(detectImportFileKind(keystore), 'zhixing-keystore');
+  assert.equal(detectImportFileKind(seedFile), 'zhixing-seed');
+  assert.equal(detectImportFileKind('ab'.repeat(32)), 'zhixing-seed');
+  assert.equal(detectImportFileKind('{"hello": 1}'), 'unknown');
+  assert.equal(detectImportFileKind('not a key'), 'unknown');
+});
+
+test('助记词 / 私钥页签里没有文件输入;文件只在备份文件页签', async () => {
+  const fs = await import('node:fs');
+  const html = fs.readFileSync(new URL('../html/popup.html', import.meta.url), 'utf8');
+  const walletSection = html.slice(html.indexOf('id="walletImportSection"'), html.indexOf('id="fileImportSection"'));
+  assert.doesNotMatch(walletSection, /type="file"/, '助记词 / 私钥页签不应有文件输入');
+  const fileSection = html.slice(html.indexOf('id="fileImportSection"'), html.indexOf('id="custodyImportSection"'));
+  assert.match(fileSection, /type="file"/);
+});

@@ -804,22 +804,12 @@
               placeholder="输入私钥（0x开头）"
             />
           </div>
-          <!-- 知行图:也可以直接选 node keygen 生成的密钥文件 -->
-          <div class="form-group hidden zhixing-only" id="importZhixingKeyFileGroup">
-            <label for="importZhixingKeyFile">或选择密钥文件</label>
-            <input type="file" id="importZhixingKeyFile" accept=".json,.txt,.key,.seed,application/json,text/plain" />
-            <p class="settings-hint">node keygen 生成的明文种子文件，或 node keygen --encrypt 生成的加密 .json（需填下面的文件口令）。文件只在钱包里读取。</p>
-          </div>
-          <div class="form-group hidden zhixing-only" id="importZhixingFilePasswordGroup">
-            <label for="importZhixingFilePassword">密钥文件口令</label>
-            <input type="password" id="importZhixingFilePassword" placeholder="加密 .json 才需要" autocomplete="off" />
-          </div>
         </div>
         </div>
 
         <div id="fileImportSection" class="hidden">
           <div class="form-group">
-            <label for="importAccountsFile">加密账户文件</label>
+            <label for="importAccountsFile">备份文件</label>
             <label class="file-picker" for="importAccountsFile">
               <span class="file-picker-icon" aria-hidden="true">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -831,10 +821,16 @@
               </span>
               <span class="file-picker-copy">
                 <strong>选择备份文件</strong>
-                <span id="importAccountsFileName">支持 JSON 格式的加密备份文件</span>
+                <span id="importAccountsFileName">钱包导出的加密账户文件，或知行图密钥文件</span>
               </span>
-              <input id="importAccountsFile" type="file" accept="application/json,.json" />
+              <input id="importAccountsFile" type="file" accept=".json,.txt,.key,.seed,application/json,text/plain" />
             </label>
+            <p class="settings-hint">知行图密钥文件：node keygen 生成的明文种子文件，或 node keygen --encrypt 生成的加密 .json。文件只在钱包里读取。</p>
+          </div>
+          <!-- 选中的是知行图加密密钥文件时才显示 -->
+          <div class="form-group hidden" id="importKeyFilePasswordGroup">
+            <label for="importKeyFilePassword">密钥文件口令</label>
+            <input type="password" id="importKeyFilePassword" placeholder="生成加密密钥文件时设置的口令" autocomplete="off" />
           </div>
         </div>
 
