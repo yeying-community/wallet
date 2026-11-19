@@ -33,43 +33,10 @@ const IMPORT_FIELD_IDS = [
   'importPrivateKey',
   'importWalletPassword',
   'importAccountsFile',
-  'importZhixingPassphrase',
-  'importKeyFilePassword'
+  'importZhixingPassphrase'
 ];
 
-const FILE_HINT = '钱包导出的加密账户文件，或知行图密钥文件';
-
-/**
- * 「备份文件」页签里选中的文件是什么:
- *   'accounts' — 钱包导出的加密账户文件(format: yeying-wallet-accounts)
- *   'zhixing-keystore' — node keygen --encrypt 写的加密密钥文件(Web3 Secret Storage v3,需要文件口令)
- *   'zhixing-seed' — node keygen 写的明文种子文件(64 位十六进制,可带 # 注释)
- *   'unknown' — 都不是
- */
-export function detectImportFileKind(text) {
-  const trimmed = String(text || '').trim();
-  if (trimmed.startsWith('{')) {
-    let parsed;
-    try { parsed = JSON.parse(trimmed); } catch { return 'unknown'; }
-    if (parsed?.format === 'yeying-wallet-accounts' || parsed?.ciphertext) return 'accounts';
-    if (Number(parsed?.version) === 3 && (parsed?.crypto || parsed?.Crypto)) return 'zhixing-keystore';
-    return 'unknown';
-  }
-  const seedLine = trimmed.split(/\r?\n/).map((l) => l.trim()).find((l) => l && !l.startsWith('#'));
-  return /^(0x)?[0-9a-fA-F]{64}$/.test(seedLine || '') ? 'zhixing-seed' : 'unknown';
-}
-
-/** 按选中的文件种类显示相关输入:知行图密钥文件要账户名称,加密的还要文件口令。 */
-function applyFileKind(kind) {
-  const fileSection = document.getElementById('fileImportSection');
-  if (fileSection) fileSection.dataset.fileKind = kind || '';
-  const onFileTab = document.querySelector('.import-source-tab.active')?.dataset.source === 'file';
-  const isZhixing = kind === 'zhixing-keystore' || kind === 'zhixing-seed';
-  document.getElementById('importKeyFilePasswordGroup')?.classList.toggle('hidden', !(onFileTab && kind === 'zhixing-keystore'));
-  if (onFileTab) document.getElementById('importWalletNameGroup')?.classList.toggle('hidden', !isZhixing);
-  const importBtn = document.getElementById('importBtn');
-  if (onFileTab && importBtn) importBtn.textContent = isZhixing ? '导入知行图账户' : '导入备份';
-}
+const FILE_HINT = '支持 JSON 格式的加密备份文件';
 
 // 每个网络对应的 reference 选项 + 默认 reference（决定非 EVM 链走主网还是测试网）
 const NETWORK_REFERENCES = {
@@ -113,9 +80,6 @@ export function clearImportWalletForm({ resetType = true } = {}) {
     fileName.textContent = FILE_HINT;
     fileName.title = '';
   }
-  const fileSection0 = document.getElementById('fileImportSection');
-  if (fileSection0) fileSection0.dataset.fileKind = '';
-  document.getElementById('importKeyFilePasswordGroup')?.classList.add('hidden');
 
   if (!resetType) {
     return;
@@ -280,7 +244,6 @@ export class ImportWalletController {
           passwordGroup?.classList.remove('hidden');
           refGroup?.classList.add('hidden');
           if (importBtn) importBtn.textContent = '导入备份';
-          applyFileKind(fileSection?.dataset.fileKind || '');
         } else {
           // 'wallet' source
           walletSection?.classList.remove('hidden');
@@ -337,11 +300,7 @@ export class ImportWalletController {
         nameEl.textContent = name || FILE_HINT;
         nameEl.title = name || '';
       }
-      let kind = '';
-      if (file && file.size <= 1024 * 1024) {
-        try { kind = detectImportFileKind(await file.text()); } catch { kind = 'unknown'; }
-      }
-      applyFileKind(kind);
+
       void savePopupSessionState('importPage').catch((error) => {
         console.warn('[ImportWalletController] 保存导入页面状态失败:', error);
       });
@@ -530,7 +489,7 @@ export class ImportWalletController {
           return;
         }
       } else if (!document.getElementById('importAccountsFile')?.files?.[0]) {
-        showError('请选择备份文件');
+        showError('请选择账户备份文件');
         return;
       }
 
@@ -574,26 +533,9 @@ export class ImportWalletController {
         }
       } else {
         const file = document.getElementById('importAccountsFile')?.files?.[0];
-        if (file.size > 1024 * 1024) throw new Error('这个文件太大,不像是备份文件或密钥文件');
-        const text = await file.text();
-        const kind = detectImportFileKind(text);
-        if (kind === 'zhixing-keystore' || kind === 'zhixing-seed') {
-          const filePassword = document.getElementById('importKeyFilePassword')?.value || '';
-          if (kind === 'zhixing-keystore' && !filePassword) throw new Error('这是加密的密钥文件,请填写它的口令');
-          const zxName = document.getElementById('importAccountName')?.value.trim() || '知行图账户';
-          await this.wallet.importZhixingWallet(zxName, { privateKey: text, filePassword }, password);
-          showSuccess('导入成功！');
-          clearImportWalletForm();
-          setTimeout(() => {
-            showPage('walletPage');
-            if (this.onImportSuccess) this.onImportSuccess();
-          }, 1000);
-          return;
-        }
-        if (kind !== 'accounts') throw new Error('无法识别这个文件:请选择钱包导出的加密账户文件,或知行图密钥文件');
         let parsed;
         try {
-          parsed = JSON.parse(text);
+          parsed = JSON.parse(await file.text());
         } catch {
           throw new Error('备份文件不是有效的 JSON');
         }

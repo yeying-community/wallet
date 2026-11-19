@@ -1104,14 +1104,7 @@ export const extraEnglishText = Object.freeze({
   "索拉纳主网": "Solana Mainnet",
   "索拉纳开发网": "Solana Devnet",
   "索拉纳测试网": "Solana Testnet",
-  "钱包导出的加密账户文件，或知行图密钥文件": "An encrypted accounts file exported from the wallet, or a KnowDoGraph key file",
-  "知行图密钥文件：node keygen 生成的明文种子文件，或 node keygen --encrypt 生成的加密 .json。文件只在钱包里读取。": "KnowDoGraph key file: a plaintext seed file from node keygen, or an encrypted .json from node keygen --encrypt. The file is read only inside the wallet.",
-  "生成加密密钥文件时设置的口令": "The passphrase set when the encrypted key file was created",
-  "导入知行图账户": "Import KnowDoGraph account",
   "请输入种子": "Please enter the seed",
-  "请选择备份文件": "Please choose a backup file",
-  "这个文件太大,不像是备份文件或密钥文件": "This file is too large to be a backup or key file",
-  "无法识别这个文件:请选择钱包导出的加密账户文件,或知行图密钥文件": "Unrecognized file: choose an encrypted accounts file exported from the wallet, or a KnowDoGraph key file",
   "备份文件": "Backup file"
 });
 
