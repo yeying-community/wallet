@@ -72,15 +72,15 @@ export const messagesEnUS = {
   'network.family.tron': 'Tron',
   'network.family.solana': 'Solana',
   'network.family.bitcoin': 'Bitcoin',
-  'network.family.zhixing': 'Knowing-Doing Graph',
+  'network.family.zhixing': 'KnowingDoingGraph',
   'network.ref.mainnet': 'Mainnet',
   'network.ref.testnet': 'Testnet',
   'network.ref.devnet': 'Devnet',
   'network.ref.shasta': 'Shasta (Testnet)',
   'network.ref.nile': 'Nile (Testnet)',
-  'zhixing.loading': 'Loading Knowing-Doing Graph status…',
-  'zhixing.intro': 'Knowing-Doing Graph is a public graph of knowledge, citations and reviews. It has no balances or transfers; this page shows your membership.',
-  'zhixing.noAccount': 'No Knowing-Doing Graph account in this wallet yet. Go to Accounts → Import wallet, choose “Knowing-Doing Graph”, and import with your mnemonic or key file.',
+  'zhixing.loading': 'Loading KnowingDoingGraph status…',
+  'zhixing.intro': 'KnowingDoingGraph is a public graph of knowledge, citations and reviews. It has no balances or transfers; this page shows your membership.',
+  'zhixing.noAccount': 'No KnowingDoingGraph account in this wallet yet. Go to Accounts → Import wallet, choose “KnowingDoingGraph”, and import with your mnemonic or key file.',
   'zhixing.height': 'Block height',
   'zhixing.pubkey': 'Public key',
   'zhixing.status': 'Status',
@@ -90,5 +90,5 @@ export const messagesEnUS = {
   'zhixing.member': 'Account #{id} · {stage}',
   'zhixing.established': 'Past probation',
   'zhixing.probation': 'On probation (reviews not yet counted toward credibility)',
-  'zhixing.open': 'Open Knowing-Doing Graph ↗'
+  'zhixing.open': 'Open KnowingDoingGraph ↗'
 };

@@ -39,7 +39,7 @@ export class WalletDomain extends BaseDomain {
     }
   }
 
-  // ==================== 知行图(Knowing-Doing Graph) ====================
+  // ==================== 知行图(KnowingDoingGraph) ====================
 
   /**
    * 导入知行图钱包。source:{ mnemonic, passphrase? } | { privateKey } | { privateKey: <密钥文件 JSON>, filePassword }

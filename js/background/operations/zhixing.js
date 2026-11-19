@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * 知行图(Knowing-Doing Graph):账户查找、站点授权、签署知识操作、链上状态。
+ * 知行图(KnowingDoingGraph):账户查找、站点授权、签署知识操作、链上状态。
  *
  * 知行图账户是**普通的钱包账户**(namespace=zhixing),在「账户管理 → 导入钱包」里按链导入:
  * 助记词、64 位十六进制种子、或 `node keygen --encrypt` 的加密密钥文件。派生与知行图
