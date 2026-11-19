@@ -1105,7 +1105,11 @@ export const extraEnglishText = Object.freeze({
   "索拉纳开发网": "Solana Devnet",
   "索拉纳测试网": "Solana Testnet",
   "请输入种子": "Please enter the seed",
-  "备份文件": "Backup file"
+  "备份文件": "Backup file",
+  "波场": "Tron",
+  "索拉纳": "Solana",
+  "比特币": "Bitcoin",
+  "这条链": "this chain"
 });
 
 export const englishPatterns = Object.freeze({
@@ -1248,5 +1252,7 @@ export const englishPatterns = Object.freeze({
   "TOTP 已启用：{0}": "TOTP enabled: {0}",
   "引用:{0}": "Citations: {0}",
   "{0} #{1} v{2}": "{0} #{1} v{2}",
-  "{0}、{1}": "{0}, {1}"
+  "{0}、{1}": "{0}, {1}",
+  "当前账户不在{0}网络上": "The current account is not on the {0} network",
+  "到「账户管理」新建或导入{0}钱包,或切换到{0}账户": "Create or import a {0} wallet in \"Manage accounts\", or switch to a {0} account"
 });

@@ -18,6 +18,13 @@ function resolveTokenImage(image) {
   }
 }
 
+/** 账户的链族,取值与 resolveChainFamily 一致:'eip155' | 'tron' | 'solana' | 'utxo' | 'zhixing'。 */
+function accountFamily(account) {
+  const ns = String(account?.namespace || 'eip155').toLowerCase();
+  if (ns === 'bip122') return 'utxo';
+  return ns;
+}
+
 export class TokenController {
   constructor({ token, wallet, networkController } = {}) {
     this.token = token;
@@ -71,6 +78,14 @@ export class TokenController {
       const family = await this.resolveChainFamily();
       this.transferController.setChainFamily(family);
 
+      // 账户不在当前网络的链上(这条链上还没有账户):不要拿别的链的地址去查余额
+      if (accountFamily(account) !== family) {
+        this.lastTokenList = [];
+        this.transferController.updateTransferTokenOptions([]);
+        this.renderNoAccountForChain(family);
+        return [];
+      }
+
       const nativeToken = await this.token.getNativeToken(account.address);
       const tokens = await this.token.getTokenBalances(account.address);
       const list = nativeToken ? [nativeToken, ...tokens] : tokens;
@@ -107,7 +122,9 @@ export class TokenController {
         if (key.startsWith('solana:')) return 'solana';
         if (key.startsWith('bip122:')) return 'utxo';
         if (key.startsWith('zhixing:')) return 'zhixing';
-        // EVM 或未知:沿用下面按账户判断的既有行为
+        // EVM 网络就是 EVM:不能再按账户的链判断,否则「以太坊网络 + 波场账户」会被当成波场
+        if (key.startsWith('eip155:')) return 'eip155';
+        // 未知:沿用下面按账户判断的既有行为
       }
     } catch { /* */ }
     try {
@@ -120,6 +137,19 @@ export class TokenController {
       }
     } catch { /* */ }
     return 'eip155';
+  }
+
+  renderNoAccountForChain(family) {
+    const container = document.getElementById('tokenList');
+    if (!container) return;
+    const chain = { tron: '波场', solana: '索拉纳', utxo: '比特币', eip155: '以太坊' }[family] || '这条链';
+    container.innerHTML = `
+      <div class="empty-state">
+        <p>🪙</p>
+        <p>当前账户不在${chain}网络上</p>
+        <p class="settings-hint">到「账户管理」新建或导入${chain}钱包,或切换到${chain}账户</p>
+      </div>
+    `;
   }
 
   renderTokenBalances(tokens) {

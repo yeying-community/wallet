@@ -61,23 +61,26 @@ export class TokenDomain extends BaseDomain {
       console.warn('[TokenDomain] 获取链 ID 失败:', error);
     }
 
-    let symbol = 'ETH';
+    let symbol = '';
     let name = '原生代币';
     let balance = '0';
     let image = '';
+    let chainKey = '';
 
-    if (chainId) {
-      try {
-        const info = await this.network?.getNetworkInfo();
-        if (info) {
-          symbol = info.nativeCurrency?.symbol || info.symbol || symbol;
-          name = info.nativeCurrency?.name || info.name || info.chainName || name;
-          image = info.nativeCurrency?.icon || info.icon || image;
-        }
-      } catch (error) {
-        console.warn('[TokenDomain] 获取网络信息失败:', error);
+    // 非 EVM 网络(波场 / 索拉纳 / 比特币)没有数字 chainId,也要按网络配置取原生币;
+    // 以前只在有 chainId 时才读网络信息,这些网络就一直显示默认的「ETH / 原生代币」。
+    try {
+      const info = await this.network?.getNetworkInfo();
+      if (info) {
+        chainKey = String(info.chainKey || '');
+        symbol = info.nativeCurrency?.symbol || info.symbol || symbol;
+        name = info.nativeCurrency?.name || info.chainName || info.name || name;
+        image = info.nativeCurrency?.icon || info.icon || image;
       }
+    } catch (error) {
+      console.warn('[TokenDomain] 获取网络信息失败:', error);
     }
+    if (!symbol) symbol = chainId ? 'ETH' : '';
 
     try {
       const result = await this._sendMessage(WalletMessageType.GET_BALANCE, { address });
@@ -92,7 +95,7 @@ export class TokenDomain extends BaseDomain {
       symbol,
       name,
       balance,
-      image: image || this.getNativeTokenIcon(chainId),
+      image: image || this.getNativeTokenIcon(chainKey || chainId),
       isNative: true
     };
   }
