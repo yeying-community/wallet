@@ -1092,7 +1092,18 @@ export const extraEnglishText = Object.freeze({
   "请输入波场私钥": "Please enter the Tron private key",
   "波场私钥钱包": "Tron private-key wallet",
   "请输入比特币私钥": "Please enter the Bitcoin private key",
-  "比特币私钥钱包": "Bitcoin private-key wallet"
+  "比特币私钥钱包": "Bitcoin private-key wallet",
+  "索拉纳钱包": "Solana wallet",
+  "索拉纳网络": "Solana network",
+  "索拉纳地址格式无效": "Invalid Solana address",
+  "索拉纳钱包创建成功": "Solana wallet created",
+  "请填写索拉纳钱包名称": "Please enter a Solana wallet name",
+  "索拉纳导入钱包": "Imported Solana wallet",
+  "请输入索拉纳私钥": "Please enter the Solana private key",
+  "索拉纳私钥钱包": "Solana private-key wallet",
+  "索拉纳主网": "Solana Mainnet",
+  "索拉纳开发网": "Solana Devnet",
+  "索拉纳测试网": "Solana Testnet"
 });
 
 export const englishPatterns = Object.freeze({

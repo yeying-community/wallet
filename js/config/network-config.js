@@ -197,7 +197,7 @@ export const NETWORKS = {
     id: 'solanaMainnet',
     name: 'Solana Mainnet',
     // 显示名按界面语言取(js/config/network-names.js);name 是英文名,用于存储与导出
-    names: { 'zh-CN': 'Solana 主网', 'en-US': 'Solana Mainnet' },
+    names: { 'zh-CN': '索拉纳主网', 'en-US': 'Solana Mainnet' },
     rpc: 'https://api.mainnet-beta.solana.com',
     rpcUrl: 'https://api.mainnet-beta.solana.com',
     solanaRpcUrl: 'https://api.mainnet-beta.solana.com',
@@ -219,7 +219,7 @@ export const NETWORKS = {
     id: 'solanaDevnet',
     name: 'Solana Devnet',
     // 显示名按界面语言取(js/config/network-names.js);name 是英文名,用于存储与导出
-    names: { 'zh-CN': 'Solana 开发网', 'en-US': 'Solana Devnet' },
+    names: { 'zh-CN': '索拉纳开发网', 'en-US': 'Solana Devnet' },
     rpc: 'https://api.devnet.solana.com',
     rpcUrl: 'https://api.devnet.solana.com',
     solanaRpcUrl: 'https://api.devnet.solana.com',
@@ -241,7 +241,7 @@ export const NETWORKS = {
     id: 'solanaTestnet',
     name: 'Solana Testnet',
     // 显示名按界面语言取(js/config/network-names.js);name 是英文名,用于存储与导出
-    names: { 'zh-CN': 'Solana 测试网', 'en-US': 'Solana Testnet' },
+    names: { 'zh-CN': '索拉纳测试网', 'en-US': 'Solana Testnet' },
     rpc: 'https://api.testnet.solana.com',
     rpcUrl: 'https://api.testnet.solana.com',
     solanaRpcUrl: 'https://api.testnet.solana.com',

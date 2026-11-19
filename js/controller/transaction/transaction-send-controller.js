@@ -69,7 +69,7 @@ export class TransactionSendController {
       const errorText = family === 'tron'
         ? '波场地址格式无效'
         : (family === 'solana'
-          ? 'Solana 地址格式无效'
+          ? '索拉纳地址格式无效'
           : (family === 'utxo' ? '比特币地址格式无效' : '地址格式无效'));
       showError(errorText);
       return;

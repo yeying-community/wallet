@@ -70,7 +70,7 @@ export const messagesZhCN = {
   'network.zhixingMeta': '{chainKey} | 知识图谱,没有资产',
   'network.family.evm': '以太坊',
   'network.family.tron': '波场',
-  'network.family.solana': 'Solana',
+  'network.family.solana': '索拉纳',
   'network.family.bitcoin': '比特币',
   'network.family.zhixing': '知行图',
   'network.ref.mainnet': '主网',
