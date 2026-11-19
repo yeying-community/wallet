@@ -18,7 +18,7 @@ test('账户管理按三行结构展示待 Keygen 的 MPC 钱包', () => {
       accounts: [],
     }]);
 
-    assert.match(elements.walletList.innerHTML, /MPC Wallet/);
+    assert.match(elements.walletList.innerHTML, /MPC 钱包/); // 中文原文;英文界面由翻译词典显示为 MPC Wallet
     assert.match(elements.walletList.innerHTML, /等待密钥生成/);
     assert.match(elements.walletList.innerHTML, /门限 2 \/ 3 · 等待密钥生成/);
     assert.match(elements.walletList.innerHTML, /增加参与方/);
@@ -171,7 +171,7 @@ test('账户管理把待处理 MPC 邀请展示为可接受的钱包卡片', () 
       },
     }]);
 
-    assert.match(elements.walletList.innerHTML, /MPC Wallet/);
+    assert.match(elements.walletList.innerHTML, /MPC 钱包/); // 中文原文;英文界面由翻译词典显示为 MPC Wallet
     assert.match(elements.walletList.innerHTML, /团队金库/);
     assert.match(elements.walletList.innerHTML, /待接受邀请/);
     assert.match(elements.walletList.innerHTML, /接受邀请/);

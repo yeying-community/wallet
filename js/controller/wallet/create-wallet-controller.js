@@ -404,9 +404,9 @@ export class CreateWalletController {
   }
 
   updateWalletTypeMenu(type) {
-    let label = 'HD Wallet';
-    if (type === 'mpc') label = 'MPC Wallet';
-    else if (type === 'tron') label = 'Tron HD';
+    let label = 'HD 钱包';
+    if (type === 'mpc') label = 'MPC 钱包';
+    else if (type === 'tron') label = 'Tron HD 钱包';
     else if (type === 'solana') label = 'Solana 钱包';
     else if (type === 'bitcoin') label = 'Bitcoin 钱包';
     const labelEl = document.getElementById('createWalletTypeLabel');

@@ -20,14 +20,14 @@ export const LEGACY_YEYING_NETWORK = Object.freeze({
 
 // ==================== 网络配置 ====================
 export const NETWORKS = {
-  // ===== 知行图(英文名 KnowingDoingGraph)=====
+  // ===== 知行图(英文名 KnowDoGraph)=====
   // 记录知识单元、版本、引用与核验的公开图谱。RPC 是 REST + JSON(GET /info、/members…),
   // 不是以太坊 JSON-RPC;钱包只用它显示成员状态。签名见 js/background/operations/zhixing.js。
   zhixingTestnet: {
     id: 'zhixingTestnet',
-    name: 'KnowingDoingGraph Testnet',
+    name: 'KnowDoGraph Testnet',
     // 显示名按界面语言取(js/config/network-names.js);name 是英文名,用于存储与导出
-    names: { 'zh-CN': '知行图测试网', 'en-US': 'KnowingDoingGraph Testnet' },
+    names: { 'zh-CN': '知行图测试网', 'en-US': 'KnowDoGraph Testnet' },
     rpc: 'https://blockchain.yeying.pub/rpc',
     rpcUrl: 'https://blockchain.yeying.pub/rpc',
     symbol: '',
@@ -595,7 +595,7 @@ export function formatNetworkConfig(config) {
     const reference = String(raw.reference || 'testnet').toLowerCase();
     return {
       id: raw.id || `zhixing-${reference}`,
-      name: raw.name || 'KnowingDoingGraph',
+      name: raw.name || 'KnowDoGraph',
       rpc: raw.rpc || raw.rpcUrl || '',
       rpcUrl: raw.rpcUrl || raw.rpc || '',
       symbol: '',

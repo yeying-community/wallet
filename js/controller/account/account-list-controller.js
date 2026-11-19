@@ -2,10 +2,14 @@ import { showPage, showError, showSuccess, setPageOrigin, showWaiting, hideWaiti
 import { shortenAddress, generateAvatar } from '../../common/chain/index.js';
 import { escapeHtml } from '../../common/ui/html-ui.js';
 import { clearImportWalletForm } from '../wallet/import-wallet-controller.js';
+
 import {
   IDENTITY_NODE_ENDPOINT_STORAGE_KEY,
   normalizeIdentityNodeEndpoint
 } from '../../config/identity-config.js';
+
+// 早先创建的钱包默认名是英文(存在存储里);显示时换成中文类型名,英文界面再由翻译词典译回
+const DEFAULT_WALLET_NAMES = { 'HD Wallet': 'HD 钱包', 'Imported Wallet': '导入的钱包', 'MPC Wallet': 'MPC 钱包' };
 
 function formatMpcSigningPrepareError(message) {
   const raw = String(message || '').trim();
@@ -327,8 +331,10 @@ export class AccountListController {
       const isHd = type === 'hd';
       const isImported = type === 'imported';
       const isMpc = type === 'mpc';
-      const walletLabel = isMpc ? 'MPC Wallet' : (isHd ? 'HD Wallet' : 'Imported Wallet');
-      const walletName = String(wallet.name || walletLabel).trim() || walletLabel;
+      const walletLabel = isMpc ? 'MPC 钱包' : (isHd ? 'HD 钱包' : '导入的钱包');
+      // 早先创建的钱包默认名是英文(存储里的数据,不改),显示时换成按界面语言翻译的类型名
+      const storedName = String(wallet.name || '').trim();
+      const walletName = DEFAULT_WALLET_NAMES[storedName] || storedName || walletLabel;
       const walletIcon = isMpc ? '🧩' : (isHd ? '🔑' : '📥');
       const accounts = Array.isArray(wallet.accounts) ? wallet.accounts : [];
       const mpcThreshold = Number(wallet.threshold || 0);
@@ -392,7 +398,7 @@ export class AccountListController {
         </div>
         <div class="wallet-info">
           <div class="wallet-name">
-            ${isMpc ? 'MPC Wallet' : escapeHtml(walletName)}
+            ${isMpc ? 'MPC 钱包' : escapeHtml(walletName)}
           </div>
           ${isMpc ? `<div class="wallet-meta">门限 ${mpcThreshold || '-'} / ${mpcParticipantCount || '-'} · ${escapeHtml(mpcStatus)}</div>` : ''}
         </div>
@@ -472,7 +478,7 @@ export class AccountListController {
       <div class="wallet-header">
         <div class="wallet-icon">🧩</div>
         <div class="wallet-info">
-          <div class="wallet-name">MPC Wallet</div>
+          <div class="wallet-name">MPC 钱包</div>
           <div class="wallet-meta">门限 ${escapeHtml(threshold)} / ${escapeHtml(participantCount)} · 待接受邀请</div>
         </div>
         <div class="wallet-header-actions">

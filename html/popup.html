@@ -481,23 +481,23 @@
                 aria-haspopup="listbox"
                 aria-expanded="false"
               >
-                <span class="network-label" id="createWalletTypeLabel">HD Wallet</span>
+                <span class="network-label" id="createWalletTypeLabel">HD 钱包</span>
                 <span class="network-chevron">▾</span>
               </button>
               <div class="network-menu hidden" id="createWalletTypeMenu" role="listbox">
-                <button type="button" class="network-option active" data-wallet-type="hd">HD Wallet</button>
-                <button type="button" class="network-option" data-wallet-type="tron">Tron HD</button>
+                <button type="button" class="network-option active" data-wallet-type="hd">HD 钱包</button>
+                <button type="button" class="network-option" data-wallet-type="tron">Tron HD 钱包</button>
                 <button type="button" class="network-option" data-wallet-type="solana">Solana 钱包</button>
                 <button type="button" class="network-option" data-wallet-type="bitcoin">Bitcoin 钱包</button>
-                <button type="button" class="network-option" data-wallet-type="mpc">MPC Wallet</button>
+                <button type="button" class="network-option" data-wallet-type="mpc">MPC 钱包</button>
               </div>
             </div>
             <select id="createWalletTypeSelect" class="hidden">
-              <option value="hd">HD Wallet</option>
-              <option value="tron">Tron HD</option>
+              <option value="hd">HD 钱包</option>
+              <option value="tron">Tron HD 钱包</option>
               <option value="solana">Solana 钱包</option>
               <option value="bitcoin">Bitcoin 钱包</option>
-              <option value="mpc">MPC Wallet</option>
+              <option value="mpc">MPC 钱包</option>
             </select>
           </div>
 
@@ -755,7 +755,7 @@
                 aria-haspopup="listbox"
                 aria-expanded="false"
               >
-                <span class="network-label" id="importReferenceLabel">Mainnet</span>
+                <span class="network-label" id="importReferenceLabel" data-i18n="network.ref.mainnet">主网</span>
                 <span class="network-chevron">▾</span>
               </button>
               <div class="network-menu hidden" id="importReferenceMenu" role="listbox">
@@ -952,7 +952,7 @@
           </div>
 
           <div class="form-group">
-            <label>Chain ID</label>
+            <label>链 ID</label>
             <input
               type="text"
               id="networkChainIdInput"
@@ -1136,7 +1136,7 @@
             <p class="settings-hint" data-i18n="settings.language.description">选择钱包界面语言。</p>
             <label class="settings-row" for="languageSelect">
               <span data-i18n="language.label">语言</span>
-              <select id="languageSelect" class="input">
+              <select id="languageSelect" data-no-i18n class="input">
                 <option value="zh-CN" data-i18n="language.zh-CN">中文</option>
                 <option value="en-US" data-i18n="language.en-US">English</option>
               </select>
@@ -1233,7 +1233,7 @@
             <h3>🔐 MPC 会话</h3>
             <h4>加入会话</h4>
             <div class="form-group">
-              <label>Session ID</label>
+              <label>会话 ID</label>
               <input
                 type="text"
                 id="mpcJoinSessionIdInput"
@@ -1242,7 +1242,7 @@
               />
             </div>
             <div class="form-group">
-              <label>Participant ID</label>
+              <label>参与者 ID</label>
               <input
                 type="text"
                 id="mpcJoinParticipantIdInput"
@@ -1268,7 +1268,7 @@
             <div class="settings-divider"></div>
             <h4>发送消息</h4>
             <div class="form-group">
-              <label>Session ID</label>
+              <label>会话 ID</label>
               <input
                 type="text"
                 id="mpcSendSessionIdInput"
@@ -1277,7 +1277,7 @@
               />
             </div>
             <div class="form-group">
-              <label>From (Participant ID)</label>
+              <label>发送方(参与者 ID)</label>
               <input
                 type="text"
                 id="mpcSendFromInput"
@@ -1286,7 +1286,7 @@
               />
             </div>
             <div class="form-group">
-              <label>To (Participant ID, 可选)</label>
+              <label>接收方(参与者 ID,可选)</label>
               <input
                 type="text"
                 id="mpcSendToInput"
@@ -1313,7 +1313,7 @@
               />
             </div>
             <div class="form-group">
-              <label>Round</label>
+              <label>轮次</label>
               <input
                 type="number"
                 id="mpcSendRoundInput"
@@ -1324,7 +1324,7 @@
               />
             </div>
             <div class="form-group">
-              <label>Seq</label>
+              <label>序号</label>
               <input
                 type="number"
                 id="mpcSendSeqInput"
@@ -1335,7 +1335,7 @@
               />
             </div>
             <div class="form-group">
-              <label>Payload (JSON)</label>
+              <label>载荷(JSON)</label>
               <textarea
                 id="mpcSendPayloadInput"
                 class="input"

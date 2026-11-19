@@ -957,7 +957,7 @@ const popupHandlers = new Map([
   [WalletMessageType.IDENTITY_LIST_CREDENTIALS, async (data) => await handleListIdentityCredentials(data)],
   [WalletMessageType.IDENTITY_VERIFICATION_REQUEST, async (data) => await handleRequestIdentityVerification(data)],
   [WalletMessageType.IDENTITY_VERIFICATION_CONFIRM, async (data) => await handleConfirmIdentityVerification(data)],
-  // ==================== 知行图(KnowingDoingGraph) ====================
+  // ==================== 知行图(KnowDoGraph) ====================
   [WalletMessageType.IMPORT_ZHIXING_WALLET, async (data) => await handleImportZhixingWallet(data.accountName, data.source || {}, data.password)],
   [WalletMessageType.ZHIXING_GET_STATUS, async (data) => ({
     success: true,

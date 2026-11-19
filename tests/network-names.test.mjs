@@ -30,13 +30,13 @@ test('每个内置网络都有中英文名', () => {
     assert.equal(n.name, n.names['en-US'], `${key} 的 name 应是英文名`);
   }
   assert.equal(NETWORKS.zhixingTestnet.names['zh-CN'], '知行图测试网');
-  assert.equal(NETWORKS.zhixingTestnet.names['en-US'], 'KnowingDoingGraph Testnet');
+  assert.equal(NETWORKS.zhixingTestnet.names['en-US'], 'KnowDoGraph Testnet');
 });
 
 test('存储里的旧名字不影响显示:按当前语言从配置取', async () => {
   // 已安装钱包里的副本:name 还是安装时的中文
   const stored = { ...NETWORKS.zhixingTestnet, key: 'zhixingTestnet', name: '知行图测试网' };
-  assert.equal(await inLocale('en-US', () => getNetworkDisplayName(stored)), 'KnowingDoingGraph Testnet');
+  assert.equal(await inLocale('en-US', () => getNetworkDisplayName(stored)), 'KnowDoGraph Testnet');
   assert.equal(await inLocale('zh-CN', () => getNetworkDisplayName(stored)), '知行图测试网');
   const eth = { ...NETWORKS.ethereum, key: 'ethereum' };
   assert.equal(await inLocale('zh-CN', () => getNetworkDisplayName(eth)), '以太坊主网');
@@ -61,6 +61,6 @@ test('两份语言包的键一一对应,网络与知行图相关的键齐全', (
   for (const k of ['network.generic', 'network.manage', 'network.family.zhixing', 'network.ref.testnet', 'zhixing.intro', 'zhixing.member']) {
     assert.ok(messagesZhCN[k] && messagesEnUS[k], k);
   }
-  assert.equal(messagesEnUS['network.family.zhixing'], 'KnowingDoingGraph');
+  assert.equal(messagesEnUS['network.family.zhixing'], 'KnowDoGraph');
   assert.equal(messagesZhCN['network.family.zhixing'], '知行图');
 });

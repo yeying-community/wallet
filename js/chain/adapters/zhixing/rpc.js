@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * 知行图(KnowingDoingGraph)节点的只读查询。
+ * 知行图(KnowDoGraph)节点的只读查询。
  *
  * 节点 RPC 是 REST + JSON(不是以太坊 JSON-RPC):GET /info、/members、/account/{id}……
  * 统一带 `Accept: application/json`。所有 u64 都是带引号的十进制字符串(无损)。
