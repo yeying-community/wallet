@@ -126,3 +126,19 @@ test('签署知行图操作时弹窗里的摘要,英文界面全部译出', asyn
   }
   resetI18nForTests();
 });
+
+test('中文界面里链名用中文(以太坊 / 波场 / 比特币),不和英文混排', async () => {
+  const { messagesZhCN } = await import('../js/common/i18n/messages-zh-CN.js');
+  const { NETWORKS } = await import('../js/config/network-config.js');
+  const ENGLISH_CHAIN = /\b(Ethereum|Tron|Bitcoin)\b/;
+  const bad = [];
+  for (const [k, v] of Object.entries(messagesZhCN)) if (ENGLISH_CHAIN.test(v)) bad.push(`messages-zh-CN ${k}: ${v}`);
+  for (const [k, n] of Object.entries(NETWORKS)) if (ENGLISH_CHAIN.test(n.names?.['zh-CN'] || '')) bad.push(`network ${k}: ${n.names['zh-CN']}`);
+  for (const f of ['html/popup.html', 'html/approval.html']) {
+    for (const s of htmlStrings(f)) if (HAN.test(s) && ENGLISH_CHAIN.test(s)) bad.push(`${f}: ${s.trim()}`);
+  }
+  for (const dir of ['js/controller', 'js/app', 'js/common/ui', 'js/domain', 'js/config']) {
+    for (const [s, where] of jsStrings(dir)) if (HAN.test(s) && ENGLISH_CHAIN.test(s)) bad.push(`${where}: ${s.trim()}`);
+  }
+  assert.deepEqual([...new Set(bad)], []);
+});

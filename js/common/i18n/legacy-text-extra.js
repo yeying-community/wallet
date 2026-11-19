@@ -1075,7 +1075,24 @@ export const extraEnglishText = Object.freeze({
   "交易提交失败": "Transaction submission failed",
   "<目标资源>": "<target resource>",
   "<当前 appId>": "<current appId>",
-  "<未声明服务地址>": "<service URL not declared>"
+  "<未声明服务地址>": "<service URL not declared>",
+  "波场 HD 钱包": "Tron HD wallet",
+  "比特币钱包": "Bitcoin wallet",
+  "波场网络": "Tron network",
+  "比特币网络": "Bitcoin network",
+  "波场地址格式无效": "Invalid Tron address",
+  "比特币地址格式无效": "Invalid Bitcoin address",
+  "波场钱包创建成功": "Tron wallet created",
+  "比特币钱包创建成功": "Bitcoin wallet created",
+  "请填写波场钱包名称": "Please enter a Tron wallet name",
+  "请填写比特币钱包名称": "Please enter a Bitcoin wallet name",
+  "波场钱包": "Tron wallet",
+  "波场导入钱包": "Imported Tron wallet",
+  "比特币导入钱包": "Imported Bitcoin wallet",
+  "请输入波场私钥": "Please enter the Tron private key",
+  "波场私钥钱包": "Tron private-key wallet",
+  "请输入比特币私钥": "Please enter the Bitcoin private key",
+  "比特币私钥钱包": "Bitcoin private-key wallet"
 });
 
 export const englishPatterns = Object.freeze({
