@@ -34,9 +34,9 @@ function concat(...parts) {
 }
 
 // ---- Keccak-256 与 scrypt ---------------------------------------------------------
-// 以下逐字取自知行图浏览器签名器(yeying-community/blockchain tools/explorer/public/signer.js),
+// 以下逐字取自知行图的参考签名器(yeying-community/blockchain tools/explorer/reference/signer.js),
 // 那里由 signer.test.mjs 对照 Keccak 官方向量、RFC 7914 向量与 Rust 节点生成的密钥文件检验过。
-// 不要在这里另写一份:密码学代码只维护一个来源。
+// 这是一份拷贝:改动请先在参考实现那边改并通过检验,再同步过来,不要在这里单独改写。
 
 
 const KECCAK_RC = [

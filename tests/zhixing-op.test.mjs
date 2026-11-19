@@ -1,7 +1,7 @@
 /**
  * 知行图知识操作:编码、签名、密钥派生——与知行图节点逐字节一致。
  *
- * 期望值来自知行图浏览器签名器(yeying-community/blockchain 的 tools/explorer/public/signer.js),
+ * 期望值来自知行图参考签名器(yeying-community/blockchain 的 tools/explorer/reference/signer.js),
  * 它在知行图仓库里由 signer.test.mjs 对照 Rust 节点(`node keygen` / `node encode-knowledge-op`)
  * 逐字节检验过。这里把那份输出固定成向量:钱包任何一处编码或派生变了,这里立刻失败——
  * 那意味着钱包签出的操作会被节点拒绝,或者成员导入助记词后得到的是另一个链上账户。

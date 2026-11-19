@@ -13,7 +13,7 @@
  *   op   = actor:u64 ‖ action ‖ nonce:u64                     (大端)
  *   sig  = ed25519( "zhixing-knowledge-op-v1" ‖ op )
  *   提交 = op ‖ sig                                           (直接 POST /rpc/knowledge)
- * 一致性由 tests/zhixing-op.test.mjs 对照知行图浏览器签名器(其本身已逐字节对照 Rust 节点)的输出检验。
+ * 一致性由 tests/zhixing-op.test.mjs 对照知行图参考签名器(tools/explorer/reference/signer.js,其本身已逐字节对照 Rust 节点)的输出检验。
  */
 
 import nacl from '../../../../lib/nacl.js';
