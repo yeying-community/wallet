@@ -3,6 +3,7 @@ import { normalizeChainId } from '../common/chain/index.js';
 import { getSelectedNetworkName, getNetworkConfigByKey } from '../storage/index.js';
 import { getNetworkDisplayName } from '../config/network-names.js';
 import { t } from '../common/i18n/index.js';
+import { networksForAccount } from '../config/account-networks.js';
 import {
   showPage,
   showWaiting,
@@ -11,8 +12,9 @@ import {
 } from '../common/ui/index.js';
 
 export class NetworkController {
-  constructor({ network, onNetworkChanged } = {}) {
+  constructor({ network, wallet, onNetworkChanged } = {}) {
     this.network = network;
+    this.wallet = wallet || null;
     this.onNetworkChanged = onNetworkChanged;
     this.currentNetworkValue = null;
     this.boundDocumentClick = false;
@@ -254,7 +256,18 @@ export class NetworkController {
       }
     }
 
-    const networks = await this.network.getNetworks();
+    // 只列当前账户能用的网络(比特币账户只看比特币网络,见 js/config/account-networks.js)
+    let account = null;
+    try {
+      account = await this.wallet?.getCurrentAccount?.();
+    } catch {
+      account = null;
+    }
+    const allNetworks = await this.network.getNetworks();
+    const networks = networksForAccount(account, allNetworks);
+    // 当前网络不在账户能用的范围里(例如从网络管理页切到了还没有账户的链):仍然列出来,标签要如实
+    const currentNetwork = (Array.isArray(allNetworks) ? allNetworks : []).find((n) => (n?.rpcUrl || n?.rpc) === currentRpc);
+    if (currentNetwork && !networks.includes(currentNetwork)) networks.unshift(currentNetwork);
     const options = [];
     const values = new Set();
     const ordered = Array.isArray(networks) ? [...networks] : [];

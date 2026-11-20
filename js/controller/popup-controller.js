@@ -108,6 +108,7 @@ export class PopupController {
     });
     this.networkController = new NetworkController({
       network: this.network,
+      wallet: this.wallet,
       onNetworkChanged: () => this.handleNetworkChanged()
     });
     this.tokenController.setNetworkController(this.networkController);
