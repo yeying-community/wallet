@@ -46,6 +46,7 @@ const { ensureDefaultNetworks } = await import('../js/storage/network-storage.js
 const { NETWORKS } = await import('../js/config/network-config.js');
 const { state } = await import('../js/background/state.js');
 const { TokenDomain } = await import('../js/domain/token-domain.js');
+const { WalletDomain } = await import('../js/domain/wallet-domain.js');
 
 const P = 'Pass-1111';
 const M12 = Array(11).fill('abandon').join(' ') + ' about';
@@ -132,4 +133,55 @@ test('这条链上没有账户:不换账户(首页提示去新建或导入)', as
   assert.equal(r.success, true);
   assert.equal(r.accountId, undefined);
   assert.equal(await currentNs(), 'eip155');
+});
+
+
+// ---- 隐藏 bug:切换账户 / 解锁只回 { id, name, address },popup 把它缓存成「当前账户」----
+// 缺了 namespace / chainKey,popup 里所有判断账户所在链的地方都退回以太坊:
+// 首页网络菜单(按账户过滤)一直列以太坊网络、发送页按以太坊处理比特币账户……刷新页面才恢复。
+
+function assertPublicAccount(account, label) {
+  assert.ok(account, `${label}:应返回账户`);
+  assert.ok(account.namespace && account.chainKey, `${label}:必须带 namespace 与 chainKey,实际 ${JSON.stringify(Object.keys(account))}`);
+  for (const key of Object.keys(account)) assert.ok(!/^encrypted/i.test(key), `${label}:不能带加密的密钥材料 ${key}`);
+}
+
+test('切换账户、解锁、读当前账户都返回带链身份、不带密钥材料的账户', async () => {
+  const { byNs } = await setup();
+  for (const ns of ['bip122', 'tron', 'solana', 'eip155']) {
+    const target = byNs(ns);
+    const switched = await call('SWITCH_ACCOUNT', { accountId: target.id, password: P });
+    assert.equal(switched.success, true, ns);
+    assertPublicAccount(switched.account, `SWITCH_ACCOUNT ${ns}`);
+    assert.equal(switched.account.namespace, ns);
+    assert.equal(switched.account.chainKey, target.chainKey);
+    assertPublicAccount((await call('GET_CURRENT_ACCOUNT')).account, `GET_CURRENT_ACCOUNT ${ns}`);
+  }
+  await call('SWITCH_ACCOUNT', { accountId: byNs('bip122').id, password: P });
+  await call('LOCK_WALLET');
+  const unlocked = await call('UNLOCK_WALLET', { password: P });
+  assert.equal(unlocked.success, true);
+  assertPublicAccount(unlocked.account, 'UNLOCK_WALLET');
+  assert.equal(unlocked.account.namespace, 'bip122', '解锁后仍是比特币账户');
+});
+
+test('popup 的账户缓存:连续切换账户后,读到的始终是带链身份的当前账户', async () => {
+  const { byNs } = await setup();
+  const wallet = new WalletDomain();
+  wallet._sendMessage = (type, data) => call(type, data).then((r) => {
+    if (r?.success === false) throw new Error(r.error);
+    return r;
+  });
+  for (const ns of ['tron', 'bip122', 'eip155', 'solana', 'bip122']) {
+    await wallet.switchAccount(byNs(ns).id, P);
+    const cur = await wallet.getCurrentAccount();
+    assert.equal(cur?.namespace, ns, `切到 ${ns} 后缓存的账户`);
+  }
+  // 旧后台只回 id / 名称 / 地址:不缓存,下次读向后台重取,而不是当成以太坊账户
+  wallet._cacheAccount({ id: byNs('tron').id, name: '波场', address: 'T…' });
+  assert.equal(wallet._currentAccount, null);
+  // 后台在 popup 之外换了账户(切到别的链):失效后重取
+  await call('SWITCH_NETWORK', { networkKey: 'tronMainnet' });
+  wallet.invalidateCurrentAccount();
+  assert.equal((await wallet.getCurrentAccount())?.namespace, 'tron');
 });

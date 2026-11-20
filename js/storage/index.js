@@ -60,6 +60,7 @@ export {
 export {
   saveAccount,
   getAccount,
+  toPublicAccount,
   getAccounts,
   getAccountList,
   getWalletAccounts,
