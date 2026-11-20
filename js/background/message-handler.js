@@ -4,6 +4,7 @@
  */
 
 import { MessageValidator, PORT_NAME, EventType } from '../protocol/dapp-protocol.js';
+import { isNetworkUsableByAccount, networksForAccount } from '../config/account-networks.js';
 import { APPROVAL_PORT_NAME, ApprovalMessageType, WalletMessageType, NetworkMessageType, TransactionMessageType } from '../protocol/extension-protocol.js';
 import { sendResponse, sendError, registerConnection, unregisterConnection, checkSessionAndNotify } from './connection.js';
 import { routeRequest } from './request-router.js';
@@ -220,12 +221,6 @@ async function fetchChainIdFromRpc(rpcUrl) {
 // 「波场网络 + 以太坊地址」(拿以太坊地址去查波场)。切网络时换成该链的账户,切账户时换到该账户的链。
 
 /** 链族:同一族的网络与账户地址格式相同(EVM 各网络共用一个地址)。 */
-function familyOfNamespace(namespace) {
-  const ns = String(namespace || 'eip155').toLowerCase();
-  if (ns === 'utxo') return 'bip122';
-  return ns;
-}
-
 async function getNetworkConfigByChainKey(chainKey) {
   const key = String(chainKey || '');
   if (!key) return null;
@@ -234,26 +229,18 @@ async function getNetworkConfigByChainKey(chainKey) {
   return list.find((n) => n?.chainKey === key) || null;
 }
 
-/** 切网络之后:当前账户不在这条链上,就换成这条链上的账户(同一网络的优先,其次同一条链)。 */
+/**
+ * 切网络之后:当前账户能用这个网络就不动;不能用才换成能用的账户(账户正好在这个网络上的优先)。
+ * 首页网络菜单只列当前账户能用的网络,所以从菜单切网络不会换账户;从网络管理页或网站请求切到别的链时才会换。
+ */
 async function alignAccountToCurrentNetwork() {
   const chainKey = state.currentChainKey || '';
-  const family = familyOfNamespace(namespaceOf(chainKey) || 'eip155');
-  // 知行图首页用钱包里的知行图账户,不依赖当前选中的账户
-  if (family === ZHIXING_NAMESPACE) return null;
+  const network = (await getNetworkConfigByChainKey(chainKey)) || { chainKey: chainKey || 'eip155:1' };
   const current = await getSelectedAccount();
-  const currentFamily = familyOfNamespace(current?.namespace);
-  const accounts = await getAccountList();
-  const sameFamily = accounts.filter((a) => familyOfNamespace(a?.namespace) === family);
-  if (sameFamily.length === 0) return null; // 这条链上还没有账户:首页会提示去新建或导入
-  if (current && currentFamily === family) {
-    // 非 EVM 链的主网与测试网地址不同(例如波场测试网前缀不同):有同一网络的账户就换过去
-    if (family === 'eip155' || current.chainKey === chainKey) return null;
-    const exact = sameFamily.find((a) => a.chainKey === chainKey);
-    if (!exact) return null;
-    const switched = await handleSwitchAccount(exact.id);
-    return switched?.success ? exact.id : null;
-  }
-  const target = sameFamily.find((a) => a.chainKey === chainKey) || sameFamily[0];
+  if (current && isNetworkUsableByAccount(current, network)) return null;
+  const usable = (await getAccountList()).filter((a) => isNetworkUsableByAccount(a, network));
+  if (usable.length === 0) return null; // 这条链上还没有账户:首页会提示去新建或导入
+  const target = usable.find((a) => a.chainKey === chainKey) || usable[0];
   const switched = await handleSwitchAccount(target.id);
   return switched?.success ? target.id : null;
 }
@@ -263,16 +250,14 @@ async function alignNetworkToAccount(accountId) {
   const accounts = await getAccountList();
   const account = accounts.find((a) => a?.id === accountId);
   if (!account) return null;
-  const family = familyOfNamespace(account.namespace);
-  const currentFamily = familyOfNamespace(namespaceOf(state.currentChainKey || '') || 'eip155');
-  if (family === currentFamily) return null;
   const networks = await getNetworks();
   const list = Array.isArray(networks) ? networks : Object.values(networks || {});
-  const target = list.find((n) => n?.chainKey && n.chainKey === account.chainKey)
-    || list.find((n) => {
-      const ns = n?.chainKey ? namespaceOf(n.chainKey) : 'eip155';
-      return familyOfNamespace(ns) === family;
-    });
+  // 当前网络这个账户能用就不动(比特币主网账户不能用在测试网上:地址编码了网络)
+  const current = list.find((n) => n?.chainKey && n.chainKey === state.currentChainKey)
+    || { chainKey: state.currentChainKey || 'eip155:1' };
+  if (isNetworkUsableByAccount(account, current)) return null;
+  const usable = networksForAccount(account, list);
+  const target = usable.find((n) => n?.chainKey && n.chainKey === account.chainKey) || usable[0];
   const key = target?.key || target?.id;
   if (!key) return null;
   const result = await handleSwitchNetworkMessage({ networkKey: key });

@@ -39,6 +39,19 @@ export class WalletDomain extends BaseDomain {
     }
   }
 
+  /**
+   * 缓存当前账户。只缓存带链身份(namespace + chainKey)的完整账户;缺字段的(旧版后台只回 id / 名称 / 地址)
+   * 不缓存,下次读时向后台重取——否则首页会把比特币、波场账户当成以太坊账户(网络菜单、发送、链族判断)。
+   */
+  _cacheAccount(account) {
+    this._currentAccount = account && account.namespace && account.chainKey ? account : null;
+  }
+
+  /** 后台换了当前账户(popup 之外发生的):下次读时重取。 */
+  invalidateCurrentAccount() {
+    this._currentAccount = null;
+  }
+
   // ==================== 知行图(KnowDoGraph) ====================
 
   /**
@@ -46,7 +59,7 @@ export class WalletDomain extends BaseDomain {
    */
   async importZhixingWallet(accountName, source, password) {
     const result = await this._sendMessage(WalletMessageType.IMPORT_ZHIXING_WALLET, { accountName, source, password });
-    this._currentAccount = result.account;
+    this._cacheAccount(result.account);
     return result;
   }
 
@@ -191,7 +204,7 @@ export class WalletDomain extends BaseDomain {
       password
     });
 
-    this._currentAccount = result.account;
+    this._cacheAccount(result.account);
     return result;
   }
 
@@ -210,7 +223,7 @@ export class WalletDomain extends BaseDomain {
       password,
       options
     });
-    this._currentAccount = result.account;
+    this._cacheAccount(result.account);
     return result;
   }
 
@@ -229,7 +242,7 @@ export class WalletDomain extends BaseDomain {
       password,
       options
     });
-    this._currentAccount = result.account;
+    this._cacheAccount(result.account);
     return result;
   }
 
@@ -248,7 +261,7 @@ export class WalletDomain extends BaseDomain {
       password,
       options
     });
-    this._currentAccount = result.account;
+    this._cacheAccount(result.account);
     return result;
   }
 
@@ -284,7 +297,7 @@ export class WalletDomain extends BaseDomain {
       password
     });
 
-    this._currentAccount = result.account;
+    this._cacheAccount(result.account);
     return result;
   }
 
@@ -304,7 +317,7 @@ export class WalletDomain extends BaseDomain {
       password,
       options
     });
-    this._currentAccount = result.account;
+    this._cacheAccount(result.account);
     return result;
   }
 
@@ -321,7 +334,7 @@ export class WalletDomain extends BaseDomain {
       password,
       options
     });
-    this._currentAccount = result.account;
+    this._cacheAccount(result.account);
     return result;
   }
 
@@ -338,7 +351,7 @@ export class WalletDomain extends BaseDomain {
       password,
       options
     });
-    this._currentAccount = result.account;
+    this._cacheAccount(result.account);
     return result;
   }
 
@@ -364,7 +377,7 @@ export class WalletDomain extends BaseDomain {
       password
     });
 
-    this._currentAccount = result.account;
+    this._cacheAccount(result.account);
     return result;
   }
 
@@ -385,7 +398,7 @@ export class WalletDomain extends BaseDomain {
       password,
       options
     });
-    this._currentAccount = result.account;
+    this._cacheAccount(result.account);
     return result;
   }
 
@@ -403,7 +416,7 @@ export class WalletDomain extends BaseDomain {
       password,
       options
     });
-    this._currentAccount = result.account;
+    this._cacheAccount(result.account);
     return result;
   }
 
@@ -421,7 +434,7 @@ export class WalletDomain extends BaseDomain {
       password,
       options
     });
-    this._currentAccount = result.account;
+    this._cacheAccount(result.account);
     return result;
   }
 
@@ -467,7 +480,7 @@ export class WalletDomain extends BaseDomain {
       password
     });
 
-    this._currentAccount = result.account;
+    this._cacheAccount(result.account);
     return result;
   }
 
@@ -548,7 +561,7 @@ export class WalletDomain extends BaseDomain {
 
     try {
       const result = await this._sendMessage(WalletMessageType.GET_CURRENT_ACCOUNT);
-      this._currentAccount = result.account;
+      this._cacheAccount(result.account);
       return this._currentAccount;
     } catch (error) {
       console.error('[WalletDomain] 获取当前账户失败:', error);
@@ -607,7 +620,7 @@ export class WalletDomain extends BaseDomain {
       source: typeof options?.source === 'string' ? options.source : 'unknown'
     });
 
-    this._currentAccount = result.account;
+    this._cacheAccount(result.account);
     return result;
   }
 
@@ -1143,7 +1156,7 @@ export class WalletDomain extends BaseDomain {
   async restoreCustodySecret(walletId, password, options = {}) {
     const result = await this._sendMessage(WalletMessageType.CUSTODY_RESTORE_SECRET, { ...options, walletId, password });
     if (!result?.success) throw new Error(result?.error || '恢复钱包失败');
-    this._currentAccount = result.account;
+    this._cacheAccount(result.account);
     return result;
   }
 

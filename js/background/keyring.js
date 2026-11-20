@@ -8,7 +8,7 @@ import { createInvalidPasswordError, createAccountNotFoundError, createWalletLoc
 import { validatePassword } from '../common/crypto/index.js';
 import { createWalletInstance } from './vault.js';
 import { ed25519KeypairFromSecp256k1Hex } from '../chain/adapters/solana/ed25519-keypair.js';
-import { getAccount, getAccountList, getMpcWallet, setSelectedAccountId } from '../storage/index.js';
+import { getAccount, getAccountList, getMpcWallet, getSelectedAccountId, setSelectedAccountId, toPublicAccount } from '../storage/index.js';
 import { cachePassword, clearPasswordCache, refreshPasswordCache } from './password-cache.js';
 import { broadcastEvent } from './connection.js';
 import { TIMEOUTS } from '../config/index.js';
@@ -47,6 +47,9 @@ export async function unlockWallet(password, accountId, source = 'unknown') {
     if (!result.valid) {
       throw createInvalidPasswordError();
     }
+
+    // 没指定账户:沿用当前选中的账户(含多签账户),而不是第一个账户——解锁不应悄悄换账户
+    if (!accountId) accountId = (await getSelectedAccountId()) || undefined;
 
     // 获取账户信息
     if (isMpcAccountId(accountId)) {
@@ -148,11 +151,7 @@ export async function unlockWallet(password, accountId, source = 'unknown') {
 
     return {
       success: true,
-      account: {
-        id: account.id,
-        name: account.name,
-        address: account.address
-      }
+      account: toPublicAccount(account)
     };
 
   } catch (error) {

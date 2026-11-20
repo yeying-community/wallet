@@ -22,7 +22,7 @@ import {
   TransactionDetailController,
   TransactionSendController
 } from './transaction/index.js';
-import { NetworkStorageKeys, SettingsStorageKeys, onStorageChanged } from '../storage/index.js';
+import { NetworkStorageKeys, SettingsStorageKeys, WalletStorageKeys, onStorageChanged } from '../storage/index.js';
 import { ApprovalMessageType } from '../protocol/extension-protocol.js';
 import {
   applyPopupSessionFields,
@@ -108,6 +108,7 @@ export class PopupController {
     });
     this.networkController = new NetworkController({
       network: this.network,
+      wallet: this.wallet,
       onNetworkChanged: () => this.handleNetworkChanged()
     });
     this.tokenController.setNetworkController(this.networkController);
@@ -587,10 +588,17 @@ export class PopupController {
     this.storageUnsubscribe = onStorageChanged(async (changes, areaName) => {
       if (areaName && areaName !== 'local') return;
       if (!changes) return;
+      // 当前账户在后台被换了(切到别的链时后台会换成那条链的账户,网站请求也可能换):
+      // 丢掉 popup 缓存的账户,重画账户头与网络菜单(菜单按账户过滤)
+      const accountChanged = Boolean(changes[WalletStorageKeys.SELECTED_ACCOUNT_ID]);
+      if (accountChanged) this.wallet?.invalidateCurrentAccount?.();
       if (changes[NetworkStorageKeys.SELECTED_NETWORK]) {
         await this.networkController?.syncSelectedNetwork?.();
         await this.networkController?.refreshNetworkState?.();
         await this.handleNetworkChanged();
+      } else if (accountChanged) {
+        await this.accountHeaderController?.refreshHeader?.();
+        await this.networkController?.refreshNetworkOptions?.();
       }
       if (changes[SettingsStorageKeys.USER_SETTINGS]) {
         await this.updateBackupSyncStatus();

@@ -66,6 +66,20 @@ function withAccountDefaults(account) {
   return next;
 }
 
+/**
+ * 给 popup / 页面看的账户:完整的链身份(namespace、chainKey…),去掉所有加密的密钥材料。
+ * 解锁、切换账户、读当前账户都返回这个形状——popup 会缓存它,缺了 namespace / chainKey
+ * 就会被当成以太坊账户(首页网络菜单、发送、链族判断都会错)。
+ */
+export function toPublicAccount(account) {
+  if (!account || typeof account !== 'object') return account ?? null;
+  const view = withAccountDefaults(account);
+  for (const key of Object.keys(view)) {
+    if (/^encrypted/i.test(key)) delete view[key];
+  }
+  return view;
+}
+
 function buildMpcAccountView(wallet) {
   if (!wallet?.id || !String(wallet?.address || '').trim()) {
     return null;

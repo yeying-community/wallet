@@ -44,6 +44,7 @@ import {
   getWallets,
   getAccounts,
   getWalletAccounts,
+  toPublicAccount,
   updateAccount,
   deleteAccount,
   deleteWallet,
@@ -1032,11 +1033,7 @@ export async function handleSwitchAccount(accountId, password = null) {
 
     return {
       success: true,
-      account: {
-        id: account.id,
-        name: account.name,
-        address: account.address
-      }
+      account: toPublicAccount(account)
     };
 
   } catch (error) {
@@ -1060,7 +1057,7 @@ export async function handleGetCurrentAccount() {
       account = accounts.length > 0 ? accounts[0] : null;
     }
 
-    return { success: true, account };
+    return { success: true, account: toPublicAccount(account) };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to get current account' };
   }
