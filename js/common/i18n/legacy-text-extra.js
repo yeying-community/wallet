@@ -756,6 +756,8 @@ export const extraEnglishText = Object.freeze({
   "知行图请求已在等待确认": "A KnowDoGraph request is already awaiting confirmation",
   "知行图账户": "KnowDoGraph account",
   "知行图钱包": "KnowDoGraph wallet",
+  "这是早期成员的助记词（按旧规则派生）": "This is an early member's mnemonic (derived by the old rule)",
+  "2026-11-20 之前的知行图助记词用的是旧规则。选错会得到一个链上不存在的账户。": "KnowDoGraph mnemonics from before 2026-11-20 use the old rule. Choosing wrong gives an account that does not exist on the chain.",
   "知行图钱包创建成功": "KnowDoGraph wallet created",
   "请填写知行图钱包名称(创建后会显示助记词,请抄写备份)": "Enter a KnowDoGraph wallet name (the mnemonic is shown after creation — write it down)",
   "⚠️ 请把助记词抄在纸上并放在安全的地方。任何人拿到它都能恢复你的知行图账户,冒充你发布知识。": "⚠️ Write the mnemonic on paper and keep it somewhere safe. Anyone with it can recover your KnowDoGraph account and publish knowledge as you.",

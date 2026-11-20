@@ -513,7 +513,8 @@ export class ImportWalletController {
           await this.wallet.importBitcoinFromMnemonic(name, mnemonic, password, importOptions);
         } else if (methodChain === 'zhixing') {
           const passphrase = document.getElementById('importZhixingPassphrase')?.value || '';
-          await this.wallet.importZhixingWallet(name, { mnemonic, passphrase }, password);
+          const legacy = document.getElementById('importZhixingLegacy')?.checked;
+          await this.wallet.importZhixingWallet(name, { mnemonic, passphrase }, password, legacy ? { derivation: 'legacy' } : {});
         } else {
           await this.wallet.importFromMnemonic(name, mnemonic, password);
         }

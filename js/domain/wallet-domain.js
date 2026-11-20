@@ -57,8 +57,8 @@ export class WalletDomain extends BaseDomain {
   /**
    * 导入知行图钱包。source:{ mnemonic, passphrase? } | { privateKey } | { privateKey: <密钥文件 JSON>, filePassword }
    */
-  async importZhixingWallet(accountName, source, password) {
-    const result = await this._sendMessage(WalletMessageType.IMPORT_ZHIXING_WALLET, { accountName, source, password });
+  async importZhixingWallet(accountName, source, password, options = {}) {
+    const result = await this._sendMessage(WalletMessageType.IMPORT_ZHIXING_WALLET, { accountName, source, password, options });
     this._cacheAccount(result.account);
     return result;
   }

@@ -1558,25 +1558,37 @@ async function buildZhixingWallet(accountName, seedHex, password, source) {
     chainKey: ZHIXING_CHAIN_KEY,
     publicKey: address,
     zhixingSource: source,
+    // 派生规则:standard(m/44'/1105'/…) 或 legacy(BIP-39 种子前 32 字节)。
+    // 记下来,导出账户文件时才能按原来的规则恢复出同一把钥匙。
+    zhixingDerivation: source === 'legacy' ? 'legacy' : 'standard',
     createdAt,
     nameUpdatedAt: createdAt
   };
   return { wallet, mainAccount };
 }
 
-/** 用助记词导入知行图钱包(可带 BIP-39 附加口令)。 */
+/**
+ * 用助记词导入知行图钱包(可带 BIP-39 附加口令)。
+ *
+ * 默认按**标准规则**派生(SLIP-0010 m/44'/1105'/account'/0'/0',与 `node keygen` 一致)。
+ * `options.derivation = 'legacy'` 用旧规则(BIP-39 种子前 32 字节),只用于恢复早期密钥——
+ * 旧规则与标准规则给出的是**不同的公钥**,拿旧助记词按标准规则导入会得到一个链上不存在的账户。
+ */
 export async function importZhixingMnemonicWallet(accountName, mnemonic, password, options = {}) {
   const validation = validateMnemonic(String(mnemonic || '').trim());
   if (!validation.valid) {
     throw zhixingMnemonicError('助记词无效：' + validation.error);
   }
+  const legacy = options.derivation === 'legacy';
   let seedHex;
   try {
-    seedHex = zhixingSeedFromMnemonic(mnemonic, String(options.passphrase || ''));
+    seedHex = legacy
+      ? zhixingSeedFromMnemonic(mnemonic, String(options.passphrase || ''))
+      : zhixingStandardSeedFromMnemonic(mnemonic, String(options.passphrase || ''), Number(options.account) || 0);
   } catch (error) {
     throw zhixingMnemonicError('无法从助记词派生知行图密钥：' + error.message);
   }
-  return buildZhixingWallet(accountName, seedHex, password, 'mnemonic');
+  return buildZhixingWallet(accountName, seedHex, password, legacy ? 'legacy' : 'standard');
 }
 
 /**
