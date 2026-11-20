@@ -252,6 +252,20 @@ export class WalletDomain extends BaseDomain {
    * @param {string} password
    * @param {{bitcoinReference?: 'mainnet'|'testnet'}} [options]
    */
+  /** 创建知行图钱包(标准派生):钱包自己生成助记词,返回 mnemonic 让用户抄写。 */
+  async createZhixingWallet(accountName, password, options = {}) {
+    if (!password || password.length < 8) {
+      throw new Error('密码至少需要8位字符');
+    }
+    const result = await this._sendMessage(WalletMessageType.CREATE_ZHIXING_WALLET, {
+      accountName: accountName || '知行图钱包',
+      password,
+      options
+    });
+    this._cacheAccount(result.account);
+    return result;
+  }
+
   async createBitcoinHDWallet(accountName, password, options = {}) {
     if (!password || password.length < 8) {
       throw new Error('密码至少需要8位字符');
