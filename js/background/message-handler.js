@@ -31,6 +31,7 @@ import {
   handleImportTronPrivateKeyWallet,
   handleImportSolanaPrivateKeyWallet,
   handleImportZhixingWallet,
+  handleCreateZhixingWallet,
   handleImportBitcoinPrivateKeyWallet,
   handleCreateSubAccount,
   handleCreateTronSubAccount,
@@ -1010,7 +1011,7 @@ const popupHandlers = new Map([
   [WalletMessageType.IDENTITY_VERIFICATION_REQUEST, async (data) => await handleRequestIdentityVerification(data)],
   [WalletMessageType.IDENTITY_VERIFICATION_CONFIRM, async (data) => await handleConfirmIdentityVerification(data)],
   // ==================== 知行图(KnowDoGraph) ====================
-  [WalletMessageType.IMPORT_ZHIXING_WALLET, async (data) => await handleImportZhixingWallet(data.accountName, data.source || {}, data.password)],
+  [WalletMessageType.IMPORT_ZHIXING_WALLET, async (data) => await handleImportZhixingWallet(data.accountName, data.source || {}, data.password, data.options || {})],
   [WalletMessageType.ZHIXING_GET_STATUS, async (data) => ({
     success: true,
     status: await getZhixingStatus({ rpcUrl: state.currentRpcUrl || undefined, force: !!data?.force })
@@ -1026,6 +1027,7 @@ const popupHandlers = new Map([
   ['IMPORT_TRON_HD_WALLET', async (data) => await handleImportTronHDWallet(data.accountName, data.mnemonic, data.password, data.options || {})],
   ['IMPORT_SOLANA_HD_WALLET', async (data) => await handleImportSolanaHDWallet(data.accountName, data.mnemonic, data.password, data.options || {})],
   ['IMPORT_BITCOIN_HD_WALLET', async (data) => await handleImportBitcoinHDWallet(data.accountName, data.mnemonic, data.password, data.options || {})],
+  [WalletMessageType.CREATE_ZHIXING_WALLET, async (data) => await handleCreateZhixingWallet(data.accountName, data.password, data.options || {})],
   ['IMPORT_PRIVATE_KEY_WALLET', async (data) => await handleImportPrivateKeyWallet(data.accountName, data.privateKey, data.password)],
   ['IMPORT_TRON_PRIVATE_KEY_WALLET', async (data) => await handleImportTronPrivateKeyWallet(data.accountName, data.privateKey, data.password, data.options || {})],
   ['IMPORT_SOLANA_PRIVATE_KEY_WALLET', async (data) => await handleImportSolanaPrivateKeyWallet(data.accountName, data.privateKey, data.password, data.options || {})],

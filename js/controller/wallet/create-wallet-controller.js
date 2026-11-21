@@ -6,13 +6,14 @@ import {
   showSuccess,
   getCurrentPage,
   getPageOrigin,
-  setPageOrigin
+  setPageOrigin,
+  openModal
 } from '../../common/ui/index.js';
 import { DEFAULT_MPC_COORDINATOR_ENDPOINT } from '../setting/settings-utils.js';
 import { copyOptionLabel } from './import-wallet-controller.js';
 
 const CREATE_WALLET_DRAFT_KEY = 'createWalletDraft';
-const GENERATED_WALLET_NAME_PATTERN = /^(hd|mpc)-\d{4}$/;
+const GENERATED_WALLET_NAME_PATTERN = /^(hd|mpc|tron|sol|btc|kdg)-\d{4}$/;
 
 export class CreateWalletController {
   constructor({ wallet, onCreated, onReturnToAccounts, promptPassword }) {
@@ -95,6 +96,7 @@ export class CreateWalletController {
     const isTron = walletType === 'tron';
     const isSolana = walletType === 'solana';
     const isBitcoin = walletType === 'bitcoin';
+    const isZhixing = walletType === 'zhixing';
     const name = rawName || this.generateDefaultWalletName(walletType);
 
     if (origin !== 'accounts' && isMpc) {
@@ -149,6 +151,17 @@ export class CreateWalletController {
       } else if (isBitcoin) {
         const bitcoinReference = this.getBitcoinReference();
         await this.wallet.createBitcoinHDWallet(name, password, { bitcoinReference });
+      } else if (isZhixing) {
+        const created = await this.wallet.createZhixingWallet(name, password);
+        // 助记词只在这里显示一次:用户必须抄下来,否则密钥无法恢复。
+        this.showCreatedMnemonic(created?.mnemonic, name);
+        showSuccess('知行图钱包创建成功');
+        showPage('walletPage');
+        this.resetForm();
+        if (this.onCreated) {
+          await this.onCreated();
+        }
+        return;
       } else {
         await this.wallet.createHDWallet(name, password);
       }
@@ -229,6 +242,7 @@ export class CreateWalletController {
     if (value === 'tron' || value === 'tronhd' || value === 'tron-hd') return 'tron';
     if (value === 'solana') return 'solana';
     if (value === 'bitcoin') return 'bitcoin';
+    if (value === 'zhixing') return 'zhixing';
     return 'hd';
   }
 
@@ -257,7 +271,7 @@ export class CreateWalletController {
     const normalized = String(type || '').toLowerCase();
     const prefix = normalized === 'mpc'
       ? 'mpc'
-      : (normalized === 'tron' ? 'tron' : (normalized === 'solana' ? 'sol' : (normalized === 'bitcoin' ? 'btc' : 'hd')));
+      : (normalized === 'tron' ? 'tron' : (normalized === 'solana' ? 'sol' : (normalized === 'bitcoin' ? 'btc' : (normalized === 'zhixing' ? 'kdg' : 'hd'))));
     const suffix = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
     return `${prefix}-${suffix}`;
   }
@@ -269,6 +283,7 @@ export class CreateWalletController {
     else if (normalized === 'tron') expectedPrefix = 'tron';
     else if (normalized === 'solana') expectedPrefix = 'sol';
     else if (normalized === 'bitcoin') expectedPrefix = 'btc';
+    else if (normalized === 'zhixing') expectedPrefix = 'kdg';
     const current = String(name || '').trim();
     if (!current || current === '主钱包') return true;
     if (!GENERATED_WALLET_NAME_PATTERN.test(current)) return false;
@@ -290,6 +305,7 @@ export class CreateWalletController {
     else if (value === 'tron' || value === 'tronhd' || value === 'tron-hd') normalized = 'tron';
     else if (value === 'solana') normalized = 'solana';
     else if (value === 'bitcoin') normalized = 'bitcoin';
+    else if (value === 'zhixing') normalized = 'zhixing';
     const group = document.getElementById('createWalletTypeGroup');
     const mpcFields = document.getElementById('mpcCreateWalletFields');
     const tronFields = document.getElementById('tronCreateWalletFields');
@@ -323,6 +339,7 @@ export class CreateWalletController {
       else if (normalized === 'tron') hint.textContent = '请填写波场钱包名称';
       else if (normalized === 'solana') hint.textContent = '请填写索拉纳钱包名称';
       else if (normalized === 'bitcoin') hint.textContent = '请填写比特币钱包名称';
+      else if (normalized === 'zhixing') hint.textContent = '请填写知行图钱包名称(创建后会显示助记词,请抄写备份)';
       else hint.textContent = '请填写钱包名称';
     }
     if (setPasswordBtn && isAccounts) {
@@ -342,6 +359,32 @@ export class CreateWalletController {
     } else {
       this.closeMpcParticipantsMenu();
     }
+  }
+
+  /**
+   * 显示刚创建的助记词(只显示这一次):用户必须抄下来,否则密钥无法恢复。
+   * 用「账户管理 → 查看助记词」里的同一个弹窗。
+   */
+  showCreatedMnemonic(mnemonic, walletName) {
+    const modal = document.getElementById('secretDisplayModal');
+    if (!modal || !mnemonic) return;
+    const titleEl = document.getElementById('secretDisplayTitle');
+    const warningEl = document.getElementById('secretDisplayWarning');
+    const labelEl = document.getElementById('secretDisplayLabel');
+    const valueEl = document.getElementById('secretDisplayValue');
+    const copyBtn = document.getElementById('copySecretDisplayBtn');
+    modal.dataset.secretType = 'mnemonic';
+    if (titleEl) titleEl.textContent = `助记词 - ${walletName || '知行图钱包'}`;
+    if (warningEl) {
+      warningEl.textContent = '⚠️ 请把助记词抄在纸上并放在安全的地方。任何人拿到它都能恢复你的知行图账户,冒充你发布知识。';
+    }
+    if (labelEl) labelEl.textContent = '助记词';
+    if (valueEl) {
+      valueEl.value = mnemonic;
+      valueEl.scrollTop = 0;
+    }
+    if (copyBtn) copyBtn.textContent = '复制助记词';
+    openModal('secretDisplayModal');
   }
 
   async loadMpcCreateDefaults() {
@@ -409,6 +452,7 @@ export class CreateWalletController {
     else if (type === 'tron') label = '波场 HD 钱包';
     else if (type === 'solana') label = '索拉纳钱包';
     else if (type === 'bitcoin') label = '比特币钱包';
+    else if (type === 'zhixing') label = '知行图钱包';
     const labelEl = document.getElementById('createWalletTypeLabel');
     if (labelEl) {
       labelEl.textContent = label;
@@ -827,7 +871,7 @@ export class CreateWalletController {
     setValue('mpcCreateThresholdInput', draft.threshold || '');
     setValue('mpcCreateCurveSelect', draft.curve || 'secp256k1');
     setValue('mpcCreateCoordinatorEndpointInput', draft.coordinatorEndpoint || '');
-    setValue('createWalletTypeSelect', draft.walletType === 'mpc' ? 'mpc' : (draft.walletType === 'tron' ? 'tron' : 'hd'));
+    setValue('createWalletTypeSelect', ['mpc', 'tron', 'solana', 'bitcoin', 'zhixing'].includes(draft.walletType) ? draft.walletType : 'hd');
     if (draft.tronReference) {
       setValue('tronCreateNetworkSelect', draft.tronReference);
       const tronLabel = document.getElementById('tronCreateNetworkLabel');

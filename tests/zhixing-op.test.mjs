@@ -22,7 +22,7 @@ import {
   ZHIXING_SIGN_DOMAIN
 } from '../js/chain/adapters/zhixing/op.js';
 import {
-  zhixingSeedFromMnemonic,
+  zhixingStandardSeedFromMnemonic,
   zhixingKeypairFromSeed,
   zhixingAddressFromSeed,
   isZhixingAddress
@@ -30,8 +30,8 @@ import {
 
 const V = {
   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
-  "seedHex": "408b285c123836004f4b8842c89324c1f01382450c0d439af345ba7fc49acf70",
-  "pubkey": "1de352e44cd333672593f2334a730e180aaf290de89aa16d480de594e34e2961",
+  "seedHex": "932f58d24bb68ea25cc6d7ee82013bed850a9e3fb36b8dd773bc9181e9d39a3e",
+  "pubkey": "741c8d9dcb69f5c2ae4e1009408613b47620f7360298c4bbae93f864364f9d57",
   "ops": [
     {
       "actor": 3,
@@ -42,7 +42,7 @@ const V = {
         "verdict": "pass"
       },
       "nonce": 7,
-      "signedHex": "00000000000000030200000000000000080000000200000000000000000000000000000000000000000000000000000000000000000000000000000000074a7e3a935495998a4eb36ea3cd9e7d84624db497fcbf9b2b1dfcaa1ebffaf62ea84cf34f7ccf990fc305a4e88eb8201b58c7de7da961bfb9c3d9c28d9e948907"
+      "signedHex": "0000000000000003020000000000000008000000020000000000000000000000000000000000000000000000000000000000000000000000000000000007f1cc6572cfd56fa647b35699a54aad34b03ed70502f4d34e3bc7f6095dbcb13b908729c8d2cc4f4878ac4a9f661d3ff9eb2c54c10a7ae34e1e7eaf1d7251dc0d"
     },
     {
       "actor": 1099511627776,
@@ -53,7 +53,7 @@ const V = {
         "verdict": "needs-revision"
       },
       "nonce": 8589934592,
-      "signedHex": "00000100000000000200000000000000010000000101000000000000000000000000000000000000000000000000000000000000000000000002000000005388939462202d591b07425048097c3de6774c7858be27df62ed4ef2e00ff9f107587c2c5fb1b8214ebfa2b36a716ab6e1ebd1d2918d8b3537a86fc7665c2903"
+      "signedHex": "0000010000000000020000000000000001000000010100000000000000000000000000000000000000000000000000000000000000000000000200000000e5ecb2b799a4aad47e8da95bd3f3cc445e24b851f255c54269c2dfc4ceaf4c790b8d45384f0cc0f406e67cf2d90fe39f04168544f44872d6ca590cff41f10504"
     },
     {
       "actor": 1,
@@ -62,7 +62,7 @@ const V = {
         "pubkey": "1111111111111111111111111111111111111111111111111111111111111111"
       },
       "nonce": 0,
-      "signedHex": "00000000000000010311111111111111111111111111111111111111111111111111111111111111110000000000000000e022697781c4e7c004053f533e373e012459d1b81bf78fa5d125b5f59e1620a69b7ab4f8d67242c694cc3ed468a25611e40bdcb5bc8949674c1a740173579f09"
+      "signedHex": "00000000000000010311111111111111111111111111111111111111111111111111111111111111110000000000000000c9ae674a46f95fea9f1045a2c90d248b1eca2581db331eaa5f95a991ca50637de5d1bcfb1ddfccc9b15a5b3b4bf65ecd2bbaa9e738758e6aa51362e641ee8f01"
     },
     {
       "actor": 2,
@@ -94,7 +94,7 @@ const V = {
         ]
       },
       "nonce": 24,
-      "signedHex": "00000000000000020000000000010000000000000001000000027a68abababababababababababababababababababababababababababababababab010000000f636c617564652d6f7075732d352d35000000000000000200000000000000080000000200000000000000000900000001010000000000000018ecffa6462918914da5948a71cd4c4525c0840143b9543f99bd977f26d511ec28b89bd599574475521d6e9b4841833c97ba69b521d5ec0cb946949ba8872a810e"
+      "signedHex": "00000000000000020000000000010000000000000001000000027a68abababababababababababababababababababababababababababababababab010000000f636c617564652d6f7075732d352d35000000000000000200000000000000080000000200000000000000000900000001010000000000000018197d2522982104c81b814a4561d3194cc55c4ecbde5280e5889950576eb0cdba0d02fbb6d5c075536dc8155a5484afff288be15a8cb5641e3551dcfbb6461f0e"
     },
     {
       "actor": 2,
@@ -123,13 +123,13 @@ const V = {
         ]
       },
       "nonce": 99,
-      "signedHex": "000000000000000201000000000000000f0000000000000002000000027a68abababababababababababababababababababababababababababababababab00000002656ecdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd0000000000000000010000000000000003000000010200000000000000632140ff7e48405ce66ff51ff3588e42ceb90c00ef1dcd9a4bcea82d3b0366e97e37d4a30c08a82bed03a49517c2b6840588f3457b726f8102bd02ef8d1eb14c0f"
+      "signedHex": "000000000000000201000000000000000f0000000000000002000000027a68abababababababababababababababababababababababababababababababab00000002656ecdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd00000000000000000100000000000000030000000102000000000000006309c4a31b566c78688a4b472b82b430412cb408ed8101d8355ef2121b744b9d29945bc84edb8437b4e21e9a7e0018a7407f38de40a0bde450d3a9dad00df9c007"
     }
   ]
 };
 
 test('助记词 → 种子 → 公钥 与知行图节点一致(与既有成员身份兼容)', () => {
-  const seed = zhixingSeedFromMnemonic(V.mnemonic);
+  const seed = zhixingStandardSeedFromMnemonic(V.mnemonic);
   assert.equal(seed, '0x' + V.seedHex);
   assert.equal(zhixingAddressFromSeed(seed), V.pubkey);
   assert.ok(isZhixingAddress(V.pubkey));
@@ -137,11 +137,11 @@ test('助记词 → 种子 → 公钥 与知行图节点一致(与既有成员�
 
 test('助记词里多余的空白不影响派生', () => {
   const messy = '  ' + V.mnemonic.split(' ').join('   ') + '\n';
-  assert.equal(zhixingSeedFromMnemonic(messy), '0x' + V.seedHex);
+  assert.equal(zhixingStandardSeedFromMnemonic(messy), '0x' + V.seedHex);
 });
 
 test('附加口令改变密钥(与 BIP-39 一致)', () => {
-  assert.notEqual(zhixingSeedFromMnemonic(V.mnemonic, 'x'), '0x' + V.seedHex);
+  assert.notEqual(zhixingStandardSeedFromMnemonic(V.mnemonic, 'x'), '0x' + V.seedHex);
 });
 
 for (const c of V.ops) {

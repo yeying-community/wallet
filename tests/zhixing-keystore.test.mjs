@@ -15,14 +15,17 @@ globalThis.crypto ||= webcrypto;
 
 const { keccak256, scrypt, decryptZhixingKeystore, parseZhixingSeedFile, bytesToHex } =
   await import('../js/chain/adapters/zhixing/keystore.js');
-const { zhixingSeedFromMnemonic, zhixingAddressFromSeed } = await import('../js/chain/adapters/zhixing/keys.js');
+const { zhixingStandardSeedFromMnemonic, zhixingAddressFromSeed } = await import('../js/chain/adapters/zhixing/keys.js');
+const fs = await import('node:fs');
 
 const ZERO24 = Array(23).fill('abandon').join(' ') + ' art';
-const ZERO24_PUBKEY = '1de352e44cd333672593f2334a730e180aaf290de89aa16d480de594e34e2961';
-// `ZHIXING_KEYSTORE_PASSWORD=ks-password-123 node keygen --mnemonic "<ZERO24>" --encrypt --out ks.json`
-const RUST_KEYSTORE = "{\n  \"crypto\": {\n    \"kdf\": \"scrypt\",\n    \"kdfparams\": {\n      \"dklen\": 32,\n      \"n\": 262144,\n      \"r\": 8,\n      \"p\": 1,\n      \"salt\": \"8d79ebdbab555a47cbeff211796fa143\"\n    },\n    \"cipher\": \"aes-128-ctr\",\n    \"cipherparams\": {\n      \"iv\": \"25fedff31c10c296879361a823d474ff\"\n    },\n    \"ciphertext\": \"48200e58b26602e7d47db0426c4e2f56cfd9b6f8a3373e6d6128e11c2f4a6688\",\n    \"mac\": \"f5159baff43506006fe5b2e8851f5a9fe44b3067e1e7e25c87d3d280d97be23c\"\n  },\n  \"id\": \"50f25da7-77ed-43bb-928d-86a4df6da569\",\n  \"version\": 3\n}";
-// `node keygen --mnemonic "<ZERO24>" --out seed.txt`(去掉了 # mnemonic 注释行)
-const RUST_SEED_FILE = "# zhixing-node validator key (M169 \u00b7 BIP-39)\n# passphrase: <empty>\n# pubkey: 1de352e44cd333672593f2334a730e180aaf290de89aa16d480de594e34e2961\n408b285c123836004f4b8842c89324c1f01382450c0d439af345ba7fc49acf70\n";
+// `node keygen --mnemonic "<ZERO24>"` 给出的公钥(SLIP-0010 m/44'/1105'/0'/0'/0')
+const ZERO24_PUBKEY = '741c8d9dcb69f5c2ae4e1009408613b47620f7360298c4bbae93f864364f9d57';
+// 两个文件都由知行图节点生成:
+//   seed:`node keygen --mnemonic "<ZERO24>" --out zhixing-seed.txt`
+//   密钥文件:`ZHIXING_KEYSTORE_PASSWORD=ks-password-123 node encrypt-key --out zhixing-keystore.json`(输入上面的种子)
+const RUST_KEYSTORE = fs.readFileSync(new URL('./fixtures/zhixing-keystore.json', import.meta.url), 'utf8');
+const RUST_SEED_FILE = fs.readFileSync(new URL('./fixtures/zhixing-seed.txt', import.meta.url), 'utf8');
 
 test('Keccak-256 官方向量(以太坊用的原始 Keccak,不是 SHA3-256)', () => {
   const h = (s) => bytesToHex(keccak256(new TextEncoder().encode(s)));
@@ -40,7 +43,7 @@ test('scrypt RFC 7914 测试向量', async () => {
 
 test('解开 Rust 节点写的密钥文件:种子与助记词推出的一致,公钥与节点打印的一致', async () => {
   const seed = await decryptZhixingKeystore(RUST_KEYSTORE, 'ks-password-123');
-  assert.equal('0x' + bytesToHex(seed), zhixingSeedFromMnemonic(ZERO24));
+  assert.equal('0x' + bytesToHex(seed), zhixingStandardSeedFromMnemonic(ZERO24));
   assert.equal(zhixingAddressFromSeed('0x' + bytesToHex(seed)), ZERO24_PUBKEY);
 });
 
@@ -57,7 +60,7 @@ test('明文种子文件:解析出种子与注释里的公钥,公钥与种子一
   assert.equal(f.pubkey, ZERO24_PUBKEY);
   assert.equal(f.passphrase, '');
   assert.equal(zhixingAddressFromSeed('0x' + f.seedHex), ZERO24_PUBKEY);
-  assert.equal('0x' + f.seedHex, zhixingSeedFromMnemonic(ZERO24));
+  assert.equal('0x' + f.seedHex, zhixingStandardSeedFromMnemonic(ZERO24));
   assert.equal(parseZhixingSeedFile('  ' + f.seedHex.toUpperCase() + '\n').seedHex, f.seedHex);
   assert.throws(() => parseZhixingSeedFile('hello'), /不是知行图的种子文件/);
 });
