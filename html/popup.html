@@ -794,12 +794,6 @@
             <label for="importZhixingPassphrase">附加口令（可选）</label>
             <input type="password" id="importZhixingPassphrase" placeholder="生成助记词时设过 BIP-39 附加口令才需要填" autocomplete="off" />
           </div>
-          <!-- 早期成员的助记词按旧规则派生(BIP-39 种子前 32 字节);标准规则给出的是另一个公钥。 -->
-          <div class="form-group hidden zhixing-only" id="importZhixingLegacyGroup">
-            <label for="importZhixingLegacy">这是早期成员的助记词（按旧规则派生）</label>
-            <input type="checkbox" id="importZhixingLegacy" />
-            <p class="settings-hint">2026-11-20 之前的知行图助记词用的是旧规则。选错会得到一个链上不存在的账户。</p>
-          </div>
         </div>
 
         <!-- 私钥导入 -->

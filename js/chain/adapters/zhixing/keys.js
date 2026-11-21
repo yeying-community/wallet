@@ -2,13 +2,10 @@
 /**
  * 知行图成员密钥(ed25519)。
  *
- * 两种派生规则(BIP-39 种子 = PBKDF2-HMAC-SHA512(助记词, "mnemonic" ‖ 附加口令, 2048 次)):
- *
- *   标准(新成员一律用这个):SLIP-0010 ed25519,路径 m/44'/1105'/account'/0'/0'
- *     1105 是 KnowDoGraph 在 SLIP-0044 的币种编号(satoshilabs/slips#2102)。
- *     与 `node keygen` 的默认规则逐字节一致;一组助记词可以派生多个账户。
- *   旧规则(只为兼容既有密钥):ed25519 种子 = BIP-39 种子的前 32 字节。
- *     一组助记词只对应一个账户,导出私钥等于交出主种子的一半。`node keygen --legacy` 生成的就是这种。
+ * 派生规则:BIP-39 种子(PBKDF2-HMAC-SHA512(助记词, "mnemonic" ‖ 附加口令, 2048 次))
+ * 经 SLIP-0010 ed25519 派生,路径 m/44'/1105'/account'/0'/0'。
+ * 1105 是 KnowDoGraph 在 SLIP-0044 的币种编号(satoshilabs/slips#2102)。
+ * 与 `node keygen` 逐字节一致;一组助记词可以派生多个账户。
  *
  * 地址:知行图账户在链上以 ed25519 公钥(64 位小写十六进制)标识,账户编号(u64)由链分配,
  * 钱包不知道也不需要知道编号;网页在提交前用公钥向节点查到编号。
@@ -19,8 +16,6 @@ import nacl from '../../../../lib/nacl.js';
 import { bytesToHex, hexToBytes } from './op.js';
 
 export const KDG_COIN_TYPE = 1105;
-export const ZHIXING_DERIVATION_STANDARD = 'standard';
-export const ZHIXING_DERIVATION_LEGACY = 'legacy';
 
 /** KDG 标准路径(文字形式,存进账户的 derivationPath)。 */
 export function zhixingStandardPath(account = 0) {
@@ -65,16 +60,6 @@ function bip39Seed(mnemonic, passphrase = '') {
  */
 export function zhixingStandardSeedFromMnemonic(mnemonic, passphrase = '', account = 0) {
   return '0x' + bytesToHex(slip10Ed25519(bip39Seed(mnemonic, passphrase), [44, KDG_COIN_TYPE, account, 0, 0]));
-}
-
-/**
- * 旧规则:助记词 → 32 字节 ed25519 种子(0x 十六进制),即 BIP-39 种子的前 32 字节。
- * @param {string} mnemonic
- * @param {string} [passphrase]
- * @returns {string}
- */
-export function zhixingSeedFromMnemonic(mnemonic, passphrase = '') {
-  return '0x' + bytesToHex(bip39Seed(mnemonic, passphrase).slice(0, 32));
 }
 
 /**

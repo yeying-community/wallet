@@ -7,7 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { slip10Ed25519, zhixingStandardSeedFromMnemonic, zhixingSeedFromMnemonic, zhixingStandardPath } =
+const { slip10Ed25519, zhixingStandardSeedFromMnemonic, zhixingStandardPath } =
   await import('../js/chain/adapters/zhixing/keys.js');
 
 const hex = (b) => Buffer.from(b).toString('hex');
@@ -21,9 +21,8 @@ test('SLIP-0010 ed25519 官方向量 1', () => {
   assert.equal(hex(slip10Ed25519(seed, [0, 1, 2, 2, 1000000000])), '8f94d394a8e8fd6b1bc2f3f49f5c47e385281d5c17e65324b0f62483e37e8793');
 });
 
-test('KDG 标准路径与知行图节点一致;与旧规则不同', () => {
+test('KDG 标准路径与知行图节点一致', () => {
   assert.equal(zhixingStandardSeedFromMnemonic(M12, '', 0), '0xd16a35cc44e08e1e1370212fbc4a8843239c54e117f304ee970fca2cd5816ca4');
   assert.equal(zhixingStandardSeedFromMnemonic(M12, '', 1), '0xde531680773d61fd269879584ec74d573ca325909ea732ab82cd1b6029345b6b');
-  assert.notEqual(zhixingSeedFromMnemonic(M12), zhixingStandardSeedFromMnemonic(M12, '', 0));
   assert.equal(zhixingStandardPath(2), "m/44'/1105'/2'/0'/0'");
 });

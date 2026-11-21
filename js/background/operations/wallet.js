@@ -1201,7 +1201,6 @@ function importHDWalletByNamespace(name, mnemonic, password, meta) {
       // 知行图的 HD 钱包:按记下来的派生规则与账户序号恢复,才能得到同一把钥匙
       return importZhixingMnemonicWallet(name, mnemonic, password, {
         passphrase: meta?.passphrase || '',
-        derivation: meta?.zhixingDerivation || 'standard',
         account: Number.isInteger(meta?.zhixingAccount) ? meta.zhixingAccount : 0
       });
     case 'eip155':
@@ -1273,9 +1272,7 @@ export function handleImportPrivateKeyWalletByNamespace(name, privateKey, passwo
     case 'utxo':
       return handleImportBitcoinPrivateKeyWallet(name, privateKey, password, reference ? { bip122Reference: reference } : {});
     case 'zhixing':
-      return handleImportZhixingWallet(name, { privateKey }, password, {
-        derivation: meta?.zhixingDerivation || 'standard'
-      });
+      return handleImportZhixingWallet(name, { privateKey }, password);
     case 'eip155':
       return handleImportPrivateKeyWallet(name, privateKey, password);
     default:
@@ -1307,7 +1304,6 @@ export async function handleExportAccountsFile(password, identityEndpoint = '', 
           namespace: account.namespace || 'eip155',
           chainKey: account.chainKey || '',
           coinType: Number.isInteger(account.coinType) ? account.coinType : undefined,
-          zhixingDerivation: account.zhixingDerivation || undefined,
           zhixingAccount: Number.isInteger(account.zhixingAccount) ? account.zhixingAccount : undefined,
           address: account.address || '',
           username: account.username || '',
