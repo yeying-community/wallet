@@ -1,4 +1,6 @@
 # zhixing-node validator key (M169 · BIP-39)
+# derivation: m/44'/1105'/0'/0'/0' (SLIP-0010)
+# mnemonic: abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art
 # passphrase: <empty>
-# pubkey: 1de352e44cd333672593f2334a730e180aaf290de89aa16d480de594e34e2961
-408b285c123836004f4b8842c89324c1f01382450c0d439af345ba7fc49acf70
+# pubkey: 741c8d9dcb69f5c2ae4e1009408613b47620f7360298c4bbae93f864364f9d57
+932f58d24bb68ea25cc6d7ee82013bed850a9e3fb36b8dd773bc9181e9d39a3e

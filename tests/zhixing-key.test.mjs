@@ -48,8 +48,8 @@ const { cachePassword, clearPasswordCache } = await import('../js/background/pas
 const { ZhixingStorageKeys } = await import('../js/storage/storage-keys.js');
 
 const ZERO24 = Array(23).fill('abandon').join(' ') + ' art';
-// 知行图节点 `node keygen` 对 ZERO24 给出的公钥
-const ZERO24_PUBKEY = '1de352e44cd333672593f2334a730e180aaf290de89aa16d480de594e34e2961';
+// 知行图节点 `node keygen` 对 ZERO24 给出的公钥(SLIP-0010 m/44'/1105'/0'/0'/0')
+const ZERO24_PUBKEY = '741c8d9dcb69f5c2ae4e1009408613b47620f7360298c4bbae93f864364f9d57';
 const P = 'Pass-1111';
 const Q = 'Pass-2222';
 
@@ -64,7 +64,7 @@ const fs = await import('node:fs');
 const RUST_KEYSTORE = fs.readFileSync(new URL('./fixtures/zhixing-keystore.json', import.meta.url), 'utf8');
 const RUST_SEED_FILE = fs.readFileSync(new URL('./fixtures/zhixing-seed.txt', import.meta.url), 'utf8');
 const RUST_SEED_HEX = RUST_SEED_FILE.split('\n').find((l) => /^[0-9a-f]{64}$/.test(l.trim())).trim();
-const imp = (source, name = '成员') => ops.handleImportZhixingWallet(name, source, P);
+const imp = (source, name = '成员', options = {}) => ops.handleImportZhixingWallet(name, source, P, options);
 
 
 
@@ -100,6 +100,7 @@ test('导入失败的情形:助记词无效、加密文件缺口令/口令错、
   const tampered = RUST_SEED_FILE.replace(/# pubkey: [0-9a-f]+/, '# pubkey: ' + 'ff'.repeat(32));
   assert.match((await imp({ privateKey: tampered })).error, /公钥不一致/);
   assert.equal((await imp({ mnemonic: ZERO24 })).success, true);
+  // 同一把钥匙再导一次才是重复
   const dup = await imp({ privateKey: RUST_SEED_HEX });
   assert.equal(dup.success, false);
   assert.match(dup.error, /已经在钱包里/);

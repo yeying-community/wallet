@@ -18,6 +18,7 @@ import {
   createSolanaHDWallet,
   importSolanaHDWallet,
   importSolanaPrivateKeyWallet,
+  createZhixingWallet,
   importZhixingMnemonicWallet,
   importZhixingPrivateKeyWallet,
   deriveSolanaSubAccount,
@@ -820,10 +821,29 @@ export async function handleCreateSolanaSubAccount(walletId, password, options =
  *   { privateKey }                            64 位十六进制种子 / node keygen 明文种子文件内容
  *   { privateKey: <keystore JSON>, filePassword }  node keygen --encrypt 的加密密钥文件
  */
-export async function handleImportZhixingWallet(accountName, source, password) {
+/**
+ * 创建知行图钱包(标准派生):钱包自己生成助记词,不需要命令行。
+ * 返回的 mnemonic 由界面展示给用户抄写(加密后随钱包保存,之后可在「查看助记词」里再看)。
+ */
+export async function handleCreateZhixingWallet(accountName, password, options = {}) {
+  try {
+    const { wallet, mainAccount, mnemonic } = await createZhixingWallet(accountName, password, options);
+    await saveWallet(wallet);
+    await saveAccount(mainAccount);
+    await setSelectedAccountId(mainAccount.id);
+    await rememberUnlockedAccount(mainAccount, password);
+    console.log('✅ Zhixing wallet created and saved:', wallet.id, mainAccount.address);
+    return { success: true, wallet, account: mainAccount, mnemonic };
+  } catch (error) {
+    console.error('❌ Handle create Zhixing wallet failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function handleImportZhixingWallet(accountName, source, password, options = {}) {
   try {
     const built = source?.mnemonic
-      ? await importZhixingMnemonicWallet(accountName, source.mnemonic, password, { passphrase: source.passphrase })
+      ? await importZhixingMnemonicWallet(accountName, source.mnemonic, password, { passphrase: source.passphrase, ...options })
       : await importZhixingPrivateKeyWallet(accountName, source?.privateKey, password, { filePassword: source?.filePassword });
     const { wallet, mainAccount } = built;
     const existing = await getAccountList();
@@ -1177,6 +1197,12 @@ function importHDWalletByNamespace(name, mnemonic, password, meta) {
     case 'bip122':
     case 'utxo':
       return importBitcoinHDWallet(name, mnemonic, password, reference ? { bip122Reference: reference } : {});
+    case 'zhixing':
+      // 知行图的 HD 钱包:按记下来的派生规则与账户序号恢复,才能得到同一把钥匙
+      return importZhixingMnemonicWallet(name, mnemonic, password, {
+        passphrase: meta?.passphrase || '',
+        account: Number.isInteger(meta?.zhixingAccount) ? meta.zhixingAccount : 0
+      });
     case 'eip155':
       return importHDWallet(name, mnemonic, password);
     default:
@@ -1278,6 +1304,7 @@ export async function handleExportAccountsFile(password, identityEndpoint = '', 
           namespace: account.namespace || 'eip155',
           chainKey: account.chainKey || '',
           coinType: Number.isInteger(account.coinType) ? account.coinType : undefined,
+          zhixingAccount: Number.isInteger(account.zhixingAccount) ? account.zhixingAccount : undefined,
           address: account.address || '',
           username: account.username || '',
           usernameUpdatedAt: account.usernameUpdatedAt || 0

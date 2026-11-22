@@ -61,7 +61,8 @@ import {
   BIP122_REFERENCE_TESTNET
 } from '../chain/adapters/bip122/chain-key-bridge.js';
 import {
-  zhixingSeedFromMnemonic,
+  zhixingStandardSeedFromMnemonic,
+  zhixingStandardPath,
   zhixingAddressFromSeed
 } from '../chain/adapters/zhixing/keys.js';
 import { decryptZhixingKeystore, parseZhixingSeedFile, bytesToHex as zhixingBytesToHex } from '../chain/adapters/zhixing/keystore.js';
@@ -1501,6 +1502,33 @@ const zhixingMnemonicError = (message) => createError(ErrorCode.MNEMONIC_INVALID
 export const ZHIXING_NAMESPACE = 'zhixing';
 export const ZHIXING_CHAIN_KEY = 'zhixing:testnet';
 
+/**
+ * 创建知行图钱包:生成 24 个词的 BIP-39 助记词,按**标准规则**派生账户
+ * (SLIP-0010 ed25519,m/44'/1105'/account'/0'/0',与 `node keygen` 逐字节一致)。
+ * 助记词加密后随钱包保存,用户随时可以在「查看助记词」里看到并抄写。
+ */
+export async function createZhixingWallet(accountName, password, options = {}) {
+  const validation = validatePassword(password);
+  if (!validation.valid) {
+    throw createInvalidPasswordError(validation.error);
+  }
+  const account = Number.isInteger(options.account) ? options.account : 0;
+  // 24 个词(256 位熵),与 `node keygen --new-mnemonic` 一致。
+  const entropy = globalThis.crypto.getRandomValues(new Uint8Array(32));
+  const mnemonic = ethers.Mnemonic.fromEntropy(entropy).phrase;
+  const seedHex = zhixingStandardSeedFromMnemonic(mnemonic, '', account);
+  const built = await buildZhixingWallet(accountName, seedHex, password, 'standard');
+  // 标准规则下这组助记词还能派生更多账户,所以按 HD 钱包保存助记词(加密)。
+  const encryptedMnemonic = await encryptString(mnemonic, password);
+  const hdWallet = { ...built.wallet, type: WALLET_TYPE.HD, encryptedMnemonic };
+  const hdAccount = {
+    ...built.mainAccount,
+    derivationPath: zhixingStandardPath(account),
+    zhixingAccount: account
+  };
+  return { wallet: hdWallet, mainAccount: hdAccount, mnemonic };
+}
+
 async function buildZhixingWallet(accountName, seedHex, password, source) {
   const validation = validatePassword(password);
   if (!validation.valid) {
@@ -1534,7 +1562,7 @@ async function buildZhixingWallet(accountName, seedHex, password, source) {
   return { wallet, mainAccount };
 }
 
-/** 用助记词导入知行图钱包(可带 BIP-39 附加口令)。 */
+/** 用助记词导入知行图钱包(可带 BIP-39 附加口令);派生路径 m/44'/1105'/account'/0'/0',与 `node keygen` 一致。 */
 export async function importZhixingMnemonicWallet(accountName, mnemonic, password, options = {}) {
   const validation = validateMnemonic(String(mnemonic || '').trim());
   if (!validation.valid) {
@@ -1542,7 +1570,7 @@ export async function importZhixingMnemonicWallet(accountName, mnemonic, passwor
   }
   let seedHex;
   try {
-    seedHex = zhixingSeedFromMnemonic(mnemonic, String(options.passphrase || ''));
+    seedHex = zhixingStandardSeedFromMnemonic(mnemonic, String(options.passphrase || ''), Number(options.account) || 0);
   } catch (error) {
     throw zhixingMnemonicError('无法从助记词派生知行图密钥：' + error.message);
   }

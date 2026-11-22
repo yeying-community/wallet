@@ -24,6 +24,14 @@ export function getCurrentPage() {
   return currentPage;
 }
 
+/** 显示一个模态框(去掉 hidden)。 */
+export function openModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (!modal) return false;
+  modal.classList.remove('hidden');
+  return true;
+}
+
 export function showToast(message, type = 'info', duration = 2000) {
   hideWaiting();
   const toast = document.getElementById('globalToast');

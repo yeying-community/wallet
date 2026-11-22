@@ -2,13 +2,10 @@
 /**
  * 知行图成员密钥(ed25519)。
  *
- * 派生规则与知行图自己的工具**完全相同**(`node keygen`):
- *   BIP-39 种子 = PBKDF2-HMAC-SHA512(助记词, "mnemonic" ‖ 附加口令, 2048 次)
- *   ed25519 种子 = BIP-39 种子的前 32 字节
- * 所以同一组助记词导入钱包,得到的就是成员原来的那把密钥、那个链上账户。
- *
- * 代价:一组助记词只对应一个知行图账户(没有 HD 路径)。这是有意的选择——
- * 与既有成员身份兼容,比"一组助记词多个账户"更重要。
+ * 派生规则:BIP-39 种子(PBKDF2-HMAC-SHA512(助记词, "mnemonic" ‖ 附加口令, 2048 次))
+ * 经 SLIP-0010 ed25519 派生,路径 m/44'/1105'/account'/0'/0'。
+ * 1105 是 KnowDoGraph 在 SLIP-0044 的币种编号(satoshilabs/slips#2102)。
+ * 与 `node keygen` 逐字节一致;一组助记词可以派生多个账户。
  *
  * 地址:知行图账户在链上以 ed25519 公钥(64 位小写十六进制)标识,账户编号(u64)由链分配,
  * 钱包不知道也不需要知道编号;网页在提交前用公钥向节点查到编号。
@@ -18,17 +15,51 @@ import { ethers } from '../../../../lib/ethers-6.16.esm.min.js';
 import nacl from '../../../../lib/nacl.js';
 import { bytesToHex, hexToBytes } from './op.js';
 
+export const KDG_COIN_TYPE = 1105;
+
+/** KDG 标准路径(文字形式,存进账户的 derivationPath)。 */
+export function zhixingStandardPath(account = 0) {
+  return `m/44'/${KDG_COIN_TYPE}'/${account}'/0'/0'`;
+}
+
+function hmacSha512(key, data) {
+  return ethers.getBytes(ethers.computeHmac('sha512', key, data));
+}
+
 /**
- * 助记词 → 32 字节 ed25519 种子(0x 十六进制)。
+ * SLIP-0010 ed25519 派生(各级硬化):返回路径末端的 32 字节种子。
+ * @param {Uint8Array} seed
+ * @param {number[]} path 不带硬化标志的各级索引
+ */
+export function slip10Ed25519(seed, path) {
+  let I = hmacSha512(ethers.toUtf8Bytes('ed25519 seed'), seed);
+  let key = I.slice(0, 32);
+  let chain = I.slice(32);
+  for (const index of path) {
+    if (!Number.isInteger(index) || index < 0 || index >= 0x80000000) throw new Error('ZHIXING_BAD_PATH');
+    const data = new Uint8Array(37);
+    data.set(key, 1);
+    new DataView(data.buffer).setUint32(33, (index | 0x80000000) >>> 0, false);
+    I = hmacSha512(chain, data);
+    key = I.slice(0, 32);
+    chain = I.slice(32);
+  }
+  return key;
+}
+
+function bip39Seed(mnemonic, passphrase = '') {
+  const phrase = String(mnemonic || '').trim().split(/\s+/).join(' ');
+  return ethers.getBytes(ethers.Mnemonic.fromPhrase(phrase, passphrase || '').computeSeed());
+}
+
+/**
+ * 助记词 → 标准规则下第 account 个知行图账户的 ed25519 种子(0x 十六进制)。
  * @param {string} mnemonic
  * @param {string} [passphrase]
- * @returns {string}
+ * @param {number} [account]
  */
-export function zhixingSeedFromMnemonic(mnemonic, passphrase = '') {
-  const phrase = String(mnemonic || '').trim().split(/\s+/).join(' ');
-  const m = ethers.Mnemonic.fromPhrase(phrase, passphrase || '');
-  const seed = ethers.getBytes(m.computeSeed()); // 64 字节 BIP-39 种子
-  return '0x' + bytesToHex(seed.slice(0, 32));
+export function zhixingStandardSeedFromMnemonic(mnemonic, passphrase = '', account = 0) {
+  return '0x' + bytesToHex(slip10Ed25519(bip39Seed(mnemonic, passphrase), [44, KDG_COIN_TYPE, account, 0, 0]));
 }
 
 /**
