@@ -435,7 +435,7 @@ function ensureZhixingKeystoreModal() {
   set('#zhixingKsCancel', t('zhixing.exportKeystoreCancel'));
   set('#zhixingKsConfirm', t('zhixing.exportKeystoreConfirm'));
   modal.querySelector('#zhixingKsWalletPassword')?.setAttribute('placeholder', t('zhixing.exportKeystorePassword'));
-  modal.querySelector('#zhixingKsFilePassword')?.setAttribute('placeholder', t('zhixing.exportKeystoreFilePassword'));
+  modal.querySelector('#zhixingKsFilePassword')?.setAttribute('placeholder', t('zhixing.exportKeystoreFilePasswordPlaceholder'));
   return modal;
 }
 
