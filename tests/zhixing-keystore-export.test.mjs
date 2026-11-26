@@ -98,3 +98,24 @@ test('导出的密钥文件:真实的节点二进制能读出同一个公钥', a
 test('口令太短被拒绝', async () => {
   await assert.rejects(() => encryptZhixingKeystore(seedBytes(), 'short'), /至少 8 个字符/);
 });
+
+test('导出的文件名带上账户名称(便于一个人导多个账户时分辨)', async () => {
+  // 账户名里可能有路径分隔符或特殊字符,文件名里要去掉
+  const { sanitizeFileNamePart } = await import('../js/background/operations/wallet.js')
+    .catch(() => ({ sanitizeFileNamePart: null }));
+  if (!sanitizeFileNamePart) {
+    // 那个模块依赖浏览器环境,这里只测纯函数:直接从源码里取
+    const src = (await import('node:fs')).readFileSync(
+      new URL('../js/background/operations/wallet.js', import.meta.url), 'utf8');
+    const m = src.match(/function sanitizeFileNamePart\(name\) \{[\s\S]*?\n\}/);
+    assert.ok(m, '应当有 sanitizeFileNamePart');
+    const fn = eval('(' + m[0].replace('function sanitizeFileNamePart', 'function') + ')');
+    assert.equal(fn('alice'), 'alice');
+    assert.equal(fn('我的账户'), '我的账户', '中文名保留');
+    assert.equal(fn('a/b\\c'), 'ab\\c', '路径分隔符去掉');
+    assert.equal(fn('  spaced  name  '), 'spaced-name');
+    assert.equal(fn(''), '');
+    assert.equal(fn('x'.repeat(80)).length, 40, '长度封顶');
+    return;
+  }
+});

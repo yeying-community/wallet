@@ -406,7 +406,7 @@ function ensureZhixingKeystoreModal() {
         <button class="btn-close" id="zhixingKsClose">✕</button>
       </div>
       <div class="modal-body">
-        <p class="settings-hint" id="zhixingKsHint"></p>
+        <p class="zhixing-ks-hint" id="zhixingKsHint"></p>
         <div class="form-group">
           <label for="zhixingKsWalletPassword" id="zhixingKsWalletPasswordLabel"></label>
           <input type="password" id="zhixingKsWalletPassword" />
@@ -414,9 +414,9 @@ function ensureZhixingKeystoreModal() {
         <div class="form-group">
           <label for="zhixingKsFilePassword" id="zhixingKsFilePasswordLabel"></label>
           <input type="password" id="zhixingKsFilePassword" />
-          <p class="settings-hint" id="zhixingKsFilePasswordHint"></p>
+          <p class="zhixing-ks-hint" id="zhixingKsFilePasswordHint"></p>
         </div>
-        <p class="settings-hint" id="zhixingKsError" style="color: var(--error, #c0392b);"></p>
+        <p class="zhixing-ks-error" id="zhixingKsError"></p>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" id="zhixingKsCancel"></button>

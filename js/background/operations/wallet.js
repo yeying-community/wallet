@@ -1703,6 +1703,15 @@ export async function handleExportMnemonic(walletId, password) {
   }
 }
 
+/** 文件名里用的名字:去掉路径分隔符与控制字符,其余原样(中文名也能用)。 */
+function sanitizeFileNamePart(name) {
+  return String(name || '')
+    .replace(/[\/\x00-\x1f<>:"|?*]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
+
 /**
  * 导出一个知行图账户的**加密密钥文件**(Web3 Secret Storage v3),
  * 格式与知行图节点的 `node keygen --encrypt` / `node encrypt-key` 完全一致。
@@ -1750,11 +1759,13 @@ export async function handleExportZhixingKeystore(accountId, password, filePassw
     const keystore = await encryptZhixingKeystore(seed, filePassword);
     seed.fill(0);
     const date = new Date().toISOString().slice(0, 10);
+    // 文件名带上账户名称,便于一个人导多个账户时分辨(也便于组织者对上是谁的密钥)
+    const label = sanitizeFileNamePart(account.name || '') || account.address || 'account';
     return {
       success: true,
       keystore,
       pubkey: String(account.address || '').toLowerCase(),
-      filename: `zhixing-keystore-${date}.json`
+      filename: `zhixing-keystore-${label}-${date}.json`
     };
   } catch (error) {
     return { success: false, error: error.message || '导出知行图密钥文件失败' };
