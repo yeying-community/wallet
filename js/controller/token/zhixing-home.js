@@ -52,12 +52,14 @@ function text(t, mono = false) {
 }
 
 let lastStatus = null;
+let lastActions = {};
 let languageListenerBound = false;
 
 /**
  * @param {{ getZhixingStatus: (force?: boolean) => Promise<any> }} wallet
+ * @param {{ onExportKeystore?: (accountId: string) => void }} [actions]
  */
-export async function renderZhixingHome(wallet) {
+export async function renderZhixingHome(wallet, actions = {}) {
   const list = el('tokenList');
   if (!list) return;
   bindLanguageChange();
@@ -74,7 +76,7 @@ export async function renderZhixingHome(wallet) {
     s = { error: String(error?.message || error) };
   }
   lastStatus = s;
-  drawStatus(s);
+  drawStatus(s, actions);
 }
 
 // 切换界面语言时用上次的状态重画(不重新查询)
@@ -83,11 +85,11 @@ function bindLanguageChange() {
   languageListenerBound = true;
   globalThis.addEventListener('wallet-language-changed', () => {
     const list = el('tokenList');
-    if (lastStatus && list?.dataset.zhixingHome === '1') drawStatus(lastStatus);
+    if (lastStatus && list?.dataset.zhixingHome === '1') drawStatus(lastStatus, lastActions);
   });
 }
 
-function drawStatus(s) {
+function drawStatus(s, actions = {}) {
   const list = el('tokenList');
   if (!list) return;
   list.textContent = '';
@@ -123,5 +125,19 @@ function drawStatus(s) {
     a.rel = 'noopener';
     a.textContent = t('zhixing.open');
     list.appendChild(row(t('zhixing.explorer'), a));
+  }
+
+  // 导出密钥文件:链侧的签名工具(node encode-knowledge-op / zx)认这个格式。
+  // 有了它,从钱包到链侧工具不用手工复制私钥。
+  if (s.accountId) {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-secondary';
+    btn.textContent = t('zhixing.exportKeystore');
+    btn.title = t('zhixing.exportKeystoreHint');
+    btn.addEventListener('click', () => {
+      if (typeof actions.onExportKeystore === 'function') actions.onExportKeystore(s.accountId);
+      else console.warn('[zhixing-home] 导出密钥文件的入口未注册');
+    });
+    list.appendChild(row(t('zhixing.exportKeystore'), btn));
   }
 }

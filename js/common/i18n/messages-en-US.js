@@ -90,5 +90,15 @@ export const messagesEnUS = {
   'zhixing.member': 'Account #{id} · {stage}',
   'zhixing.established': 'Past probation',
   'zhixing.probation': 'On probation (reviews not yet counted toward credibility)',
-  'zhixing.open': 'Open KnowDoGraph ↗'
+  'zhixing.open': 'Open KnowDoGraph ↗',
+  'zhixing.exportKeystore': 'Export key file',
+  'zhixing.exportKeystoreHint': 'The exported file has the same format as the node\u2019s `node keygen --encrypt`, so it works directly with the command-line tools (`node encode-knowledge-op` / `zx`). The passphrase belongs to this file, not to your wallet password.',
+  'zhixing.exportKeystoreTitle': 'Export KnowDoGraph key file',
+  'zhixing.exportKeystorePassword': 'Enter your wallet password',
+  'zhixing.exportKeystoreFilePassword': 'Choose a passphrase for this key file (at least 8 characters)',
+  'zhixing.exportKeystoreConfirm': 'Export',
+  'zhixing.exportKeystoreDone': 'Exported {filename}. Keep the passphrase safe \u2014 without it the file cannot be opened.',
+  'zhixing.exportKeystoreFailed': 'Export failed: {message}',
+  'zhixing.exportKeystoreFilePasswordHint': 'The passphrase must be at least 8 characters',
+  'zhixing.exportKeystoreCancel': 'Cancel'
 };

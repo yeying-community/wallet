@@ -155,6 +155,77 @@ export async function scrypt(pass, salt, N, r, p, dkLen) {
 }
 
 
+// ---- 写出密钥文件 ---------------------------------------------------------------
+
+// 与节点(node/src/keystore.rs)完全一致的参数。
+const KDF_LOG_N = 18;   // scrypt n = 2^18
+const KDF_R = 8;
+const KDF_P = 1;
+const KDF_DKLEN = 32;
+const KEYSTORE_VERSION = 3;
+
+/** 随机 UUID v4(与节点同样的格式:8-4-4-4-12 的小写十六进制)。 */
+function uuidV4() {
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;   // version 4
+  b[8] = (b[8] & 0x3f) | 0x80;   // variant 1 (RFC 4122)
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
+
+/**
+ * 把 32 字节种子写成 `node keygen --encrypt` / `node encrypt-key` 同样的密钥文件
+ * (Web3 Secret Storage v3),口令由用户自定。
+ *
+ * 为什么要有这个:链侧的 `node encode-knowledge-op --key-file` 与命令行工具 `zx`
+ * 认的是这个格式(加密 keystore)或裸 64 位十六进制种子。之前钱包只能导出自己
+ * 的备份格式(`yeying-wallet-accounts`),链侧读不了——于是从钱包到链侧工具
+ * 只能手工复制私钥。有了这个函数,钱包可以直接导出链侧能用的文件。
+ *
+ * 参数与节点一致:scrypt(n=2^18, r=8, p=1) → 32 字节;
+ * AES-128-CTR(密钥是派生的前 16 字节,iv 16 字节);mac = Keccak256(derived[16..32] ‖ ciphertext)。
+ * 盐与 iv 每次随机,所以同一个种子与口令两次导出得到不同的文件(这是对的)。
+ *
+ * @param {Uint8Array} seed 32 字节种子
+ * @param {string} password 口令
+ * @returns {Promise<string>} 密钥文件 JSON(pretty)
+ */
+export async function encryptZhixingKeystore(seed, password) {
+  const s = seed instanceof Uint8Array ? seed : new Uint8Array(seed);
+  if (s.length !== 32) throw new Error('ZHIXING_BAD_SEED: 种子应为 32 字节');
+  if (!password || password.length < 8) throw new Error('口令至少 8 个字符');
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(16));
+  const dk = await scrypt(enc.encode(password), salt, 1 << KDF_LOG_N, KDF_R, KDF_P, KDF_DKLEN);
+  const aes = await crypto.subtle.importKey('raw', dk.slice(0, 16), 'AES-CTR', false, ['encrypt']);
+  // WebCrypto 的 BufferSource 与新版 TS 的 Uint8Array 泛型对不齐(SharedArrayBuffer),
+  // 这里显式转成 ArrayBuffer 视图再传。
+  const plaintext = new Uint8Array(s).buffer;
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt({ name: 'AES-CTR', counter: iv, length: 128 }, aes, plaintext)
+  );
+  const mac = keccak256(concat(dk.slice(16, 32), ciphertext));
+  return JSON.stringify({
+    crypto: {
+      cipher: 'aes-128-ctr',
+      ciphertext: bytesToHex(ciphertext),
+      cipherparams: { iv: bytesToHex(iv) },
+      kdf: 'scrypt',
+      kdfparams: {
+        dklen: KDF_DKLEN,
+        n: 1 << KDF_LOG_N,
+        p: KDF_P,
+        r: KDF_R,
+        salt: bytesToHex(salt)
+      },
+      mac: bytesToHex(mac)
+    },
+    id: uuidV4(),
+    version: KEYSTORE_VERSION
+  }, null, 2);
+}
+
+
 // ---- 解开密钥文件 ---------------------------------------------------------------
 
 /**

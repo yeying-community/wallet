@@ -63,6 +63,7 @@ import {
   getNetworkConfigByKey
 } from '../../storage/index.js';
 import { validateAccountName, validateUsername } from '../../config/validation-rules.js';
+import { encryptZhixingKeystore } from '../../chain/adapters/zhixing/keystore.js';
 import { getCachedPassword, cachePassword, refreshPasswordCache, clearPasswordCache } from '../password-cache.js';
 import { resetLockTimer, lockWallet } from '../keyring.js';
 import { normalizeChainId } from '../../common/chain/index.js';
@@ -1699,6 +1700,64 @@ export async function handleExportMnemonic(walletId, password) {
     return { success: true, mnemonic };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to export mnemonic' };
+  }
+}
+
+/**
+ * 导出一个知行图账户的**加密密钥文件**(Web3 Secret Storage v3),
+ * 格式与知行图节点的 `node keygen --encrypt` / `node encrypt-key` 完全一致。
+ *
+ * 为什么要有这个:链侧的签名工具(`node encode-knowledge-op --key-file`、
+ * 命令行 `zx`)认的是这个格式或裸 64 位十六进制种子。之前钱包只能导出自己的
+ * 备份格式(`yeying-wallet-accounts`),链侧读不了——从钱包到链侧工具只能手工
+ * 复制私钥。有了这个,钱包可以直接导出链侧能用的文件。
+ *
+ * 口令是**这个密钥文件自己的**口令(与钱包密码无关):用户拿着文件和口令去链侧,
+ * 链侧用这个口令解开。链侧不会知道钱包密码,钱包也不需要知道链侧的口令。
+ *
+ * @param {string} accountId 知行图账户 id
+ * @param {string} password 钱包密码(用来解开账户的私钥)
+ * @param {string} filePassword 密钥文件的口令(至少 8 个字符)
+ * @returns {Promise<Object>} { success, keystore, filename, pubkey }
+ */
+export async function handleExportZhixingKeystore(accountId, password, filePassword) {
+  if (!accountId) {
+    return { success: false, error: 'accountId is required' };
+  }
+  if (!password) {
+    return { success: false, error: 'password is required' };
+  }
+  if (!filePassword || filePassword.length < 8) {
+    return { success: false, error: '密钥文件的口令至少需要8位字符' };
+  }
+
+  try {
+    const account = await getAccount(accountId);
+    if (!account) {
+      return { success: false, error: 'account not found' };
+    }
+    if (account.namespace !== 'zhixing') {
+      return { success: false, error: '只有知行图账户可以导出知行图密钥文件' };
+    }
+    const seedHex = await getAccountPrivateKey(account, password);
+    // 钱包里存的是 `0x` 开头的十六进制;密钥文件里要的是裸 32 字节
+    const bare = String(seedHex).replace(/^0x/i, '').trim();
+    if (!/^[0-9a-fA-F]{64}$/.test(bare)) {
+      return { success: false, error: '账户的私钥格式不对,无法导出' };
+    }
+    const seed = new Uint8Array(32);
+    for (let i = 0; i < 32; i++) seed[i] = parseInt(bare.slice(i * 2, i * 2 + 2), 16);
+    const keystore = await encryptZhixingKeystore(seed, filePassword);
+    seed.fill(0);
+    const date = new Date().toISOString().slice(0, 10);
+    return {
+      success: true,
+      keystore,
+      pubkey: String(account.address || '').toLowerCase(),
+      filename: `zhixing-keystore-${date}.json`
+    };
+  } catch (error) {
+    return { success: false, error: error.message || '导出知行图密钥文件失败' };
   }
 }
 

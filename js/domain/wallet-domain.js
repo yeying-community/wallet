@@ -14,6 +14,7 @@ import { WalletMessageType } from '../protocol/extension-protocol.js';
 import { validateAccountName, validateUsername } from '../config/validation-rules.js';
 import { BaseDomain } from './base-domain.js';
 import { getTimestamp } from '../common/utils/time-utils.js';
+import { t } from '../common/i18n/index.js';
 export { WalletMessageType };
 
 export class WalletDomain extends BaseDomain {
@@ -667,6 +668,37 @@ export class WalletDomain extends BaseDomain {
     });
 
     return result.privateKey;
+  }
+
+  /**
+   * 导出一个知行图账户的**加密密钥文件**(Web3 Secret Storage v3),
+   * 格式与知行图节点的 `node keygen --encrypt` 完全一致。
+   *
+   * 链侧的签名工具(`node encode-knowledge-op --key-file`、命令行 `zx`)认这个格式,
+   * 所以导出的文件可以直接拿去用,不用手工复制私钥。
+   *
+   * `filePassword` 是**这个密钥文件自己的**口令(与钱包密码无关):
+   * 用户拿着文件和口令去链侧,链侧用这个口令解开。
+   *
+   * @param {string} accountId - 知行图账户 ID
+   * @param {string} password - 钱包密码
+   * @param {string} filePassword - 密钥文件的口令(至少 8 个字符)
+   * @returns {Promise<Object>} { keystore, filename, pubkey }
+   */
+  async exportZhixingKeystore(accountId, password, filePassword) {
+    if (!password || password.length < 8) {
+      throw new Error('密码至少需要8位字符');
+    }
+    if (!filePassword || filePassword.length < 8) {
+      throw new Error(t('zhixing.exportKeystoreFilePasswordHint'));
+    }
+    const result = await this._sendMessage(WalletMessageType.EXPORT_ZHIXING_KEYSTORE, {
+      accountId,
+      password,
+      filePassword
+    });
+    if (!result?.success) throw new Error(result?.error || t('zhixing.exportKeystoreFailed', { message: '' }));
+    return { keystore: result.keystore, filename: result.filename, pubkey: result.pubkey };
   }
 
   /**

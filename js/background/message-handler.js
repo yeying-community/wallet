@@ -44,6 +44,7 @@ import {
   handleUpdateAccountUsername,
   handleGetProfile,
   handleExportAccountsFile,
+  handleExportZhixingKeystore,
   handleImportAccountsFile,
   handleDeleteAccount,
   handleExportPrivateKey,
@@ -1232,6 +1233,7 @@ const popupHandlers = new Map([
 
   // ==================== 导出密钥 ====================
   [WalletMessageType.EXPORT_PRIVATE_KEY, async (data) => await handleExportPrivateKey(data?.accountId, data?.password)],
+  [WalletMessageType.EXPORT_ZHIXING_KEYSTORE, async (data) => await handleExportZhixingKeystore(data?.accountId, data?.password, data?.filePassword)],
   [WalletMessageType.EXPORT_MNEMONIC, async (data) => await handleExportMnemonic(data?.walletId, data?.password)],
 
   // ==================== 诊断（可观测） ====================

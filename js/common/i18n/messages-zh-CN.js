@@ -90,5 +90,15 @@ export const messagesZhCN = {
   'zhixing.member': '账户 #{id} · {stage}',
   'zhixing.established': '已过见习期',
   'zhixing.probation': '见习期中(核验暂不计入可信度)',
-  'zhixing.open': '打开知行图 ↗'
+  'zhixing.open': '打开知行图 ↗',
+  'zhixing.exportKeystore': '导出密钥文件',
+  'zhixing.exportKeystoreHint': '导出的文件与知行图节点的 node keygen --encrypt 同格式,可直接给命令行工具(node encode-knowledge-op / zx)使用。口令是这个文件自己的,与钱包密码无关。',
+  'zhixing.exportKeystoreTitle': '导出知行图密钥文件',
+  'zhixing.exportKeystorePassword': '输入钱包密码',
+  'zhixing.exportKeystoreFilePassword': '给这个密钥文件设一个口令(至少 8 位)',
+  'zhixing.exportKeystoreConfirm': '导出',
+  'zhixing.exportKeystoreDone': '已导出 {filename}。口令请自己记好:丢了就解不开这个文件。',
+  'zhixing.exportKeystoreFailed': '导出失败:{message}',
+  'zhixing.exportKeystoreFilePasswordHint': '密钥文件的口令至少 8 个字符',
+  'zhixing.exportKeystoreCancel': '取消'
 };

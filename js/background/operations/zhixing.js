@@ -151,6 +151,7 @@ export async function getZhixingStatus({ rpcUrl, force = false } = {}) {
   const value = {
     hasKey: !!info,
     address: info ? info.address : '',
+    accountId: info ? info.accountId : '',
     height: chain ? chain.height : '',
     explorer: rpc.replace(/\/rpc\/?$/, ''),
     ...member,
