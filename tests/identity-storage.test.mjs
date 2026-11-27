@@ -113,8 +113,12 @@ test('custody restore reissues missing profile credentials using the existing si
       return { ok: true, json: async () => ({ keys: [issuerJwk] }) };
     }
     if (String(url).endsWith('/credentials/reissue/challenge')) {
-      const issuedAt = new Date().toISOString();
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      // 两次时间要取自**同一个**基准:分开取的话,跨过毫秒边界时
+      // expiresAt - issuedAt 会比 5 分钟多 1ms,而链侧把这个差值
+      // 判为无效挑战(> 5*60*1000)。机器慢的时候就会偶发失败。
+      const challengeBase = Date.now();
+      const issuedAt = new Date(challengeBase).toISOString();
+      const expiresAt = new Date(challengeBase + 5 * 60 * 1000).toISOString();
       const proofPayload = {
         purpose: 'identity-credential-reissue',
         challengeId: 'icr_restore',
@@ -200,6 +204,100 @@ test('identity presentation reports missing email credential explicitly', async 
       }),
       error => error?.message === 'IDENTITY_EMAIL_NOT_VERIFIED'
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+    clearPasswordCache();
+  }
+});
+
+test('重发挑战的有效期正好 5 分钟时(跨过毫秒边界)照样接受', async () => {
+  // 签发方把 issuedAt 与 expiresAt 分别取时刻,跨过毫秒边界时
+  // 有效期会比标称的 5 分钟多 1ms。客户端照单全收判「无效」,
+  // 于是慢机器上偶发失败。这里守住那个 1ms 的宽限。
+  for (const key of Object.keys(data)) delete data[key];
+  clearPasswordCache();
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  const identity = await createWalletIdentity();
+  const id = identity.document.walletIdentityId;
+  const issuer = 'did:web:localhost:8100';
+  const issuerEndpoint = 'http://localhost:8100';
+  const issuerKeys = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
+  const issuerJwk = await crypto.subtle.exportKey('jwk', issuerKeys.publicKey);
+  issuerJwk.kid = 'issuer-key-1';
+  issuerJwk.alg = 'EdDSA';
+  issuerJwk.use = 'sig';
+  const issueCredential = async (type, credentialId) => {
+    const header = Buffer.from(JSON.stringify({ alg: 'EdDSA', typ: 'JWT', kid: 'issuer-key-1' })).toString('base64url');
+    const payload = Buffer.from(JSON.stringify({
+      iss: issuer,
+      sub: identity.document.id,
+      iat: Math.floor(Date.now() / 1000),
+      nbf: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      jti: credentialId,
+      vc: { type: ['VerifiableCredential', type], credentialSubject: { id: identity.document.id, credentialStatus: { id: credentialId, type: 'YeyingCredentialStatusV1' } } }
+    })).toString('base64url');
+    const signingInput = `${header}.${payload}`;
+    const signature = await crypto.subtle.sign('Ed25519', issuerKeys.privateKey, new TextEncoder().encode(signingInput));
+    return `${signingInput}.${Buffer.from(signature).toString('base64url')}`;
+  };
+  await storage.saveEncryptedIdentity(id, identity, 'restore-password');
+  const walletCredential = await issueCredential('WalletAccountCredential', 'urn:test:wallet-account');
+  await storage.saveIdentityCredentials(id, [{ type: 'WalletAccountCredential', credential: walletCredential }]);
+  const canonicalize = value => value && typeof value === 'object'
+    ? Array.isArray(value) ? `[${value.map(canonicalize).join(',')}]` : `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalize(value[key])}`).join(',')}}`
+    : JSON.stringify(value);
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url: String(url) });
+    if (String(url).endsWith('/.well-known/openid-credential-issuer')) {
+      return { ok: true, json: async () => ({ issuer, jwks_uri: `${issuerEndpoint}/.well-known/jwks.json` }) };
+    }
+    if (String(url).endsWith('/.well-known/jwks.json')) {
+      return { ok: true, json: async () => ({ keys: [issuerJwk] }) };
+    }
+    if (String(url).endsWith('/credentials/reissue/challenge')) {
+      // 故意让有效期比 5 分钟多 1ms:两次取时刻时跨过了毫秒边界
+      const issuedAt = new Date(Date.now() - 1).toISOString();
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      const proofPayload = {
+        purpose: 'identity-credential-reissue',
+        challengeId: 'icr_restore',
+        identity: identity.document.id,
+        credentialTypes: ['EmailCredential', 'UsernameCredential', 'AvatarCredential'],
+        nonce: '0123456789abcdefghijklmnopqrstuv',
+        issuedAt,
+        expiresAt,
+      };
+      return { ok: true, json: async () => ({ code: 0, data: {
+        challengeId: 'icr_restore',
+        identity: identity.document.id,
+        credentialTypes: proofPayload.credentialTypes,
+        nonce: proofPayload.nonce,
+        issuedAt,
+        expiresAt,
+        signingInput: canonicalize(proofPayload),
+        proofPayload
+      } }) };
+    }
+    const types = ['EmailCredential', 'UsernameCredential', 'AvatarCredential'];
+    return { ok: true, json: async () => ({ code: 0, data: {
+      identity: identity.document.id,
+      credentialTypes: types,
+      credentials: await Promise.all(types.map(async type => ({
+        type,
+        credentialId: `urn:test:${type}`,
+        credential: await issueCredential(type, `urn:test:${type}`)
+      })))
+    } }) };
+  };
+
+  try {
+    const result = await refreshIdentityCredentialsAfterRestore({
+      identityId: id,
+      password: 'restore-password'
+    });
+    assert.deepEqual(result.refreshed, ['EmailCredential', 'UsernameCredential', 'AvatarCredential']);
   } finally {
     globalThis.fetch = originalFetch;
     clearPasswordCache();
