@@ -15,6 +15,8 @@ globalThis.chrome = {
 
 const PASSWORD = 'Backup-Pass-123';
 const LEGACY_IDENTITY_PASSWORD = 'Identity-Old-456';
+// Hardhat 公开测试向量(公链尽人皆知,无真实资产)
+const TEST_PRIVKEY_0 = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
 const { createHDWallet, deriveSubAccount, deriveTronSubAccount, importTronPrivateKeyWallet } = await import('../js/background/vault.js');
 const { handleExportAccountsFile, handleImportAccountsFile } = await import('../js/background/operations/wallet.js');
 const { saveWallet, saveAccount, getAccountList, clearAllData } = await import('../js/storage/index.js');
@@ -336,4 +338,40 @@ test('legacy v2 backup can skip an unreadable Identity and still restore wallet 
   assert.match(imported.warnings[0], /Wallet Identity 未恢复/);
   assert.equal(await getIdentity(identityId), null);
   assert.equal((await getAccountList()).length, 1);
+});
+
+test('只导一个钱包:文件里只有那个钱包的账户', async () => {
+  await clearAllData();
+  const hd = await createHDWallet('Primary', PASSWORD);
+  await saveWallet(hd.wallet);
+  await saveAccount(hd.mainAccount);
+
+  const tron = await importTronPrivateKeyWallet('Tron PK', TEST_PRIVKEY_0, PASSWORD);
+  await saveWallet(tron.wallet);
+  await saveAccount(tron.mainAccount);
+
+  const all = await handleExportAccountsFile(PASSWORD);
+  assert.equal(all.success, true);
+  assert.equal(all.walletCount, 2);
+
+  const only = await handleExportAccountsFile(PASSWORD, '', { walletId: hd.wallet.id });
+  assert.equal(only.success, true);
+  assert.equal(only.walletCount, 1, '只导一个钱包');
+  assert.equal(only.accountCount, 1);
+
+  const payload = await decryptObject(only.file.ciphertext, PASSWORD);
+  assert.equal(payload.wallets.length, 1);
+  assert.equal(payload.wallets[0].accounts[0].address, hd.mainAccount.address);
+  assert.equal(payload.wallets[0].accounts[0].namespace, 'eip155');
+});
+
+test('只导一个钱包:不存在的钱包 id 要报错,不是静默导出全部', async () => {
+  await clearAllData();
+  const hd = await createHDWallet('Primary', PASSWORD);
+  await saveWallet(hd.wallet);
+  await saveAccount(hd.mainAccount);
+
+  const res = await handleExportAccountsFile(PASSWORD, '', { walletId: 'no-such-wallet' });
+  assert.equal(res.success, false);
+  assert.match(res.error, /没有可导出的本地账户/);
 });

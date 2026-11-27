@@ -890,6 +890,28 @@ textarea.input {
   padding: 20px;
 }
 
+/* 导出知行图密钥文件的模态框。
+   提示文字不用 .settings-hint:它带 -6px 的上边距,会盖在输入框上。 */
+.zhixing-ks-hint {
+  margin: 6px 0 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #777;
+}
+
+/* 输入框下面的那行提示:紧跟输入框,不留大间距 */
+.form-group .zhixing-ks-hint {
+  margin: 6px 0 0;
+}
+
+.zhixing-ks-error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #c0392b;
+  min-height: 1em;
+}
+
 .modal-footer {
   display: flex;
   gap: 12px;

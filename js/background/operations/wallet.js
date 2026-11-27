@@ -32,7 +32,7 @@ import {
   getWalletMnemonic,
   changeWalletPassword
 } from '../vault.js';
-import { encryptObject, decryptObject, decryptString } from '../../common/crypto/index.js';
+import { encryptObject, decryptObject, decryptString, encryptString } from '../../common/crypto/index.js';
 import {
   getAccount,
   setSelectedAccountId,
@@ -63,6 +63,7 @@ import {
   getNetworkConfigByKey
 } from '../../storage/index.js';
 import { validateAccountName, validateUsername } from '../../config/validation-rules.js';
+import { encryptZhixingKeystore } from '../../chain/adapters/zhixing/keystore.js';
 import { getCachedPassword, cachePassword, refreshPasswordCache, clearPasswordCache } from '../password-cache.js';
 import { resetLockTimer, lockWallet } from '../keyring.js';
 import { normalizeChainId } from '../../common/chain/index.js';
@@ -1280,10 +1281,18 @@ export function handleImportPrivateKeyWalletByNamespace(name, privateKey, passwo
   }
 }
 
+/**
+ * 导出账户备份文件(`yeying-wallet-accounts` v2)。
+ *
+ * `options.walletId` 给了就**只导那一个钱包**(「⋯」菜单里单个钱包的「加密导出」用这个);
+ * 不给就导全部本地钱包(页面头部「导出钱包」用这个)。
+ * `options.identityPassword` 是 Wallet Identity 的旧口令(改过密码的钱包要)。
+ */
 export async function handleExportAccountsFile(password, identityEndpoint = '', options = {}) {
   if (!password || password.length < MIN_PASSWORD_LENGTH) {
     return { success: false, error: 'password is required' };
   }
+  const onlyWalletId = String(options?.walletId || '').trim();
   try {
     const wallets = await getWallets();
     const identities = await getIdentities();
@@ -1293,6 +1302,7 @@ export async function handleExportAccountsFile(password, identityEndpoint = '', 
     const exportedIdentities = [];
     for (const wallet of Object.values(wallets || {})) {
       if (wallet.type !== WALLET_TYPE.HD && wallet.type !== WALLET_TYPE.IMPORTED) continue;
+      if (onlyWalletId && wallet.id !== onlyWalletId) continue;
       const accounts = (await getWalletAccounts(wallet.id)).sort((a, b) => (a.index || 0) - (b.index || 0));
       if (accounts.length === 0) continue;
       const entry = {
@@ -1320,10 +1330,15 @@ export async function handleExportAccountsFile(password, identityEndpoint = '', 
       }
       exportedWallets.push(entry);
     }
-    if (exportedWallets.length === 0) return { success: false, error: '没有可导出的本地账户' };
+    if (exportedWallets.length === 0) {
+      return { success: false, error: onlyWalletId ? '这个钱包没有可导出的本地账户' : '没有可导出的本地账户' };
+    }
     const legacyIdentityPassword = String(options?.identityPassword || '');
     let repairedIdentities = 0;
     for (const identity of Object.values(identities || {})) {
+      // 只导一个钱包时,Wallet Identity 不跟着走——身份是跨钱包的东西,
+      // 混进单钱包的备份里会让「导入」把它恢复到错误的上下文。
+      if (onlyWalletId) break;
       if (!identity?.document?.walletIdentityId) continue;
       if (!identity.encryptedKeyMaterial) {
         return { success: false, error: `钱包身份 ${identity.document.walletIdentityId} 缺少加密密钥材料` };
@@ -1699,6 +1714,158 @@ export async function handleExportMnemonic(walletId, password) {
     return { success: true, mnemonic };
   } catch (error) {
     return { success: false, error: error.message || 'Failed to export mnemonic' };
+  }
+}
+
+/** 文件名里用的名字:去掉路径分隔符与控制字符,其余原样(中文名也能用)。 */
+function sanitizeFileNamePart(name) {
+  return String(name || '')
+    .replace(/[\/\x00-\x1f<>:"|?*]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
+
+/**
+ * 导出一个账户的**加密密钥文件**(通用格式)。
+ *
+ * 适用所有链:所有链的私钥都是 `0x` + 64 位小写十六进制(EVM/Tron/Bitcoin 是
+ * secp256k1 标量,Solana 与知行图是 ed25519 种子),所以不需要按链分支——
+ * 只要把 namespace/chainKey 一起带上,消费方才知道怎么解释。
+ *
+ * 文件格式:
+ *   { format: "yeying-wallet-key", version: 1, chain: {namespace, chainKey, curve},
+ *     address, derivationPath?, cipher: "AES-GCM", ciphertext: "v2.<base64>" }
+ * 密文用钱包自己的 `encryptString`(AES-256-GCM + PBKDF2),口令是**文件自己的**
+ * 口令(与钱包密码无关)。
+ *
+ * 知行图账户另有专用格式(Web3 Secret Storage v3,链侧工具只认那个)——
+ * 见 `handleExportZhixingKeystore`。这个通用格式**不能**给知行图用:
+ * 链侧工具读不了。
+ *
+ * @param {string} accountId 账户 id
+ * @param {string} password 钱包密码(用来解开账户的私钥)
+ * @param {string} filePassword 密钥文件的口令(至少 8 个字符)
+ * @returns {Promise<Object>} { success, keystore, filename, address }
+ */
+export async function handleExportAccountKeyfile(accountId, password, filePassword) {
+  if (!accountId) {
+    return { success: false, error: 'accountId is required' };
+  }
+  if (!password) {
+    return { success: false, error: 'password is required' };
+  }
+  if (!filePassword || filePassword.length < 8) {
+    return { success: false, error: '密钥文件的口令至少需要8位字符' };
+  }
+
+  try {
+    const account = await getAccount(accountId);
+    if (!account) {
+      return { success: false, error: 'account not found' };
+    }
+    // MPC 钱包的密钥分片不在这里(在 MPC_KEY_SHARES),导不出单个私钥
+    if (!account.encryptedPrivateKey) {
+      return { success: false, error: '这个账户没有可导出的私钥' };
+    }
+    const secret = await getAccountPrivateKey(account, password);
+    const bare = String(secret).replace(/^0x/i, '').trim();
+    if (!/^[0-9a-fA-F]{64}$/.test(bare)) {
+      return { success: false, error: '账户的私钥格式不对,无法导出' };
+    }
+    const namespace = String(account.namespace || 'eip155').toLowerCase();
+    const payload = {
+      format: 'yeying-wallet-key',
+      version: 1,
+      chain: {
+        namespace,
+        chainKey: String(account.chainKey || ''),
+        // 曲线只是提示:Solana 与知行图是 ed25519 种子,其余是 secp256k1 标量
+        curve: (namespace === 'solana' || namespace === 'zhixing') ? 'ed25519-seed' : 'secp256k1'
+      },
+      address: String(account.address || '').toLowerCase(),
+      exportedAt: getTimestamp()
+    };
+    if (account.derivationPath) payload.derivationPath = account.derivationPath;
+    const file = {
+      format: payload.format,
+      version: payload.version,
+      chain: payload.chain,
+      address: payload.address,
+      ...(payload.derivationPath ? { derivationPath: payload.derivationPath } : {}),
+      cipher: 'AES-GCM',
+      ciphertext: await encryptString(secret, filePassword)
+    };
+    const date = new Date().toISOString().slice(0, 10);
+    const label = sanitizeFileNamePart(account.name || '') || sanitizeFileNamePart(file.address) || 'account';
+    return {
+      success: true,
+      keystore: JSON.stringify(file, null, 2),
+      address: file.address,
+      filename: `wallet-key-${label}-${date}.json`
+    };
+  } catch (error) {
+    return { success: false, error: error.message || '导出密钥文件失败' };
+  }
+}
+
+/**
+ * 导出一个知行图账户的**加密密钥文件**(Web3 Secret Storage v3),
+ * 格式与知行图节点的 `node keygen --encrypt` / `node encrypt-key` 完全一致。
+ *
+ * 为什么要有这个:链侧的签名工具(`node encode-knowledge-op --key-file`、
+ * 命令行 `zx`)认的是这个格式或裸 64 位十六进制种子。之前钱包只能导出自己的
+ * 备份格式(`yeying-wallet-accounts`),链侧读不了——从钱包到链侧工具只能手工
+ * 复制私钥。有了这个,钱包可以直接导出链侧能用的文件。
+ *
+ * 口令是**这个密钥文件自己的**口令(与钱包密码无关):用户拿着文件和口令去链侧,
+ * 链侧用这个口令解开。链侧不会知道钱包密码,钱包也不需要知道链侧的口令。
+ *
+ * @param {string} accountId 知行图账户 id
+ * @param {string} password 钱包密码(用来解开账户的私钥)
+ * @param {string} filePassword 密钥文件的口令(至少 8 个字符)
+ * @returns {Promise<Object>} { success, keystore, filename, pubkey }
+ */
+export async function handleExportZhixingKeystore(accountId, password, filePassword) {
+  if (!accountId) {
+    return { success: false, error: 'accountId is required' };
+  }
+  if (!password) {
+    return { success: false, error: 'password is required' };
+  }
+  if (!filePassword || filePassword.length < 8) {
+    return { success: false, error: '密钥文件的口令至少需要8位字符' };
+  }
+
+  try {
+    const account = await getAccount(accountId);
+    if (!account) {
+      return { success: false, error: 'account not found' };
+    }
+    if (account.namespace !== 'zhixing') {
+      return { success: false, error: '只有知行图账户可以导出知行图密钥文件' };
+    }
+    const seedHex = await getAccountPrivateKey(account, password);
+    // 钱包里存的是 `0x` 开头的十六进制;密钥文件里要的是裸 32 字节
+    const bare = String(seedHex).replace(/^0x/i, '').trim();
+    if (!/^[0-9a-fA-F]{64}$/.test(bare)) {
+      return { success: false, error: '账户的私钥格式不对,无法导出' };
+    }
+    const seed = new Uint8Array(32);
+    for (let i = 0; i < 32; i++) seed[i] = parseInt(bare.slice(i * 2, i * 2 + 2), 16);
+    const keystore = await encryptZhixingKeystore(seed, filePassword);
+    seed.fill(0);
+    const date = new Date().toISOString().slice(0, 10);
+    // 文件名带上账户名称,便于一个人导多个账户时分辨(也便于组织者对上是谁的密钥)
+    const label = sanitizeFileNamePart(account.name || '') || account.address || 'account';
+    return {
+      success: true,
+      keystore,
+      pubkey: String(account.address || '').toLowerCase(),
+      filename: `zhixing-keystore-${label}-${date}.json`
+    };
+  } catch (error) {
+    return { success: false, error: error.message || '导出知行图密钥文件失败' };
   }
 }
 

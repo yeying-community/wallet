@@ -119,10 +119,12 @@
   gap: 8px;
 }
 
+/* 钱包头部的按钮:没有边框,图标本身明显一点。
+   原来有 1px 边框 + 白底,一排图标看过去像一个个小方框,反而看不清是什么。 */
 .wallet-header-btn {
-  border: 1px solid #e5e7eb;
-  background: #fff;
-  color: #374151;
+  border: none;
+  background: transparent;
+  color: #4b5563;
   font-size: 12px;
   font-weight: 500;
   padding: 6px 10px;
@@ -140,9 +142,18 @@
   justify-content: center;
 }
 
-.wallet-header-btn:hover {
+/* 「⋯」按钮:比别的图标显眼一点——它是入口,不是一个可选动作 */
+.wallet-header-btn.account-menu-btn,
+.account-action-btn.account-menu-btn {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1;
+  color: #4b5563;
+}
+
+.wallet-header-btn.account-menu-btn:hover,
+.account-action-btn.account-menu-btn:hover {
   background: #eef2ff;
-  border-color: #c7d2fe;
   color: #4338ca;
 }
 
@@ -429,25 +440,27 @@
   margin-left: 8px;
 }
 
+/* 账户行的操作按钮:没有边框、没有白底方块,图标本身明显一点。
+   原来每个按钮一个白底方块,一排账户看过去像一排小方框。 */
 .account-action-btn {
   width: 32px;
   height: 32px;
   border: none;
-  background: #fff;
+  background: transparent;
   border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #6b7280;
+  color: #4b5563;
   transition: all 0.15s ease;
-  font-size: 16px;
+  font-size: 18px;
   padding: 0;
 }
 
 .account-action-btn:hover {
-  background: #f3f4f6;
-  color: #1f2937;
+  background: #eef2ff;
+  color: #4338ca;
 }
 
 .account-action-btn.danger:hover {
@@ -462,6 +475,49 @@
 .account-action-btn.key-btn:hover {
   background: #eef2ff;
   color: #1d4ed8;
+}
+
+/* 账户/钱包的「⋯」操作菜单。
+   挂在 document.body 上、用 fixed 定位:钱包卡片是 overflow: hidden,
+   放在卡片里会被裁掉。视觉沿用 .network-menu,只是定位改成按钮锚定。 */
+.account-menu-popup {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: auto;
+  min-width: 180px;
+  max-width: 260px;
+  z-index: 1001;
+}
+
+.account-menu-popup .network-option {
+  white-space: normal;
+  line-height: 1.45;
+}
+
+.account-menu-popup .network-option.danger {
+  color: #dc2626;
+}
+
+.account-menu-popup .network-option.danger:hover {
+  background: #fef2f2;
+}
+
+.network-option-note {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+/* 只是说明的菜单项(比如「这个钱包没有助记词」):不是可点的动作,
+   所以不跟鼠标、颜色也淡一点——免得让人以为点了有反应。 */
+.account-menu-popup .network-option.note-only,
+.account-menu-popup .network-option.note-only:hover {
+  background: transparent;
+  color: #6b7280;
+  cursor: default;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 /* 添加账户按钮 */

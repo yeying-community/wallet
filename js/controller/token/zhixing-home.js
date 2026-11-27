@@ -124,4 +124,7 @@ function drawStatus(s) {
     a.textContent = t('zhixing.open');
     list.appendChild(row(t('zhixing.explorer'), a));
   }
+
+  // 导出密钥文件的入口在「账户管理 → 账户右侧的 ⋯ 菜单」里——
+  // 那是所有链的账户都在的地方,同一个动作只留一个入口。
 }

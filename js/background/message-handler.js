@@ -44,6 +44,8 @@ import {
   handleUpdateAccountUsername,
   handleGetProfile,
   handleExportAccountsFile,
+  handleExportZhixingKeystore,
+  handleExportAccountKeyfile,
   handleImportAccountsFile,
   handleDeleteAccount,
   handleExportPrivateKey,
@@ -1150,6 +1152,7 @@ const popupHandlers = new Map([
   [WalletMessageType.UPDATE_ACCOUNT_USERNAME, async (data) => await handleUpdateAccountUsername(data?.accountId, data?.username)],
   [WalletMessageType.GET_PROFILE, async () => await handleGetProfile()],
   [WalletMessageType.EXPORT_ACCOUNTS_FILE, async (data) => await handleExportAccountsFile(data?.password, data?.identityEndpoint, {
+    walletId: data?.walletId,
     identityPassword: data?.identityPassword
   })],
   [WalletMessageType.IMPORT_ACCOUNTS_FILE, async (data) => await handleImportAccountsFile(data?.file, data?.password, {
@@ -1232,6 +1235,8 @@ const popupHandlers = new Map([
 
   // ==================== 导出密钥 ====================
   [WalletMessageType.EXPORT_PRIVATE_KEY, async (data) => await handleExportPrivateKey(data?.accountId, data?.password)],
+  [WalletMessageType.EXPORT_ZHIXING_KEYSTORE, async (data) => await handleExportZhixingKeystore(data?.accountId, data?.password, data?.filePassword)],
+  [WalletMessageType.EXPORT_ACCOUNT_KEYFILE, async (data) => await handleExportAccountKeyfile(data?.accountId, data?.password, data?.filePassword)],
   [WalletMessageType.EXPORT_MNEMONIC, async (data) => await handleExportMnemonic(data?.walletId, data?.password)],
 
   // ==================== 诊断（可观测） ====================

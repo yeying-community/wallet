@@ -10,6 +10,11 @@ const METHOD = 'wallet_identity_presentation';
 const DEFAULT_ISSUER_ENDPOINT = 'https://node.yeying.pub';
 const ALLOWED_SCOPES = new Set(['identity.basic', 'identity.wallet', 'identity.username', 'identity.email', 'identity.avatar']);
 const CREDENTIAL_CLOCK_SKEW_MS = 60 * 1000;
+// 重发挑战的有效期上限。留 1 秒的宽限:签发方把 issuedAt 与 expiresAt
+// 分别取时刻时,跨过毫秒边界会让有效期比标称的多出 1ms,
+// 照单全收地判「无效」会在链侧时钟稍慢时偶发失败。
+const REISSUE_CHALLENGE_MAX_LIFETIME_MS = 5 * 60 * 1000;
+const REISSUE_CHALLENGE_LIFETIME_SLACK_MS = 1000;
 
 export function normalizeIdentityPresentationRequest(params, origin) {
   const request = Array.isArray(params) ? params[0] : params;
@@ -303,7 +308,7 @@ async function reissueMissingCredentials({ identityId, record, credentials, miss
   };
   const issuedAt = Date.parse(expectedProofPayload.issuedAt);
   const expiresAt = Date.parse(expectedProofPayload.expiresAt);
-  if (!expectedProofPayload.challengeId || expectedProofPayload.nonce.length < 16 || !Number.isFinite(issuedAt) || !Number.isFinite(expiresAt) || issuedAt > Date.now() + 30_000 || expiresAt <= Date.now() || expiresAt - issuedAt > 5 * 60 * 1000 || canonicalize(challenge.proofPayload) !== canonicalize(expectedProofPayload) || challenge.signingInput !== canonicalize(expectedProofPayload)) {
+  if (!expectedProofPayload.challengeId || expectedProofPayload.nonce.length < 16 || !Number.isFinite(issuedAt) || !Number.isFinite(expiresAt) || issuedAt > Date.now() + 30_000 || expiresAt <= Date.now() || expiresAt - issuedAt > REISSUE_CHALLENGE_MAX_LIFETIME_MS + REISSUE_CHALLENGE_LIFETIME_SLACK_MS || canonicalize(challenge.proofPayload) !== canonicalize(expectedProofPayload) || challenge.signingInput !== canonicalize(expectedProofPayload)) {
     throw new Error('IDENTITY_CREDENTIAL_REISSUE_CHALLENGE_INVALID');
   }
   const signingInput = canonicalize(expectedProofPayload);

@@ -1,4 +1,5 @@
 import { showSuccess, showError, showWarning, copyMnemonicToClipboard, copyPrivateKeyToClipboard, createCopyToastHandler } from '../../common/ui/index.js';
+import { t } from '../../common/i18n/index.js';
 import { getTimestamp } from '../../common/utils/time-utils.js';
 
 export class AccountModalsController {
@@ -302,6 +303,163 @@ export class AccountModalsController {
   promptPassword(options = {}) {
     return promptPassword(options);
   }
+
+  /**
+   * 导出账户的**加密密钥文件**。
+   *
+   * 需要两个输入:钱包密码(解开账户私钥)与**这个文件自己的**口令(用它解开文件)。
+   * 两者不同:链侧不会知道钱包密码,钱包也不需要知道文件口令。
+   *
+   * 知行图账户导出的是 Web3 Secret Storage v3(与节点 `node keygen --encrypt` 同格式),
+   * 链侧工具(`node encode-knowledge-op --key-file`、命令行 `zx`)直接能用;
+   * 其它链导出的是钱包自己的 `yeying-wallet-key` 格式。
+   */
+  async exportAccountKeyfile(accountId) {
+    try {
+      const account = await this.wallet.getAccountById(accountId);
+      if (!account) {
+        showError(t('zhixing.exportKeystoreFailed', { message: '账户不存在' }));
+        return;
+      }
+      const isZhixing = String(account.namespace || '').toLowerCase() === 'zhixing';
+      const modal = ensureKeyfileExportModal();
+      const walletPw = modal.querySelector('#zhixingKsWalletPassword');
+      const filePw = modal.querySelector('#zhixingKsFilePassword');
+      const errorEl = modal.querySelector('#zhixingKsError');
+      const titleEl = modal.querySelector('#zhixingKsTitle');
+      const hintEl = modal.querySelector('#zhixingKsHint');
+      if (walletPw) walletPw.value = '';
+      if (filePw) filePw.value = '';
+      if (errorEl) errorEl.textContent = '';
+      if (titleEl) {
+        titleEl.textContent = isZhixing
+          ? t('zhixing.exportKeystoreTitle')
+          : t('wallet.exportKeyfileTitle');
+      }
+      if (hintEl) {
+        hintEl.textContent = isZhixing
+          ? t('zhixing.exportKeystoreHint')
+          : t('wallet.exportKeyfileHint');
+      }
+      modal.classList.remove('hidden');
+      setTimeout(() => walletPw?.focus(), 0);
+
+      const result = await new Promise((resolve) => {
+        const cleanup = () => {
+          confirmBtn?.removeEventListener('click', handleConfirm);
+          cancelBtn?.removeEventListener('click', handleCancel);
+          closeBtn?.removeEventListener('click', handleCancel);
+          overlay?.removeEventListener('click', handleCancel);
+          filePw?.removeEventListener('keypress', handleKeypress);
+        };
+        const handleCancel = () => {
+          cleanup();
+          modal.classList.add('hidden');
+          resolve(null);
+        };
+        const handleKeypress = (e) => { if (e.key === 'Enter') handleConfirm(); };
+        const handleConfirm = async () => {
+          const wp = walletPw?.value || '';
+          const fp = filePw?.value || '';
+          if (!wp) {
+            if (errorEl) errorEl.textContent = t('zhixing.exportKeystorePassword');
+            walletPw?.focus();
+            return;
+          }
+          if (!fp || fp.length < 8) {
+            if (errorEl) errorEl.textContent = t('zhixing.exportKeystoreFilePasswordHint');
+            filePw?.focus();
+            return;
+          }
+          try {
+            const exported = isZhixing
+              ? await this.wallet.exportZhixingKeystore(accountId, wp, fp)
+              : await this.wallet.exportAccountKeyfile(accountId, wp, fp);
+            cleanup();
+            modal.classList.add('hidden');
+            resolve(exported);
+          } catch (error) {
+            if (errorEl) errorEl.textContent = error?.message || t('zhixing.exportKeystoreFailed', { message: '' });
+          }
+        };
+        const confirmBtn = modal.querySelector('#zhixingKsConfirm');
+        const cancelBtn = modal.querySelector('#zhixingKsCancel');
+        const closeBtn = modal.querySelector('#zhixingKsClose');
+        const overlay = modal.querySelector('.modal-overlay');
+        confirmBtn?.addEventListener('click', handleConfirm);
+        cancelBtn?.addEventListener('click', handleCancel);
+        closeBtn?.addEventListener('click', handleCancel);
+        overlay?.addEventListener('click', handleCancel);
+        filePw?.addEventListener('keypress', handleKeypress);
+      });
+
+      if (!result) return;
+      // 下载文件
+      const blob = new Blob([result.keystore], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = result.filename || 'wallet-key.json';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      showSuccess(t('zhixing.exportKeystoreDone', { filename: result.filename || 'wallet-key.json' }));
+    } catch (error) {
+      console.error('[AccountModalsController] 导出密钥文件失败:', error);
+      showError(t('zhixing.exportKeystoreFailed', { message: error?.message || '' }));
+    }
+  }
+}
+
+/** 导出密钥文件的模态框(两个输入:钱包密码 + 文件自己的口令)。 */
+function ensureKeyfileExportModal() {
+  let modal = document.getElementById('zhixingKeystoreModal');
+  if (modal) return modal;
+  modal = document.createElement('div');
+  modal.id = 'zhixingKeystoreModal';
+  modal.className = 'modal hidden';
+  modal.innerHTML = `
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="zhixingKsTitle">导出知行图密钥文件</h3>
+        <button class="btn-close" id="zhixingKsClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="zhixing-ks-hint" id="zhixingKsHint"></p>
+        <div class="form-group">
+          <label for="zhixingKsWalletPassword" id="zhixingKsWalletPasswordLabel"></label>
+          <input type="password" id="zhixingKsWalletPassword" />
+        </div>
+        <div class="form-group">
+          <label for="zhixingKsFilePassword" id="zhixingKsFilePasswordLabel"></label>
+          <input type="password" id="zhixingKsFilePassword" />
+          <p class="zhixing-ks-hint" id="zhixingKsFilePasswordHint"></p>
+        </div>
+        <p class="zhixing-ks-error" id="zhixingKsError"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="zhixingKsCancel"></button>
+        <button class="btn btn-primary" id="zhixingKsConfirm"></button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  // 文字走 i18n(界面里的中文都要有英文译文)。
+  // 标题与说明按链来定:知行图用链侧互操作的说法,其它链用通用说法。
+  // 打开对话框时会按账户的 namespace 再设一次(见 exportAccountKeyfile)。
+  const set = (id, text) => { const n = modal.querySelector(id); if (n) n.textContent = text; };
+  set('#zhixingKsTitle', t('wallet.exportKeyfileTitle'));
+  set('#zhixingKsHint', t('wallet.exportKeyfileHint'));
+  set('#zhixingKsWalletPasswordLabel', t('zhixing.exportKeystorePassword'));
+  set('#zhixingKsFilePasswordLabel', t('zhixing.exportKeystoreFilePassword'));
+  set('#zhixingKsFilePasswordHint', t('zhixing.exportKeystoreFilePasswordHint'));
+  set('#zhixingKsCancel', t('zhixing.exportKeystoreCancel'));
+  set('#zhixingKsConfirm', t('zhixing.exportKeystoreConfirm'));
+  modal.querySelector('#zhixingKsWalletPassword')?.setAttribute('placeholder', t('zhixing.exportKeystorePassword'));
+  modal.querySelector('#zhixingKsFilePassword')?.setAttribute('placeholder', t('zhixing.exportKeystoreFilePasswordPlaceholder'));
+  return modal;
 }
 
 function openModal(modalId) {

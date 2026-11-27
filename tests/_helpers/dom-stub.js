@@ -54,6 +54,16 @@ function makeClassList(el) {
     _set: set
   };
   Object.defineProperty(el, 'classList', { value: cl, configurable: true });
+  // 真实 DOM 里 className 与 classList 是同一份东西：
+  // 设 className 会换掉 classList 的内容，两边必须同步。
+  Object.defineProperty(el, 'className', {
+    get: () => [...set].join(' '),
+    set: (value) => {
+      set.clear();
+      String(value || '').split(/\s+/).filter(Boolean).forEach((n) => set.add(n));
+    },
+    configurable: true
+  });
   return cl;
 }
 
@@ -136,6 +146,12 @@ export function createElement(init = {}) {
     configurable: true
   });
   el._setAttribute = (name, value) => { el.attrs[name] = value; };
+  // style：定位用的下拉菜单要写 style.left / style.top
+  el.style = init.style || {};
+  // getBoundingClientRect：菜单按按钮位置摆开时要用
+  el.getBoundingClientRect = init.getBoundingClientRect || (() => ({
+    left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0
+  }));
   el.querySelector = (selector) => {
     if (selector === '.modal-overlay') {
       // 特殊处理：取子节点第一个 class 含 modal-overlay 的 div
@@ -231,6 +247,17 @@ export function createDocument(idMap = {}) {
     allElements.push(elements.globalWaitingOverlay);
   }
 
+  // document.body：像真实 DOM 一样记住 append 进来的元素，
+  // 这样挂在 body 上的东西（比如浮层、下拉菜单）也能被 getElementById / querySelector 找到。
+  const body = createElement({ tagName: 'body' });
+  const bodyAppend = body.appendChild.bind(body);
+  body.appendChild = (child) => {
+    bodyAppend(child);
+    allElements.push(child);
+    if (child?.id) elements[child.id] = child;
+    return child;
+  };
+
   const document = {
     getElementById: (id) => elements[id] || null,
     querySelector: (sel) => {
@@ -246,7 +273,7 @@ export function createDocument(idMap = {}) {
       return out;
     },
     createElement: (tagName) => createElement({ tagName }),
-    body: createElement({ tagName: 'body' }),
+    body,
     get elements() { return elements; }
   };
   return { document, elements };
