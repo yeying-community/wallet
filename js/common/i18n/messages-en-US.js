@@ -101,5 +101,16 @@ export const messagesEnUS = {
   'zhixing.exportKeystoreFailed': 'Export failed: {message}',
   'zhixing.exportKeystoreFilePasswordHint': 'This passphrase only opens the exported file (the chain uses it to unlock it). It is unrelated to your wallet password.',
   'zhixing.exportKeystoreFilePasswordPlaceholder': 'Enter the file passphrase (at least 8 characters)',
-  'zhixing.exportKeystoreCancel': 'Cancel'
+  'zhixing.exportKeystoreCancel': 'Cancel',
+  'wallet.exportKeyfileTitle': 'Export key file',
+  'wallet.exportKeyfileHint': 'The exported file is encrypted with its own passphrase. Keep it safe \u2014 without it the file cannot be opened.',
+  'account.menu': 'Account actions',
+  'account.menu.viewPrivateKey': 'View private key',
+  'account.menu.exportKeyfile': 'Encrypted export',
+  'account.menu.deleteAccount': 'Delete account',
+  'account.menu.viewMnemonic': 'View mnemonic',
+  'account.menu.exportWallet': 'Encrypted export of this wallet',
+  'account.menu.noMnemonic': 'This account was imported from a private key, so the wallet has no mnemonic for it',
+  'wallet.exportOneWalletTitle': 'Export "{name}"',
+  'wallet.exportOneWalletFallbackName': 'this wallet'
 };

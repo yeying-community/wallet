@@ -1,6 +1,7 @@
 import { showPage, showError, showSuccess, setPageOrigin, showWaiting, hideWaiting, copyAddressToClipboard, createCopyToastHandler } from '../../common/ui/index.js';
 import { shortenAddress, generateAvatar } from '../../common/chain/index.js';
 import { escapeHtml } from '../../common/ui/html-ui.js';
+import { t } from '../../common/i18n/index.js';
 import { clearImportWalletForm } from '../wallet/import-wallet-controller.js';
 
 import {
@@ -9,6 +10,18 @@ import {
 } from '../../config/identity-config.js';
 
 // 早先创建的钱包默认名是英文(存在存储里);显示时换成中文类型名,英文界面再由翻译词典译回
+/** 账户/钱包操作菜单的容器(挂在 document.body 上,固定定位)。 */
+function ensureAccountMenu() {
+  let menu = document.getElementById('accountActionMenu');
+  if (menu) return menu;
+  menu = document.createElement('div');
+  menu.id = 'accountActionMenu';
+  menu.className = 'network-menu account-menu-popup hidden';
+  menu.setAttribute('role', 'menu');
+  document.body.appendChild(menu);
+  return menu;
+}
+
 const DEFAULT_WALLET_NAMES = { 'HD Wallet': 'HD 钱包', 'Imported Wallet': '导入的钱包', 'MPC Wallet': 'MPC 钱包' };
 
 function formatMpcSigningPrepareError(message) {
@@ -32,6 +45,8 @@ export class AccountListController {
     onOpenCreateAccount,
     onViewMnemonic,
     onViewPrivateKey,
+    onExportAccountKeyfile,
+    onExportWallet,
     promptPassword
   }) {
     this.wallet = wallet;
@@ -41,14 +56,39 @@ export class AccountListController {
     this.onOpenCreateAccount = onOpenCreateAccount;
     this.onViewMnemonic = onViewMnemonic;
     this.onViewPrivateKey = onViewPrivateKey;
+    this.onExportAccountKeyfile = onExportAccountKeyfile;
+    this.onExportWallet = onExportWallet;
     this.promptPassword = promptPassword;
     this.mpcWalletsById = new Map();
+    this.walletsById = new Map();
+    this.accountsById = new Map();
+    this.openMenuTrigger = null;
     this.activeMpcWalletId = '';
     this.activeMpcInviteId = '';
     this.pendingMpcInvites = [];
   }
 
   bindEvents() {
+    // 账户/钱包的「⋯」菜单:菜单本体在 document.body 上(固定定位),
+    // 用**委托**绑定——账户列表每次渲染都会整个换掉 innerHTML,逐个元素绑定会丢。
+    document.addEventListener('click', (event) => {
+      const menu = document.getElementById('accountActionMenu');
+      if (!menu || menu.classList.contains('hidden')) return;
+      const option = event.target.closest('.network-option');
+      if (option && menu.contains(option)) {
+        this.handleAccountMenuAction(option.dataset.action, option.dataset.id);
+        this.closeAccountMenu();
+        return;
+      }
+      if (event.target.closest('.account-menu-btn')) return;
+      this.closeAccountMenu();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      const menu = document.getElementById('accountActionMenu');
+      if (menu && !menu.classList.contains('hidden')) this.closeAccountMenu();
+    });
+
     const menuBtn = document.getElementById('accountsMenuBtn');
     const menu = document.getElementById('accountsMenu');
     if (menuBtn && menu) {
@@ -109,10 +149,19 @@ export class AccountListController {
     });
   }
 
-  async handleExportAccounts() {
+  /**
+   * 导出账户备份文件。
+   * @param {string} [walletId] - 给了就只导这一个钱包(「⋯」菜单里单个钱包的「加密导出」);
+   *                             不给就导全部(页面头部「导出钱包」)。
+   */
+  async handleExportAccounts(walletId = '') {
     if (!this.promptPassword) return;
+    const onlyWallet = String(walletId || '').trim();
+    const walletName = onlyWallet
+      ? (this.walletsById.get(onlyWallet)?.name || t('wallet.exportOneWalletFallbackName'))
+      : '';
     const password = await this.promptPassword({
-      title: '导出所有账户',
+      title: onlyWallet ? t('wallet.exportOneWalletTitle', { name: walletName }) : '导出所有账户',
       confirmText: '加密导出',
       placeholder: '输入当前钱包密码',
       onConfirm: async (value) => {
@@ -130,7 +179,7 @@ export class AccountListController {
       );
       let result;
       try {
-        result = await this.wallet.exportAccountsFile(password, identityEndpoint);
+        result = await this.wallet.exportAccountsFile(password, identityEndpoint, { walletId: onlyWallet });
       } catch (error) {
         if (!error?.requirePassword) throw error;
         hideWaiting();
@@ -140,7 +189,7 @@ export class AccountListController {
           placeholder: '输入修改前的钱包密码',
           onConfirm: async (value) => {
             if (!value || value.length < 8) throw new Error('旧钱包密码至少需要8位字符');
-            result = await this.wallet.exportAccountsFile(password, identityEndpoint, { identityPassword: value });
+            result = await this.wallet.exportAccountsFile(password, identityEndpoint, { walletId: onlyWallet, identityPassword: value });
           }
         });
         if (!legacyPassword || !result) return;
@@ -221,7 +270,9 @@ export class AccountListController {
         (walletId) => this.onOpenCreateAccount?.(walletId),
         (walletId) => this.onViewMnemonic?.(walletId),
         (accountId) => this.onViewPrivateKey?.(accountId),
-        this.pendingMpcInvites
+        this.pendingMpcInvites,
+        (accountId) => this.onExportAccountKeyfile?.(accountId),
+        (walletId) => this.onExportWallet?.(walletId)
       );
     } catch (error) {
       console.error('[AccountListController] 加载钱包列表失败:', error);
@@ -300,7 +351,7 @@ export class AccountListController {
     }
   }
 
-  renderWalletList(wallets, onAccountDetails, onAccountDelete, onAddAccount, onViewMnemonic, onViewPrivateKey, pendingMpcInvites = this.pendingMpcInvites) {
+  renderWalletList(wallets, onAccountDetails, onAccountDelete, onAddAccount, onViewMnemonic, onViewPrivateKey, pendingMpcInvites = this.pendingMpcInvites, onExportAccountKeyfile = this.onExportAccountKeyfile, onExportWallet = this.onExportWallet) {
     const container = document.getElementById('walletList');
     if (!container) return;
 
@@ -310,6 +361,14 @@ export class AccountListController {
     this.mpcWalletsById = new Map(
       normalizedWallets.filter(wallet => wallet?.type === 'mpc' && wallet?.id).map(wallet => [wallet.id, wallet])
     );
+    // 「⋯」菜单要按账户/钱包的类型决定给哪些项,所以渲染时把索引留着
+    this.walletsById = new Map(normalizedWallets.filter(w => w?.id).map(w => [w.id, w]));
+    this.accountsById = new Map();
+    for (const w of normalizedWallets) {
+      for (const a of (Array.isArray(w?.accounts) ? w.accounts : [])) {
+        if (a?.id) this.accountsById.set(a.id, a);
+      }
+    }
 
     if (normalizedWallets.length === 0 && invites.length === 0) {
       container.innerHTML = `
@@ -376,15 +435,13 @@ export class AccountListController {
               <div class="account-address">${shortenAddress(account.address)}</div>
             </div>
             <div class="account-actions">
-              <button class="account-action-btn key-btn view-private-key-btn"
+              <button class="account-action-btn account-menu-btn"
                       data-account-id="${account.id}"
-                      title="查看私钥">
-                🔑
-              </button>
-              <button class="account-action-btn danger delete-btn"
-                      data-account-id="${account.id}"
-                      title="删除">
-                🗑️
+                      data-menu-kind="account"
+                      title="${escapeHtml(t('account.menu'))}"
+                      aria-label="${escapeHtml(t('account.menu'))}"
+                      aria-haspopup="menu" aria-expanded="false">
+                ⋯
               </button>
             </div>
           </div>
@@ -419,6 +476,18 @@ export class AccountListController {
             </button>
           </div>
         ` : ''}
+        ${isMpc ? '' : `
+          <div class="wallet-header-actions">
+            <button
+              class="wallet-header-btn account-menu-btn"
+              data-wallet-id="${escapeHtml(wallet.id)}"
+              data-menu-kind="wallet"
+              title="${escapeHtml(t('account.menu'))}"
+              aria-label="${escapeHtml(t('account.menu'))}"
+              aria-haspopup="menu" aria-expanded="false"
+            >⋯</button>
+          </div>
+        `}
         ${isMpc ? `
           <div class="wallet-header-actions">
             <button
@@ -985,6 +1054,109 @@ export class AccountListController {
     });
   }
 
+  /** 菜单项被点了:转给对应的回调。 */
+  handleAccountMenuAction(action, id) {
+    if (!action) return;
+    if (action === 'view-private-key') {
+      this.onViewPrivateKey?.(id);
+    } else if (action === 'delete-account') {
+      this.onOpenDeleteAccount?.(id);
+    } else if (action === 'view-mnemonic') {
+      this.onViewMnemonic?.(id);
+    } else if (action === 'export-keyfile') {
+      this.onExportAccountKeyfile?.(id);
+    } else if (action === 'export-wallet') {
+      this.onExportWallet?.(id);
+    } else if (action === 'no-mnemonic') {
+      // 只是说明,没有动作
+    }
+  }
+
+  /**
+   * 打开账户/钱包的操作菜单。
+   *
+   * 菜单挂在 document.body 上、用 fixed 定位——钱包卡片是 `overflow: hidden`
+   * (`css/accounts.css` 的 `.wallet-card`),放在卡片里会被裁掉。
+   */
+  openAccountMenu(trigger, items) {
+    const menu = ensureAccountMenu();
+    menu.textContent = '';
+    for (const item of items) {
+      if (!item) continue;
+      if (item.divider) {
+        const hr = document.createElement('div');
+        hr.className = 'network-menu-divider';
+        menu.appendChild(hr);
+        continue;
+      }
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'network-option' + (item.danger ? ' danger' : '') + (item.noteOnly ? ' note-only' : '');
+      btn.textContent = item.label;
+      // 只是说明的项(比如「这个钱包没有助记词」):不是可点的动作,
+      // 做成按钮会让人以为点了有反应——所以做成不可点的说明文字。
+      if (item.noteOnly) {
+        btn.disabled = true;
+        btn.setAttribute('aria-disabled', 'true');
+      } else {
+        btn.dataset.action = item.action;
+        if (item.id) btn.dataset.id = item.id;
+      }
+      if (item.note) {
+        const note = document.createElement('div');
+        note.className = 'network-option-note';
+        note.textContent = item.note;
+        btn.appendChild(note);
+      }
+      menu.appendChild(btn);
+    }
+    menu.classList.remove('hidden');
+    // 贴着按钮的右下角;菜单在视口里放不下就翻到按钮上方
+    const rect = trigger.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.round(rect.right - 180))}px`;
+    const height = menu.getBoundingClientRect().height;
+    const below = rect.bottom + 6;
+    const above = rect.top - height - 6;
+    menu.style.top = `${Math.round(below + height <= window.innerHeight ? below : Math.max(8, above))}px`;
+    trigger.setAttribute('aria-expanded', 'true');
+    this.openMenuTrigger = trigger;
+  }
+
+  closeAccountMenu() {
+    const menu = document.getElementById('accountActionMenu');
+    menu?.classList.add('hidden');
+    this.openMenuTrigger?.setAttribute('aria-expanded', 'false');
+    this.openMenuTrigger = null;
+  }
+
+  /** 账户菜单的项:按账户类型给。 */
+  accountMenuItems(account) {
+    const items = [
+      { action: 'view-private-key', id: account.id, label: t('account.menu.viewPrivateKey') }
+    ];
+    // MPC 钱包的密钥分片不在单个账户里,导不出私钥文件
+    if (account.namespace !== 'mpc') {
+      items.push({ action: 'export-keyfile', id: account.id, label: t('account.menu.exportKeyfile') });
+    }
+    items.push({ action: 'delete-account', id: account.id, label: t('account.menu.deleteAccount'), danger: true });
+    return items;
+  }
+
+  /** 钱包菜单的项:按钱包类型给。 */
+  walletMenuItems(wallet) {
+    const items = [];
+    // HD 钱包才可能有助记词;而且得有那一份加密的助记词才看得见。
+    // (wallet 来自 GET_ALL_WALLETS,带着 encryptedMnemonic 字段。)
+    if (wallet.type === 'hd' && wallet.encryptedMnemonic) {
+      items.push({ action: 'view-mnemonic', id: wallet.id, label: t('account.menu.viewMnemonic') });
+    } else {
+      // 导入的钱包没有助记词:说明一下,免得用户以为漏了功能
+      items.push({ action: 'no-mnemonic', id: wallet.id, label: t('account.menu.noMnemonic'), noteOnly: true });
+    }
+    items.push({ action: 'export-wallet', id: wallet.id, label: t('account.menu.exportWallet') });
+    return items;
+  }
+
   bindWalletListEvents(onAccountDetails, onAccountDelete, onAddAccount, onViewMnemonic, onViewPrivateKey) {
     const container = document.getElementById('walletList');
     if (!container) return;
@@ -1021,22 +1193,23 @@ export class AccountListController {
       });
     });
 
-    container.querySelectorAll('.view-private-key-btn').forEach(btn => {
+    // 账户/钱包的「⋯」按钮:点开操作菜单
+    container.querySelectorAll('.account-menu-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const accountId = btn.dataset.accountId;
-        if (onViewPrivateKey) {
-          onViewPrivateKey(accountId);
+        e.preventDefault();
+        if (this.openMenuTrigger === btn) {
+          this.closeAccountMenu();
+          return;
         }
-      });
-    });
-
-    container.querySelectorAll('.delete-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const accountId = btn.dataset.accountId;
-        if (onAccountDelete) {
-          onAccountDelete(accountId);
+        if (btn.dataset.menuKind === 'wallet') {
+          const walletId = btn.dataset.walletId;
+          const wallet = (this.walletsById || new Map()).get(walletId);
+          this.openAccountMenu(btn, this.walletMenuItems(wallet || { id: walletId, type: 'imported' }));
+        } else {
+          const accountId = btn.dataset.accountId;
+          const account = (this.accountsById || new Map()).get(accountId);
+          this.openAccountMenu(btn, this.accountMenuItems(account || { id: accountId }));
         }
       });
     });

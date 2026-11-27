@@ -101,5 +101,16 @@ export const messagesZhCN = {
   'zhixing.exportKeystoreFailed': '导出失败:{message}',
   'zhixing.exportKeystoreFilePasswordHint': '这个口令只用来解开导出的文件,链侧用它来解锁;与钱包密码无关。',
   'zhixing.exportKeystoreFilePasswordPlaceholder': '输入文件口令(至少 8 位)',
-  'zhixing.exportKeystoreCancel': '取消'
+  'zhixing.exportKeystoreCancel': '取消',
+  'wallet.exportKeyfileTitle': '导出密钥文件',
+  'wallet.exportKeyfileHint': '导出的文件用这个文件自己的口令加密。口令请自己记好:丢了就解不开这个文件。',
+  'account.menu': '账户操作',
+  'account.menu.viewPrivateKey': '查看私钥',
+  'account.menu.exportKeyfile': '加密导出',
+  'account.menu.deleteAccount': '删除账户',
+  'account.menu.viewMnemonic': '查看助记词',
+  'account.menu.exportWallet': '加密导出这个钱包',
+  'account.menu.noMnemonic': '这个账户是用私钥导入的,钱包里没有助记词',
+  'wallet.exportOneWalletTitle': '导出「{name}」',
+  'wallet.exportOneWalletFallbackName': '这个钱包'
 };

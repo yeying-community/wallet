@@ -702,6 +702,36 @@ export class WalletDomain extends BaseDomain {
   }
 
   /**
+   * 导出一个账户的**加密密钥文件**(通用格式,适用所有链)。
+   *
+   * 与 `exportZhixingKeystore` 的区别:那个是知行图专用的 Web3 Secret Storage v3
+   * 格式,链侧工具(`node encode-knowledge-op --key-file`、`zx`)只认那个;
+   * 这个是钱包自己的格式,别的链用。
+   *
+   * `filePassword` 是**这个文件自己的**口令(与钱包密码无关)。
+   *
+   * @param {string} accountId - 账户 ID
+   * @param {string} password - 钱包密码
+   * @param {string} filePassword - 文件口令(至少 8 个字符)
+   * @returns {Promise<Object>} { keystore, filename, address }
+   */
+  async exportAccountKeyfile(accountId, password, filePassword) {
+    if (!password || password.length < 8) {
+      throw new Error('密码至少需要8位字符');
+    }
+    if (!filePassword || filePassword.length < 8) {
+      throw new Error(t('zhixing.exportKeystoreFilePasswordHint'));
+    }
+    const result = await this._sendMessage(WalletMessageType.EXPORT_ACCOUNT_KEYFILE, {
+      accountId,
+      password,
+      filePassword
+    });
+    if (!result?.success) throw new Error(result?.error || t('zhixing.exportKeystoreFailed', { message: '' }));
+    return { keystore: result.keystore, filename: result.filename, address: result.address };
+  }
+
+  /**
    * 导出助记词
    * @param {string} walletId - 钱包 ID
    * @param {string} password - 密码
@@ -720,11 +750,18 @@ export class WalletDomain extends BaseDomain {
     return result.mnemonic;
   }
 
+  /**
+   * 导出账户备份文件。
+   * @param {string} password - 钱包密码
+   * @param {string} identityEndpoint - 身份节点地址
+   * @param {Object} [options] - { walletId: 只导这一个钱包; identityPassword: 旧口令 }
+   */
   async exportAccountsFile(password, identityEndpoint = '', options = {}) {
     if (!password || password.length < 8) throw new Error('密码至少需要8位字符');
     return this._sendMessage(WalletMessageType.EXPORT_ACCOUNTS_FILE, {
       password,
       identityEndpoint,
+      walletId: options?.walletId || '',
       identityPassword: options?.identityPassword || ''
     });
   }

@@ -127,10 +127,6 @@ export class PopupController {
       onWalletUpdated: () => this.refreshWalletData(),
       onAccountSelected: (accountId) => this.accountListController?.handleSelectAccount(accountId)
     });
-    // 知行图首页的「导出密钥文件」入口:账户模态控制器负责(它有双输入的模态框)
-    this.tokenController.setExportKeystoreHandler(
-      (accountId) => this.accountModalsController.exportZhixingKeystore(accountId)
-    );
     this.accountListController = new AccountListController({
       wallet: this.wallet,
       onWalletUpdated: () => this.refreshWalletData(),
@@ -139,6 +135,10 @@ export class PopupController {
       onOpenCreateAccount: (walletId) => this.accountModalsController.openCreateAccount(walletId),
       onViewMnemonic: (walletId) => this.accountModalsController.openMnemonic(walletId),
       onViewPrivateKey: (accountId) => this.accountModalsController.openPrivateKey(accountId),
+      // 「⋯」菜单里的加密导出:知行图导链侧能用的格式,其它链导钱包自己的格式
+      onExportAccountKeyfile: (accountId) => this.accountModalsController.exportAccountKeyfile(accountId),
+      // 钱包级的导出:只导这一个钱包(页面头部的「导出钱包」另走一条,导全部)
+      onExportWallet: (walletId) => this.accountListController?.handleExportAccounts(walletId),
       promptPassword: (options) => this.accountModalsController.promptPassword(options)
     });
     this.importWalletController = new ImportWalletController({

@@ -26,11 +26,10 @@ function accountFamily(account) {
 }
 
 export class TokenController {
-  constructor({ token, wallet, networkController, onExportKeystore } = {}) {
+  constructor({ token, wallet, networkController } = {}) {
     this.token = token;
     this.wallet = wallet;
     this.networkController = networkController || null;
-    this.onExportKeystore = onExportKeystore || null;
     this.lastTokenList = [];
 
     this.transferController = new TransferTokenController({
@@ -42,11 +41,6 @@ export class TokenController {
   setNetworkController(controller) {
     this.networkController = controller;
     this.transferController.setNetworkController(controller);
-  }
-
-  /** 注册「导出知行图密钥文件」的入口(由账户模态控制器提供)。 */
-  setExportKeystoreHandler(handler) {
-    this.onExportKeystore = handler || null;
   }
 
   bindEvents() {
@@ -72,11 +66,7 @@ export class TokenController {
       setZhixingHomeMode(zhixing);
       if (zhixing) {
         this.lastTokenList = [];
-        await renderZhixingHome(this.wallet, {
-          onExportKeystore: this.onExportKeystore
-            ? (accountId) => this.onExportKeystore(accountId)
-            : undefined
-        });
+        await renderZhixingHome(this.wallet);
         return [];
       }
       const account = await this.wallet.getCurrentAccount();
